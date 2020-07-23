@@ -116,7 +116,7 @@ public:
 	virtual void RHISetScissorRect(bool bEnable, uint32 MinX, uint32 MinY, uint32 MaxX, uint32 MaxY) final override;
 	
 	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState) final override;
-
+	
 	virtual void RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers) final override;
 
 	/** Set the shader resource view of a surface. */
@@ -195,45 +195,11 @@ public:
 	
 	virtual void RHIUpdateTextureReference(FRHITextureReference* TextureRef, FRHITexture* NewTexture) final override;
 	
-	/**
-	 * Explicitly transition a UAV from readable -> writable by the GPU or vice versa.
-	 * Also explicitly states which pipeline the UAV can be used on next.  For example, if a Compute job just wrote this UAV for a Pixel shader to read
-	 * you would do EResourceTransitionAccess::Readable and EResourceTransitionPipeline::EComputeToGfx
-	 *
-	 * @param TransitionType - direction of the transition
-	 * @param EResourceTransitionPipeline - How this UAV is transitioning between Gfx and Compute, if at all.
-	 * @param InUAVs - array of UAV objects to transition
-	 * @param NumUAVs - number of UAVs to transition
-	 * @param WriteComputeFence - Optional ComputeFence to write as part of this transition
-	 */
-	virtual void RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 NumUAVs, FRHIComputeFence* WriteComputeFence) final override;
-	
 	virtual void RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBufferRHI, FRHIStagingBuffer* DestinationStagingBufferRHI, uint32 Offset, uint32 NumBytes) final override;
 	virtual void RHIWriteGPUFence(FRHIGPUFence* FenceRHI) final override;
 
-	/**
-	 * Explicitly transition a texture resource from readable -> writable by the GPU or vice versa.
-	 * We know rendertargets are only used as rendered targets on the Gfx pipeline, so these transitions are assumed to be implemented such
-	 * Gfx->Gfx and Gfx->Compute pipeline transitions are both handled by this call by the RHI implementation.  Hence, no pipeline parameter on this call.
-	 *
-	 * @param TransitionType - direction of the transition
-	 * @param InTextures - array of texture objects to transition
-	 * @param NumTextures - number of textures to transition
-	 */
-	virtual void RHITransitionResources(EResourceTransitionAccess TransitionType, FRHITexture** InTextures, int32 NumTextures) final override;
-	
-	virtual void RHITransitionResources(FExclusiveDepthStencil DepthStencilMode, FRHITexture* DepthTexture) final override
-	{
-		IRHICommandContext::RHITransitionResources(DepthStencilMode, DepthTexture);
-	}
-	virtual void RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHITexture** InTextures, int32 NumTextures) final override
-	{
-		RHITransitionResources(TransitionType, InTextures, NumTextures);
-	}
-	/**
-	 * Compute queue will wait for the fence to be written before continuing.
-	 */
-	virtual void RHIWaitComputeFence(FRHIComputeFence* InFence) final override;
+	virtual void RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions);
+	virtual void RHIEndTransitions(TArrayView<const FRHITransition*> Transitions);
 
 	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName) final override;
 
@@ -249,7 +215,7 @@ protected:
 	
 	/** Occlusion query batch fence */
 	TSharedPtr<FMetalCommandBufferFence, ESPMode::ThreadSafe> CommandBufferFence;
-
+	
 	/** Profiling implementation details. */
 	class FMetalProfiler* Profiler;
 	

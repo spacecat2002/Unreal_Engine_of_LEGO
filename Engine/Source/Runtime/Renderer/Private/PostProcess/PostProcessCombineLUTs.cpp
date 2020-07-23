@@ -415,7 +415,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vie
 	const bool bUseFloatOutput = ViewFamily.SceneCaptureSource == SCS_FinalColorHDR || ViewFamily.SceneCaptureSource == SCS_FinalToneCurveHDR;
 
 	// Attempt to register the persistent view LUT texture.
-	FRDGTextureRef OutputTexture = GraphBuilder.TryRegisterExternalTexture(
+	FRDGTextureRef OutputTexture = TryRegisterExternalTexture(GraphBuilder,
 		View.GetTonemappingLUT(GraphBuilder.RHICmdList, GLUTSize, bUseVolumeTextureLUT, bUseComputePass, bUseFloatOutput));
 
 	View.SetValidTonemappingLUT();
@@ -424,7 +424,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vie
 	if (!OutputTexture)
 	{
 		OutputTexture = GraphBuilder.CreateTexture(
-			FSceneViewState::CreateLUTRenderTarget(GLUTSize, bUseVolumeTextureLUT, bUseComputePass, bUseFloatOutput),
+			Translate(FSceneViewState::CreateLUTRenderTarget(GLUTSize, bUseVolumeTextureLUT, bUseComputePass, bUseFloatOutput)),
 			TEXT("CombineLUT"));
 	}
 

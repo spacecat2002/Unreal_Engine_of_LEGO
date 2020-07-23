@@ -439,8 +439,11 @@ protected:
 	bool bUse16BitBoneIndex;
 	uint32 InputWeightIndexSize;
 	uint32 InputWeightStride;
+	uint32 VertexOffsetUsage = 0;
 	FShaderResourceViewRHIRef InputWeightStreamSRV;
 	FShaderResourceViewRHIRef InputWeightLookupStreamSRV;
+	FRHIShaderResourceView* PreSkinningVertexOffsetSRV = nullptr;
+	FRHIShaderResourceView* PostSkinningVertexOffsetSRV = nullptr;
 	FRHIShaderResourceView* MorphBuffer;
 	FShaderResourceViewRHIRef ClothBuffer;
 	FShaderResourceViewRHIRef ClothPositionsAndNormalsBuffer;
@@ -467,6 +470,10 @@ public:
 		BoneMatrices.Bind(Initializer.ParameterMap, TEXT("BoneMatrices"));
 		TangentInputBuffer.Bind(Initializer.ParameterMap, TEXT("TangentInputBuffer"));
 		PositionInputBuffer.Bind(Initializer.ParameterMap, TEXT("PositionInputBuffer"));
+
+		VertexOffsetUsage.Bind(Initializer.ParameterMap, TEXT("VertexOffsetUsage"));
+		PreSkinOffsets.Bind(Initializer.ParameterMap, TEXT("PreSkinOffsets"));
+		PostSkinOffsets.Bind(Initializer.ParameterMap, TEXT("PostSkinOffsets"));
 
 		InputStreamStart.Bind(Initializer.ParameterMap, TEXT("InputStreamStart"));
 
@@ -507,6 +514,10 @@ public:
 
 		SetSRVParameter(RHICmdList, ShaderRHI, TangentInputBuffer, DispatchData.TangentBufferSRV);
 		SetSRVParameter(RHICmdList, ShaderRHI, PositionInputBuffer, DispatchData.PositionBufferSRV);
+
+		SetShaderValue(RHICmdList, ShaderRHI, VertexOffsetUsage, Entry->VertexOffsetUsage);
+		SetSRVParameter(RHICmdList, ShaderRHI, PreSkinOffsets, Entry->PreSkinningVertexOffsetSRV);
+		SetSRVParameter(RHICmdList, ShaderRHI, PostSkinOffsets, Entry->PostSkinningVertexOffsetSRV);
 
 		SetShaderValue(RHICmdList, ShaderRHI, NumBoneInfluences, DispatchData.NumBoneInfluences);
 		SetShaderValue(RHICmdList, ShaderRHI, InputWeightIndexSize, Entry->InputWeightIndexSize);
@@ -566,6 +577,10 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, PositionInputBuffer)
 	LAYOUT_FIELD(FShaderResourceParameter, PositionBufferUAV)
 	LAYOUT_FIELD(FShaderResourceParameter, TangentBufferUAV)
+
+	LAYOUT_FIELD(FShaderParameter, VertexOffsetUsage)
+	LAYOUT_FIELD(FShaderResourceParameter, PreSkinOffsets)
+	LAYOUT_FIELD(FShaderResourceParameter, PostSkinOffsets)
 
 	LAYOUT_FIELD(FShaderParameter, NumBoneInfluences);
 	LAYOUT_FIELD(FShaderParameter, InputWeightIndexSize);
@@ -676,12 +691,28 @@ void FGPUSkinCache::Cleanup()
 	ensure(Allocations.Num() == 0);
 }
 
-void FGPUSkinCache::TransitionAllToReadable(FRHICommandList& RHICmdList, EResourceTransitionPipeline Pipeline)
+void FGPUSkinCache::AddBufferToTransition(FRHIUnorderedAccessView* InUAV)
+{
+	// add UAV to set to remove duplicated entries but could still be different UAVs on the same resource
+	// then this code will need better filtering because mutliple transitions on the same resource
+	// is not allowed
+	BuffersToTransition.Add(InUAV);
+}
+
+void FGPUSkinCache::TransitionAllToReadable(FRHICommandList& RHICmdList)
 {
 	if (BuffersToTransition.Num() > 0)
 	{
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, Pipeline, BuffersToTransition.GetData(), BuffersToTransition.Num());
-		BuffersToTransition.SetNum(0, false);
+		FMemMark Mark(FMemStack::Get());
+		TArray<FRHITransitionInfo, SceneRenderingAllocator> UAVs;
+		UAVs.Reserve(BuffersToTransition.Num());
+		for (TSet<FRHIUnorderedAccessView*>::TConstIterator SetIt(BuffersToTransition); SetIt; ++SetIt)
+		{
+			UAVs.Add(FRHITransitionInfo(*SetIt, ERHIAccess::Unknown, ERHIAccess::VertexOrIndexBuffer | ERHIAccess::SRVMask));
+		}
+		RHICmdList.Transition(MakeArrayView(UAVs.GetData(), UAVs.Num()));
+
+		BuffersToTransition.Empty(BuffersToTransition.Num());
 	}
 }
 
@@ -712,22 +743,19 @@ void FGPUSkinCache::CommitRayTracingGeometryUpdates(FRHICommandList& RHICmdList)
 void FGPUSkinCache::TransitionToWriteable(FRHICommandList& RHICmdList)
 {
 	int32 BufferIndex = InternalUpdateCount % GPUSKINCACHE_FRAMES;
-	FRHIUnorderedAccessView* OutUAVs[] = { SkinCacheBuffer[BufferIndex].UAV };
-	RHICmdList.TransitionResources(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EGfxToCompute, OutUAVs, UE_ARRAY_COUNT(OutUAVs));
+	RHICmdList.Transition(FRHITransitionInfo(SkinCacheBuffers[BufferIndex].UAV, ERHIAccess::Unknown, ERHIAccess::ERWNoBarrier));
 }
 
 void FGPUSkinCache::TransitionAllToWriteable(FRHICommandList& RHICmdList)
 {
 	if (bInitialized)
 	{
-		FRHIUnorderedAccessView* OutUAVs[GPUSKINCACHE_FRAMES];
-
+		FRHITransitionInfo OutUAVs[GPUSKINCACHE_FRAMES];
 		for (int32 Index = 0; Index < GPUSKINCACHE_FRAMES; ++Index)
 		{
-			OutUAVs[Index] = SkinCacheBuffer[Index].UAV;
+			OutUAVs[Index] = FRHITransitionInfo(SkinCacheBuffer[Index].UAV, ERHIAccess::Unknown, ERHIAccess::ERWNoBarrier);
 		}
-
-		RHICmdList.TransitionResources(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EGfxToCompute, OutUAVs, UE_ARRAY_COUNT(OutUAVs));
+		RHICmdList.Transition(MakeArrayView(OutUAVs, UE_ARRAY_COUNT(OutUAVs)));
 	}
 }
 #endif
@@ -1033,7 +1061,7 @@ void FGPUSkinCache::DispatchUpdateSkinTangents(FRHICommandListImmediate& RHICmdL
 			FRHIComputeShader* ShaderRHI = Shader.GetComputeShader();
 			RHICmdList.SetComputeShader(ShaderRHI);
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EComputeToCompute, StagingBuffer.UAV.GetReference());
+			RHICmdList.Transition(FRHITransitionInfo(StagingBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWNoBarrier));
 
 			if (!GAllowDupedVertsForRecomputeTangents)
 			{
@@ -1074,7 +1102,7 @@ void FGPUSkinCache::DispatchUpdateSkinTangents(FRHICommandListImmediate& RHICmdL
 			uint32 VertexCount = DispatchData.NumVertices;
 			uint32 ThreadGroupCountValue = FMath::DivideAndRoundUp(VertexCount, ComputeShader->ThreadGroupSizeX);
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, StagingBuffer.UAV.GetReference());
+			RHICmdList.Transition(FRHITransitionInfo(StagingBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 
 			ComputeShader->SetParameters(RHICmdList, Entry, DispatchData, StagingBuffer);
 			DispatchComputeShader(RHICmdList, ComputeShader.GetShader(), ThreadGroupCountValue, 1, 1);
@@ -1121,10 +1149,22 @@ void FGPUSkinCache::DoDispatch(FRHICommandListImmediate& RHICmdList, FGPUSkinCac
 	}
 }
 
-void FGPUSkinCache::ProcessEntry(FRHICommandListImmediate& RHICmdList, FGPUBaseSkinVertexFactory* VertexFactory,
-	FGPUSkinPassthroughVertexFactory* TargetVertexFactory, const FSkelMeshRenderSection& BatchElement, FSkeletalMeshObjectGPUSkin* Skin,
-	const FMorphVertexBuffer* MorphVertexBuffer, const FSkeletalMeshVertexClothBuffer* ClothVertexBuffer, const FClothSimulData* SimData,
-	const FMatrix& ClothLocalToWorld, float ClothBlendWeight, uint32 RevisionNumber, int32 Section, FGPUSkinCacheEntry*& InOutEntry)
+void FGPUSkinCache::ProcessEntry(
+	FRHICommandListImmediate& RHICmdList, 
+	FGPUBaseSkinVertexFactory* VertexFactory,
+	FGPUSkinPassthroughVertexFactory* TargetVertexFactory, 
+	const FSkelMeshRenderSection& BatchElement, 
+	FSkeletalMeshObjectGPUSkin* Skin,
+	FVertexOffsetBuffers* VertexOffsetBuffers,
+	const FMorphVertexBuffer* MorphVertexBuffer,
+	const FSkeletalMeshVertexClothBuffer* ClothVertexBuffer, 
+	const FClothSimulData* SimData,
+	const FMatrix& ClothLocalToWorld, 
+	float ClothBlendWeight, 
+	uint32 RevisionNumber, 
+	int32 Section, 
+	FGPUSkinCacheEntry*& InOutEntry
+	)
 {
 	INC_DWORD_STAT(STAT_GPUSkinCache_NumSectionsProcessed);
 
@@ -1179,6 +1219,10 @@ void FGPUSkinCache::ProcessEntry(FRHICommandListImmediate& RHICmdList, FGPUBaseS
 		InOutEntry->SetupSection(Section, NewPositionAllocation, &LodData.RenderSections[Section], MorphVertexBuffer, ClothVertexBuffer, NumVertices, InputStreamStart, VertexFactory, TargetVertexFactory);
 		Entries.Add(InOutEntry);
 	}
+
+	InOutEntry->VertexOffsetUsage = VertexOffsetBuffers->GetUsage();
+	InOutEntry->PreSkinningVertexOffsetSRV = VertexOffsetBuffers->PreSkinningOffsetsVertexBuffer.GetSRV();
+	InOutEntry->PostSkinningVertexOffsetSRV = VertexOffsetBuffers->PostSkinningOffsetsVertexBuffer.GetSRV();
 
 	const bool bMorph = MorphVertexBuffer && MorphVertexBuffer->SectionIds.Contains(Section);
 	if (bMorph)
@@ -1424,23 +1468,23 @@ void FGPUSkinCache::DispatchUpdateSkinning(FRHICommandListImmediate& RHICmdList,
 			Shader->SetParameters(RHICmdList, PrevBoneBuffer, Entry, DispatchData, DispatchData.GetPreviousPositionRWBuffer()->UAV, DispatchData.GetTangentRWBuffer() ? DispatchData.GetTangentRWBuffer()->UAV : nullptr);
 		}
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, DispatchData.GetPreviousPositionRWBuffer()->UAV.GetReference());
-		BuffersToTransition.Add(DispatchData.GetPreviousPositionRWBuffer()->UAV);
+		RHICmdList.Transition(FRHITransitionInfo(DispatchData.GetPreviousPositionRWBuffer()->UAV.GetReference(), ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+		AddBufferToTransition(DispatchData.GetPreviousPositionRWBuffer()->UAV);
 
 		if (bUseIntermediateTangentBuffer)
 		{
 			if (DispatchData.IntermediateTangentBuffer)
 			{
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, DispatchData.IntermediateTangentBuffer->UAV.GetReference());
-				BuffersToTransition.Add(DispatchData.IntermediateTangentBuffer->UAV);
+				RHICmdList.Transition(FRHITransitionInfo(DispatchData.IntermediateTangentBuffer->UAV.GetReference(), ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+				AddBufferToTransition(DispatchData.IntermediateTangentBuffer->UAV);
 			}
 		}
 		else
 		{
 			if (DispatchData.TangentBuffer)
 			{
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, DispatchData.TangentBuffer->UAV.GetReference());
-				BuffersToTransition.Add(DispatchData.TangentBuffer->UAV);
+				RHICmdList.Transition(FRHITransitionInfo(DispatchData.TangentBuffer->UAV.GetReference(), ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+				AddBufferToTransition(DispatchData.TangentBuffer->UAV);
 			}
 		}
 
@@ -1468,23 +1512,23 @@ void FGPUSkinCache::DispatchUpdateSkinning(FRHICommandListImmediate& RHICmdList,
 			Shader->SetParameters(RHICmdList, BoneBuffer, Entry, DispatchData, DispatchData.GetPositionRWBuffer()->UAV, DispatchData.GetTangentRWBuffer() ? DispatchData.GetTangentRWBuffer()->UAV : nullptr);
 		}
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, DispatchData.GetPositionRWBuffer()->UAV.GetReference());
-		BuffersToTransition.Add(DispatchData.GetPositionRWBuffer()->UAV);
+		RHICmdList.Transition(FRHITransitionInfo(DispatchData.GetPositionRWBuffer()->UAV.GetReference(), ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+		AddBufferToTransition(DispatchData.GetPositionRWBuffer()->UAV);
 
 		if (bUseIntermediateTangentBuffer)
 		{
 			if (DispatchData.IntermediateTangentBuffer)
 			{
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, DispatchData.IntermediateTangentBuffer->UAV.GetReference());
-				BuffersToTransition.Add(DispatchData.IntermediateTangentBuffer->UAV);
+				RHICmdList.Transition(FRHITransitionInfo(DispatchData.IntermediateTangentBuffer->UAV.GetReference(), ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+				AddBufferToTransition(DispatchData.IntermediateTangentBuffer->UAV);
 			}
 		}
 		else
 		{
 			if (DispatchData.TangentBuffer)
 			{
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, DispatchData.TangentBuffer->UAV.GetReference());
-				BuffersToTransition.Add(DispatchData.TangentBuffer->UAV);
+				RHICmdList.Transition(FRHITransitionInfo(DispatchData.TangentBuffer->UAV.GetReference(), ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+				AddBufferToTransition(DispatchData.TangentBuffer->UAV);
 			}
 		}
 
@@ -1497,7 +1541,7 @@ void FGPUSkinCache::DispatchUpdateSkinning(FRHICommandListImmediate& RHICmdList,
 	check(DispatchData.PreviousPositionBuffer != DispatchData.PositionBuffer);
 }
 
-void FGPUSkinCache::FRWBuffersAllocation::RemoveAllFromTransitionArray(TArray<FRHIUnorderedAccessView*>& InBuffersToTransition)
+void FGPUSkinCache::FRWBuffersAllocation::RemoveAllFromTransitionArray(TSet<FRHIUnorderedAccessView*>& InBuffersToTransition)
 {
 	for (uint32 i = 0; i < NUM_BUFFERS; i++)
 	{

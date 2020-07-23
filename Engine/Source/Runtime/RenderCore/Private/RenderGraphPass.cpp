@@ -1,81 +1,254 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RenderGraphPass.h"
+#include "RenderGraphPrivate.h"
+#include "RenderGraphUtils.h"
 
-void FRDGPassParameterStruct::ClearUniformBuffers() const
-{
-	/** The pass parameter struct is mostly POD, with the exception of uniform buffers.
-	 *  Since the explicit type of the struct is unknown, the method traverses and destructs
-	 *  all uniform buffer references manually.
-	 */
-	const auto& Resources = Layout->Resources;
-
-	for (int32 ResourceIndex = 0; ResourceIndex < Resources.Num(); ++ResourceIndex)
-	{
-		const EUniformBufferBaseType MemberType = Resources[ResourceIndex].MemberType;
-
-		if (MemberType == UBMT_REFERENCED_STRUCT)
-		{
-			const uint16 MemberOffset = Resources[ResourceIndex].MemberOffset;
-
-			FUniformBufferRHIRef* UniformBufferPtr = reinterpret_cast<FUniformBufferRHIRef*>(Contents + MemberOffset);
-			*UniformBufferPtr = FUniformBufferRHIRef();
-		}
-	}
-}
-
-FUniformBufferStaticBindings FRDGPassParameterStruct::GetGlobalUniformBuffers() const
+FUniformBufferStaticBindings FRDGParameterStruct::GetGlobalUniformBuffers() const
 {
 	FUniformBufferStaticBindings GlobalUniformBuffers;
 
-	const auto& Resources = Layout->Resources;
-
-	for (int32 ResourceIndex = 0; ResourceIndex < Resources.Num(); ++ResourceIndex)
+	for (uint32 Index = 0, Count = Layout->UniformBuffers.Num(); Index < Count; ++Index)
 	{
-		const EUniformBufferBaseType MemberType = Resources[ResourceIndex].MemberType;
+		const uint32 MemberOffset = Layout->UniformBuffers[Index].MemberOffset;
+		FRHIUniformBuffer* UniformBufferPtr = *reinterpret_cast<FUniformBufferRHIRef*>(Contents + MemberOffset);
 
-		if (MemberType == UBMT_REFERENCED_STRUCT)
+		if (UniformBufferPtr && UniformBufferPtr->IsGlobal())
 		{
-			const uint16 MemberOffset = Resources[ResourceIndex].MemberOffset;
-
-			FRHIUniformBuffer* UniformBufferPtr = *reinterpret_cast<FUniformBufferRHIRef*>(Contents + MemberOffset);
-
-			if (UniformBufferPtr && UniformBufferPtr->HasStaticSlot())
-			{
-				GlobalUniformBuffers.AddUniformBuffer(UniformBufferPtr);
-			}
+			GlobalUniformBuffers.AddUniformBuffer(UniformBufferPtr);
 		}
 	}
+
+	EnumerateUniformBuffers([&](FRDGUniformBufferRef UniformBuffer)
+	{
+		if (UniformBuffer->IsGlobal())
+		{
+			GlobalUniformBuffers.AddUniformBuffer(UniformBuffer->GetRHI());
+		}
+	});
 
 	return GlobalUniformBuffers;
 }
 
-FRDGPass::FRDGPass(
-	FRDGEventName&& InName,
-	FRDGPassParameterStruct InParameterStruct,
-	ERDGPassFlags InPassFlags)
-	: Name(static_cast<FRDGEventName&&>(InName))
-	, ParameterStruct(InParameterStruct)
-	, PassFlags(InPassFlags)
+FRHIRenderPassInfo FRDGParameterStruct::GetRenderPassInfo() const
+{
+	const FRenderTargetBindingSlots& RenderTargets = GetRenderTargets();
+
+	FRHIRenderPassInfo RenderPassInfo;
+	uint32 SampleCount = 0;
+	uint32 RenderTargetIndex = 0;
+
+	RenderTargets.Enumerate([&](FRenderTargetBinding RenderTarget)
+	{
+		FRDGTextureRef Texture = RenderTarget.GetTexture();
+		FRDGTextureRef ResolveTexture = RenderTarget.GetResolveTexture();
+		ERenderTargetStoreAction StoreAction = ERenderTargetStoreAction::EStore;
+
+		if (ResolveTexture)
+		{
+			// Silently skip the resolve if the resolve texture is the same as the render target texture.
+			if (ResolveTexture != Texture)
+			{
+				StoreAction = ERenderTargetStoreAction::EMultisampleResolve;
+			}
+			else
+			{
+				ResolveTexture = nullptr;
+			}
+		}
+
+		auto& ColorRenderTarget = RenderPassInfo.ColorRenderTargets[RenderTargetIndex];
+		ColorRenderTarget.RenderTarget = Texture->GetRHI();
+		ColorRenderTarget.ResolveTarget = ResolveTexture ? ResolveTexture->GetRHI() : nullptr;
+		ColorRenderTarget.ArraySlice = RenderTarget.GetArraySlice();
+		ColorRenderTarget.MipIndex = RenderTarget.GetMipIndex();
+		ColorRenderTarget.Action = MakeRenderTargetActions(RenderTarget.GetLoadAction(), StoreAction);
+
+		SampleCount |= ColorRenderTarget.RenderTarget->GetNumSamples();
+		++RenderTargetIndex;
+	});
+
+	const FDepthStencilBinding& DepthStencil = RenderTargets.DepthStencil;
+
+	if (FRDGTextureRef Texture = DepthStencil.GetTexture())
+	{
+		const FExclusiveDepthStencil ExclusiveDepthStencil = DepthStencil.GetDepthStencilAccess();
+		const ERenderTargetStoreAction StoreAction = ERenderTargetStoreAction::EStore;
+		const ERenderTargetStoreAction DepthStoreAction = ExclusiveDepthStencil.IsUsingDepth() ? StoreAction : ERenderTargetStoreAction::ENoAction;
+		const ERenderTargetStoreAction StencilStoreAction = ExclusiveDepthStencil.IsUsingStencil() ? StoreAction : ERenderTargetStoreAction::ENoAction;
+
+		auto& DepthStencilTarget = RenderPassInfo.DepthStencilRenderTarget;
+		DepthStencilTarget.DepthStencilTarget = Texture->GetRHI();
+		DepthStencilTarget.Action = MakeDepthStencilTargetActions(
+			MakeRenderTargetActions(DepthStencil.GetDepthLoadAction(), DepthStoreAction),
+			MakeRenderTargetActions(DepthStencil.GetStencilLoadAction(), StencilStoreAction));
+		DepthStencilTarget.ExclusiveDepthStencil = ExclusiveDepthStencil;
+
+		SampleCount |= DepthStencilTarget.DepthStencilTarget->GetNumSamples();
+	}
+
+	RenderPassInfo.bIsMSAA = SampleCount > 1;
+	RenderPassInfo.ResolveParameters = RenderTargets.ResolveRect;
+	RenderPassInfo.ResolveParameters.SourceAccessFinal = ERHIAccess::RTV;
+	RenderPassInfo.ResolveParameters.DestAccessFinal = ERHIAccess::ResolveDst;
+
+	return RenderPassInfo;
+}
+
+void FRDGBarrierBatch::SetSubmitted()
+{
+	check(!bSubmitted);
+	bSubmitted = true;
+}
+
+FString FRDGBarrierBatch::GetName() const
+{
+	return FString::Printf(TEXT("[%s(%s)]: %s"), Pass->GetName(), *GetRHIPipelineName(Pass->GetPipeline()), Name);
+}
+
+FRDGBarrierBatchBegin::FRDGBarrierBatchBegin(const FRDGPass* InPass, const TCHAR* InName, TOptional<ERHIPipeline> InOverridePipelineToEnd)
+	: FRDGBarrierBatch(InPass, InName)
+	, OverridePipelineToEnd(InOverridePipelineToEnd)
 {}
 
-void FRDGPass::Execute(FRHICommandListImmediate& RHICmdList) const
+FRDGBarrierBatchBegin::~FRDGBarrierBatchBegin()
 {
-	SCOPED_NAMED_EVENT(FRDGPass_Execute, FColor::Emerald);
+#if RDG_ENABLE_DEBUG
+	checkf(!Resources.Num() && !Transitions.Num(), TEXT("Begin barrier batch has unsubmitted transitions."));
+	checkf(!Transition, TEXT("Begin barrier batch %s is currently active and was never ended."), *GetName());
+#endif
+}
 
-	const FUniformBufferStaticBindings GlobalUniformBuffers = ParameterStruct.GetGlobalUniformBuffers();
+void FRDGBarrierBatchBegin::AddTransition(FRDGParentResourceRef Resource, const FRHITransitionInfo& Info)
+{
+	check(Resource && Info.Resource);
 
-	if (GlobalUniformBuffers.GetUniformBufferCount())
+	checkf(!IsSubmitted(), TEXT("Attempting to add transition for resource '%s' into begin batch '%s', when the begin batch has already been submitted."), Resource->Name, *GetName());
+	Transitions.Add(Info);
+
+#if RDG_ENABLE_DEBUG
+	Resources.Add(Resource);
+#endif
+}
+
+void FRDGBarrierBatchBegin::ReserveMemory(uint32 ExpectedTransitionCount)
+{
+	Transitions.Reserve(ExpectedTransitionCount);
+}
+
+void FRDGBarrierBatchBegin::Submit(FRHIComputeCommandList& RHICmdList)
+{
+	SetSubmitted();
+
+	check(!Transition);
+	if (Transitions.Num() || bUseCrossPipelineFence)
 	{
-		RHICmdList.SetGlobalUniformBuffers(GlobalUniformBuffers);
+		const ERHIPipeline PassPipeline = Pass->GetPipeline();
+
+		ERHICreateTransitionFlags Flags = ERHICreateTransitionFlags::NoFence;
+
+		if (bUseCrossPipelineFence)
+		{
+			Flags = ERHICreateTransitionFlags::None;
+		}
+
+		const ERHIPipeline DstPipeline = OverridePipelineToEnd ? OverridePipelineToEnd.GetValue() : PassPipeline;
+		Transition = RHICreateTransition(PassPipeline, DstPipeline, Flags, Transitions);
+
+		RHICmdList.BeginTransitions(MakeArrayView(&Transition, 1));
+
+		Transitions.Empty();
+#if RDG_ENABLE_DEBUG
+		Resources.Empty();
+#endif
+	}
+}
+
+FRDGBarrierBatchEnd::~FRDGBarrierBatchEnd()
+{
+	checkf(!Dependencies.Num(), TEXT("End barrier batch has unsubmitted dependencies."));
+}
+
+void FRDGBarrierBatchEnd::ReserveMemory(uint32 ExpectedDependencyCount)
+{
+	Dependencies.Reserve(ExpectedDependencyCount);
+}
+
+void FRDGBarrierBatchEnd::AddDependency(FRDGBarrierBatchBegin* BeginBatch)
+{
+	check(BeginBatch);
+	checkf(!IsSubmitted(), TEXT("Attempting to add a dependency on begin batch '%s' into end batch '%s', when the end batch has already been submitted."), *BeginBatch->GetName(), *GetName());
+	Dependencies.AddUnique(BeginBatch);
+}
+
+void FRDGBarrierBatchEnd::Submit(FRHIComputeCommandList& RHICmdList)
+{
+	SetSubmitted();
+
+	TArray<const FRHITransition*, SceneRenderingAllocator> Transitions;
+	Transitions.Reserve(Dependencies.Num());
+
+	// Process dependencies with cross-pipeline fences first.
+	for (FRDGBarrierBatchBegin* Dependent : Dependencies)
+	{
+		check(Dependent->IsSubmitted());
+
+		if (Dependent->Transition && Dependent->bUseCrossPipelineFence)
+		{
+			Transitions.Add(Dependent->Transition);
+			Dependent->Transition = nullptr;
+		}
 	}
 
+	for (FRDGBarrierBatchBegin* Dependent : Dependencies)
+	{
+		if (Dependent->Transition)
+		{
+			Transitions.Add(Dependent->Transition);
+			Dependent->Transition = nullptr;
+		}
+	}
+
+	Dependencies.Empty();
+
+	if (Transitions.Num())
+	{
+		RHICmdList.EndTransitions(Transitions);
+	}
+}
+
+FRDGPass::FRDGPass(
+	FRDGEventName&& InName,
+	FRDGParameterStruct InParameterStruct,
+	ERDGPassFlags InFlags)
+	: Name(Forward<FRDGEventName&&>(InName))
+	, ParameterStruct(InParameterStruct)
+	, Flags(InFlags)
+	, Pipeline(EnumHasAnyFlags(Flags, ERDGPassFlags::AsyncCompute) ? ERHIPipeline::AsyncCompute : ERHIPipeline::Graphics)
+	, PrologueBarriersToBegin(this, TEXT("Prologue"))
+	, PrologueBarriersToEnd(this, TEXT("Prologue"))
+	, EpilogueBarriersToBeginForGraphics(this, TEXT("Epilogue (ForGraphics)"), ERHIPipeline::Graphics)
+	, EpilogueBarriersToBeginForAsyncCompute(this, TEXT("Epilogue (ForAsyncCompute)"), ERHIPipeline::AsyncCompute)
+{}
+
+#if RDG_ENABLE_DEBUG
+const TCHAR* FRDGPass::GetName() const
+{
+	// When in debug runtime mode, use the full path name.
+	if (!FullPathIfDebug.IsEmpty())
+	{
+		return *FullPathIfDebug;
+	}
+	else
+	{
+		return Name.GetTCHAR();
+	}
+}
+#endif
+
+void FRDGPass::Execute(FRHIComputeCommandList& RHICmdList)
+{
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_FRDGPass_Execute);
+	RHICmdList.SetGlobalUniformBuffers(ParameterStruct.GetGlobalUniformBuffers());
 	ExecuteImpl(RHICmdList);
-
-	if (GlobalUniformBuffers.GetUniformBufferCount())
-	{
-		RHICmdList.SetGlobalUniformBuffers({});
-	}
-
-	ParameterStruct.ClearUniformBuffers();
 }

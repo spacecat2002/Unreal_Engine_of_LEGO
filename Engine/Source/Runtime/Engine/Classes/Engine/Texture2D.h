@@ -8,7 +8,6 @@
 #include "UObject/ScriptMacros.h"
 #include "Engine/Texture.h"
 #include "TextureResource.h"
-#include "RenderAssetUpdate.h"
 #include "Serialization/BulkData2.h"
 #include "Texture2D.generated.h"
 
@@ -92,7 +91,6 @@ public:
 protected:
 
 	/** Helper to manage the current pending update following a call to StreamIn() or StreamOut(). */
-	TRefCountPtr<FRenderAssetUpdate> PendingUpdate;
 	friend class FTexture2DUpdate;
 
 public:
@@ -144,12 +142,6 @@ public:
 	}
 
 	ENGINE_API virtual int32 GetNumResidentMips() const final override;
-	virtual int32 GetNumRequestedMips() const final override;
-	virtual bool CancelPendingMipChangeRequest() final override;
-
-	/** true if the texture is currently being updated through StreamIn() or StreamOut(). */
-	virtual bool HasPendingUpdate() const final override { return PendingUpdate != nullptr; }
-	virtual bool IsPendingUpdateLocked() const final override;
 
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;

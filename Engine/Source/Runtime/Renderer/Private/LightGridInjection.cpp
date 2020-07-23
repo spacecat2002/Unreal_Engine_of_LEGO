@@ -657,9 +657,15 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 				View.ForwardLightingResources->NumCulledLightsGrid.UAV,
 				View.ForwardLightingResources->CulledLightDataGrid.UAV });
 
-			RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, OutUAVs.GetData(), OutUAVs.Num());
+			TArray<FRHITransitionInfo, TInlineAllocator<2>> UAVTransitions;
+			for (FRHIUnorderedAccessView* UAV : OutUAVs)
 			{
-				FRDGBuilder GraphBuilder(RHICmdList);
+				UAVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+			}
+			RHICmdList.Transition(MakeArrayView(UAVTransitions.GetData(), UAVTransitions.Num()));
+
+			{
+				FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("LightGridInjection(View=%d)", ViewIndex));
 				{
 					RDG_EVENT_SCOPE(GraphBuilder, "CullLights %ux%ux%u NumLights %u NumCaptures %u",
 						ForwardLightData.CulledGridSize.X,
@@ -737,18 +743,57 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 				}
 				GraphBuilder.Execute();
 
-				RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, OutUAVs.GetData(), OutUAVs.Num());
+				TArray<FRHITransitionInfo, TInlineAllocator<2>> SRVTransitions;
+				for (FRHIUnorderedAccessView* UAV : OutUAVs)
+				{
+					SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+				}
+				RHICmdList.Transition(MakeArrayView(SRVTransitions.GetData(), SRVTransitions.Num()));
 			}
 		}
 	}
 }
 
-
-
-void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask, TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel, const FHairStrandsRenderingData* InHairDatas)
+void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
+	FRDGBuilder& GraphBuilder,
+	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskRHI,
+	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixelRHI,
+	const FHairStrandsRenderingData* InHairDatas)
 {
-	check(RHICmdList.IsOutsideRenderPass());
+	const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
+	FRDGTextureRef ForwardScreenSpaceShadowMask = nullptr;
+	FRDGTextureRef ForwardScreenSpaceShadowMaskSubPixel = nullptr;
+
+	RenderForwardShadowProjections(
+		GraphBuilder,
+		CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth),
+		GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable),
+		GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::Targetable),
+		ForwardScreenSpaceShadowMask,
+		ForwardScreenSpaceShadowMaskSubPixel,
+		InHairDatas);
+
+	if (ForwardScreenSpaceShadowMask)
+	{
+		GraphBuilder.QueueTextureExtraction(ForwardScreenSpaceShadowMask, &ForwardScreenSpaceShadowMaskRHI);
+	}
+
+	if (ForwardScreenSpaceShadowMaskSubPixel)
+	{
+		GraphBuilder.QueueTextureExtraction(ForwardScreenSpaceShadowMaskSubPixel, &ForwardScreenSpaceShadowMaskSubPixelRHI);
+	}
+}
+
+void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
+	FRDGBuilder& GraphBuilder,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+	FRDGTextureRef SceneColorTexture,
+	FRDGTextureRef SceneDepthTexture,
+	FRDGTextureRef& OutForwardScreenSpaceShadowMask,
+	FRDGTextureRef& OutForwardScreenSpaceShadowMaskSubPixel,
+	const FHairStrandsRenderingData* InHairDatas)
+{
 	const bool bIsHairEnable = InHairDatas != nullptr;
 	bool bScreenShadowMaskNeeded = false;
 
@@ -764,68 +809,83 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(FRHICo
 	if (bScreenShadowMaskNeeded)
 	{
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderForwardShadingShadowProjections);
-		FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
-		SceneRenderTargets.AllocateScreenShadowMask(RHICmdList, ForwardScreenSpaceShadowMask);
-		if (bIsHairEnable)
+
+		FRDGTextureMSAA ForwardScreenSpaceShadowMask;
+		FRDGTextureMSAA ForwardScreenSpaceShadowMaskSubPixel;
+
 		{
-			SceneRenderTargets.AllocateScreenShadowMask(RHICmdList, ForwardScreenSpaceShadowMaskSubPixel);
-		}
-
-		SCOPED_DRAW_EVENT(RHICmdList, ShadowProjectionOnOpaque);
-		SCOPED_GPU_STAT(RHICmdList, ShadowProjection);
-
-		// All shadows render with min blending
-		{
-			FRHIRenderPassInfo RPInfo(ForwardScreenSpaceShadowMask->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
-			TransitionRenderPassTargets(RHICmdList, RPInfo);
-			RHICmdList.BeginRenderPass(RPInfo, TEXT("RenderForwardShadingShadowProjectionsClear"));
-			RHICmdList.EndRenderPass();
-		}
-
-		if (bIsHairEnable)
-		{
-			FRHIRenderPassInfo RPInfo(ForwardScreenSpaceShadowMaskSubPixel->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
-			TransitionRenderPassTargets(RHICmdList, RPInfo);
-			RHICmdList.BeginRenderPass(RPInfo, TEXT("RenderForwardShadingShadowSubPixelProjectionsClear"));
-			RHICmdList.EndRenderPass();
-		}
-
-		// Note: all calls here will set up renderpasses internally.
-		// #todo-renderpasses might be worth refactoring all this and splitting into lists of draws for each renderpass
-		{
-			for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
-			{
-				const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
-				const FLightSceneInfo* const LightSceneInfo = LightSceneInfoCompact.LightSceneInfo;
-				FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightSceneInfo->Id];
-
-				const bool bIssueLightDrawEvent = VisibleLightInfo.ShadowsToProject.Num() > 0 || VisibleLightInfo.CapsuleShadowsToProject.Num() > 0;
-
-				FString LightNameWithLevel;
-				GetLightNameForDrawEvent(LightSceneInfo->Proxy, LightNameWithLevel);
-				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventLightPass, bIssueLightDrawEvent, *LightNameWithLevel);
-
-				if (VisibleLightInfo.ShadowsToProject.Num() > 0)
-				{
-					FSceneRenderer::RenderShadowProjections(RHICmdList, LightSceneInfo, ForwardScreenSpaceShadowMask, ForwardScreenSpaceShadowMaskSubPixel, true, false, bIsHairEnable ? &InHairDatas->HairVisibilityViews : nullptr);
-
-					if (InHairDatas)
-					{
-						RenderHairStrandsShadowMask(RHICmdList, Views, LightSceneInfo, InHairDatas, ForwardScreenSpaceShadowMask);
-					}
-				}
-
-				RenderCapsuleDirectShadows(RHICmdList, *LightSceneInfo, ForwardScreenSpaceShadowMask, VisibleLightInfo.CapsuleShadowsToProject, true);
-
-				if (LightSceneInfo->GetDynamicShadowMapChannel() >= 0 && LightSceneInfo->GetDynamicShadowMapChannel() < 4)
-				{
-					RenderLightFunction(RHICmdList, LightSceneInfo, ForwardScreenSpaceShadowMask, true, true);
-				}
-			}
-			RHICmdList.CopyToResolveTarget(ForwardScreenSpaceShadowMask->GetRenderTargetItem().TargetableTexture, ForwardScreenSpaceShadowMask->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));
+			const FIntPoint SceneTextureExtent = SceneDepthTexture->Desc.Extent;
+			FRDGTextureDesc Desc(FRDGTextureDesc::Create2D(SceneTextureExtent, PF_B8G8R8A8, FClearValueBinding::White, TexCreate_RenderTargetable | TexCreate_ShaderResource));
+			Desc.NumSamples = SceneDepthTexture->Desc.NumSamples;
+			ForwardScreenSpaceShadowMask = CreateTextureMSAA(GraphBuilder, Desc, TEXT("ShadowMaskTexture"), GFastVRamConfig.ScreenSpaceShadowMask);
 			if (bIsHairEnable)
 			{
-				RHICmdList.CopyToResolveTarget(ForwardScreenSpaceShadowMaskSubPixel->GetRenderTargetItem().TargetableTexture, ForwardScreenSpaceShadowMaskSubPixel->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));
+				ForwardScreenSpaceShadowMaskSubPixel = CreateTextureMSAA(GraphBuilder, Desc, TEXT("ShadowMaskSubPixelTexture"), GFastVRamConfig.ScreenSpaceShadowMask);
+			}
+		}
+
+		RDG_EVENT_SCOPE(GraphBuilder, "ShadowProjectionOnOpaque");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, ShadowProjection);
+
+		// All shadows render with min blending
+		AddClearRenderTargetPass(GraphBuilder, ForwardScreenSpaceShadowMask.Target);
+		if (bIsHairEnable)
+		{
+			AddClearRenderTargetPass(GraphBuilder, ForwardScreenSpaceShadowMaskSubPixel.Target);
+		}
+
+		const FHairStrandsVisibilityViews* HairVisibilityViews = bIsHairEnable ? &InHairDatas->HairVisibilityViews : nullptr;
+		const bool bProjectingForForwardShading = true;
+
+		for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
+		{
+			const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
+			const FLightSceneInfo* const LightSceneInfo = LightSceneInfoCompact.LightSceneInfo;
+			FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightSceneInfo->Id];
+
+			const bool bIssueLightDrawEvent = VisibleLightInfo.ShadowsToProject.Num() > 0 || VisibleLightInfo.CapsuleShadowsToProject.Num() > 0;
+
+			FString LightNameWithLevel;
+			GetLightNameForDrawEvent(LightSceneInfo->Proxy, LightNameWithLevel);
+			RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, bIssueLightDrawEvent, "%s", *LightNameWithLevel);
+
+			if (VisibleLightInfo.ShadowsToProject.Num() > 0)
+			{
+				RenderShadowProjections(
+					GraphBuilder,
+					SceneTexturesUniformBuffer,
+					ForwardScreenSpaceShadowMask.Target,
+					ForwardScreenSpaceShadowMaskSubPixel.Target,
+					SceneDepthTexture,
+					LightSceneInfo,
+					HairVisibilityViews,
+					bProjectingForForwardShading);
+
+				if (InHairDatas)
+				{
+					RenderHairStrandsShadowMask(GraphBuilder, Views, LightSceneInfo, InHairDatas, ForwardScreenSpaceShadowMask.Target);
+				}
+			}
+
+			RenderCapsuleDirectShadows(GraphBuilder, SceneTexturesUniformBuffer, *LightSceneInfo, ForwardScreenSpaceShadowMask.Target, VisibleLightInfo.CapsuleShadowsToProject, bProjectingForForwardShading);
+
+			if (LightSceneInfo->GetDynamicShadowMapChannel() >= 0 && LightSceneInfo->GetDynamicShadowMapChannel() < 4)
+			{
+				RenderLightFunction(
+					GraphBuilder,
+					SceneDepthTexture,
+					SceneTexturesUniformBuffer,
+					LightSceneInfo,
+					ForwardScreenSpaceShadowMask.Target,
+					true, true);
+			}
+
+			AddCopyToResolveTargetPass(GraphBuilder, ForwardScreenSpaceShadowMask.Target, ForwardScreenSpaceShadowMask.Resolve, FResolveParams());
+			OutForwardScreenSpaceShadowMask = ForwardScreenSpaceShadowMask.Resolve;
+			if (bIsHairEnable)
+			{
+				AddCopyToResolveTargetPass(GraphBuilder, ForwardScreenSpaceShadowMaskSubPixel.Target, ForwardScreenSpaceShadowMaskSubPixel.Resolve, FResolveParams());
+				OutForwardScreenSpaceShadowMaskSubPixel = ForwardScreenSpaceShadowMaskSubPixel.Resolve;
 			}
 		}
 	}

@@ -19,9 +19,9 @@ class Error;
 const int32 ShaderCompileWorkerInputVersion = 13;
 // this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
 const int32 ShaderCompileWorkerOutputVersion = 5;
-// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
+// this is for the protocol, not the data.
 const int32 ShaderCompileWorkerSingleJobHeader = 'S';
-// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
+// this is for the protocol, not the data.
 const int32 ShaderCompileWorkerPipelineJobHeader = 'P';
 
 /** Returns true if debug information should be kept for a given platform. */
@@ -311,6 +311,23 @@ struct FShaderCompilerInput
 		// Note: skipping Input.SharedEnvironment, which is handled by FShaderCompileUtilities::DoWriteTasks in order to maintain sharing
 
 		return Ar;
+	}
+
+	bool IsUsingTessellation() const
+	{
+		switch (Target.GetFrequency())
+		{
+		case SF_Vertex:
+		{
+			const FString* UsingTessellationDefine = Environment.GetDefinitions().Find(TEXT("USING_TESSELLATION"));
+			return (UsingTessellationDefine != nullptr && *UsingTessellationDefine == TEXT("1"));
+		}
+		case SF_Hull:
+		case SF_Domain:
+			return true;
+		default:
+			return false;
+		}
 	}
 };
 

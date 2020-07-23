@@ -381,20 +381,6 @@ int32 UTexture2D::GetNumResidentMips() const
 	return 0;
 }
 
-int32 UTexture2D::GetNumRequestedMips() const
-{
-	check(!IsCurrentlyVirtualTextured());
-
-	if (PendingUpdate && !PendingUpdate->IsCancelled())
-	{
-		return PendingUpdate->GetNumRequestedMips();
-	}
-	else
-	{
-		return GetCachedNumResidentLODs();
-	}
-}
-
 #if WITH_EDITOR
 void UTexture2D::PostEditUndo()
 {
@@ -531,7 +517,7 @@ void UTexture2D::CancelPendingTextureStreaming()
 	for( TObjectIterator<UTexture2D> It; It; ++It )
 	{
 		UTexture2D* CurrentTexture = *It;
-		CurrentTexture->CancelPendingMipChangeRequest();
+		CurrentTexture->CancelPendingStreamingRequest();
 	}
 
 	// No need to call FlushResourceStreaming(), since calling CancelPendingMipChangeRequest has an immediate effect.
@@ -643,7 +629,7 @@ void UTexture2D::BeginDestroy()
 	Super::BeginDestroy();
 
 	// Cancel any in flight IO requests
-	CancelPendingMipChangeRequest();
+	CancelPendingStreamingRequest();
 
 	// Safely unlink texture from list of streamable ones.
 	UnlinkStreaming();
@@ -758,21 +744,6 @@ bool UTexture2D::UpdateStreamingStatus(bool bWaitForMipFading /*= false*/, TArra
 	return bUpdatePending;
 }
 
-bool UTexture2D::CancelPendingMipChangeRequest()
-{
-	if (PendingUpdate)
-	{
-		check(!IsCurrentlyVirtualTextured());
-
-		if (!PendingUpdate->IsCancelled())
-		{
-			PendingUpdate->Abort();
-		}
-		return true;
-	}
-	return false;
-}
-
 int32 UTexture2D::CalcTextureMemorySize( int32 MipCount ) const
 {
 	int32 Size = 0;
@@ -781,7 +752,7 @@ int32 UTexture2D::CalcTextureMemorySize( int32 MipCount ) const
 		static TConsoleVariableData<int32>* CVarReducedMode = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.VirtualTextureReducedMemory"));
 		check(CVarReducedMode);
 
-		uint32 TexCreateFlags = (SRGB ? TexCreate_SRGB : 0) | (bNoTiling ? TexCreate_NoTiling : 0) | (bNotOfflineProcessed ? 0 : TexCreate_OfflineProcessed) | TexCreate_Streamable;
+		ETextureCreateFlags TexCreateFlags = (SRGB ? TexCreate_SRGB : TexCreate_None) | (bNoTiling ? TexCreate_NoTiling : TexCreate_None) | (bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed) | TexCreate_Streamable;
 		const bool bCanBeVirtual = CanCreateAsVirtualTexture(TexCreateFlags);
 
 		const int32 SizeX = GetSizeX();
@@ -1418,7 +1389,7 @@ void FTexture2DResource::InitRHI()
 	uint32 SizeY = OwnerMips[CurrentFirstMip].SizeY;
 
 	// Create the RHI texture.
-	uint32 TexCreateFlags = (Owner->SRGB ? TexCreate_SRGB : 0) | (Owner->bNotOfflineProcessed ? 0 : TexCreate_OfflineProcessed) | TexCreate_Streamable;
+	ETextureCreateFlags TexCreateFlags = (Owner->SRGB ? TexCreate_SRGB : TexCreate_None) | (Owner->bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed) | TexCreate_Streamable;
 	// disable tiled format if needed
 	if( Owner->bNoTiling )
 	{
@@ -1831,7 +1802,7 @@ void FVirtualTexture2DResource::InitializeEditorResources(IVirtualTexture* InVir
 			}
 		}
 
-		uint32 TexCreateFlags = (TextureOwner->SRGB ? TexCreate_SRGB : 0) | (TextureOwner->bNotOfflineProcessed ? 0 : TexCreate_OfflineProcessed);
+		ETextureCreateFlags TexCreateFlags = (TextureOwner->SRGB ? TexCreate_SRGB : TexCreate_None) | (TextureOwner->bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed);
 		if (TextureOwner->bNoTiling)
 		{
 			TexCreateFlags |= TexCreate_NoTiling;
@@ -2095,11 +2066,6 @@ bool UTexture2D::StreamIn(int32 NewMipCount, bool bHighPrio)
 	return false;
 }
 
-bool UTexture2D::IsPendingUpdateLocked() const 
-{ 
-	return PendingUpdate && PendingUpdate->IsLocked(); 
-}
-
 bool UTexture2D::StreamOut(int32 NewMipCount)
 {
 	check(IsInGameThread());
@@ -2141,7 +2107,7 @@ void FTexture2DResource::UpdateTexture(FTexture2DRHIRef& InTextureRHI, int32 InN
 			INC_DWORD_STAT_FNAME_BY( LODGroupStatName, TextureSize );
 		}
 
-		if (GRHIForceNoDeletionLatencyForStreamingTextures)
+		if (GRHIForceNoDeletionLatencyForStreamingTextures && !GRHIValidationEnabled)
 		{
 			TextureRHI->DoNoDeferDelete();
 		}
@@ -2165,7 +2131,7 @@ void FTexture2DArrayResource::InitRHI()
 {
 	// Create the RHI texture.
 	const bool bNotOfflineProcessed = Owner ? Owner->bNotOfflineProcessed : false;
-	const uint32 TexCreateFlags = (bSRGB ? TexCreate_SRGB : 0) | (bNotOfflineProcessed ? 0 : TexCreate_OfflineProcessed);
+	const ETextureCreateFlags TexCreateFlags = (bSRGB ? TexCreate_SRGB : TexCreate_None) | (bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed);
 	FRHIResourceCreateInfo CreateInfo;
 	TRefCountPtr<FRHITexture2DArray> TextureArray = RHICreateTexture2DArray(SizeX, SizeY, NumSlices, Format, NumMips, 1, TexCreateFlags, CreateInfo);
 	TextureRHI = TextureArray;
@@ -2218,13 +2184,9 @@ void FTexture2DArrayResource::InitRHI()
 		}
 	}
 
-	ESamplerAddressMode SamplerXAddress = Owner ? (ESamplerAddressMode)Owner->AddressX.GetValue() : AM_Clamp;
-	ESamplerAddressMode SamplerYAddress = Owner ? (ESamplerAddressMode)Owner->AddressY.GetValue() : AM_Clamp;
-	ESamplerAddressMode SamplerZAddress = Owner ? (ESamplerAddressMode)Owner->AddressZ.GetValue() : AM_Clamp;
-
 	FSamplerStateInitializerRHI SamplerStateInitializer
 	(
-		Filter,
+		SamplerFilter,
 		SamplerXAddress,
 		SamplerYAddress,
 		SamplerZAddress
@@ -2277,7 +2239,11 @@ FTexture2DArrayResource::FTexture2DArrayResource(UTexture2DArray* InOwner)
 	bDirty = true;
 	bPreventingReallocation = false;
 	bSRGB = InOwner->SRGB;
-	Filter = (ESamplerFilter)UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetSamplerFilter(InOwner);
+	SamplerFilter = (ESamplerFilter)UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetSamplerFilter(InOwner);
+	SamplerXAddress = Owner->AddressX == TA_Wrap ? AM_Wrap : (Owner->AddressX == TA_Clamp ? AM_Clamp : AM_Mirror);
+	SamplerYAddress = Owner->AddressY == TA_Wrap ? AM_Wrap : (Owner->AddressY == TA_Clamp ? AM_Clamp : AM_Mirror);
+	SamplerZAddress = Owner->AddressZ == TA_Wrap ? AM_Wrap : (Owner->AddressZ == TA_Clamp ? AM_Clamp : AM_Mirror);
+
 	STAT(LODGroupStatName = TextureGroupStatFNames[InOwner->LODGroup]);
 
 	TIndirectArray<FTexture2DMipMap>& Mips = InOwner->PlatformData->Mips;
@@ -2340,9 +2306,8 @@ void FTexture2DArrayResource::AddTexture2D(UTexture2D* NewTexture, const FIncomi
 		SizeX = InEntry->SizeX;
 		SizeY = InEntry->SizeY;
 		NumMips = InEntry->NumMips;
-		LODGroup = InEntry->LODGroup;
 		Format = InEntry->Format;
-		Filter = InEntry->Filter;
+		SamplerFilter = InEntry->Filter;
 		bSRGB = InEntry->bSRGB;
 
 		bValidTexture = true;
@@ -2350,7 +2315,6 @@ void FTexture2DArrayResource::AddTexture2D(UTexture2D* NewTexture, const FIncomi
 	else if (SizeX == InEntry->SizeX
 		&& SizeY == InEntry->SizeY
 		&& NumMips == InEntry->NumMips
-		&& LODGroup == InEntry->LODGroup
 		&& Format == InEntry->Format
 		&& bSRGB == InEntry->bSRGB)
 	{

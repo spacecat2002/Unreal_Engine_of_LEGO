@@ -597,6 +597,7 @@ public:
 
 	LAYOUT_FIELD(TMemoryImageArray<FParameter>, Parameters);
 	LAYOUT_FIELD(TMemoryImageArray<FResourceParameter>, ResourceParameters);
+	LAYOUT_FIELD(TMemoryImageArray<FParameterStructReference>, GraphUniformBuffers);
 	LAYOUT_FIELD(TMemoryImageArray<FParameterStructReference>, ParameterReferences);
 
 	// Hash of the shader parameter structure when doing the binding.
@@ -2225,14 +2226,7 @@ extern RENDERCORE_API FShaderType* FindShaderTypeByName(const FHashedName& Shade
 
 /** Helper function to dispatch a compute shader while checking that parameters have been set correctly. */
 extern RENDERCORE_API void DispatchComputeShader(
-	FRHICommandList& RHICmdList,
-	FShader* Shader,
-	uint32 ThreadGroupCountX,
-	uint32 ThreadGroupCountY,
-	uint32 ThreadGroupCountZ);
-
-extern RENDERCORE_API void DispatchComputeShader(
-	FRHIAsyncComputeCommandListImmediate& RHICmdList,
+	FRHIComputeCommandList& RHICmdList,
 	FShader* Shader,
 	uint32 ThreadGroupCountX,
 	uint32 ThreadGroupCountY,
@@ -2240,13 +2234,13 @@ extern RENDERCORE_API void DispatchComputeShader(
 
 /** Helper function to dispatch a compute shader indirectly while checking that parameters have been set correctly. */
 extern RENDERCORE_API void DispatchIndirectComputeShader(
-	FRHICommandList& RHICmdList,
+	FRHIComputeCommandList& RHICmdList,
 	FShader* Shader,
 	FRHIVertexBuffer* ArgumentBuffer,
 	uint32 ArgumentOffset);
 
 inline void DispatchComputeShader(
-	FRHICommandList& RHICmdList,
+	FRHIComputeCommandList& RHICmdList,
 	const TShaderRef<FShader>& Shader,
 	uint32 ThreadGroupCountX,
 	uint32 ThreadGroupCountY,
@@ -2255,24 +2249,8 @@ inline void DispatchComputeShader(
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ);
 }
 
-inline void DispatchComputeShader(
-	FRHIAsyncComputeCommandListImmediate& RHICmdList,
-	const TShaderRef<FShader>& Shader,
-	uint32 ThreadGroupCountX,
-	uint32 ThreadGroupCountY,
-	uint32 ThreadGroupCountZ)
-{
-	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ);
-}
-
-inline void DispatchIndirectComputeShader(
-	FRHICommandList& RHICmdList,
-	const TShaderRef<FShader>& Shader,
-	FRHIVertexBuffer* ArgumentBuffer,
-	uint32 ArgumentOffset)
-{
-	DispatchIndirectComputeShader(RHICmdList, Shader.GetShader(), ArgumentBuffer, ArgumentOffset);
-}
+/** Returns whether DirectXShaderCompiler (DXC) is enabled for the specified shader platform. See console variables "r.OpenGL.ForceDXC", "r.Vulkan.ForceDXC", and "r.D3D.ForceDXC". */
+extern RENDERCORE_API bool IsDxcEnabledForPlatform(EShaderPlatform Platform);
 
 /** Appends to KeyString for all shaders. */
 extern RENDERCORE_API void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString);

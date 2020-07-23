@@ -26,7 +26,7 @@ static const int32 NumLODColorationColors = 8;
 static const float UndefinedStreamingAccuracyIntensity = .015f;
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FDebugViewModePassPassUniformParameters, )
-	SHADER_PARAMETER_STRUCT(FSceneTexturesUniformParameters, SceneTextures)
+	SHADER_PARAMETER_STRUCT(FSceneTextureUniformParameters, SceneTextures)
 	SHADER_PARAMETER_ARRAY(FLinearColor, AccuracyColors, [NumStreamingAccuracyColors])
 	SHADER_PARAMETER_ARRAY(FLinearColor, LODColors, [NumLODColorationColors])
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
@@ -81,7 +81,7 @@ protected:
 
 	FDebugViewModeVS(const FMeshMaterialShaderType::CompiledShaderInitializerType& Initializer) : FMeshMaterialShader(Initializer)
 	{
-		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTexturesUniformParameters::StaticStructMetadata.GetShaderVariableName());
+		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTextureUniformParameters::StaticStructMetadata.GetShaderVariableName());
 	}
 
 	FDebugViewModeVS() {}

@@ -13,6 +13,7 @@
 #include "TextureResource.h"
 #include "UnrealClient.h"
 #include "IMediaTimeSource.h"
+#include "RendererInterface.h"
 
 class FMediaPlayerFacade;
 class IMediaPlayer;
@@ -233,5 +234,5 @@ private:
 	TRefCountPtr<FTextureSampleKeeper> CurrentSample;
 
 	/** cached params etc. for use with mip generator */
-	TSharedPtr<FGenerateMipsStruct> CachedMipsGenParams;
+	TRefCountPtr<IPooledRenderTarget> MipGenerationCache;
 };

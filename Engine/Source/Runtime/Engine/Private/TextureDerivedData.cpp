@@ -798,7 +798,7 @@ static float ComputePSNR(const FImage& SrcImage, const FCompressedImage2D& Compr
 				{
 					SquaredError += ComputeDXTColorBlockSquaredError(
 						CompressedData + (BlockY * NumBlocksX + BlockX) * 8,
-						SrcImage.AsBGRA8() + (BlockY * NumBlocksX * 16 + BlockX * 4),
+						(&SrcImage.AsBGRA8()[0]) + (BlockY * NumBlocksX * 16 + BlockX * 4),
 						SrcImage.SizeX
 						);
 					NumErrors += 16 * 3;
@@ -807,12 +807,12 @@ static float ComputePSNR(const FImage& SrcImage, const FCompressedImage2D& Compr
 				{
 					SquaredError += ComputeDXTAlphaBlockSquaredError(
 						CompressedData + (BlockY * NumBlocksX + BlockX) * 16,
-						SrcImage.AsBGRA8() + (BlockY * NumBlocksX * 16 + BlockX * 4),
+						(&SrcImage.AsBGRA8()[0]) + (BlockY * NumBlocksX * 16 + BlockX * 4),
 						SrcImage.SizeX
 						);
 					SquaredError += ComputeDXTColorBlockSquaredError(
 						CompressedData + (BlockY * NumBlocksX + BlockX) * 16 + 8,
-						SrcImage.AsBGRA8() + (BlockY * NumBlocksX * 16 + BlockX * 4),
+						(&SrcImage.AsBGRA8()[0]) + (BlockY * NumBlocksX * 16 + BlockX * 4),
 						SrcImage.SizeX
 						);
 					NumErrors += 16 * 4;

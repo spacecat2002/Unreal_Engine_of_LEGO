@@ -1269,6 +1269,9 @@ void UPrimitiveComponent::PostEditImport()
 	{
 		BodyInstance.FixupData(this);
 	}
+
+	// Setup the transient internal primitive data array here after import (to support duplicate/paste)
+	ResetCustomPrimitiveData();
 }
 #endif
 

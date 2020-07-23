@@ -75,7 +75,7 @@
 	#define VULKAN_SHOULD_USE_COMMANDWRAPPERS					VULKAN_ENABLE_WRAP_LAYER
 #endif
 
-#ifndef VULKAN_COMMANDWRAPPERS_ENABLE							
+#ifndef VULKAN_COMMANDWRAPPERS_ENABLE
 	#define VULKAN_COMMANDWRAPPERS_ENABLE						VULKAN_SHOULD_USE_COMMANDWRAPPERS
 #endif
 
@@ -129,8 +129,7 @@
 
 #ifndef VULKAN_SUPPORTS_DEDICATED_ALLOCATION
 	#ifdef VK_KHR_dedicated_allocation
-		// Disable this for now as it is causing a large memory leak
-		#define VULKAN_SUPPORTS_DEDICATED_ALLOCATION			0
+		#define VULKAN_SUPPORTS_DEDICATED_ALLOCATION			1
 	#else
 		#define VULKAN_SUPPORTS_DEDICATED_ALLOCATION			0
 	#endif
@@ -255,11 +254,17 @@ typedef struct VkCommandBufferInheritanceRenderPassTransformInfoQCOM {
 	#endif
 #endif
 
+#ifndef VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+	#ifdef VK_KHR_separate_depth_stencil_layouts
+		#define VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS	1
+	#else
+		#define VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS	0
+	#endif
+#endif
+
 #ifndef VULKAN_OBJECT_TRACKING 
 #define VULKAN_OBJECT_TRACKING 0 //Track objects created and memory used. use r.vulkan.dumpmemory to dump to console
 #endif
-
-
 
 DECLARE_LOG_CATEGORY_EXTERN(LogVulkanRHI, Log, All);
 

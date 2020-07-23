@@ -102,6 +102,15 @@ namespace EBoneSpaces
 	};
 }
 
+UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
+enum class EVertexOffsetUsage : uint8
+{
+	None = 0,
+	PreSkinningOffset = (1 << 0),
+	PostSkinningOffset = (1 << 1),
+};
+ENUM_CLASS_FLAGS(EVertexOffsetUsage);
+
 /** Struct used to indicate one active morph target that should be applied to this USkeletalMesh when rendered. */
 struct FActiveMorphTarget
 {
@@ -165,6 +174,9 @@ struct ENGINE_API FSkelMeshComponentLODInfo
 	/** Vertex buffer used to override skin weights from one of the profiles */
 	FSkinWeightVertexBuffer* OverrideProfileSkinWeights;
 
+	TArray<FVector> PreSkinningOffsets;
+	TArray<FVector> PostSkinningOffsets;
+
 	FSkelMeshComponentLODInfo();
 	~FSkelMeshComponentLODInfo();
 
@@ -187,6 +199,15 @@ struct FSkelMeshRefPoseOverride
 	TArray<FMatrix> RefBasesInvMatrix;
 	/** Per bone transforms (local space) for new ref pose */
 	TArray<FTransform> RefBonePoses;
+};
+
+USTRUCT(BlueprintType)
+struct FVertexOffsetUsage
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (Bitmask, BitmaskEnum = EVertexOffsetUsage))
+	int32 Usage = 0;
 };
 
 /**
@@ -226,6 +247,9 @@ class ENGINE_API USkinnedMeshComponent : public UMeshComponent
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mesh")
 	TArray<ESkinCacheUsage> SkinCacheUsage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mesh", meta=(DisplayName="Pre/Post Skin Deltas Usage"))
+	TArray<FVertexOffsetUsage> VertexOffsetUsage;
 
 	/** const getters for previous transform idea */
 	const TArray<uint8>& GetPreviousBoneVisibilityStates() const
@@ -1001,6 +1025,22 @@ public:
 	/** Check whether or not a Skin Weight Profile is currently set */
 	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
 	bool IsUsingSkinWeightProfile() const { return bSkinWeightProfileSet == 1;  }
+
+	UE_DEPRECATED(4.26, "GetVertexOffsetUsage() has been deprecated. Support will be dropped in the future.")
+	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
+	int32 GetVertexOffsetUsage(int32 LODIndex) const;
+
+	UE_DEPRECATED(4.26, "SetVertexOffsetUsage() has been deprecated. Support will be dropped in the future.")
+	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
+	void SetVertexOffsetUsage(int32 LODIndex, int32 Usage);
+
+	UE_DEPRECATED(4.26, "SetPreSkinningOffsets() has been deprecated. Support will be dropped in the future.")
+	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
+	void SetPreSkinningOffsets(int32 LODIndex, TArray<FVector> Offsets);
+
+	UE_DEPRECATED(4.26, "SetPostSkinningOffsets() has been deprecated. Support will be dropped in the future.")
+	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
+	void SetPostSkinningOffsets(int32 LODIndex, TArray<FVector> Offsets);
 
 	/** Check whether or not a Skin Weight Profile is currently pending load / create */
 	bool IsSkinWeightProfilePending() const { return bSkinWeightProfilePending == 1; }

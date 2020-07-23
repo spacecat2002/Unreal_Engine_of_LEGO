@@ -80,11 +80,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = Source2D, meta = (DisplayName = "Address Z"))
 	TEnumAsByte<enum TextureAddress> AddressZ;
 
-#if WITH_EDITORONLY_DATA	
+#if WITH_EDITORONLY_DATA
 	/** Add Textures*/
 	UPROPERTY(EditAnywhere, Category = Source2D, meta = (DisplayName = "Source Textures"))
 	TArray<UTexture2D*> SourceTextures;
-
 #endif
 
 	/**

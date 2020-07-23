@@ -29,7 +29,7 @@ public:
 private:
 	void PrepareAsyncSSAO(FRHICommandListImmediate& RHICmdList, TArray<FViewInfo>& Views);
 	void FinishAsyncSSAO(FRHICommandListImmediate& RHICmdList);
-	FComputeFenceRHIRef AsyncSSAOFence;
+	const FRHITransition* AsyncSSAOTransition = nullptr;
 };
 
 /** The global used for deferred lighting. */
