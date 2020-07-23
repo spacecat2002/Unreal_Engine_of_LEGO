@@ -350,19 +350,23 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 				}
 			}
 
-			TSet<FRHIUnorderedAccessView*> BuffersToTransitionSet;
-			BuffersToTransitionSet.Reserve(DispatchCommands.Num());
-			TArray<FRHIUnorderedAccessView*> BuffersToTransition;
-			BuffersToTransition.Reserve(DispatchCommands.Num());
+			FMemMark Mark(FMemStack::Get());
+
+			TSet<FRHIUnorderedAccessView*> SeenBuffers;
+			SeenBuffers.Reserve(DispatchCommands.Num());
+			TArray<FRHITransitionInfo, TMemStackAllocator<>> TransitionsBefore, TransitionsAfter;
+			TransitionsBefore.Reserve(DispatchCommands.Num());
+			TransitionsAfter.Reserve(DispatchCommands.Num());
 			for (FMeshComputeDispatchCommand& Cmd : DispatchCommands)
 			{
 				FRHIUnorderedAccessView* UAV = Cmd.TargetBuffer->UAV.GetReference();
 
 				bool bIsAlreadyInSet = false;
-				BuffersToTransitionSet.Add(UAV, &bIsAlreadyInSet);
+				SeenBuffers.Add(UAV, &bIsAlreadyInSet);
 				if (!bIsAlreadyInSet)
 				{
-					BuffersToTransition.Add(UAV);
+					TransitionsBefore.Add(FRHITransitionInfo(UAV, ERHIAccess::SRVMask, ERHIAccess::UAVCompute));
+					TransitionsAfter.Add(FRHITransitionInfo(UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
 				}
 			}
 
@@ -390,43 +394,45 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 			{
 				FRHIComputeCommandList& RHICmdList = AllocateCommandList(DispatchCommands.Num(), GET_STATID(STAT_CLM_RTDynGeomDispatch));
 
-			FRHIComputeShader* CurrentShader = nullptr;
-			FRWBuffer* CurrentBuffer = nullptr;
+				FRHIComputeShader* CurrentShader = nullptr;
+				FRWBuffer* CurrentBuffer = nullptr;
 
-				// Transition to writeable for each cmd list
-				RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, BuffersToTransition.GetData(), BuffersToTransition.Num());
+				// Transition to writeable for each cmd list and enable UAV overlap, because several dispatches can update non-overlapping portions of the same buffer.
+				RHICmdList.Transition(TransitionsBefore);
+				RHICmdList.BeginUAVOverlap();
 
-			// Cache the bound uniform buffers because a lot are the same between dispatches
-			FShaderBindingState ShaderBindingState;
+				// Cache the bound uniform buffers because a lot are the same between dispatches
+				FShaderBindingState ShaderBindingState;
 
-			for (FMeshComputeDispatchCommand& Cmd : DispatchCommands)
-			{
-				const TShaderRef<FRayTracingDynamicGeometryConverterCS>& Shader = Cmd.MaterialShader;
-				FRHIComputeShader* ComputeShader = Shader.GetComputeShader();
-				if (CurrentShader != ComputeShader)
+				for (FMeshComputeDispatchCommand& Cmd : DispatchCommands)
 				{
-					RHICmdList.SetComputeShader(ComputeShader);
-					CurrentBuffer = nullptr;
-					CurrentShader = ComputeShader;
+					const TShaderRef<FRayTracingDynamicGeometryConverterCS>& Shader = Cmd.MaterialShader;
+					FRHIComputeShader* ComputeShader = Shader.GetComputeShader();
+					if (CurrentShader != ComputeShader)
+					{
+						RHICmdList.SetComputeShader(ComputeShader);
+						CurrentBuffer = nullptr;
+						CurrentShader = ComputeShader;
 
-					// Reset binding state
-					ShaderBindingState = FShaderBindingState();
+						// Reset binding state
+						ShaderBindingState = FShaderBindingState();
+					}
+
+					FRWBuffer* TargetBuffer = Cmd.TargetBuffer;
+					if (CurrentBuffer != TargetBuffer)
+					{
+						CurrentBuffer = TargetBuffer;
+						Shader->RWVertexPositions.SetBuffer(RHICmdList, CurrentShader, *Cmd.TargetBuffer);
+					}
+
+					Cmd.ShaderBindings.SetOnCommandList(RHICmdList, ComputeShader, &ShaderBindingState);
+					RHICmdList.DispatchComputeShader(FMath::DivideAndRoundUp<uint32>(Cmd.NumMaxVertices, 64), 1, 1);
 				}
 
-				FRWBuffer* TargetBuffer = Cmd.TargetBuffer;
-				if (CurrentBuffer != TargetBuffer)
-				{
-					CurrentBuffer = TargetBuffer;
-					Shader->RWVertexPositions.SetBuffer(RHICmdList, CurrentShader, *Cmd.TargetBuffer);
-				}
-
-				Cmd.ShaderBindings.SetOnCommandList(RHICmdList, ComputeShader, &ShaderBindingState);
-				RHICmdList.DispatchComputeShader(FMath::DivideAndRoundUp<uint32>(Cmd.NumMaxVertices, 64), 1, 1);
+				// Make sure buffers are readable again and disable UAV overlap.
+				RHICmdList.Transition(TransitionsAfter);
+				RHICmdList.EndUAVOverlap();
 			}
-
-				// Make sure buffers are readable again
-			RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, BuffersToTransition.GetData(), BuffersToTransition.Num());
-		}
 
 			{
 				FRHIComputeCommandList& RHICmdList = AllocateCommandList(1, GET_STATID(STAT_CLM_RTDynGeomBuild));

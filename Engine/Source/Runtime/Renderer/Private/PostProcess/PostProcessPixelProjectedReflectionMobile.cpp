@@ -344,5 +344,5 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 
 	GraphBuilder.Execute();
 
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture->GetRenderTargetItem().TargetableTexture);
+	RHICmdList.Transition(FRHITransitionInfo(GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture->GetRenderTargetItem().TargetableTexture, ERHIAccess::RTV, ERHIAccess::SRVMask));
 }

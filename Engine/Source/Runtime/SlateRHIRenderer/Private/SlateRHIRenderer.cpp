@@ -793,7 +793,11 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 			{
 				bClear = true; // Force a clear of the UI buffer to black
 
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, ViewportInfo.HDRSourceRT->GetRenderTargetItem().TargetableTexture);
+				FRHITransitionInfo Transitions[] = {
+					FRHITransitionInfo(FinalBuffer, ERHIAccess::Unknown, ERHIAccess::ResolveSrc),
+					FRHITransitionInfo(ViewportInfo.HDRSourceRT->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::ResolveDst)
+				};
+				RHICmdList.Transition(MakeArrayView(Transitions, UE_ARRAY_COUNT(Transitions)));
 
 				// Grab HDR backbuffer
 				FResolveParams ResolveParams;
@@ -820,8 +824,9 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 
 				GRenderTargetPool.FindFreeElement(RHICmdList, Desc, HDRRenderRT, TEXT("HDRTargetRT"));
 
-				FResolveParams ResolveParams;
-				RHICmdList.CopyToResolveTarget(FinalBuffer, FinalBuffer, ResolveParams);
+				// FIXME: is this necessary?
+				RHICmdList.Transition(FRHITransitionInfo(FinalBuffer, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+
 				BackBuffer = HDRRenderRT->GetRenderTargetItem().TargetableTexture->GetTexture2D();
 			}
 #endif
@@ -923,7 +928,7 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 				if (bLUTStale)
 				{
 					// #todo-renderpasses will this touch every pixel? use NoAction?
-					RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, ViewportInfo.ColorSpaceLUTRT);
+					RHICmdList.Transition(FRHITransitionInfo(ViewportInfo.ColorSpaceLUTRT, ERHIAccess::Unknown, ERHIAccess::RTV));
 					FRHIRenderPassInfo RPInfo(ViewportInfo.ColorSpaceLUTRT, ERenderTargetActions::Load_Store);
 					RHICmdList.BeginRenderPass(RPInfo, TEXT("GenerateLUT"));
 					{
@@ -973,8 +978,11 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 						FRenderTargetWriteMask::Decode<1>(RHICmdList, ShaderMap, RenderTargets, ViewportInfo.UITargetRTMask, TexCreate_None, TEXT("UIRTWriteMask"));
 					}
 
-					RHICmdList.Transition(FRHITransitionInfo(FinalBuffer, ERHIAccess::Unknown, ERHIAccess::RTV));
-					RHICmdList.Transition(FRHITransitionInfo(ViewportInfo.HDRSourceRT->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
+					FRHITransitionInfo Transitions[] = {
+						FRHITransitionInfo(FinalBuffer, ERHIAccess::Unknown, ERHIAccess::RTV),
+						FRHITransitionInfo(ViewportInfo.HDRSourceRT->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics)
+					};
+					RHICmdList.Transition(MakeArrayView(Transitions, UE_ARRAY_COUNT(Transitions)));
 					FRHIRenderPassInfo RPInfo(FinalBuffer, ERenderTargetActions::Load_Store);
 					RHICmdList.BeginRenderPass(RPInfo, TEXT("SlateComposite"));
 					{
