@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "VehicleSystemTemplate.h"
 #include "VehicleUtility.h"
 
 #if VEHICLE_DEBUGGING_ENABLED
@@ -20,10 +21,11 @@ namespace Chaos
 
 	#define NUM_SUS_AVERAGING 10
 
-	struct FSimpleSuspensionConfig
+	struct CHAOSVEHICLESCORE_API FSimpleSuspensionConfig
 	{
 		FSimpleSuspensionConfig()
-			: SuspensionForceOffset(FVector::ZeroVector)
+			: SuspensionAxis(FVector(0.f, 0.f, -1.f))
+			, SuspensionForceOffset(FVector::ZeroVector)
 			, SuspensionMaxRaise(0.f)
 			, SuspensionMaxDrop(0.f)
 			, MaxLength(0.f)
@@ -31,17 +33,18 @@ namespace Chaos
 			, SpringPreload(0.5f)
 			, CompressionDamping(0.9f)
 			, ReboundDamping(0.9f)
+			, RestingForce(0.f)
 			, Swaybar(0.5f)
 			, DampingRatio(0.3f)
-			, RaycastSafetyMargin(10.0f)
+			, RaycastSafetyMargin(0.0f)
 			, SuspensionSmoothing(6)
 		{
 			MaxLength = FMath::Abs(SuspensionMaxRaise) + FMath::Abs(SuspensionMaxDrop);
 			SuspensionSmoothing = FMath::Clamp(SuspensionSmoothing, 0, NUM_SUS_AVERAGING);
 		}
 
-
-		FVector SuspensionForceOffset; // #todo: as yet unused
+		FVector SuspensionAxis;		// local axis, direction of suspension force raycast traces
+		FVector SuspensionForceOffset;	// relative position from wheel where suspension forces are applied
 		float SuspensionMaxRaise;	// distance [cm]
 		float SuspensionMaxDrop;	// distance [cm]
 		float MaxLength;			// distance [cm]
@@ -50,6 +53,7 @@ namespace Chaos
 		float SpringPreload;		// Amount of Spring force (independent spring movement)
 		float CompressionDamping;	// limit compression speed
 		float ReboundDamping;		// limit rebound speed
+		float RestingForce;			// force on spring when vehicle on level with no body roll
 
 		float Swaybar;				// Anti-roll bar
 
@@ -60,7 +64,7 @@ namespace Chaos
 	};
 
 	/** Suspension world ray/shape trace start and end positions */
-	struct FSuspensionTrace
+	struct CHAOSVEHICLESCORE_API FSuspensionTrace
 	{
 		FVector Start;
 		FVector End;
@@ -78,7 +82,7 @@ namespace Chaos
 		}
 	};
 
-	class FSimpleSuspensionSim : public TVehicleSystem<FSimpleSuspensionConfig>
+	class CHAOSVEHICLESCORE_API FSimpleSuspensionSim : public TVehicleSystem<FSimpleSuspensionConfig>
 	{
 	public:
 		FSimpleSuspensionSim(const FSimpleSuspensionConfig* SetupIn)
@@ -88,7 +92,6 @@ namespace Chaos
 			, LocalVelocity(FVector::ZeroVector)
 			, SuspensionForce(0.f)
 			, LocalOffset(FVector::ZeroVector)
-			, WheelRadius(0.3f)
 			, SpringDisplacement(0.f)
 			, SpringIndex(0)
 			, LastSpringLength(0.f)
@@ -100,8 +103,8 @@ namespace Chaos
 
 // Inputs
 
-		/** Set suspension length after determined from raycast */
-		void SetSuspensionLength(float InLength)
+		/** #todo: Change This ; Set suspension length after determined from raycast */
+		void SetSuspensionLength(float InLength, float WheelRadius)
 		{
 			DisplacementInput = InLength - Setup().RaycastSafetyMargin - WheelRadius;
 			//if (SpringIndex == 2)
@@ -131,15 +134,14 @@ namespace Chaos
 			SpringIndex = InIndex;
 		}
 
-		void UpdateWorldRaycastLocation(const FTransform& InTransform, float InWheelRadius)
+		void UpdateWorldRaycastLocation(const FTransform& BodyTransform, float WheelRadius, FSuspensionTrace& OutTrace)
 		{
-			FVector LocalDirection(0.f, 0.f, -1.f);
-			FVector WorldLocation = InTransform.TransformPosition(LocalOffset);
-			FVector WorldDirection = InTransform.TransformVector(LocalDirection);
+			FVector LocalDirection = Setup().SuspensionAxis;
+			FVector WorldLocation = BodyTransform.TransformPosition(GetLocalRestingPosition());
+			FVector WorldDirection = BodyTransform.TransformVector(LocalDirection);
 
-			Trace.Start = WorldLocation - WorldDirection * Setup().RaycastSafetyMargin;
-			Trace.End = WorldLocation + WorldDirection * (Setup().MaxLength + InWheelRadius);
-			WheelRadius = InWheelRadius;
+			OutTrace.Start = WorldLocation - WorldDirection * (Setup().SuspensionMaxRaise + Setup().RaycastSafetyMargin);
+			OutTrace.End = WorldLocation + WorldDirection * (Setup().SuspensionMaxDrop + WheelRadius);
 		}
 
 // Outputs
@@ -190,14 +192,9 @@ namespace Chaos
 			return InTransform.TransformVector(LocalDirection) * SuspensionForce;
 		}
 
-		const FSuspensionTrace& GetTrace() const
+		float GetSuspensionOffset()
 		{
-			return Trace;
-		}
-
-		FSuspensionTrace& GetTrace() 		
-		{
-			return Trace;
+			return Setup().SuspensionMaxRaise + GetSpringLength();
 		}
 
 		const FVector& GetLocalRestingPosition() const
@@ -216,11 +213,6 @@ namespace Chaos
 			const float DampingForce = LocalVelocity.Z * Damping;
 			SuspensionForce = StiffnessForce - DampingForce;
 			LastDisplacement = DisplacementInput;
-			//if (SpringIndex == 2)
-			//{
-			//	UE_LOG(LogChaos, Warning, TEXT("MaxLength %f   DisplacementInput %f => SpringDisplacement %f")
-			//		, Setup().MaxLength, DisplacementInput, SpringDisplacement);
-			//}
 		}
 
 	protected:
@@ -231,8 +223,6 @@ namespace Chaos
 		float SuspensionForce;
 
 		FVector LocalOffset;
-		FSuspensionTrace Trace;
-		float WheelRadius;
 		float SpringDisplacement;
 		uint32 SpringIndex;
 

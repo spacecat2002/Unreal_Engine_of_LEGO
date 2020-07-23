@@ -25,13 +25,12 @@ EARTrackingQuality UARBlueprintLibrary::GetTrackingQuality()
 
 EARTrackingQualityReason UARBlueprintLibrary::GetTrackingQualityReason()
 {
-	// @todo merge-check
-// 	auto ARSystem = GetARSystem();
-// 	if (ARSystem.IsValid())
-// 	{
-// 		return ARSystem->GetTrackingQualityReason();
-// 	}
-// 	else
+	auto ARSystem = GetARSystem();
+ 	if (ARSystem.IsValid())
+ 	{
+ 		return ARSystem.Pin()->GetTrackingQualityReason();
+ 	}
+ 	else
 	{
 		return EARTrackingQualityReason::None;
 	}
@@ -558,4 +557,34 @@ UARTextureCameraImage* UARBlueprintLibrary::GetPersonSegmentationDepthImage()
 	{
 		return nullptr;
 	}
+}
+
+bool UARBlueprintLibrary::IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod)
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->IsSceneReconstructionSupported(SessionType, SceneReconstructionMethod);
+	}
+	else
+	{
+		return false;
+	}
+}
+
+bool UARBlueprintLibrary::GetObjectClassificationAtLocation(const FVector& InWorldLocation, EARObjectClassification& OutClassification, FVector& OutClassificationLocation, float MaxLocationDiff)
+{
+	auto AllGeometries = GetAllGeometries();
+	for (auto Geometry : AllGeometries)
+	{
+		if (auto MeshGeometry = Cast<UARMeshGeometry>(Geometry))
+		{
+			if (MeshGeometry->GetObjectClassificationAtLocation(InWorldLocation, OutClassification, OutClassificationLocation, MaxLocationDiff))
+			{
+				return true;
+			}
+		}
+	}
+	
+	return false;
 }

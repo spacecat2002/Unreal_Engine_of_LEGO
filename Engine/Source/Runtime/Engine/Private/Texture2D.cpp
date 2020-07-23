@@ -508,6 +508,7 @@ void UTexture2D::UnlinkStreaming()
 	if (!IsTemplate() && IStreamingManager::Get().IsTextureStreamingEnabled())
 	{
 		IStreamingManager::Get().GetTextureStreamingManager().RemoveStreamingRenderAsset(this);
+		RemoveAllMipLevelChangeCallbacks();
 	}
 }
 
@@ -590,9 +591,13 @@ void UTexture2D::UpdateResource()
 	const bool bLoadOnlyFirstMip = UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetMipLoadOptions(this) == ETextureMipLoadOptions::OnlyFirstMip;
 	if (bLoadOnlyFirstMip && PlatformData && PlatformData->Mips.Num() > 0 && FPlatformProperties::RequiresCookedData())
 	{
-		const int32 FirstMip = FMath::Clamp(0, GetCachedLODBias(), PlatformData->Mips.Num() - 1);
-		// Remove any mips after the first mip.
-		PlatformData->Mips.RemoveAt(FirstMip + 1, PlatformData->Mips.Num() - FirstMip - 1);
+		const int32 FirstMip = FMath::Min(FMath::Max(0, GetCachedLODBias()), GetMipTailBaseIndex());
+		if (FirstMip < GetMipTailBaseIndex())
+		{
+			// Remove any mips after the first mip.
+			PlatformData->Mips.RemoveAt(FirstMip + 1, PlatformData->Mips.Num() - FirstMip - 1);
+			PlatformData->OptData.NumMipsInTail = 0;
+		}
 		// Remove any mips before the first mip.
 		PlatformData->Mips.RemoveAt(0, FirstMip);
 		// Update the texture size for the memory usage metrics.
@@ -672,8 +677,10 @@ void UTexture2D::WaitForStreaming()
 	}
 }
 
-bool UTexture2D::UpdateStreamingStatus( bool bWaitForMipFading /*= false*/ )
+bool UTexture2D::UpdateStreamingStatus(bool bWaitForMipFading /*= false*/, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets /*= nullptr*/)
 {
+	bool bUpdatePending = false;
+
 	// if resident and requested mip counts match then no pending request is in flight
 	if (PendingUpdate)
 	{
@@ -694,44 +701,47 @@ bool UTexture2D::UpdateStreamingStatus( bool bWaitForMipFading /*= false*/ )
 
 		if (!PendingUpdate->IsCompleted())
 		{
-			return true;
+			bUpdatePending = true;
 		}
-
-#if WITH_EDITOR
-		const bool bRebuildPlatformData = PendingUpdate->DDCIsInvalid() && !IsPendingKillOrUnreachable();
-#endif
-
-		PendingUpdate.SafeRelease();
-
-
-#if WITH_EDITOR
-		if (GIsEditor)
+		else
 		{
-			// When all the requested mips are streamed in, generate an empty property changed event, to force the
-			// ResourceSize asset registry tag to be recalculated.
-			FPropertyChangedEvent EmptyPropertyChangedEvent(nullptr);
-			FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(this, EmptyPropertyChangedEvent);
-
-			// We can't load the source art from a bulk data object if the texture itself is pending kill because the linker will have been detached.
-			// In this case we don't rebuild the data and instead let the streaming request be cancelled. This will let the garbage collector finish
-			// destroying the object.
-			if (bRebuildPlatformData)
-			{
-				ForceRebuildPlatformData();
-				// @TODO this can not be called from this callstack since the entry needs to be removed completely from the streamer.
-				// UpdateResource();
-			}
-		}
+#if WITH_EDITOR
+			const bool bRebuildPlatformData = PendingUpdate->DDCIsInvalid() && !IsPendingKillOrUnreachable();
 #endif
+
+			PendingUpdate.SafeRelease();
+
+#if WITH_EDITOR
+			if (GIsEditor)
+			{
+				// When all the requested mips are streamed in, generate an empty property changed event, to force the
+				// ResourceSize asset registry tag to be recalculated.
+				FPropertyChangedEvent EmptyPropertyChangedEvent(nullptr);
+				FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(this, EmptyPropertyChangedEvent);
+
+				// We can't load the source art from a bulk data object if the texture itself is pending kill because the linker will have been detached.
+				// In this case we don't rebuild the data and instead let the streaming request be cancelled. This will let the garbage collector finish
+				// destroying the object.
+				if (bRebuildPlatformData)
+				{
+					ForceRebuildPlatformData();
+					// @TODO this can not be called from this callstack since the entry needs to be removed completely from the streamer.
+					// UpdateResource();
+				}
+			}
+#endif
+		}
 	}
 
 	FTexture2DResource* Texture2DResource = (FTexture2DResource*)Resource;
-	if (bWaitForMipFading && Texture2DResource && Texture2DResource->bReadyForStreaming)
+	if (!bUpdatePending && bWaitForMipFading && Texture2DResource && Texture2DResource->bReadyForStreaming)
 	{
-		return Texture2DResource->MipBiasFade.IsFading();
+		bUpdatePending = Texture2DResource->MipBiasFade.IsFading();
 	}
 
-	return false;
+	TickMipLevelChangeCallbacks(DeferredTickCBAssets);
+
+	return bUpdatePending;
 }
 
 int32 UTexture2D::CalcTextureMemorySize( int32 MipCount ) const
@@ -742,7 +752,7 @@ int32 UTexture2D::CalcTextureMemorySize( int32 MipCount ) const
 		static TConsoleVariableData<int32>* CVarReducedMode = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.VirtualTextureReducedMemory"));
 		check(CVarReducedMode);
 
-		ETextureCreateFlags TexCreateFlags = (SRGB ? TexCreate_SRGB : TexCreate_None) | (bNoTiling ? TexCreate_NoTiling : TexCreate_None) | TexCreate_OfflineProcessed | TexCreate_Streamable;
+		ETextureCreateFlags TexCreateFlags = (SRGB ? TexCreate_SRGB : TexCreate_None) | (bNoTiling ? TexCreate_NoTiling : TexCreate_None) | (bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed) | TexCreate_Streamable;
 		const bool bCanBeVirtual = CanCreateAsVirtualTexture(TexCreateFlags);
 
 		const int32 SizeX = GetSizeX();
@@ -895,12 +905,8 @@ int32 UTexture2D::GetNumNonStreamingMips() const
 	}
 	else
 	{
-		int32 MipCount = GetNumMips();
-		NumNonStreamingMips = FMath::Max(0, MipCount - GetMipTailBaseIndex());
-
 		// Take in to account the min resident limit.
-		NumNonStreamingMips = FMath::Max(NumNonStreamingMips, GetMinTextureResidentMipCount());
-		NumNonStreamingMips = FMath::Min(NumNonStreamingMips, MipCount);
+		NumNonStreamingMips = FMath::Min(GetNumMips(), GetMinTextureResidentMipCount());
 	}
 
 	return NumNonStreamingMips;
@@ -1383,8 +1389,7 @@ void FTexture2DResource::InitRHI()
 	uint32 SizeY = OwnerMips[CurrentFirstMip].SizeY;
 
 	// Create the RHI texture.
-	ETextureCreateFlags TexCreateFlags = (Owner->SRGB ? TexCreate_SRGB : TexCreate_None) | TexCreate_OfflineProcessed | TexCreate_Streamable;
-	ensure(Owner->GetMipTailBaseIndex() != -1); //TexCreate_NoMipTail is deprecated
+	ETextureCreateFlags TexCreateFlags = (Owner->SRGB ? TexCreate_SRGB : TexCreate_None) | (Owner->bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed) | TexCreate_Streamable;
 	// disable tiled format if needed
 	if( Owner->bNoTiling )
 	{
@@ -1797,7 +1802,7 @@ void FVirtualTexture2DResource::InitializeEditorResources(IVirtualTexture* InVir
 			}
 		}
 
-		ETextureCreateFlags TexCreateFlags = (TextureOwner->SRGB ? TexCreate_SRGB : TexCreate_None) | TexCreate_OfflineProcessed;
+		ETextureCreateFlags TexCreateFlags = (TextureOwner->SRGB ? TexCreate_SRGB : TexCreate_None) | (TextureOwner->bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed);
 		if (TextureOwner->bNoTiling)
 		{
 			TexCreateFlags |= TexCreate_NoTiling;
@@ -2125,7 +2130,8 @@ FString FTexture2DResource::GetFriendlyName() const
 void FTexture2DArrayResource::InitRHI()
 {
 	// Create the RHI texture.
-	const ETextureCreateFlags TexCreateFlags = (bSRGB ? TexCreate_SRGB : TexCreate_None) | TexCreate_OfflineProcessed;
+	const bool bNotOfflineProcessed = Owner ? Owner->bNotOfflineProcessed : false;
+	const ETextureCreateFlags TexCreateFlags = (bSRGB ? TexCreate_SRGB : TexCreate_None) | (bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed);
 	FRHIResourceCreateInfo CreateInfo;
 	TRefCountPtr<FRHITexture2DArray> TextureArray = RHICreateTexture2DArray(SizeX, SizeY, NumSlices, Format, NumMips, 1, TexCreateFlags, CreateInfo);
 	TextureRHI = TextureArray;

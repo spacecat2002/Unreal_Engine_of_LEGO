@@ -23,6 +23,7 @@
 #include "Rendering/ColorVertexBuffer.h"
 #include "FXSystem.h"
 #include "GPUSortManager.h"
+#include "VT/VirtualTextureSystem.h"
 
 class FHitProxyShaderElementData : public FMeshMaterialShaderElementData
 {
@@ -217,6 +218,13 @@ void InitHitProxyRender(FRHICommandListImmediate& RHICmdList, const FSceneRender
 
 	auto& ViewFamily = SceneRenderer->ViewFamily;
 	auto FeatureLevel = ViewFamily.Scene->GetFeatureLevel();
+
+	// Ensure VirtualTexture resources are allocated
+	if (UseVirtualTexturing(FeatureLevel))
+	{
+		FVirtualTextureSystem::Get().AllocateResources(RHICmdList, FeatureLevel);
+		FVirtualTextureSystem::Get().CallPendingCallbacks();
+	}
 
 	// Initialize global system textures (pass-through if already initialized).
 	GSystemTextures.InitializeTextures(RHICmdList, FeatureLevel);
@@ -638,6 +646,7 @@ void FHitProxyMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, 
 		{
 			// Default material doesn't handle masked, and doesn't have the correct bIsTwoSided setting.
 			MaterialRenderProxy = UMaterial::GetDefaultMaterial(MD_Surface)->GetRenderProxy();
+			check(MaterialRenderProxy);
 			Material = MaterialRenderProxy->GetMaterial(FeatureLevel);
 		}
 
@@ -667,6 +676,14 @@ void FHitProxyMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, 
 			if (const HHitProxy* HitProxy = GetHitProxyById(HitProxyId))
 			{
 				bAddTranslucentPrimitive = HitProxy->AlwaysAllowsTranslucentPrimitives();
+			}
+		}
+		else
+		{
+			// If the batch hit proxy is invalid, we won't try to add this if it is a translucent primitive (prefer to preserve the current hit proxy contents)
+			if (MeshBatch.BatchHitProxyId == FHitProxyId())
+			{
+				bAddTranslucentPrimitive = false;
 			}
 		}
 
@@ -785,6 +802,7 @@ void FEditorSelectionMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT Mesh
 {
 	if (MeshBatch.bUseForMaterial 
 		&& MeshBatch.bUseSelectionOutline 
+		&& PrimitiveSceneProxy
 		&& PrimitiveSceneProxy->WantsSelectionOutline() 
 		&& (PrimitiveSceneProxy->IsSelected() || PrimitiveSceneProxy->IsHovered()))
 	{
@@ -800,6 +818,7 @@ void FEditorSelectionMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT Mesh
 		{
 			// Default material doesn't handle masked, and doesn't have the correct bIsTwoSided setting.
 			MaterialRenderProxy = UMaterial::GetDefaultMaterial(MD_Surface)->GetRenderProxy();
+			check(MaterialRenderProxy);
 			Material = MaterialRenderProxy->GetMaterial(FeatureLevel);
 		}
 

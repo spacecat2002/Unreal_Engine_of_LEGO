@@ -57,7 +57,7 @@ public:
 	 *
 	 * @return new Http request instance
 	 */
-	virtual TSharedRef<IHttpRequest> CreateRequest();
+	virtual TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateRequest();
 
 	/**
 	 * Only meant to be used by Http request/response implementations
@@ -127,7 +127,7 @@ public:
 	}
 
 	/**
-	 * Sets timeout in seconds for the entire http request to complete
+	 * Sets the maximum size for the read buffer
 	 * @param SizeInBytes	The maximum number of bytes to use for the read buffer
 	 */
 	inline void SetMaxReadBufferSize(int32 SizeInBytes)

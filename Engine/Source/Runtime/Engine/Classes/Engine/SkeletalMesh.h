@@ -1131,7 +1131,7 @@ public:
 	virtual int32 GetNumResidentMips() const final override;
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false) final override;
+	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets = nullptr) final override;
 	//~ End UStreamableRenderAsset Interface.
 
 #if USE_BULKDATA_STREAMING_TOKEN

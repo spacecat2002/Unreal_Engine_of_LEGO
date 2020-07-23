@@ -14,6 +14,7 @@
 #include "Internationalization/TextLocalizationManagerGlobals.h"
 #include "Logging/LogSuppressionInterface.h"
 #include "Async/TaskGraphInterfaces.h"
+#include "MemPro/MemProProfiler.h"
 #include "Misc/TimeGuard.h"
 #include "Misc/Paths.h"
 #include "Misc/PathViews.h"
@@ -1477,6 +1478,9 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 	{
 		SCOPED_BOOT_TIMING("LLM Init");
 		LLM(FLowLevelMemTracker::Get().ProcessCommandLine(CmdLine));
+#if MEMPRO_ENABLED
+		FMemProProfiler::Init(CmdLine);
+#endif
 	}
 	LLM_SCOPE(ELLMTag::EnginePreInitMemory);
 
@@ -2901,11 +2905,11 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 					if (FPreLoadScreenManager::Get()->HasRegisteredPreLoadScreenType(EPreLoadScreenTypes::EarlyStartupScreen))
 					{
 						// disable the splash before playing the early startup screen
-						FPreLoadScreenManager::IsResponsibleForRenderingDelegate.AddLambda(
+						FPreLoadScreenManager::Get()->IsResponsibleForRenderingDelegate.AddLambda(
 							[](bool bIsPreloadScreenManResponsibleForRendering)
-						{
-							FPlatformMisc::PlatformHandleSplashScreen(!bIsPreloadScreenManResponsibleForRendering);
-						}
+							{
+								FPlatformMisc::PlatformHandleSplashScreen(!bIsPreloadScreenManResponsibleForRendering);
+							}
 						);
 						FPreLoadScreenManager::Get()->PlayFirstPreLoadScreen(EPreLoadScreenTypes::EarlyStartupScreen);
 					}
@@ -2988,8 +2992,11 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 		SlowTask.EnterProgressFrame(5);
 
 #if USE_EVENT_DRIVEN_ASYNC_LOAD_AT_BOOT_TIME && !USE_PER_MODULE_UOBJECT_BOOTSTRAP
-		// If we don't do this now and the async loading thread is active, then we will attempt to load this module from a thread
-		FModuleManager::Get().LoadModule("AssetRegistry");
+		{
+		    SCOPED_BOOT_TIMING("LoadAssetRegistryModule");
+		    // If we don't do this now and the async loading thread is active, then we will attempt to load this module from a thread
+		    FModuleManager::Get().LoadModule("AssetRegistry");
+		}
 #endif
 
 		FEmbeddedCommunication::ForceTick(5);
@@ -3761,23 +3768,6 @@ bool FEngineLoop::LoadStartupCoreModules()
 		// VREditor needs to be loaded in non-server editor builds early, so engine content Blueprints can be loaded during DDC generation
 		FModuleManager::Get().LoadModule(TEXT("VREditor"));
 	}
-	// -----------------------------------------------------
-
-	// HACK: load EQS editor as early as possible for statically initialized assets (non cooked EQS assets needs it)
-	// cooking needs this module too
-	bool bEnvironmentQueryEditor = false;
-	GConfig->GetBool(TEXT("EnvironmentQueryEd"), TEXT("EnableEnvironmentQueryEd"), bEnvironmentQueryEditor, GEngineIni);
-	if (bEnvironmentQueryEditor
-#if WITH_EDITOR
-		|| GetDefault<UEditorExperimentalSettings>()->bEQSEditor
-#endif // WITH_EDITOR
-		)
-	{
-		FModuleManager::Get().LoadModule(TEXT("EnvironmentQueryEditor"));
-	}
-
-	// We need this for blueprint projects that have online functionality.
-	//FModuleManager::Get().LoadModule(TEXT("OnlineBlueprintSupport"));
 
 	if (IsRunningCommandlet())
 	{
@@ -3963,9 +3953,6 @@ int32 FEngineLoop::Init()
 	}
 
 	// Call init callbacks
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	UEngine::OnPostEngineInit.Broadcast();
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	FCoreDelegates::OnPostEngineInit.Broadcast();
 
 	SlowTask.EnterProgressFrame(30);
@@ -4016,7 +4003,7 @@ int32 FEngineLoop::Init()
 		GetMoviePlayer()->WaitForMovieToFinish();
     }
 
-	FTraceAuxiliary::ParseCommandLine(FCommandLine::Get());
+	FTraceAuxiliary::EnableChannels();
 
 #if !UE_SERVER
 	// initialize media framework
@@ -4530,10 +4517,12 @@ static inline void BeginFrameRenderThread(FRHICommandListImmediate& RHICmdList, 
 	GPU_STATS_BEGINFRAME(RHICmdList);
 	RHICmdList.BeginFrame();
 	FCoreDelegates::OnBeginFrameRT.Broadcast();
+
+	GEngine->SetRenderLatencyMarkerStart(CurrentFrameCounter);
 }
 
 
-static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList)
+static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList, uint64 CurrentFrameCounter)
 {
 	FCoreDelegates::OnEndFrameRT.Broadcast();
 	RHICmdList.EndFrame();
@@ -4546,6 +4535,8 @@ static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList)
 #endif
 #endif // !UE_BUILD_SHIPPING 
 	TRACE_END_FRAME(TraceFrameType_Rendering);
+
+	GEngine->SetRenderLatencyMarkerEnd(CurrentFrameCounter);
 }
 
 #if BUILD_EMBEDDED_APP
@@ -4591,6 +4582,7 @@ void FEngineLoop::Tick()
 
 	uint64 CurrentFrameCounter = GFrameCounter;
 
+#if ENABLE_NAMED_EVENTS
 	TCHAR IndexedFrameString[32] = { 0 };
 	const TCHAR* FrameString = nullptr;
 	if (UE_TRACE_CHANNELEXPR_IS_ENABLED(CpuChannel))
@@ -4607,6 +4599,7 @@ void FEngineLoop::Tick()
 #endif
 	}
 	SCOPED_NAMED_EVENT_TCHAR(FrameString, FColor::Red);
+#endif
 
 	// execute callbacks for cvar changes
 	{
@@ -4653,6 +4646,7 @@ void FEngineLoop::Tick()
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_UpdateTimeAndHandleMaxTickRate);
 			GEngine->UpdateTimeAndHandleMaxTickRate();
+			GEngine->SetGameLatencyMarkerStart(CurrentFrameCounter);
 		}
 
 		for (const FWorldContext& Context : GEngine->GetWorldContexts())
@@ -4769,12 +4763,12 @@ void FEngineLoop::Tick()
 #endif //WITH_EDITOR
 
 			if( WorldToScale != nullptr )
-		{
-				if( GNewWorldToMetersScale != WorldToScale->GetWorldSettings()->WorldToMeters )
 			{
+				if( GNewWorldToMetersScale != WorldToScale->GetWorldSettings()->WorldToMeters )
+				{
 					WorldToScale->GetWorldSettings()->WorldToMeters = GNewWorldToMetersScale;
+				}
 			}
-		}
 
 			GNewWorldToMetersScale = 0.0f;
 		}
@@ -5057,10 +5051,12 @@ void FEngineLoop::Tick()
 
 		// end of RHI frame
 		ENQUEUE_RENDER_COMMAND(EndFrame)(
-			[](FRHICommandListImmediate& RHICmdList)
+			[CurrentFrameCounter](FRHICommandListImmediate& RHICmdList)
 			{
-				EndFrameRenderThread(RHICmdList);
+				EndFrameRenderThread(RHICmdList, CurrentFrameCounter);
 			});
+
+		GEngine->SetGameLatencyMarkerEnd(CurrentFrameCounter);
 
 		// Set CPU utilization stats.
 		const FCPUTime CPUTime = FPlatformTime::GetCPUTime();
@@ -5293,7 +5289,7 @@ bool FEngineLoop::AppInit( )
 		IFileManager::Get().ProcessCommandLineOptions();
 	}
 
-	FPageAllocator::LatchProtectedMode();
+	FPageAllocator::Get().LatchProtectedMode();
 
 	if (FParse::Param(FCommandLine::Get(), TEXT("purgatorymallocproxy")))
 	{

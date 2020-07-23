@@ -306,7 +306,7 @@ static void AddPatchGbufferDataPass(
 void RenderHairComposition(
 	FRDGBuilder& GraphBuilder,
 	const TArray<FViewInfo>& Views,
-	const FHairStrandsDatas* HairDatas,
+	const FHairStrandsRenderingData* HairDatas,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef SceneDepthTexture)
 {

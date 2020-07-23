@@ -264,6 +264,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Session", meta = (DisplayName="Is AR Session Tracking Feature Supported", Keywords = "ar augmentedreality augmented reality session tracking feature"))
 	static bool IsSessionTrackingFeatureSupported(EARSessionType SessionType, EARSessionTrackingFeature SessionTrackingFeature);
 	
+	/** @return if a particular scene reconstruction method is supported with the specified session type on the current platform */
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Session", meta = (DisplayName="Is AR Scene Reconstruction Supported", Keywords = "ar augmentedreality augmented reality session scene reconstruction"))
+	static bool IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod);
+	
 	/** @return all the 2D poses tracked by the AR system */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pose Tracking", meta = (DisplayName="Get All AR Tracked 2D Poses", Keywords = "ar augmentedreality augmented reality pose tracking"))
 	static TArray<FARPose2D> GetAllTracked2DPoses();
@@ -279,6 +283,17 @@ public:
 	/** @return the segmentation depth image if the person segmentation with depth session feature is used */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Person Segmentation", meta = (DisplayName="Get AR Person Segmentation Depth Image", Keywords = "ar augmentedreality augmented reality person segmentation depth image"))
 	static UARTextureCameraImage* GetPersonSegmentationDepthImage();
+	
+	/**
+	 * Try to determine the classification of the object at a world space location
+	 * @InWorldLocation: the world location where the classification is needed
+	 * @OutClassification: the classification result
+	 * @OutClassificationLocation: the world location at where the classification is calculated
+	 * @MaxLocationDiff: the max distance between the specified world location and the classification location
+	 * @return: whether a valid classification result is calculated
+	*/
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Classification")
+	static bool GetObjectClassificationAtLocation(const FVector& InWorldLocation, EARObjectClassification& OutClassification, FVector& OutClassificationLocation, float MaxLocationDiff = 10.f);
 	
 	// Static helpers to create the methods needed to add/remove delegates from the AR system
 	DEFINE_AR_BPLIB_DELEGATE_FUNCS(OnTrackableAdded)

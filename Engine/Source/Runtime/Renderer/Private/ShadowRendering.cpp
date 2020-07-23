@@ -1592,7 +1592,10 @@ void FSceneRenderer::RenderShadowProjections(
 		// Project the shadow depth buffers onto the scene.
 		for (const FProjectedShadowInfo* ProjectedShadowInfo : Shadows)
 		{
-			if (ProjectedShadowInfo->bAllocated)
+			if (ProjectedShadowInfo->bAllocated && ProjectedShadowInfo->RenderTargets.DepthTarget 
+				// this barrier causes rendering corruption on Adreno GPUs (UE-95149)
+				// this barrier is not required for modulated shadows, as target was already transitioned to a Readable state right after shadow atlas rendering
+				&& !bMobileModulatedProjections) 
 			{
 				// Only project the shadow if it's large enough in this particular view (split screen, etc... may have shadows that are large in one view but irrelevantly small in others)
 				if (ProjectedShadowInfo->FadeAlphas[ViewIndex] > 1.0f / 256.0f)
@@ -1764,7 +1767,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredShadowProjections(
 	FRDGTextureRef ScreenShadowMaskTexture,
 	FRDGTextureRef ScreenShadowMaskSubPixelTexture,
 	FRDGTextureRef SceneDepthTexture,
-	const FHairStrandsDatas* HairDatas,
+	const FHairStrandsRenderingData* HairDatas,
 	bool& bInjectedTranslucentVolume)
 {
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderShadowProjections, FColor::Emerald);

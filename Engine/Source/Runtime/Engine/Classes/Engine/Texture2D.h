@@ -145,7 +145,7 @@ public:
 
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false) final override;
+	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets = nullptr) final override;
 	virtual void InvalidateLastRenderTimeForStreaming() final override;
 	virtual float GetLastRenderTimeForStreaming() const final override;
 	virtual bool ShouldMipLevelsBeForcedResident() const final override;
@@ -193,7 +193,8 @@ public:
 	{
 		if (PlatformData)
 		{
-			return FMath::Max(0, PlatformData->Mips.Num() - (int32)PlatformData->GetNumMipsInTail());
+			const int32 NumMipsInTail = PlatformData->GetNumMipsInTail();
+			return FMath::Max(0, NumMipsInTail > 0 ? (PlatformData->Mips.Num() - NumMipsInTail) : (PlatformData->Mips.Num() - 1));
 		}
 		return 0;
 	}

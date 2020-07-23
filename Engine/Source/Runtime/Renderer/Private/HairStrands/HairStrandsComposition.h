@@ -12,6 +12,6 @@
 void RenderHairComposition(
 	FRDGBuilder& GraphBuilder, 
 	const TArray<FViewInfo>& Views,
-	const struct FHairStrandsDatas* HairDatas,
+	const struct FHairStrandsRenderingData* HairDatas,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef SceneDepthTexture);

@@ -674,6 +674,13 @@ void ALODActor::ForceUnbuilt()
 #endif
 }
 
+bool ALODActor::Modify(bool bAlwaysMarkDirty /*= true*/)
+{
+	// Avoid marking the package as dirty if this LODActor was spawned from an HLODDesc and is transient
+	bAlwaysMarkDirty = bAlwaysMarkDirty && !WasBuiltFromHLODDesc();
+	return Super::Modify(bAlwaysMarkDirty);
+}
+
 void ALODActor::PreEditChange(FProperty* PropertyThatWillChange)
 {
 	Super::PreEditChange(PropertyThatWillChange);
@@ -798,32 +805,44 @@ void ALODActor::EditorApplyMirror(const FVector& MirrorScale, const FVector& Piv
 
 void ALODActor::AddSubActor(AActor* InActor)
 {
-	SubActors.Add(InActor);
+	AddSubActors({ InActor });
+}
 
-	UStaticMeshComponent* LODComponent = GetOrCreateLODComponentForActor(InActor);
-	InActor->SetLODParent(LODComponent, GetLODDrawDistanceWithOverride());
+void ALODActor::AddSubActors(const TArray<AActor*>& InActors)
+{
+	SubActors.Append(InActors);
 
-	// Adding number of triangles
-	if (!InActor->IsA<ALODActor>())
+	float LODDrawDistanceWithOverride = GetLODDrawDistanceWithOverride();
+	TArray<UStaticMeshComponent*> StaticMeshComponents;
+
+	for(AActor* Actor : InActors)
 	{
-		TArray<UStaticMeshComponent*> StaticMeshComponents;
-		InActor->GetComponents<UStaticMeshComponent>(StaticMeshComponents);
-		for (UStaticMeshComponent* Component : StaticMeshComponents)
+		UStaticMeshComponent* LODComponent = GetOrCreateLODComponentForActor(Actor);
+		Actor->SetLODParent(LODComponent, LODDrawDistanceWithOverride);
+
+		// Adding number of triangles
+		ALODActor* LODActor = Cast<ALODActor>(Actor);
+		if (!LODActor)
 		{
-			const UStaticMesh* StaticMesh = (Component) ? Component->GetStaticMesh() : nullptr;
-			if (StaticMesh && StaticMesh->RenderData && StaticMesh->RenderData->LODResources.Num() > 0)
+			StaticMeshComponents.Reset();
+			Actor->GetComponents<UStaticMeshComponent>(StaticMeshComponents);
+
+			for (UStaticMeshComponent* Component : StaticMeshComponents)
 			{
-				NumTrianglesInSubActors += StaticMesh->RenderData->LODResources[0].GetNumTriangles();
+				const UStaticMesh* StaticMesh = (Component) ? Component->GetStaticMesh() : nullptr;
+				if (StaticMesh && StaticMesh->RenderData && StaticMesh->RenderData->LODResources.Num() > 0)
+				{
+					NumTrianglesInSubActors += StaticMesh->RenderData->LODResources[0].GetNumTriangles();
+				}
+				Component->MarkRenderStateDirty();
 			}
-			Component->MarkRenderStateDirty();
+		}
+		else
+		{
+			NumTrianglesInSubActors += LODActor->GetNumTrianglesInSubActors();
 		}
 	}
-	else
-	{
-		ALODActor* LODActor = Cast<ALODActor>(InActor);
-		NumTrianglesInSubActors += LODActor->GetNumTrianglesInSubActors();
-	}
-	
+
 	// Reset the shadowing flags and determine them according to our current sub actors
 	DetermineShadowingFlags();
 }
@@ -993,9 +1012,12 @@ const uint32 ALODActor::GetNumTrianglesInMergedMesh()
 
 void ALODActor::SetStaticMesh(class UStaticMesh* InStaticMesh)
 {
-	if (StaticMeshComponent)
+	if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh() != InStaticMesh)
 	{
+		// Temporarily switch to movable in order to update the static mesh...
+		StaticMeshComponent->SetMobility(EComponentMobility::Movable);
 		StaticMeshComponent->SetStaticMesh(InStaticMesh);
+		StaticMeshComponent->SetMobility(EComponentMobility::Static);
 
 		ensure(StaticMeshComponent->GetStaticMesh() == InStaticMesh);
 		if (InStaticMesh && InStaticMesh->RenderData && InStaticMesh->RenderData->LODResources.Num() > 0)
@@ -1005,14 +1027,22 @@ void ALODActor::SetStaticMesh(class UStaticMesh* InStaticMesh)
 	}
 }
 
-void ALODActor::SetupImposters(UMaterialInterface* InMaterial, UStaticMesh* InStaticMesh, const TArray<FTransform>& InTransforms)
+void ALODActor::SetupImposters(const UMaterialInterface* InMaterial, UStaticMesh* InStaticMesh, const TArray<FTransform>& InTransforms)
 {
 	check(InMaterial);
 	check(InStaticMesh);
 	check(InTransforms.Num() > 0);
 
 	UInstancedStaticMeshComponent* Component = GetOrCreateLODComponentForMaterial(InMaterial);
-	Component->SetStaticMesh(InStaticMesh);
+
+	if (Component->GetStaticMesh() != InStaticMesh)
+	{
+		// Temporarily switch to movable in order to update the static mesh...
+		Component->SetMobility(EComponentMobility::Movable);
+		Component->SetStaticMesh(InStaticMesh);
+		Component->SetMobility(EComponentMobility::Static);
+	}
+
 	Component->ClearInstances();
 	
 	for (const FTransform& Transform : InTransforms)
@@ -1064,6 +1094,16 @@ void ALODActor::RecalculateDrawingDistance(const float InTransitionScreenSize)
 	SetDrawDistance(DrawDistance);
 
 	UpdateSubActorLODParents();
+}
+
+bool ALODActor::UpdateProxyDesc()
+{
+	if (ProxyDesc)
+	{
+		return ProxyDesc->UpdateFromLODActor(this);
+	}
+
+	return false;
 }
 
 #endif // WITH_EDITOR

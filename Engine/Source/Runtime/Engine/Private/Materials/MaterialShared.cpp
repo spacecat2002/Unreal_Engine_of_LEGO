@@ -43,6 +43,7 @@
 #include "UObject/CoreRedirects.h"
 #include "RayTracingDefinitions.h"
 #include "Interfaces/ITargetPlatform.h"
+#include "Misc/ConfigCacheIni.h"
 #if WITH_EDITOR
 #include "Rendering/StaticLightingSystemInterface.h"
 #endif
@@ -923,7 +924,6 @@ void FMaterial::SerializeInlineShaderMap(FArchive& Ar)
 		{
 #if WITH_EDITOR
 			FinishCompilation();
-#endif
 
 			bool bValid = GameThreadShaderMap != nullptr && GameThreadShaderMap->CompiledSuccessfully();
 			
@@ -931,8 +931,22 @@ void FMaterial::SerializeInlineShaderMap(FArchive& Ar)
 
 			if (bValid)
 			{
-				GameThreadShaderMap->Serialize(Ar);
+				// do not put shader code of certain materials into the library
+				bool bEnableInliningWorkaround = false;
+
+				checkf(GConfig, TEXT("We expect GConfig to exist at this point"));
+				FString SettingName(TEXT("bEnableInliningWorkaround_"));
+				SettingName += Ar.CookingTarget()->IniPlatformName();
+
+				GConfig->GetBool(TEXT("ShaderCodeLibrary"), *SettingName, bEnableInliningWorkaround, GEngineIni);
+
+				bool bInlineShaderCode = bEnableInliningWorkaround && ShouldInlineShaderCode();
+				GameThreadShaderMap->Serialize(Ar, true, false, bInlineShaderCode);
 			}
+#else
+			UE_LOG(LogMaterial, Fatal, TEXT("Internal error: cooking outside the editor is not possible."));
+			// unreachable
+#endif
 		}
 		else
 		{
@@ -1016,13 +1030,15 @@ bool FMaterialResource::GetAllowDevelopmentShaderCompile()const
 
 void FMaterial::ReleaseShaderMap()
 {
+	UE_CLOG(IsOwnerBeginDestroyed(), LogMaterial, Error, TEXT("ReleaseShaderMap called on FMaterial %s, owner is BeginDestroyed"), *GetDebugName());
+
 	if (GameThreadShaderMap)
 	{
 		GameThreadShaderMap = nullptr;
 		
-		FMaterial* Material = this;
+		TRefCountPtr<FMaterial> Material = this;
 		ENQUEUE_RENDER_COMMAND(ReleaseShaderMap)(
-		[Material](FRHICommandList& RHICmdList)
+		[Material = MoveTemp(Material)](FRHICommandList& RHICmdList)
 		{
 			Material->RenderingThreadShaderMap = nullptr;
 		});
@@ -1464,6 +1480,49 @@ FString FMaterialResource::GetAssetPath() const
 	FString Result = FPackageName::LongPackageNameToFilename(OutermostName, TEXT(".uasset"));
 	return Result;
 }
+
+bool FMaterialResource::ShouldInlineShaderCode() const
+{
+	if (IsSpecialEngineMaterial() || IsDefaultMaterial())
+	{
+		UE_LOG(LogMaterial, Display, TEXT("%s: shader code is inlined because the workaround is enabled and it's a special or default material"), *GetFriendlyName());
+		return true;
+	}
+
+	// Check the material name against those configured to be enabled.
+	// For the cooker commandlet, this check could be cached, but due to concerns of that cache possibly getting stale for edge cases like COTF and general work-aroundness of this
+	// function, let's check the configs every time.
+
+	FString OutermostName;
+	if (MaterialInstance)
+	{
+		OutermostName = MaterialInstance->GetOutermost()->GetName();
+	}
+	else if (Material)
+	{
+		OutermostName = Material->GetOutermost()->GetName();
+	}
+
+	bool bNeedsToBeInlined = false;
+	const FConfigSection* ShaderLibrarySec = GConfig->GetSectionPrivate(TEXT("ShaderCodeLibrary"), false, true, GEngineIni);
+	if (ShaderLibrarySec)
+	{
+		TArray<FString> ConfiguredMaterials;
+		ShaderLibrarySec->MultiFind(TEXT("MaterialToInline"), ConfiguredMaterials);
+
+		for(const FString& ConfiguredMaterial : ConfiguredMaterials)
+		{
+			if (ConfiguredMaterial == OutermostName)
+			{
+				bNeedsToBeInlined = true;
+				break;
+			}
+		}
+	}
+
+	UE_LOG(LogMaterial, Display, TEXT("%s (package %s): shader code is %s to be inlined as a workaround"), *GetFriendlyName(), *OutermostName, bNeedsToBeInlined ? TEXT("configured") : TEXT("NOT configured"));
+	return bNeedsToBeInlined;
+}
 #endif
 
 void FMaterialResource::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
@@ -1489,11 +1548,34 @@ void FMaterialResource::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSiz
 	}
 }
 
+#if UE_CHECK_FMATERIAL_LIFETIME
+uint32 FMaterial::AddRef() const
+{
+	const int32 Refs = NumDebugRefs.Increment();
+	UE_CLOG(Refs <= 0, LogMaterial, Fatal, TEXT("FMaterial::AddRef, Invalid NumDebugRefs %d"), Refs);
+	UE_CLOG(Refs > 5000, LogMaterial, Warning, TEXT("FMaterial::AddRef, Suspicious NumDebugRefs %d"), Refs);
+	return uint32(Refs);
+}
+
+uint32 FMaterial::Release() const
+{
+	const int32 Refs = NumDebugRefs.Decrement();
+	UE_CLOG(Refs < 0, LogMaterial, Fatal, TEXT("FMaterial::Release, Invalid NumDebugRefs %d"), Refs);
+	UE_CLOG(Refs > 5000, LogMaterial, Warning, TEXT("FMaterial::Release, Suspicious NumDebugRefs %d"), Refs);
+	return uint32(Refs);
+}
+#endif // UE_CHECK_FMATERIAL_LIFETIME
+
 /**
  * Destructor
  */
 FMaterial::~FMaterial()
 {
+#if UE_CHECK_FMATERIAL_LIFETIME
+	const uint32 NumRemainingRefs = GetRefCount();
+	UE_CLOG(NumRemainingRefs > 0u, LogMaterial, Fatal, TEXT("%s Leaked %d refs"), *GetDebugName(), NumRemainingRefs);
+#endif // UE_CHECK_FMATERIAL_LIFETIME
+
 #if WITH_EDITOR
 	if (GIsEditor)
 	{
@@ -3518,10 +3600,10 @@ FMaterialAttributeDefintion::FMaterialAttributeDefintion(
 		EMaterialValueType InValueType, const FVector4& InDefaultValue, EShaderFrequency InShaderFrequency,
 		int32 InTexCoordIndex /*= INDEX_NONE*/, bool bInIsHidden /*= false*/, MaterialAttributeBlendFunction InBlendFunction /*= nullptr*/)
 	: AttributeID(InAttributeID)
+	, DefaultValue(InDefaultValue)
 	, AttributeName(InAttributeName)
 	, Property(InProperty)
 	, ValueType(InValueType)
-	, DefaultValue(InDefaultValue)
 	, ShaderFrequency(InShaderFrequency)
 	, TexCoordIndex(InTexCoordIndex)
 	, BlendFunction(InBlendFunction)

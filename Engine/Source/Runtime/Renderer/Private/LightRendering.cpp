@@ -62,14 +62,16 @@ static FAutoConsoleVariableRef CVarRayTracingOcclusion(
 	TEXT("r.RayTracing.Shadows"),
 	GRayTracingShadows,
 	TEXT("0: use traditional rasterized shadow map\n")
-	TEXT("1: use ray tracing shadows (default)")
+	TEXT("1: use ray tracing shadows (default)"),
+	ECVF_RenderThreadSafe
 );
 
 static int32 GShadowRayTracingSamplesPerPixel = 1;
 static FAutoConsoleVariableRef CVarShadowRayTracingSamplesPerPixel(
 	TEXT("r.RayTracing.Shadow.SamplesPerPixel"),
 	GShadowRayTracingSamplesPerPixel,
-	TEXT("Sets the samples-per-pixel for directional light occlusion (default = 1)"));
+	TEXT("Sets the samples-per-pixel for directional light occlusion (default = 1)"),
+	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarShadowUseDenoiser(
 	TEXT("r.Shadow.Denoiser"),
@@ -1080,12 +1082,12 @@ void FDeferredShadingSceneRenderer::GatherAndSortLights(FSortedLightSetSceneInfo
 	check(OutSortedLights.AttenuationLightStart >= OutSortedLights.ClusteredSupportedEnd);
 }
 
-static bool HasHairStrandsClusters(int32 ViewIndex, const FHairStrandsDatas* HairDatas)
+static bool HasHairStrandsClusters(int32 ViewIndex, const FHairStrandsRenderingData* HairDatas)
 {
 	return HairDatas && ViewIndex < HairDatas->MacroGroupsPerViews.Views.Num() && HairDatas->MacroGroupsPerViews.Views[ViewIndex].Datas.Num() > 0;
 };
 
-static FHairStrandsOcclusionResources GetHairStrandsResources(int32 ViewIndex, FRDGBuilder& GraphBuilder, const FHairStrandsDatas* HairDatas)
+static FHairStrandsOcclusionResources GetHairStrandsResources(int32 ViewIndex, FRDGBuilder& GraphBuilder, const FHairStrandsRenderingData* HairDatas)
 {
 	FHairStrandsOcclusionResources Out;
 	if (HairDatas && ViewIndex < HairDatas->HairVisibilityViews.HairDatas.Num())
@@ -1134,7 +1136,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 	FRDGTextureRef& SceneColorTexture,
 	FRDGTextureRef SceneDepthTexture,
 	FSortedLightSetSceneInfo &SortedLightSet,
-	const FHairStrandsDatas* HairDatas)
+	const FHairStrandsRenderingData* HairDatas)
 {
 	const EShaderPlatform ShaderPlatformForFeatureLevel = GShaderPlatformForFeatureLevel[FeatureLevel];
 
@@ -2471,7 +2473,7 @@ void FDeferredShadingSceneRenderer::RenderLightsForHair(
 	FRDGBuilder& GraphBuilder,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FSortedLightSetSceneInfo &SortedLightSet,
-	const FHairStrandsDatas* HairDatas,
+	const FHairStrandsRenderingData* HairDatas,
 	FRDGTextureRef InScreenShadowMaskSubPixelTexture)
 {
 	const FSimpleLightArray &SimpleLights = SortedLightSet.SimpleLights;

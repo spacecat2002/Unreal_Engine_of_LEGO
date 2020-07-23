@@ -163,10 +163,7 @@ ULandscapeComponent::ULandscapeComponent(const FObjectInitializer& ObjectInitial
 {
 	SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
 	SetGenerateOverlapEvents(false);
-	CastShadow = true;
-	// by default we want to see the Landscape shadows even in the far shadow cascades
-	bCastFarShadow = true;
-	bAffectDistanceFieldLighting = true;
+	
 	bUseAsOccluder = true;
 	bAllowCullDistanceVolume = false;
 	CollisionMipLevel = 0;
@@ -714,9 +711,12 @@ void ULandscapeComponent::UpdatedSharedPropertiesFromActor()
 {
 	ALandscapeProxy* LandscapeProxy = GetLandscapeProxy();
 
+	CastShadow = LandscapeProxy->CastShadow;
+	bCastDynamicShadow = LandscapeProxy->bCastDynamicShadow;
 	bCastStaticShadow = LandscapeProxy->bCastStaticShadow;
-	bCastShadowAsTwoSided = LandscapeProxy->bCastShadowAsTwoSided;
 	bCastFarShadow = LandscapeProxy->bCastFarShadow;
+	bCastHiddenShadow = LandscapeProxy->bCastHiddenShadow;
+	bCastShadowAsTwoSided = LandscapeProxy->bCastShadowAsTwoSided;
 	bAffectDistanceFieldLighting = LandscapeProxy->bAffectDistanceFieldLighting;
 	bRenderCustomDepth = LandscapeProxy->bRenderCustomDepth;
 	LDMaxDrawDistance = LandscapeProxy->LDMaxDrawDistance;
@@ -1051,8 +1051,13 @@ ALandscapeProxy::ALandscapeProxy(const FObjectInitializer& ObjectInitializer)
 	SetHidden(false);
 	SetReplicatingMovement(false);
 	SetCanBeDamaged(false);
-	// by default we want to see the Landscape shadows even in the far shadow cascades
+	
+	CastShadow = true;
+	bCastDynamicShadow = true;
+	bCastStaticShadow = true;
 	bCastFarShadow = true;
+	bCastHiddenShadow = false;
+	bCastShadowAsTwoSided = false;
 	bAffectDistanceFieldLighting = true;
 
 	USceneComponent* SceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent0"));
@@ -1078,7 +1083,6 @@ ALandscapeProxy::ALandscapeProxy(const FObjectInitializer& ObjectInitializer)
 	LOD0DistributionSetting = 1.25f;
 	LODDistributionSetting = 3.0f;
 	bCastStaticShadow = true;
-	bCastShadowAsTwoSided = false;
 	bUsedForNavigation = true;
 	bFillCollisionUnderLandscapeForNavmesh = false;
 	CollisionThickness = 16;
@@ -2256,7 +2260,7 @@ int32 ULandscapeInfo::GetLayerInfoIndex(FName LayerName, ALandscapeProxy* Owner 
 }
 
 
-bool ULandscapeInfo::UpdateLayerInfoMap(ALandscapeProxy* Proxy /*= nullptr*/, bool bInvalidate /*= false*/)
+bool ULandscapeInfo::UpdateLayerInfoMapInternal(ALandscapeProxy* Proxy, bool bInvalidate)
 {
 	bool bHasCollision = false;
 	if (GIsEditor)
@@ -2417,10 +2421,10 @@ bool ULandscapeInfo::UpdateLayerInfoMap(ALandscapeProxy* Proxy /*= nullptr*/, bo
 				ForAllLandscapeProxies([this](ALandscapeProxy* EachProxy)
 				{
 					if (!EachProxy->IsPendingKillPending())
-				{
+					{
 						checkSlow(EachProxy->GetLandscapeInfo() == this);
-						UpdateLayerInfoMap(EachProxy, false);
-				}
+						UpdateLayerInfoMapInternal(EachProxy, false);
+					}
 				});
 			}
 		}
@@ -2431,6 +2435,20 @@ bool ULandscapeInfo::UpdateLayerInfoMap(ALandscapeProxy* Proxy /*= nullptr*/, bo
 		//}
 	}
 	return bHasCollision;
+}
+
+bool ULandscapeInfo::UpdateLayerInfoMap(ALandscapeProxy* Proxy /*= nullptr*/, bool bInvalidate /*= false*/)
+{
+	bool bResult = UpdateLayerInfoMapInternal(Proxy, bInvalidate);
+	if (GIsEditor)
+	{
+		ALandscape* Landscape = LandscapeActor.Get();
+		if (Landscape && Landscape->HasLayersContent())
+		{
+			Landscape->RequestLayersInitialization(/*bInRequestContentUpdate*/false);
+		}
+	}
+	return bResult;
 }
 #endif
 
@@ -2546,8 +2564,13 @@ void ALandscapeProxy::GetSharedProperties(ALandscapeProxy* Landscape)
 
 		//PrePivot = Landscape->PrePivot;
 		StaticLightingResolution = Landscape->StaticLightingResolution;
+		CastShadow = Landscape->CastShadow;
+		bCastDynamicShadow = Landscape->bCastDynamicShadow;
 		bCastStaticShadow = Landscape->bCastStaticShadow;
+		bCastFarShadow = Landscape->bCastFarShadow;
+		bCastHiddenShadow = Landscape->bCastHiddenShadow;
 		bCastShadowAsTwoSided = Landscape->bCastShadowAsTwoSided;
+		bAffectDistanceFieldLighting = Landscape->bAffectDistanceFieldLighting;
 		LightingChannels = Landscape->LightingChannels;
 		bRenderCustomDepth = Landscape->bRenderCustomDepth;
 		LDMaxDrawDistance = Landscape->LDMaxDrawDistance;		
@@ -3142,12 +3165,6 @@ void ULandscapeInfo::RegisterActor(ALandscapeProxy* Proxy, bool bMapCheck)
 			}
 			StreamingProxy->LandscapeActor = LandscapeActor;
 			StreamingProxy->FixupSharedData(LandscapeActor.Get());
-		}
-
-		if (LandscapeActor && LandscapeActor->HasLayersContent())
-		{
-			const bool bInRequestContentUpdate = false;
-			LandscapeActor->RequestLayersInitialization(bInRequestContentUpdate);
 		}
 
 		UpdateLayerInfoMap(Proxy);
@@ -3989,8 +4006,10 @@ bool ULandscapeLODStreamingProxy::StreamIn(int32 NewMipCount, bool bHighPrio)
 	return false;
 }
 
-bool ULandscapeLODStreamingProxy::UpdateStreamingStatus(bool bWaitForMipFading)
+bool ULandscapeLODStreamingProxy::UpdateStreamingStatus(bool bWaitForMipFading, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets)
 {
+	bool bUpdatePending = false;
+
 	if (PendingUpdate)
 	{
 		if (IsEngineExitRequested() || !IsReadyForStreaming())
@@ -4007,13 +4026,17 @@ bool ULandscapeLODStreamingProxy::UpdateStreamingStatus(bool bWaitForMipFading)
 
 		if (!PendingUpdate->IsCompleted())
 		{
-			return true;
+			bUpdatePending = true;
 		}
-
-		PendingUpdate.SafeRelease();
+		else
+		{
+			PendingUpdate.SafeRelease();
+		}
 	}
 
-	return false;
+	TickMipLevelChangeCallbacks(DeferredTickCBAssets);
+
+	return bUpdatePending;
 }
 
 void ULandscapeLODStreamingProxy::LinkStreaming()
@@ -4036,6 +4059,7 @@ void ULandscapeLODStreamingProxy::UnlinkStreaming()
 	if (!IsTemplate() && IStreamingManager::Get().IsTextureStreamingEnabled())
 	{
 		IStreamingManager::Get().GetTextureStreamingManager().RemoveStreamingRenderAsset(this);
+		RemoveAllMipLevelChangeCallbacks();
 	}
 }
 

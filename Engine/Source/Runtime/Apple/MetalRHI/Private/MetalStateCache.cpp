@@ -609,6 +609,7 @@ bool FMetalStateCache::SetRenderPassInfo(FRHIRenderPassInfo const& InRenderTarge
 				ColorAttachment.SetLevel(RenderTargetView.MipIndex);
 				if(Surface.Type == RRT_Texture3D)
 				{
+					ColorAttachment.SetSlice(0);
 					ColorAttachment.SetDepthPlane(ArraySliceIndex);
 				}
 				else

@@ -40,6 +40,7 @@ void ClearFlagsAndDissolveClustersFromLoadedObjects(T& LoadedObjects)
 
 class IAsyncPackageLoader;
 class FPackageIndex;
+class LinkerInstancingContext;
 
 class IEDLBootNotificationManager
 {
@@ -103,7 +104,8 @@ public:
 			FLoadPackageAsyncDelegate InCompletionDelegate,
 			EPackageFlags InPackageFlags,
 			int32 InPIEInstanceID,
-			int32 InPackagePriority) = 0;
+			int32 InPackagePriority,
+			const FLinkerInstancingContext* InstancingContext) = 0;
 
 	/**
 	 * Process all currently loading package requests.
@@ -149,6 +151,11 @@ public:
 	* Note: Called from Game Thread.
 	*/
 	virtual void FlushLoading(int32 PackageId) = 0;
+
+	/**
+	 *	Returns the number of queued packages.
+	 */
+	virtual int32 GetNumQueuedPackages() = 0;
 
 	/**
 	 *	Returns the number of loading packages.

@@ -191,6 +191,9 @@ public:
 	
 	/** @return the person segmentation depth image */
 	virtual UARTextureCameraImage* OnGetPersonSegmentationDepthImage() const { return nullptr; }
+	
+	/** @return the required scene construction method is supported */
+	virtual bool OnIsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const { return false; }
 
 	virtual ~IARSystemSupport(){}
 

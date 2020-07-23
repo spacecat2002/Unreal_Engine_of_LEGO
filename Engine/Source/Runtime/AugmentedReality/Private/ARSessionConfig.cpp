@@ -210,3 +210,13 @@ void UARSessionConfig::SetSessionTrackingFeatureToEnable(EARSessionTrackingFeatu
 {
 	EnabledSessionTrackingFeature = InSessionTrackingFeature;
 }
+
+EARSceneReconstruction UARSessionConfig::GetSceneReconstructionMethod() const
+{
+	return SceneReconstructionMethod;
+}
+
+void UARSessionConfig::SetSceneReconstructionMethod(EARSceneReconstruction InSceneReconstructionMethod)
+{
+	SceneReconstructionMethod = InSceneReconstructionMethod;
+}

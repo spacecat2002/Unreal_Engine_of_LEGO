@@ -83,21 +83,12 @@ DECLARE_CYCLE_STAT(TEXT("CreatePhysicsActor"), STAT_CreatePhysicsActor, STATGROU
 DECLARE_CYCLE_STAT(TEXT("BodyInstance SetCollisionProfileName"), STAT_BodyInst_SetCollisionProfileName, STATGROUP_Physics);
 DECLARE_CYCLE_STAT(TEXT("Phys SetBodyTransform"), STAT_SetBodyTransform, STATGROUP_Physics);
 
-static int32 GUseDeferredPhysicsBodyCreation = 0;
-
 // @HACK Guard to better encapsulate game related hacks introduced into UpdatePhysicsFilterData()
 TAutoConsoleVariable<int32> CVarEnableDynamicPerBodyFilterHacks(
 	TEXT("p.EnableDynamicPerBodyFilterHacks"), 
 	0, 
 	TEXT("Enables/Disables the use of a set of game focused hacks - allowing users to modify skel body collision dynamically (changes the behavior of per-body collision filtering)."),
 	ECVF_ReadOnly
-);
-
-FAutoConsoleVariableRef CVarEnableDeferredPhysicsCreation(
-	TEXT("p.EnableDeferredPhysicsCreation"), 
-	GUseDeferredPhysicsBodyCreation,
-	TEXT("Enables/Disables deferred physics creation."),
-	ECVF_Default
 );
 
 TAutoConsoleVariable<int32> CVarIgnoreAnalyticCollisionsOverride(
@@ -107,12 +98,6 @@ TAutoConsoleVariable<int32> CVarIgnoreAnalyticCollisionsOverride(
 	ECVF_ReadOnly
 );
 
-bool FBodyInstance::UseDeferredPhysicsBodyCreation()
-{
-	// @todo: this could be improved by tracking all oustanding delayed creations, and return true if there are any at all. 
-	// or maybe keep a list of instances that have them, so we don't loop over all actors, etc
-	return GUseDeferredPhysicsBodyCreation != 0;
-}
 
 using namespace PhysicsInterfaceTypes;
 
@@ -351,13 +336,6 @@ FBodyInstance::FBodyInstance()
 	, bUseCCD(false)
 	, bIgnoreAnalyticCollisions(false)
 	, bNotifyRigidBodyCollision(false)
-	, bSimulatePhysics(false)
-	, bOverrideMass(false)
-	, bEnableGravity(true)
-	, bAutoWeld(false)
-	, bStartAwake(true)
-	, bGenerateWakeEvents(false)
-	, bUpdateMassWhenScaleChanges(false)
 	, bLockTranslation(true)
 	, bLockRotation(true)
 	, bLockXTranslation(false)
@@ -478,7 +456,7 @@ void FBodyInstance::UpdateTriMeshVertices(const TArray<FVector> & NewPositions)
 	{
 		FPhysicsCommand::ExecuteWrite(ActorHandle, [&](const FPhysicsActorHandle& Actor)
 		{
-			BodySetup->UpdateTriMeshVertices(NewPositions);
+			GetBodySetup()->UpdateTriMeshVertices(NewPositions);
 
 			//after updating the vertices we must call setGeometry again to update any shapes referencing the mesh
 			TArray<FPhysicsShapeHandle> Shapes;
@@ -554,9 +532,9 @@ bool FBodyInstance::ReplaceResponseToChannels(ECollisionResponse OldResponse, EC
 	return false;
 }
 
-bool FBodyInstance::SetResponseToChannels(const FCollisionResponseContainer& NewReponses)
+bool FBodyInstance::SetResponseToChannels(const FCollisionResponseContainer& NewResponses)
 {
-	if (CollisionResponses.SetCollisionResponseContainer(NewReponses))
+	if (CollisionResponses.SetCollisionResponseContainer(NewResponses))
 	{
 		InvalidateCollisionProfileName();
 		UpdatePhysicsFilterData();
@@ -564,6 +542,63 @@ bool FBodyInstance::SetResponseToChannels(const FCollisionResponseContainer& New
 	}
 
 	return false;
+}
+
+bool FBodyInstance::SetShapeResponseToChannels(const int32 ShapeIndex, const FCollisionResponseContainer& NewResponses)
+{
+	if (!ShapeCollisionResponses.IsSet())
+	{
+		ShapeCollisionResponses = TArray<TPair<int32, FCollisionResponse>>();
+	}
+
+	TArray<TPair<int32, FCollisionResponse>>& ShapeCollisionResponsesValue = ShapeCollisionResponses.GetValue();
+
+	bool bIndexExists = false;
+	int32 ResponseIndex = 0;
+	const int32 ResponseNum = ShapeCollisionResponsesValue.Num();
+	for (; ResponseIndex < ResponseNum; ++ResponseIndex)
+	{
+		if (ShapeCollisionResponsesValue[ResponseIndex].Key == ShapeIndex)
+		{
+			break;
+		}
+	}
+
+	if (ResponseIndex == ResponseNum)
+	{
+		ShapeCollisionResponsesValue.Add(TPair<int32, FCollisionResponse>(ShapeIndex, FCollisionResponse()));
+	}
+
+	if (ShapeCollisionResponsesValue[ResponseIndex].Value.SetCollisionResponseContainer(NewResponses))
+	{
+		UpdatePhysicsFilterData();
+		return true;
+	}
+
+	return false;
+}
+
+const FCollisionResponseContainer& FBodyInstance::GetShapeResponseToChannels(const int32 ShapeIndex) const
+{
+	return GetShapeResponseToChannels(ShapeIndex, GetResponseToChannels());
+}
+
+const FCollisionResponseContainer& FBodyInstance::GetShapeResponseToChannels(const int32 ShapeIndex, const FCollisionResponseContainer& DefaultResponseContainer) const
+{
+	// Return per-shape collision response override if there is one
+	if (ShapeCollisionResponses.IsSet())
+	{
+		for (int32 ResponseIndex = 0; ResponseIndex < ShapeCollisionResponses.GetValue().Num(); ++ResponseIndex)
+		{
+			if (ShapeCollisionResponses.GetValue()[ResponseIndex].Key == ShapeIndex)
+			{
+				return ShapeCollisionResponses.GetValue()[ResponseIndex].Value.GetResponseContainer();
+			}
+		}
+	}
+
+	// Return base collision response
+	return DefaultResponseContainer;
 }
 
 void FBodyInstance::SetObjectType(ECollisionChannel Channel)
@@ -674,12 +709,12 @@ void FBodyInstance::SetShapeCollisionEnabled(const int32 ShapeIndex, ECollisionE
 			// If ShapeCollisionEnabled wasn't set up yet, copy values from BodySetup into it
 			if (!ShapeCollisionEnabled.IsSet())
 			{
-				const int32 ShapeCount = BodySetup->AggGeom.GetElementCount();
+				const int32 ShapeCount = GetBodySetup()->AggGeom.GetElementCount();
 				ShapeCollisionEnabled = TArray<TEnumAsByte<ECollisionEnabled::Type>>();
 				ShapeCollisionEnabled.GetValue().SetNum(ShapeCount);
 				for (int32 OptionalShapeIndex = 0; OptionalShapeIndex < ShapeCount; ++OptionalShapeIndex)
 				{
-					ShapeCollisionEnabled.GetValue()[OptionalShapeIndex] = BodySetup->AggGeom.GetElement(OptionalShapeIndex)->GetCollisionEnabled();
+					ShapeCollisionEnabled.GetValue()[OptionalShapeIndex] = GetBodySetup()->AggGeom.GetElement(OptionalShapeIndex)->GetCollisionEnabled();
 				}
 			}
 			ShapeCollisionEnabled.GetValue()[ShapeIndex] = NewType;
@@ -854,7 +889,7 @@ ECollisionEnabled::Type FBodyInstance::GetShapeCollisionEnabled(const int32 Shap
 		return ECollisionEnabled::NoCollision;
 	}	
 
-	FKShapeElem* Shape = BodySetup->AggGeom.GetElement(ShapeIndex);
+	FKShapeElem* Shape = GetBodySetup()->AggGeom.GetElement(ShapeIndex);
 	if (!ensure(Shape))
 	{
 		return ECollisionEnabled::NoCollision;
@@ -957,8 +992,11 @@ void FBodyInstance::UpdatePhysicsFilterData()
 			}
 
 			const bool bInstanceComplexAsSimple = BI->BodySetup.IsValid() ? (BI->BodySetup->GetCollisionTraceFlag() == CTF_UseComplexAsSimple) : false;
-			if (BI->BodySetup.IsValid() && SetupShapeIndex < BI->BodySetup->AggGeom.GetElementCount())
+			if (BI->BodySetup.IsValid() && SetupShapeIndex < BI->GetBodySetup()->AggGeom.GetElementCount())
 			{
+				// Get the shape's CollisionResponses
+				BI->BuildBodyFilterData(PerShapeCollisionData.CollisionFilterData, SetupShapeIndex);
+
 				// Get the shape's CollisionEnabled masked with the body's CollisionEnabled and compute the shape's collisionflags.
 				const ECollisionEnabled::Type FilteredShapeCollision = CollisionEnabledIntersection(BI->GetCollisionEnabled(), BI->GetShapeCollisionEnabled(SetupShapeIndex));
 				BuildBodyCollisionFlags(PerShapeCollisionData.CollisionFlags, FilteredShapeCollision, bInstanceComplexAsSimple);
@@ -1008,7 +1046,7 @@ void FBodyInstance::UpdatePhysicsFilterData()
 		//If filtering changed we must update GT structure right away
 		if (FPhysScene* PhysScene = GetPhysicsScene())
 		{
-			PhysScene->GetScene().UpdateActorInAccelerationStructure(Actor);
+			PhysScene->UpdateActorInAccelerationStructure(Actor);
 		}
 #endif
 	});
@@ -1171,6 +1209,16 @@ bool FInitBodiesHelperBase::CreateShapes_AssumesLocked(FBodyInstance* Instance) 
 	bInitFail |= NumShapes == 0;
 
 	return bInitFail;
+}
+
+UBodySetup* FBodyInstance::GetBodySetup() const
+{
+	if(UBodySetupCore* BodySetupCore = BodySetup.Get())
+	{
+		return CastChecked<UBodySetup>(BodySetupCore);
+	}
+
+	return nullptr;
 }
 
 // Takes actor ref arrays.
@@ -1361,9 +1409,8 @@ void FInitBodiesHelperBase::InitBodies()
 					{
 						if (UPrimitiveComponent* PrimComp = BI->OwnerComponent.Get())
 						{
-							FPhysScene_ChaosInterface* LocalPhysScene = PrimComp->GetWorld()->GetPhysicsScene();
-							FPhysScene_Chaos& Scene = LocalPhysScene->GetScene();
-							Scene.RegisterForCollisionEvents(PrimComp);
+							FPhysScene_Chaos* LocalPhysScene = PrimComp->GetWorld()->GetPhysicsScene();
+							LocalPhysScene->RegisterForCollisionEvents(PrimComp);
 						}
 					}
 				}
@@ -1429,27 +1476,13 @@ void FBodyInstance::InitBody(class UBodySetup* Setup, const FTransform& Transfor
 	bool bIsStatic = SpawnParams.bStaticPhysics;
 	if(bIsStatic)
 	{
-		if (GUseDeferredPhysicsBodyCreation)
-		{
-			InitBodiesDeferredListStatic.Add(FInitBodiesHelperWithData<true>(MoveTemp(Bodies), MoveTemp(Transforms), Setup, PrimComp, InRBScene, SpawnParams, SpawnParams.Aggregate));
-		}
-		else
-		{
-			FInitBodiesHelper<true> InitBodiesHelper(Bodies, Transforms, Setup, PrimComp, InRBScene, SpawnParams, SpawnParams.Aggregate);
-			InitBodiesHelper.InitBodies();
-		}
+		FInitBodiesHelper<true> InitBodiesHelper(Bodies, Transforms, Setup, PrimComp, InRBScene, SpawnParams, SpawnParams.Aggregate);
+		InitBodiesHelper.InitBodies();
 	}
 	else
 	{
-		if (GUseDeferredPhysicsBodyCreation)
-		{
-			InitBodiesDeferredListDynamic.Add(FInitBodiesHelperWithData<false>(MoveTemp(Bodies), MoveTemp(Transforms), Setup, PrimComp, InRBScene, SpawnParams, SpawnParams.Aggregate));
-		}
-		else
-		{
-			FInitBodiesHelper<false> InitBodiesHelper(Bodies, Transforms, Setup, PrimComp, InRBScene, SpawnParams, SpawnParams.Aggregate);
-			InitBodiesHelper.InitBodies();
-		}
+		FInitBodiesHelper<false> InitBodiesHelper(Bodies, Transforms, Setup, PrimComp, InRBScene, SpawnParams, SpawnParams.Aggregate);
+		InitBodiesHelper.InitBodies();
 	}
 
 	Bodies.Reset();
@@ -1505,7 +1538,7 @@ void FBodyInstance::TermBody(bool bNeverDeferRelease)
 #if WITH_CHAOS
 	if (UPrimitiveComponent* PrimComp = OwnerComponent.Get())
 	{
-		if (FPhysScene_ChaosInterface* PhysScene = PrimComp->GetWorld()->GetPhysicsScene())
+		if (FPhysScene_Chaos* PhysScene = PrimComp->GetWorld()->GetPhysicsScene())
 		{
 			if (FPhysicsInterface::IsValid(ActorHandle))
 			{
@@ -1513,8 +1546,7 @@ void FBodyInstance::TermBody(bool bNeverDeferRelease)
 			}
 			if (bNotifyRigidBodyCollision)
 			{
-				FPhysScene_Chaos& Scene = PhysScene->GetScene();
-				Scene.UnRegisterForCollisionEvents(PrimComp);
+				PhysScene->UnRegisterForCollisionEvents(PrimComp);
 			}
 		}
 	}
@@ -1578,7 +1610,7 @@ bool FBodyInstance::Weld(FBodyInstance* TheirBody, const FTransform& TheirTM)
 		BuildBodyFilterData(BodyCollisionData.CollisionFilterData);
 		BuildBodyCollisionFlags(BodyCollisionData.CollisionFlags, GetCollisionEnabled(), BodySetup->GetCollisionTraceFlag() == CTF_UseComplexAsSimple);
 
-		TheirBody->BodySetup->AddShapesToRigidActor_AssumesLocked(this, Scale3D, SimplePhysMat, ComplexPhysMats, ComplexPhysMatMasks, BodyCollisionData, RelativeTM, &PNewShapes);
+		TheirBody->GetBodySetup()->AddShapesToRigidActor_AssumesLocked(this, Scale3D, SimplePhysMat, ComplexPhysMats, ComplexPhysMatMasks, BodyCollisionData, RelativeTM, &PNewShapes);
 
 		FPhysicsInterface::SetSendsSleepNotifies_AssumesLocked(Actor, TheirBody->bGenerateWakeEvents);
 
@@ -2072,7 +2104,7 @@ bool FBodyInstance::UpdateBodyScale(const FVector& InScale3D, bool bForceUpdate)
 	{
 		Scale3D = UpdatedScale3D;
 
-		FPhysScene_Chaos& Scene = GetPhysicsScene()->GetScene();
+		FPhysScene_Chaos& Scene = *GetPhysicsScene();
 		Scene.UpdateActorInAccelerationStructure(ActorHandle);
 
 		// update mass if required
@@ -2381,12 +2413,6 @@ void FBodyInstance::ApplyWeldOnChildren()
 	}
 	
 }
-
-bool FBodyInstance::ShouldInstanceSimulatingPhysics() const
-{
-	return bSimulatePhysics && BodySetup.IsValid() && BodySetup->GetCollisionTraceFlag() != ECollisionTraceFlag::CTF_UseComplexAsSimple;
-}
-
 
 void FBodyInstance::SetInstanceSimulatePhysics(bool bSimulate, bool bMaintainPhysicsBlending)
 {
@@ -2735,33 +2761,12 @@ void FBodyInstance::CopyRuntimeBodyInstancePropertiesFrom(const FBodyInstance* F
 
 const FPhysScene* FBodyInstance::GetPhysicsScene() const
 {
-	return FPhysicsInterface::GetCurrentScene(ActorHandle);
+	return static_cast<const FPhysScene*>(FPhysicsInterface::GetCurrentScene(ActorHandle));
 }
 
 FPhysScene* FBodyInstance::GetPhysicsScene()
 {
-	return FPhysicsInterface::GetCurrentScene(ActorHandle);
-}
-
-void FBodyInstance::InitAllBodies(FPhysScene* PhysScene)
-{
-	for (FInitBodiesHelperWithData<true>& BodyToInit : InitBodiesDeferredListStatic)
-	{
-		// allow this to reset the PhysScene on World cleanup
-		if (PhysScene == nullptr || !ensure(BodyToInit.PhysScene == PhysScene))
-		{
-			BodyToInit.PhysScene = PhysScene;
-		}
-		BodyToInit.InitBodies();
-	}
-	for (FInitBodiesHelperWithData<false>& BodyToInit : InitBodiesDeferredListDynamic)
-	{
-		if (PhysScene == nullptr || !ensure(PhysScene == nullptr || BodyToInit.PhysScene == PhysScene))
-		{
-			BodyToInit.PhysScene = PhysScene;
-		}
-		BodyToInit.InitBodies();
-	}
+	return static_cast<FPhysScene*>(FPhysicsInterface::GetCurrentScene(ActorHandle));
 }
 
 FPhysicsActorHandle& FBodyInstance::GetPhysicsActorHandle()
@@ -2782,7 +2787,7 @@ const FWalkableSlopeOverride& FBodyInstance::GetWalkableSlopeOverride() const
 	}
 	else
 	{
-		return BodySetup->WalkableSlopeOverride;
+		return GetBodySetup()->WalkableSlopeOverride;
 	}
 }
 
@@ -2817,7 +2822,7 @@ void FBodyInstance::SetPhysMaterialOverride( UPhysicalMaterial* NewPhysMaterial 
 
 UPhysicalMaterial* FBodyInstance::GetSimplePhysicalMaterial() const
 {
-	return GetSimplePhysicalMaterial(this, OwnerComponent, BodySetup);
+	return GetSimplePhysicalMaterial(this, OwnerComponent, GetBodySetup());
 }
 
 UPhysicalMaterial* FBodyInstance::GetSimplePhysicalMaterial(const FBodyInstance* BodyInstance, TWeakObjectPtr<UPrimitiveComponent> OwnerComp, TWeakObjectPtr<UBodySetup> BodySetupPtr)
@@ -4030,7 +4035,7 @@ void FBodyInstance::InitDynamicProperties_AssumesLocked()
 	}
 }
 
-void FBodyInstance::BuildBodyFilterData(FBodyCollisionFilterData& OutFilterData) const
+void FBodyInstance::BuildBodyFilterData(FBodyCollisionFilterData& OutFilterData, const int32 ShapeIndex) const
 {
 	// this can happen in landscape height field collision component
 	if(!BodySetup.IsValid())
@@ -4043,11 +4048,16 @@ void FBodyInstance::BuildBodyFilterData(FBodyCollisionFilterData& OutFilterData)
 	AActor* Owner = OwnerComponentInst ? OwnerComponentInst->GetOwner() : NULL;
 	const bool bPhysicsStatic = !OwnerComponentInst || OwnerComponentInst->IsWorldGeometry();
 
-	// Grab collision setting from body instance
-	ECollisionEnabled::Type UseCollisionEnabled = GetCollisionEnabled(); // this checks actor/component override
-	bool bUseNotifyRBCollision = bNotifyRigidBodyCollision;
+	// Grab collision setting from body instance.
+	// If we're looking at a specific shape, intersect it with the shape's specific collision setting.
+	ECollisionEnabled::Type UseCollisionEnabled // this checks actor/component override. 
+		= ShapeIndex == INDEX_NONE
+		? GetCollisionEnabled()
+		: CollisionEnabledIntersection(GetCollisionEnabled(), GetShapeCollisionEnabled(ShapeIndex));
 	FCollisionResponseContainer UseResponse = CollisionResponses.GetResponseContainer();
+	bool bUseNotifyRBCollision = bNotifyRigidBodyCollision;
 	ECollisionChannel UseChannel = ObjectType;
+
 
 	bool bUseContactModification = bContactModification;
 
@@ -4082,6 +4092,14 @@ void FBodyInstance::BuildBodyFilterData(FBodyCollisionFilterData& OutFilterData)
 		{
 			UseChannel = SkelMeshComp->GetCollisionObjectType();
 			UseResponse = FCollisionResponseContainer::CreateMinContainer(UseResponse, SkelMeshComp->BodyInstance.CollisionResponses.GetResponseContainer());
+		}
+
+		if (ShapeIndex != INDEX_NONE)
+		{
+			// If we're looking at a specific shape, take the intersection of its collision responses
+			// with the base primitive component's collision responses.
+			FCollisionResponseContainer ShapeResponse = GetShapeResponseToChannels(ShapeIndex, UseResponse);
+			UseResponse = FCollisionResponseContainer::CreateMinContainer(UseResponse, ShapeResponse);
 		}
 
 		bUseNotifyRBCollision = bUseNotifyRBCollision && SkelMeshComp->BodyInstance.bNotifyRigidBodyCollision;

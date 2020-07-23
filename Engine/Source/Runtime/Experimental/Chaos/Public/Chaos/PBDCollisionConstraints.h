@@ -31,6 +31,12 @@ using FRigidBodyContactConstraintsPostComputeCallback = TFunction<void()>;
 using FRigidBodyContactConstraintsPostApplyCallback = TFunction<void(const FReal Dt, const TArray<FPBDCollisionConstraintHandle*>&)>;
 using FRigidBodyContactConstraintsPostApplyPushOutCallback = TFunction<void(const FReal Dt, const TArray<FPBDCollisionConstraintHandle*>&, bool)>;
 
+namespace Collisions
+{
+	struct FContactParticleParameters;
+	struct FContactIterationParameters;
+}
+
 /**
  * A container and solver for collision constraints.
  */
@@ -53,7 +59,11 @@ public:
 		TArrayCollectionArray<bool>& Collided, 
 		const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& PhysicsMaterials, 
 		const TArrayCollectionArray<TUniquePtr<FChaosPhysicsMaterial>>& PerParticlePhysicsMaterials, 
-		const int32 ApplyPairIterations = 1, const int32 ApplyPushOutPairIterations = 1, const FReal CullDistance = (FReal)0, const FReal ShapePadding = (FReal)0);
+		const int32 ApplyPairIterations = 1, 
+		const int32 ApplyPushOutPairIterations = 1, 
+		const FReal CullDistance = (FReal)0, 
+		const FReal ShapePadding = (FReal)0,
+		const FReal RestitutionThreshold = 2000.0f);
 
 	virtual ~FPBDCollisionConstraints() {}
 
@@ -195,12 +205,6 @@ public:
 #endif
 	}
 
-	// @todo(chaos): remove
-	//void SetThickness(FReal InThickness)
-	//{
-	//	MCullDistance = InThickness;
-	//}
-
 	void SetCullDistance(FReal InCullDistance)
 	{
 		MCullDistance = InCullDistance;
@@ -219,6 +223,16 @@ public:
 	FReal GetShapePadding() const
 	{
 		return MShapePadding;
+	}
+
+	void SetRestitutionThreshold(FReal InRestitutionThreshold)
+	{
+		RestitutionThreshold = InRestitutionThreshold;
+	}
+
+	FReal GetRestitutionThreshold() const
+	{
+		return RestitutionThreshold;
 	}
 
 	void SetPairIterations(int32 InPairIterations)
@@ -241,6 +255,16 @@ public:
 		return bEnableCollisions;
 	}
 
+	void SetRestitutionEnabled(bool bInEnableRestitution)
+	{
+		bEnableRestitution = bInEnableRestitution;
+	}
+
+	bool GetRestitutionEnabled() const
+	{
+		return bEnableRestitution;
+	}
+
 	int32 NumConstraints() const
 	{
 		return Constraints.SinglePointConstraints.Num() + Constraints.SinglePointSweptConstraints.Num() + Constraints.MultiPointConstraints.Num();
@@ -260,11 +284,17 @@ public:
 
 	FCollisionConstraintsArray& GetConstraintsArray() { return Constraints; }
 
+	//Sort constraints based on particle indices so that we have a deterministic solve order
+	void SortConstraints();
+
 protected:
 	using Base::GetConstraintIndex;
 	using Base::SetConstraintIndex;
 
 	void UpdateConstraintMaterialProperties(FCollisionConstraintBase& Contact);
+
+	Collisions::FContactParticleParameters GetContactParticleParameters(const FReal Dt);
+	Collisions::FContactIterationParameters GetContactIterationParameters(const FReal Dt, const int32 Iteration, const int32 NumIterations, const int32 NumPairIterations, bool& bNeedsAnotherIteration);
 
 private:
 
@@ -288,8 +318,10 @@ private:
 	int32 MApplyPushOutPairIterations;
 	FReal MCullDistance;
 	FReal MShapePadding;
+	FReal RestitutionThreshold;
 	bool bUseCCD;
 	bool bEnableCollisions;
+	bool bEnableRestitution;
 	bool bHandlesEnabled;
 	ECollisionApplyType ApplyType;
 

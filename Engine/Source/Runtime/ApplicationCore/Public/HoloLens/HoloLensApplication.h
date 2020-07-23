@@ -52,6 +52,14 @@ public:
 	virtual void AddExternalInputDevice(TSharedPtr< class IInputDevice > InputDevice);
 	// @MIXEDREALITY_CHANGE : END
 	
+#if PLATFORM_HOLOLENS
+public:
+	static void SetHolographicSpace(Windows::Graphics::Holographic::HolographicSpace^ holoSpace) { HoloSpace = holoSpace; }
+	static Windows::Graphics::Holographic::HolographicSpace^ GetHolographicSpace() { return HoloSpace; }
+private:
+	static Windows::Graphics::Holographic::HolographicSpace^ HoloSpace;
+#endif
+
 private:
 
 	FHoloLensApplication();

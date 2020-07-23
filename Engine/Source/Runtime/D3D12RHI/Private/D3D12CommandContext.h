@@ -75,7 +75,7 @@ public:
 		FCEA_Num
 	};
 
-	FD3D12CommandContext(class FD3D12Device* InParent, FD3D12SubAllocatedOnlineHeap::SubAllocationDesc& SubHeapDesc, bool InIsDefaultContext, bool InIsAsyncComputeContext = false);
+	FD3D12CommandContext(class FD3D12Device* InParent, bool InIsDefaultContext, bool InIsAsyncComputeContext);
 	virtual ~FD3D12CommandContext();
 
 	FD3D12CommandListManager& GetCommandListManager();
@@ -151,8 +151,11 @@ public:
 	FRenderQueryRHIRef OuterOcclusionQuery;
 	bool bOuterOcclusionQuerySubmitted;
 
-	/** When a new shader is set, we discard all old constants set for the previous shader. */
-	bool bDiscardSharedConstants;
+	/** When a new graphics PSO is set, we discard all old constants set for the previous shader. */
+	bool bDiscardSharedGraphicsConstants;
+
+	/** When a new compute PSO is set, we discard all old constants set for the previous shader. */
+	bool bDiscardSharedComputeConstants;
 
 	/** Set to true when the current shading setup uses tessellation */
 	bool bUsingTessellation;

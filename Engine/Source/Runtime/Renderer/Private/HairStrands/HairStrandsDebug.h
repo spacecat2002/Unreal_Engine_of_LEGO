@@ -78,6 +78,6 @@ struct FHairStrandsDebugData
 void RenderHairStrandsDebugInfo(
 	FRDGBuilder& GraphBuilder,
 	TArrayView<FViewInfo> Views,
-	const struct FHairStrandsDatas* HairDatas,
+	const struct FHairStrandsRenderingData* HairDatas,
 	const struct FHairStrandClusterData& HairClusterData,
 	FRDGTextureRef SceneColorTexture);

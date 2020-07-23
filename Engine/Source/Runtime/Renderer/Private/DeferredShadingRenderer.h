@@ -30,7 +30,7 @@ struct FSceneWithoutWaterTextures;
 struct FHeightFogRenderingParameters;
 struct FRayTracingReflectionOptions;
 struct FHairStrandsTransmittanceMaskData;
-struct FHairStrandsDatas;
+struct FHairStrandsRenderingData;
 
 /**
  * Scene renderer that implements a deferred shading pipeline and associated features.
@@ -244,9 +244,9 @@ private:
 		FRDGTextureMSAA SceneColorTexture,
 		FRDGTextureRef DynamicBentNormalAOTexture,
 		FRDGTextureRef VelocityTexture,
-		struct FHairStrandsDatas* HairDatas);
+		struct FHairStrandsRenderingData* HairDatas);
 
-	void RenderDeferredReflectionsAndSkyLightingHair(FRDGBuilder& GraphBuilder, struct FHairStrandsDatas* HairDatas);
+	void RenderDeferredReflectionsAndSkyLightingHair(FRDGBuilder& GraphBuilder, struct FHairStrandsRenderingData* HairDatas);
 
 	/** Computes DFAO, modulates it to scene color (which is assumed to contain diffuse indirect lighting), and stores the output bent normal for use occluding specular. */
 	void RenderDFAOAsIndirectShadowing(
@@ -328,7 +328,7 @@ private:
 		FRDGTextureRef& SceneColorTexture,
 		FRDGTextureRef SceneDepthTexture,
 		FSortedLightSetSceneInfo& SortedLightSet,
-		const FHairStrandsDatas* HairDatas);
+		const FHairStrandsRenderingData* HairDatas);
 
 	/** Renders an array of lights for the stationary light overlap viewmode. */
 	void RenderLightArrayForOverlapViewmode(
@@ -445,7 +445,7 @@ private:
 		FRDGTextureRef ScreenShadowMaskTexture,
 		FRDGTextureRef ScreenShadowMaskSubPixelTexture,
 		FRDGTextureRef SceneDepthTexture,
-		const FHairStrandsDatas* HairDatas,
+		const FHairStrandsRenderingData* HairDatas,
 		bool& bInjectedTranslucentVolume);
 
 	/** Render shadow projections when forward rendering. */
@@ -453,7 +453,7 @@ private:
 		FRDGBuilder& GraphBuilder,
 		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask,
 		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
-		const FHairStrandsDatas* InHairDatas);
+		const FHairStrandsRenderingData* InHairDatas);
 
 	void RenderForwardShadowProjections(
 		FRDGBuilder& GraphBuilder,
@@ -462,7 +462,7 @@ private:
 		FRDGTextureRef SceneDepthTexture,
 		FRDGTextureRef& ForwardScreenSpaceShadowMask,
 		FRDGTextureRef& ForwardScreenSpaceShadowMaskSubPixel,
-		const FHairStrandsDatas* InHairDatas);
+		const FHairStrandsRenderingData* InHairDatas);
 
 	/** Used by RenderLights to render a light function to the attenuation buffer. */
 	bool RenderLightFunction(
@@ -518,7 +518,7 @@ private:
 		FRDGBuilder& GraphBuilder,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FSortedLightSetSceneInfo& SortedLightSet,
-		const FHairStrandsDatas* HairDatas,
+		const FHairStrandsRenderingData* HairDatas,
 		FRDGTextureRef InScreenShadowMaskSubPixelTexture);
 
 	/** Specialized version of RenderLight for hair (run lighting evaluation on at sub-pixel rate, without depth bound) */
@@ -727,7 +727,7 @@ private:
 
 	void GenerateSkyLightVisibilityRays(FRDGBuilder& GraphBuilder, FRDGBufferRef& SkyLightVisibilityRays, FIntVector& Dimensions);
 	void VisualizeSkyLightMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRWBuffer& SkyLightMipTreePosX, FRWBuffer& SkyLightMipTreePosY, FRWBuffer& SkyLightMipTreePosZ, FRWBuffer& SkyLightMipTreeNegX, FRWBuffer& SkyLightMipTreeNegY, FRWBuffer& SkyLightMipTreeNegZ, const FIntVector& SkyLightMipDimensions);
-	void RenderRayTracingSkyLight(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& SkyLightRT, TRefCountPtr<IPooledRenderTarget>& HitDistanceRT, const struct FHairStrandsDatas* HairDatas);
+	void RenderRayTracingSkyLight(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& SkyLightRT, TRefCountPtr<IPooledRenderTarget>& HitDistanceRT, const struct FHairStrandsRenderingData* HairDatas);
 
 	void RenderRayTracingPrimaryRaysView(
 		FRDGBuilder& GraphBuilder,

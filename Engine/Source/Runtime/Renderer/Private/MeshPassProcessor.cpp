@@ -40,23 +40,6 @@ static TAutoConsoleVariable<int32> CVarSafeStateLookup(
 	TEXT("Forces new-style safe state lookup for easy runtime perf comparison\n"),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
 
-enum { MAX_SRVs_PER_SHADER_STAGE = 128 };
-enum { MAX_UNIFORM_BUFFERS_PER_SHADER_STAGE = 14 };
-enum { MAX_SAMPLERS_PER_SHADER_STAGE = 32 };
-
-class FShaderBindingState
-{
-public:
-	int32 MaxSRVUsed = -1;
-	FRHIShaderResourceView* SRVs[MAX_SRVs_PER_SHADER_STAGE] = {};
-	int32 MaxUniformBufferUsed = -1;
-	FRHIUniformBuffer* UniformBuffers[MAX_UNIFORM_BUFFERS_PER_SHADER_STAGE] = {};
-	int32 MaxTextureUsed = -1;
-	FRHITexture* Textures[MAX_SRVs_PER_SHADER_STAGE] = {};
-	int32 MaxSamplerUsed = -1;
-	FRHISamplerState* Samplers[MAX_SAMPLERS_PER_SHADER_STAGE] = {};
-};
-
 class FReadOnlyMeshDrawSingleShaderBindings : public FMeshDrawShaderBindingsLayout
 {
 public:
@@ -931,13 +914,20 @@ void FMeshDrawShaderBindings::SetOnCommandList(FRHICommandList& RHICmdList, FBou
 	}
 }
 
-void FMeshDrawShaderBindings::SetOnCommandList(FRHIComputeCommandList& RHICmdList, FRHIComputeShader* Shader) const
+void FMeshDrawShaderBindings::SetOnCommandList(FRHIComputeCommandList& RHICmdList, FRHIComputeShader* Shader, FShaderBindingState* StateCacheShaderBindings) const
 {
 	check(ShaderLayouts.Num() == 1);
 	FReadOnlyMeshDrawSingleShaderBindings SingleShaderBindings(ShaderLayouts[0], GetData());
 	check(ShaderFrequencyBits & (1 << SF_Compute));
 
-	SetShaderBindings(RHICmdList, Shader, SingleShaderBindings);
+	if (StateCacheShaderBindings != nullptr)
+	{
+		SetShaderBindings(RHICmdList, Shader, SingleShaderBindings, *StateCacheShaderBindings);
+	}
+	else
+	{
+		SetShaderBindings(RHICmdList, Shader, SingleShaderBindings);
+	}
 }
 
 bool FMeshDrawShaderBindings::MatchesForDynamicInstancing(const FMeshDrawShaderBindings& Rhs) const
@@ -1482,7 +1472,7 @@ void FCachedPassMeshDrawListContext::FinalizeCommand(
 		FScopeLock Lock(&CachedMeshDrawCommandLock);
 		// Only one FMeshDrawCommand supported per FStaticMesh in a pass
 		// Allocate at lowest free index so that 'r.DoLazyStaticMeshUpdate' can shrink the TSparseArray more effectively
-		CommandInfo.CommandIndex = CachedDrawLists.MeshDrawCommands.AddAtLowestFreeIndex(MeshDrawCommand, CachedDrawLists.LowestFreeIndexSearchStart);
+		CommandInfo.CommandIndex = CachedDrawLists.MeshDrawCommands.EmplaceAtLowestFreeIndex(CachedDrawLists.LowestFreeIndexSearchStart, MeshDrawCommand);
 	}
 
 	CommandInfo.SortKey = SortKey;

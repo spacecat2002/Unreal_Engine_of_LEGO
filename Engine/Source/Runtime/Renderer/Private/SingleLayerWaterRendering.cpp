@@ -17,8 +17,8 @@
 #include "SceneTextureParameters.h"
 
 DECLARE_GPU_STAT_NAMED(RayTracingWaterReflections, TEXT("Ray Tracing Water Reflections"));
+
 DECLARE_GPU_STAT(SingleLayerWater);
-DECLARE_GPU_DRAWCALL_STAT(WaterRendering);
 DECLARE_CYCLE_STAT(TEXT("WaterSingleLayer"), STAT_CLP_WaterSingleLayerPass, STATGROUP_ParallelCommandListMarkers);
 
 static TAutoConsoleVariable<int32> CVarWaterSingleLayer(
@@ -684,8 +684,8 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWater(
 	FRDGTextureMSAA SceneDepthTexture,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthOnlySceneTextures)
 {
-	RDG_EVENT_SCOPE(GraphBuilder, "WaterRendering");
-	RDG_GPU_STAT_SCOPE(GraphBuilder, WaterRendering);
+	RDG_EVENT_SCOPE(GraphBuilder, "SingleLayerWater");
+	RDG_GPU_STAT_SCOPE(GraphBuilder, SingleLayerWater);
 
 	// Copy the texture to be available for the water surface to refract
 	const FSceneWithoutWaterTextures SceneWithoutWaterTextures = AddCopySceneWithoutWaterPass(GraphBuilder, Views, SceneColorTexture.Resolve, SceneDepthTexture.Resolve);
@@ -717,7 +717,7 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 	FRDGTextureMSAA SceneDepthTexture,
 	const FSceneWithoutWaterTextures& SceneWithoutWaterTextures)
 {
-	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, WaterPassRenderSingleLayer);
+	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, Water);
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderSingleLayerWaterPass, FColor::Emerald);
 	SCOPE_CYCLE_COUNTER(STAT_WaterPassDrawTime);
 	RDG_EVENT_SCOPE(GraphBuilder, "SingleLayerWater");

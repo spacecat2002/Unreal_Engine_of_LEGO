@@ -758,7 +758,7 @@ void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
 	FRDGBuilder& GraphBuilder,
 	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskRHI,
 	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixelRHI,
-	const FHairStrandsDatas* InHairDatas)
+	const FHairStrandsRenderingData* InHairDatas)
 {
 	const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
@@ -792,7 +792,7 @@ void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
 	FRDGTextureRef SceneDepthTexture,
 	FRDGTextureRef& OutForwardScreenSpaceShadowMask,
 	FRDGTextureRef& OutForwardScreenSpaceShadowMaskSubPixel,
-	const FHairStrandsDatas* InHairDatas)
+	const FHairStrandsRenderingData* InHairDatas)
 {
 	const bool bIsHairEnable = InHairDatas != nullptr;
 	bool bScreenShadowMaskNeeded = false;

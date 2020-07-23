@@ -274,6 +274,10 @@ struct FMeshSectionInfo
 	UPROPERTY()
 	bool bCastShadow;
 
+	/** If true, this section will be visible in ray tracing Geometry. */
+	UPROPERTY()
+	bool bVisibleInRayTracing;
+
 	/** If true, this section will always considered opaque in ray tracing Geometry. */
 	UPROPERTY()
 	bool bForceOpaque;
@@ -283,6 +287,7 @@ struct FMeshSectionInfo
 		: MaterialIndex(0)
 		, bEnableCollision(true)
 		, bCastShadow(true)
+		, bVisibleInRayTracing(true)
 		, bForceOpaque(false)
 	{
 	}
@@ -292,6 +297,7 @@ struct FMeshSectionInfo
 		: MaterialIndex(InMaterialIndex)
 		, bEnableCollision(true)
 		, bCastShadow(true)
+		, bVisibleInRayTracing(true)
 		, bForceOpaque(false)
 	{
 	}
@@ -985,7 +991,7 @@ public:
 	virtual int32 GetNumResidentMips() const final override;
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false) final override;
+	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets = nullptr) final override;
 	//~ End UStreamableRenderAsset Interface
 
 #if USE_BULKDATA_STREAMING_TOKEN

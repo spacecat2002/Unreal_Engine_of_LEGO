@@ -6295,10 +6295,7 @@ int32 FHLSLMaterialTranslator::TransformBase(EMaterialCommonBasis SourceCoordBas
 			else if (DestCoordBasis == MCB_MeshParticle)
 			{
 				CodeStr = TEXT("mul(<A>, <MATRIX>(Parameters.Particle.WorldToParticle))");
-				if (ShaderFrequency == SF_Pixel)
-				{
-					bUsesParticleWorldToLocal = true;
-				}
+				bUsesParticleWorldToLocal = true;
 			}
 
 			// else use MCB_TranslatedWorld as intermediary basis
@@ -6330,10 +6327,7 @@ int32 FHLSLMaterialTranslator::TransformBase(EMaterialCommonBasis SourceCoordBas
 			if (DestCoordBasis == MCB_World)
 			{
 				CodeStr = TEXT("mul(<A>, <MATRIX>(Parameters.Particle.ParticleToWorld))");
-				if (ShaderFrequency == SF_Pixel)
-				{
-					bUsesParticleLocalToWorld = true;
-				}
+				bUsesParticleLocalToWorld = true;
 			}
 			// use World as an intermediary base
 			break;

@@ -7,6 +7,7 @@ D3D12RHICommon.h: Common D3D12 RHI definitions for Windows.
 #pragma once
 
 DECLARE_STATS_GROUP(TEXT("D3D12RHI"), STATGROUP_D3D12RHI, STATCAT_Advanced);
+DECLARE_STATS_GROUP(TEXT("D3D12RHI: Memory"), STATGROUP_D3D12Memory, STATCAT_Advanced);
 DECLARE_STATS_GROUP(TEXT("D3D12RHI: Pipeline State (PSO)"), STATGROUP_D3D12PipelineState, STATCAT_Advanced);
 DECLARE_STATS_GROUP(TEXT("D3D12RHI: Descriptor Heap (GPU visible)"), STATGROUP_D3D12DescriptorHeap, STATCAT_Advanced);
 
@@ -160,6 +161,7 @@ public:
 		for (uint32 GPUIndex : GPUMask)
 		{
 			ReturnType* NewObject = pfnCreationCore(pfnGetCreationParameter(GPUIndex));
+			CA_ASSUME(NewObject != nullptr);
 			if (ObjectOut == nullptr)
 			{
 				// Don't AddRef the first object or we'll create a reference loop.

@@ -94,11 +94,11 @@ bool FStaticLightingSystemInterface::IsStaticLightingSystemRunning()
 	return false;
 }
 
-void FStaticLightingSystemInterface::RegisterImplementation(FName Name, IStaticLightingSystemImpl* Impl)
+void FStaticLightingSystemInterface::RegisterImplementation(FName Name, IStaticLightingSystemImpl* StaticLightingSystemImpl)
 {
 	check(IsInGameThread());
 	check(Implementations.Find(Name) == nullptr);
-	Implementations.Add(Name, Impl);
+	Implementations.Add(Name, StaticLightingSystemImpl);
 }
 
 void FStaticLightingSystemInterface::UnregisterImplementation(FName Name)

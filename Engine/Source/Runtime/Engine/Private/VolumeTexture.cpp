@@ -236,7 +236,7 @@ uint32 UVolumeTexture::CalcTextureMemorySize(int32 MipCount) const
 		const EPixelFormat Format = GetPixelFormat();
 		if (Format != PF_Unknown)
 		{
-			const ETextureCreateFlags Flags = (SRGB ? TexCreate_SRGB : TexCreate_None)  | TexCreate_OfflineProcessed | (bNoTiling ? TexCreate_NoTiling : TexCreate_None);
+			const ETextureCreateFlags Flags = (SRGB ? TexCreate_SRGB : TexCreate_None)  | (bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed) | (bNoTiling ? TexCreate_NoTiling : TexCreate_None);
 
 			uint32 SizeX = 0;
 			uint32 SizeY = 0;
@@ -368,7 +368,7 @@ public:
 		STAT(LODGroupStatName = TextureGroupStatFNames[Owner->LODGroup]);
 		TextureName = Owner->GetFName();
 
-		CreationFlags = (Owner->SRGB ? TexCreate_SRGB : TexCreate_None)  | TexCreate_OfflineProcessed | TexCreate_ShaderResource | (Owner->bNoTiling ? TexCreate_NoTiling : TexCreate_None);
+		CreationFlags = (Owner->SRGB ? TexCreate_SRGB : TexCreate_None)  | (Owner->bNotOfflineProcessed ? TexCreate_None : TexCreate_OfflineProcessed) | TexCreate_ShaderResource | (Owner->bNoTiling ? TexCreate_NoTiling : TexCreate_None);
 		SamplerFilter = (ESamplerFilter)UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetSamplerFilter(Owner);
 
 		bGreyScaleFormat = (PixelFormat == PF_G8) || (PixelFormat == PF_BC4);

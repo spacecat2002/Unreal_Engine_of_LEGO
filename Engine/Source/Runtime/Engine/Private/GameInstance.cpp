@@ -917,7 +917,7 @@ APlayerController* UGameInstance::GetFirstLocalPlayerController(const UWorld* Wo
 	return nullptr;
 }
 
-APlayerController* UGameInstance::GetPrimaryPlayerController() const
+APlayerController* UGameInstance::GetPrimaryPlayerController(bool bRequiresValidUniqueId) const
 {
 	UWorld* World = GetWorld();
 	check(World);
@@ -926,7 +926,7 @@ APlayerController* UGameInstance::GetPrimaryPlayerController() const
 	for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
 	{
 		APlayerController* NextPlayer = Iterator->Get();
-		if (NextPlayer && NextPlayer->PlayerState && NextPlayer->PlayerState->GetUniqueId().IsValid() && NextPlayer->IsPrimaryPlayer())
+		if (NextPlayer && NextPlayer->PlayerState && NextPlayer->IsPrimaryPlayer() && (!bRequiresValidUniqueId || NextPlayer->PlayerState->GetUniqueId().IsValid()))
 		{
 			PrimaryController = NextPlayer;
 			break;
@@ -1033,7 +1033,7 @@ const TArray<class ULocalPlayer*>& UGameInstance::GetLocalPlayers() const
 	return LocalPlayers;
 }
 
-void UGameInstance::StartRecordingReplay(const FString& Name, const FString& FriendlyName, const TArray<FString>& AdditionalOptions)
+void UGameInstance::StartRecordingReplay(const FString& Name, const FString& FriendlyName, const TArray<FString>& AdditionalOptions, TSharedPtr<IAnalyticsProvider> AnalyticsProvider)
 {
 	LLM_SCOPE(ELLMTag::Networking);
 
@@ -1088,6 +1088,7 @@ void UGameInstance::StartRecordingReplay(const FString& Name, const FString& Fri
 
 	check(CurrentWorld->DemoNetDriver != nullptr);
 
+	CurrentWorld->DemoNetDriver->SetAnalyticsProvider(AnalyticsProvider);
 	CurrentWorld->DemoNetDriver->SetWorld( CurrentWorld );
 
 	// Set the new demo driver as the current collection's driver

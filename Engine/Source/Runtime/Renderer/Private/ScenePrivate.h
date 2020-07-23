@@ -2364,6 +2364,8 @@ public:
 	/** Updates view uniform buffer and invalidates the internally cached view instance. */
 	void UpdateViewUniformBufferImmediate(const FViewUniformShaderParameters& Parameters);
 
+	void InvalidateCachedView();
+
 	const FViewInfo& GetInstancedView(const FViewInfo& View)
 	{
 		// When drawing the left eye in a stereo scene, copy the right eye view values into the instanced view uniform buffer.
@@ -2405,12 +2407,7 @@ struct FMeshComputeDispatchCommand
 	TShaderRef<class FRayTracingDynamicGeometryConverterCS> MaterialShader;
 
 	uint32 NumMaxVertices;
-	uint32 NumCPUVertices;
-	uint32 MinVertexIndex;
-	uint32 PrimitiveId;
 	FRWBuffer* TargetBuffer;
-
-	bool bApplyWorldPositionOffset;
 };
 #endif
 

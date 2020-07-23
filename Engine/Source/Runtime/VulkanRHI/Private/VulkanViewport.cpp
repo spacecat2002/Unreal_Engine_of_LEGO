@@ -396,6 +396,8 @@ FVulkanFramebuffer::FVulkanFramebuffer(FVulkanDevice& Device, const FRHISetRende
 		}
 	}
 
+	VkSurfaceTransformFlagBitsKHR QCOMRenderPassTransform = RTLayout.GetQCOMRenderPassTransform();
+
 	if (RTLayout.GetHasDepthStencil())
 	{
 		FVulkanTextureBase* Texture = FVulkanTextureBase::Cast(InRTInfo.DepthStencilRenderTarget.Texture);
@@ -412,6 +414,13 @@ FVulkanFramebuffer::FVulkanFramebuffer(FVulkanDevice& Device, const FRHISetRende
 			NumLayers = 6;
 			AttachmentTextureViews.Add(RTView);
 			AttachmentViewsToDelete.Add(RTView.View);
+		}
+		else if (QCOMRenderPassTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR &&
+			Texture->Surface.Width == RTExtents.width && Texture->Surface.Height == RTExtents.height)
+		{
+			FVulkanSwapChain* SwapChain = Device.GetImmediateContext().GetSwapChain();
+			PartialDepthTextureView = *SwapChain->GetOrCreateQCOMDepthView(Texture->Surface);
+			AttachmentTextureViews.Add(*SwapChain->GetOrCreateQCOMDepthStencilView(Texture->Surface));
 		}
 		else
 		{
@@ -448,10 +457,17 @@ FVulkanFramebuffer::FVulkanFramebuffer(FVulkanDevice& Device, const FRHISetRende
 	CreateInfo.width  = RTExtents.width;
 	CreateInfo.height = RTExtents.height;
 	CreateInfo.layers = NumLayers;
+
+	if (QCOMRenderPassTransform == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
+		QCOMRenderPassTransform == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR)
+	{
+		Swap(CreateInfo.width, CreateInfo.height);
+	}
+
 	VERIFYVULKANRESULT_EXPANDED(VulkanRHI::vkCreateFramebuffer(Device.GetInstanceHandle(), &CreateInfo, VULKAN_CPU_ALLOCATOR, &Framebuffer));
 
-	Extents.width = CreateInfo.width;
-	Extents.height = CreateInfo.height;
+	Extents.width = RTExtents.width;
+	Extents.height = RTExtents.height;
 
 	INC_DWORD_STAT(STAT_VulkanNumFrameBuffers);
 }
@@ -937,6 +953,16 @@ bool FVulkanViewport::Present(FVulkanCommandListContext* Context, FVulkanCmdBuff
 	++GVulkanRHI->TotalPresentCount;
 
 	return bResult;
+}
+
+VkSurfaceTransformFlagBitsKHR FVulkanViewport::GetSwapchainQCOMRenderPassTransform() const
+{
+	return SwapChain->QCOMRenderPassTransform;
+}
+
+VkFormat FVulkanViewport::GetSwapchainImageFormat() const
+{
+	return SwapChain->ImageFormat;
 }
 
 /*=============================================================================

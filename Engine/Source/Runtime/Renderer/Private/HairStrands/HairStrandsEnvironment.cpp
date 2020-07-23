@@ -434,7 +434,7 @@ void RenderHairStrandsSceneColorScattering(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureRef SceneColorTexture,
 	TArrayView<const FViewInfo> Views,
-	FHairStrandsDatas* HairDatas)
+	FHairStrandsRenderingData* HairDatas)
 {
 	if (Views.Num() == 0 || !HairDatas || GHairScatterSceneLighting <= 0)
 		return;
@@ -482,7 +482,7 @@ void RenderHairStrandsEnvironmentLighting(
 	FRDGBuilder& GraphBuilder,
 	const uint32 ViewIndex,
 	TArrayView<const FViewInfo> Views,
-	FHairStrandsDatas* HairDatas)
+	FHairStrandsRenderingData* HairDatas)
 {
 	if (!GetHairStrandsSkyLightingEnable() || !HairDatas)
 		return;
@@ -531,7 +531,7 @@ void RenderHairStrandsEnvironmentLighting(
 void RenderHairStrandsAmbientOcclusion(
 	FRDGBuilder& GraphBuilder,
 	TArrayView<const FViewInfo> Views,
-	const FHairStrandsDatas* HairDatas,
+	const FHairStrandsRenderingData* HairDatas,
 	const TRefCountPtr<IPooledRenderTarget>& InAOTexture)
 {
 	if (!GetHairStrandsSkyAOEnable() || Views.Num() == 0 || !InAOTexture || !HairDatas)

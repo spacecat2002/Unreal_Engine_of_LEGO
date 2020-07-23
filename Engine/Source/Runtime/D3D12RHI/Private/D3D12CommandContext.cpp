@@ -46,7 +46,7 @@ FD3D12CommandContextBase::FD3D12CommandContextBase(class FD3D12Adapter* InParent
 }
 
 
-FD3D12CommandContext::FD3D12CommandContext(FD3D12Device* InParent, FD3D12SubAllocatedOnlineHeap::SubAllocationDesc& SubHeapDesc, bool InIsDefaultContext, bool InIsAsyncComputeContext) :
+FD3D12CommandContext::FD3D12CommandContext(FD3D12Device* InParent, bool InIsDefaultContext, bool InIsAsyncComputeContext) :
 	FD3D12CommandContextBase(InParent->GetParentAdapter(), InParent->GetGPUMask(), InIsDefaultContext, InIsAsyncComputeContext),
 	FD3D12DeviceChild(InParent),
 	ConstantsAllocator(InParent, InParent->GetGPUMask()),
@@ -60,7 +60,8 @@ FD3D12CommandContext::FD3D12CommandContext(FD3D12Device* InParent, FD3D12SubAllo
 	NumSimultaneousRenderTargets(0),
 	CurrentDSVAccessType(FExclusiveDepthStencil::DepthWrite_StencilWrite),
 	bOuterOcclusionQuerySubmitted(false),
-	bDiscardSharedConstants(false),
+	bDiscardSharedGraphicsConstants(false),
+	bDiscardSharedComputeConstants(false),
 	bUsingTessellation(false),
 #if PLATFORM_SUPPORTS_VARIABLE_RATE_SHADING
 	VRSCombiners{ D3D12_SHADING_RATE_COMBINER_PASSTHROUGH, D3D12_SHADING_RATE_COMBINER_PASSTHROUGH } ,
@@ -87,7 +88,7 @@ FD3D12CommandContext::FD3D12CommandContext(FD3D12Device* InParent, FD3D12SubAllo
 		}
 	}
 	FMemory::Memzero(CurrentRenderTargets);
-	StateCache.Init(GetParentDevice(), this, nullptr, SubHeapDesc);
+	StateCache.Init(GetParentDevice(), this, nullptr);
 	GlobalUniformBuffers.AddZeroed(FUniformBufferStaticSlotRegistry::Get().GetSlotCount());
 }
 
@@ -175,7 +176,7 @@ void FD3D12CommandContext::RHIPushEvent(const TCHAR* Name, FColor Color)
 
 #if NV_AFTERMATH
 		// Only track aftermath for default context?
-		if (IsDefaultContext() && GDX12NVAfterMathEnabled && GDX12NVAfterMathMarkers)
+		if (IsDefaultContext() && GDX12NVAfterMathEnabled)
 			GFSDK_Aftermath_SetEventMarker(CommandListHandle.AftermathCommandContext(), &GPUEventStack[0], GPUEventStack.Num() * sizeof(uint32));
 #endif // NV_AFTERMATH		
 	}
@@ -279,7 +280,7 @@ void FD3D12CommandContext::OpenCommandList()
 
 	// Notify the descriptor cache about the new command list
 	// This will set the descriptor cache's current heaps on the new command list.
-	StateCache.GetDescriptorCache()->NotifyCurrentCommandList(CommandListHandle);
+	StateCache.GetDescriptorCache()->SetCurrentCommandList(CommandListHandle);
 
 	// Go through the state and find bits that differ from command list defaults.
 	// Mark state as dirty so next time ApplyState is called, it will set all state on this new command list
@@ -418,12 +419,13 @@ void FD3D12CommandContextBase::RHIBeginFrame()
 			Device->GetTimestampQueryHeap()->EndQueryBatchAndResolveQueryData(*ContextAtIndex);
 		}
 
-		FD3D12GlobalOnlineHeap& SamplerHeap = Device->GetGlobalSamplerHeap();
+		FD3D12GlobalOnlineSamplerHeap& SamplerHeap = Device->GetGlobalSamplerHeap();
 		if (SamplerHeap.DescriptorTablesDirty())
 		{
 			//Rearrange the set for better look-up performance
 			SamplerHeap.GetUniqueDescriptorTables().Compact();
 			SET_DWORD_STAT(STAT_NumReuseableSamplerOnlineDescriptorTables, SamplerHeap.GetUniqueDescriptorTables().Num());
+			SET_DWORD_STAT(STAT_NumReuseableSamplerOnlineDescriptors, SamplerHeap.GetNextSlotIndex());
 		}
 
 		const uint32 NumContexts = Device->GetNumContexts();
@@ -438,7 +440,7 @@ void FD3D12CommandContextBase::RHIBeginFrame()
 			Device->GetAsyncComputeContext(i).StateCache.GetDescriptorCache()->BeginFrame();
 		}
 
-		Device->GetGlobalSamplerHeap().ToggleDescriptorTablesDirtyFlag(false);
+		SamplerHeap.ToggleDescriptorTablesDirtyFlag(false);
 
 		Device->GetGPUProfiler().BeginFrame(ParentAdapter->GetOwningRHI());
 	}
@@ -448,7 +450,8 @@ void FD3D12CommandContext::ClearState()
 {
 	StateCache.ClearState();
 
-	bDiscardSharedConstants = false;
+	bDiscardSharedGraphicsConstants = false;
+	bDiscardSharedComputeConstants = false;
 
 	FMemory::Memzero(BoundUniformBuffers, sizeof(BoundUniformBuffers));
 	FMemory::Memzero(DirtyUniformBuffers, sizeof(DirtyUniformBuffers));
@@ -541,9 +544,14 @@ void FD3D12CommandContextBase::RHIEndFrame()
 		}
 
 		Device->GetTextureAllocator().CleanUpAllocations();
-		Device->GetDefaultBufferAllocator().CleanupFreeBlocks();
 
-		Device->GetDefaultFastAllocator().CleanupPages(10);
+		// Only delete free blocks when not used in the last 2 frames, to make sure we are not allocating and releasing
+		// the same blocks every frame.
+		uint64 BufferPoolDeletionFrameLag = 2;
+		Device->GetDefaultBufferAllocator().CleanupFreeBlocks(BufferPoolDeletionFrameLag);
+
+		uint64 FastAllocatorDeletionFrameLag = 10;
+		Device->GetDefaultFastAllocator().CleanupPages(FastAllocatorDeletionFrameLag);
 	}
 
 	for (uint32 GPUIndex : GPUMask)
@@ -616,18 +624,21 @@ void FD3D12CommandContextBase::UpdateMemoryStats()
 	SET_MEMORY_STAT(STAT_D3D12AvailableVideoMemory, AvailableSpace);
 	SET_MEMORY_STAT(STAT_D3D12TotalVideoMemory, Budget);
 
-#if D3D12RHI_SEGREGATED_TEXTURE_ALLOC && D3D12RHI_SEGLIST_ALLOC_TRACK_WASTAGE
 	uint64 MaxTexAllocWastage = 0;
 	for (uint32 GPUIndex : GPUMask)
 	{
 		FD3D12Device* Device = ParentAdapter->GetDevice(GPUIndex);
+
+#if D3D12RHI_SEGREGATED_TEXTURE_ALLOC && D3D12RHI_SEGLIST_ALLOC_TRACK_WASTAGE
 		uint64 TotalAllocated;
 		uint64 TotalUnused;
 		Device->GetTextureAllocator().GetMemoryStats(TotalAllocated, TotalUnused);
 		MaxTexAllocWastage = FMath::Max(MaxTexAllocWastage, TotalUnused);
-	}
-	SET_MEMORY_STAT(STAT_D3D12TextureAllocatorWastage, MaxTexAllocWastage);
+		SET_MEMORY_STAT(STAT_D3D12TextureAllocatorWastage, MaxTexAllocWastage);
 #endif
+
+		Device->GetDefaultBufferAllocator().UpdateMemoryStats();
+	}		
 #endif
 }
 

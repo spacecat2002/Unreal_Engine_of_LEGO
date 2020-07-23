@@ -503,7 +503,7 @@ FIntPoint FSceneRenderTargets::ComputeDesiredSize(const FSceneViewFamily& ViewFa
 	// we want to shrink the buffer but as we can have multiple scenecaptures per frame we have to delay that a frame to get all size requests
 	// Don't save buffer size in history while making high-res screenshot.
 	// We have to use the requested size when allocating an hmd depth target to ensure it matches the hmd allocated render target size.
-	bool bAllowDelayResize = !GIsHighResScreenshot && !bHMDAllocatedDepthTarget;
+	bool bAllowDelayResize = !GIsHighResScreenshot && !bIsVRScene;
 
 	// Don't consider the history buffer when the aspect ratio changes, the existing buffers won't make much sense at all.
 	// This prevents problems when orientation changes on mobile in particular.
@@ -2051,7 +2051,9 @@ void FSceneRenderTargets::AllocateAnisotropyTarget(FRHICommandListImmediate& RHI
 
 EPixelFormat FSceneRenderTargets::GetDesiredMobileSceneColorFormat() const
 {
-	EPixelFormat DefaultColorFormat = (!IsMobileHDR() || !GSupportsRenderTargetFormat_PF_FloatRGBA) ? PF_B8G8R8A8 : PF_FloatRGBA;
+	const EPixelFormat defaultLowpFormat = FPlatformMisc::IsStandaloneStereoOnlyDevice() ? PF_R8G8B8A8 : PF_B8G8R8A8;
+
+	EPixelFormat DefaultColorFormat = (!IsMobileHDR() || !GSupportsRenderTargetFormat_PF_FloatRGBA) ? defaultLowpFormat : PF_FloatRGBA;
 	check(GPixelFormats[DefaultColorFormat].Supported);
 
 	EPixelFormat MobileSceneColorBufferFormat = DefaultColorFormat;
@@ -2064,7 +2066,7 @@ EPixelFormat FSceneRenderTargets::GetDesiredMobileSceneColorFormat() const
 		case 2:
 			MobileSceneColorBufferFormat = PF_FloatR11G11B10; break;
 		case 3:
-			MobileSceneColorBufferFormat = PF_B8G8R8A8; break;
+			MobileSceneColorBufferFormat = defaultLowpFormat; break;
 		default:
 		break;
 	}

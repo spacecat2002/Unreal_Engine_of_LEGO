@@ -266,7 +266,7 @@ void SetupReflectionUniformParameters(const FViewInfo& View, FReflectionUniformP
 			// Cannot blend with this capture mode as of today.
 			SkyLightTextureResource = Scene->ConvolvedSkyRenderTarget->GetRenderTargetItem().ShaderResourceTexture;
 		}
-		else if (SkyLight.ProcessedTexture)
+		else if (Scene->SkyLight->ProcessedTexture)
 		{
 			SkyLightTextureResource = SkyLight.ProcessedTexture->TextureRHI;
 			SkyLightCubemapSampler = SkyLight.ProcessedTexture->SamplerStateRHI;
@@ -599,7 +599,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(
 	FRDGTextureMSAA SceneColorTexture,
 	FRDGTextureRef DynamicBentNormalAOTexture,
 	FRDGTextureRef VelocityTexture,
-	FHairStrandsDatas* HairDatas)
+	FHairStrandsRenderingData* HairDatas)
 {
 	if (ViewFamily.EngineShowFlags.VisualizeLightCulling 
 		|| ViewFamily.EngineShowFlags.RayTracingDebug
@@ -951,7 +951,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(
 
 void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLightingHair(
 	FRDGBuilder& GraphBuilder,
-	FHairStrandsDatas* HairDatas)
+	FHairStrandsRenderingData* HairDatas)
 {
 	if (ViewFamily.EngineShowFlags.VisualizeLightCulling || !ViewFamily.EngineShowFlags.Lighting)
 	{

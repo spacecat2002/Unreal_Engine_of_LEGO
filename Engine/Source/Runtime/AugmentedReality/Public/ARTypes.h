@@ -171,6 +171,10 @@ enum class EARObjectClassification : uint8
 	SceneObject,
 	/** A user's hand */
 	HandMesh,
+	/** A door */
+	Door,
+	/** A window */
+	Window,
 	// Add other types here...
 };
 
@@ -445,6 +449,11 @@ public:
 		, Height(InHeight)
 	{
 		
+	}
+
+	bool operator==(const FARVideoFormat& Other) const
+	{
+		return FPS == Other.FPS && Width == Other.Width && Height == Other.Height;
 	}
 	
 	/** The desired or supported number of frames per second for this video format */

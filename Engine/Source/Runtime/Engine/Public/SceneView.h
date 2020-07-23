@@ -1035,6 +1035,9 @@ public:
 	/** Whether this view is being used to render a planar reflection. */
 	bool bIsPlanarReflection;
 
+	/** Whether this view is being used to render a runtime virtual texture. */
+	bool bIsVirtualTexture;
+
 	/** Whether this view is being used to render a high quality offline render */
 	bool bIsOfflineRender;
 
