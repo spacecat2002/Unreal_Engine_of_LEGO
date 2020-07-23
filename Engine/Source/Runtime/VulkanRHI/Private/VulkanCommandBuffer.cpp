@@ -184,6 +184,7 @@ void FVulkanCmdBuffer::BeginRenderPass(const FVulkanRenderTargetLayout& Layout, 
 	Info.clearValueCount = Layout.GetNumUsedClearValues();
 	Info.pClearValues = AttachmentClearValues;
 
+#if VULKAN_SUPPORTS_QCOM_RENDERPASS_TRANSFORM
 	VkRenderPassTransformBeginInfoQCOM RPTransformBeginInfoQCOM;
 	VkSurfaceTransformFlagBitsKHR QCOMTransform = Layout.GetQCOMRenderPassTransform();
 
@@ -194,7 +195,7 @@ void FVulkanCmdBuffer::BeginRenderPass(const FVulkanRenderTargetLayout& Layout, 
 		RPTransformBeginInfoQCOM.transform = QCOMTransform;
 		Info.pNext = &RPTransformBeginInfoQCOM;
 	}
-
+#endif
 	VulkanRHI::vkCmdBeginRenderPass(CommandBufferHandle, &Info, VK_SUBPASS_CONTENTS_INLINE);
 
 	State = EState::IsInsideRenderPass;
