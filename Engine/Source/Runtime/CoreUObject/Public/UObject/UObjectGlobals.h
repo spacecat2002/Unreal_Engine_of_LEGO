@@ -1079,7 +1079,7 @@ FUNCTION_NON_NULL_RETURN_END
 {
 	if (Name == NAME_None)
 	{
-		FObjectInitializer::AssertIfInConstructor(Outer, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+		FObjectInitializer::AssertIfInConstructor(Outer, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSubobject<> instead."));
 	}
 
 #if DO_CHECK
@@ -1096,7 +1096,7 @@ FUNCTION_NON_NULL_RETURN_START
 FUNCTION_NON_NULL_RETURN_END
 {
 	// Name is always None for this case
-	FObjectInitializer::AssertIfInConstructor(Outer, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+	FObjectInitializer::AssertIfInConstructor(Outer, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSubobject<> instead."));
 
 	return static_cast<T*>(StaticConstructObject_Internal(T::StaticClass(), Outer, NAME_None, RF_NoFlags, EInternalObjectFlags::None, nullptr, false, nullptr));
 }
@@ -1108,7 +1108,7 @@ FUNCTION_NON_NULL_RETURN_END
 {
 	if (Name == NAME_None)
 	{
-		FObjectInitializer::AssertIfInConstructor(Outer, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+		FObjectInitializer::AssertIfInConstructor(Outer, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSubobject<> instead."));
 	}
 
 	return static_cast<T*>(StaticConstructObject_Internal(T::StaticClass(), Outer, Name, Flags, EInternalObjectFlags::None, Template, bCopyTransientsFromClassDefaults, InInstanceGraph));
