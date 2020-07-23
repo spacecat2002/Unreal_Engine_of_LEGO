@@ -719,7 +719,7 @@ void ULandscapeComponent::UpdatedSharedPropertiesFromActor()
 	bCastShadowAsTwoSided = LandscapeProxy->bCastShadowAsTwoSided;
 	bAffectDistanceFieldLighting = LandscapeProxy->bAffectDistanceFieldLighting;
 	bRenderCustomDepth = LandscapeProxy->bRenderCustomDepth;
-	LDMaxDrawDistance = LandscapeProxy->LDMaxDrawDistance;
+	SetCullDistance(LandscapeProxy->LDMaxDrawDistance);
 	CustomDepthStencilValue = LandscapeProxy->CustomDepthStencilValue;
 	LightingChannels = LandscapeProxy->LightingChannels;
 }
