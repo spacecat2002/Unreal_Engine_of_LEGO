@@ -7,10 +7,6 @@
 #include "MetalCommandBuffer.h"
 #include "HAL/FileManager.h"
 
-// The Metal standard library extensions we need for UE4.
-extern unsigned int ue4_stdlib_metal_len;
-extern unsigned char ue4_stdlib_metal[];
-
 DEFINE_STAT(STAT_MetalUniformMemAlloc);
 DEFINE_STAT(STAT_MetalUniformMemFreed);
 DEFINE_STAT(STAT_MetalVertexMemAlloc);
