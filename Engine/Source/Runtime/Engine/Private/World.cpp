@@ -4328,7 +4328,7 @@ void UWorld::CleanupWorldInternal(bool bSessionEnded, bool bCleanupResources, UW
 	{
 		return;
 	}
-	bool bWorldChanged = NewWorld != this && NewWorld != nullptr;
+	bool bWorldChanged = NewWorld != this;
 	CleanupWorldTag = CleanupWorldGlobalTag;
 
 	UE_LOG(LogWorld, Log, TEXT("UWorld::CleanupWorld for %s, bSessionEnded=%s, bCleanupResources=%s"), *GetName(), bSessionEnded ? TEXT("true") : TEXT("false"), bCleanupResources ? TEXT("true") : TEXT("false"));
@@ -4486,7 +4486,9 @@ void UWorld::CleanupWorldInternal(bool bSessionEnded, bool bCleanupResources, UW
 
 	if(FXSystem && bWorldChanged)
 	{
-		FFXSystemInterface::QueueDestroyGPUSimulation(FXSystem);
+		FFXSystemInterface::Destroy( FXSystem );
+		Scene->SetFXSystem(NULL);
+		FXSystem = NULL;
 	}
 
 }

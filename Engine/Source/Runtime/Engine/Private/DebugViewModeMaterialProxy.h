@@ -152,6 +152,7 @@ public:
 	virtual bool IsCrackFreeDisplacementEnabled() const override;
 	virtual bool IsAdaptiveTessellationEnabled() const override;
 	virtual float GetMaxDisplacement() const override;
+	virtual void GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const override;
 
 	// Cached material usage.
 	virtual bool IsUsedWithSkeletalMesh() const override { return bIsUsedWithSkeletalMesh; }

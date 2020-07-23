@@ -382,6 +382,8 @@ void TGPUSkinVertexFactory<BoneInfluenceType>::ModifyCompilationEnvironment(cons
 	}
 	OutEnvironment.SetDefine(TEXT("GPUSKIN_USE_BONES_SRV_BUFFER"), SupportsBonesBufferSRV(Parameters.Platform) ? 1 : 0);
 	OutEnvironment.SetDefine(TEXT("GPUSKIN_UNLIMITED_BONE_INFLUENCE"), BoneInfluenceType == UnlimitedBoneInfluence ? 1 : 0);
+
+	OutEnvironment.SetDefine(TEXT("GPU_SKINNED_MESH_FACTORY"), 1);
 }
 
 
@@ -484,6 +486,26 @@ void TGPUSkinVertexFactory<BoneInfluenceType>::AddVertexElements(FDataType& InDa
 			OutElements.Add(AccessStreamComponent(InData.BoneIndices, 14));
 			OutElements.Add(AccessStreamComponent(InData.BoneWeights, 15));
 		}
+	}
+
+	if (InData.PreSkinningOffsets.VertexBuffer)
+	{
+		OutElements.Add(AccessStreamComponent(InData.PreSkinningOffsets, 11));
+	}
+	else
+	{
+		FVertexStreamComponent NullDeltaComponent(&GNullVertexBuffer, 0, 0, VET_Float3);
+		OutElements.Add(AccessStreamComponent(NullDeltaComponent, 11));
+	}
+
+	if (InData.PostSkinningOffsets.VertexBuffer)
+	{
+		OutElements.Add(AccessStreamComponent(InData.PostSkinningOffsets, 12));
+	}
+	else
+	{
+		FVertexStreamComponent NullDeltaComponent(&GNullVertexBuffer, 0, 0, VET_Float3);
+		OutElements.Add(AccessStreamComponent(NullDeltaComponent, 12));
 	}
 }
 
@@ -1019,27 +1041,6 @@ bool TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>::ShouldCompilePermutation
 }
 
 /**
-* Add the decl elements for the streams
-* @param InData - type with stream components
-* @param OutElements - vertex decl list to modify
-*/
-template <GPUSkinBoneInfluenceType BoneInfluenceType>
-void TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>::AddVertexElements(FDataType& InData, FVertexDeclarationElementList& OutElements)
-{
-	// add the base gpu skin elements
-	TGPUSkinVertexFactory<BoneInfluenceType>::AddVertexElements(InData,OutElements);
-	// add the morph delta elements
-//	return;
-	if(InData.CoordNormalComponent.VertexBuffer)
-	{
-		OutElements.Add(FVertexFactory::AccessStreamComponent(InData.CoordPositionComponent,9));
-		OutElements.Add(FVertexFactory::AccessStreamComponent(InData.CoordNormalComponent,10));
-		OutElements.Add(FVertexFactory::AccessStreamComponent(InData.CoordTangentComponent,11));
-		OutElements.Add(FVertexFactory::AccessStreamComponent(InData.SimulIndicesComponent,12));
-	}
-}
-
-/**
 * Creates declarations for each of the vertex stream components and
 * initializes the device resource
 */
@@ -1048,7 +1049,7 @@ void TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>::InitRHI()
 {
 	// list of declaration items
 	FVertexDeclarationElementList Elements;	
-	AddVertexElements(MeshMappingData,Elements);
+	TGPUSkinVertexFactory<BoneInfluenceType>::AddVertexElements(MeshMappingData, Elements);
 
 	// create the actual device decls
 	FVertexFactory::InitDeclaration(Elements);

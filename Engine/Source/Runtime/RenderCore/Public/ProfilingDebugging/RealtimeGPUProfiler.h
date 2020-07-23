@@ -59,6 +59,7 @@ class FScopedGPUStatEvent;
 		void Stop();
 	};
 
+	/** Legacy support for template class version. */
 	template <typename TRHICmdList>
 	struct TDrawEvent : FDrawEvent {};
 

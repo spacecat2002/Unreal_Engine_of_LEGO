@@ -10,6 +10,8 @@
 #include "ShaderParameterStruct.h"
 #include "MobileBasePassRendering.h"
 #include "ScreenPass.h"
+#include "RenderTargetPool.h"
+
 
 static TAutoConsoleVariable<int32> CVarMobilePlanarReflectionMode(
 	TEXT("r.Mobile.PlanarReflectionMode"),
@@ -187,7 +189,7 @@ TGlobalResource<FReflectionPlaneVertexDeclaration> GReflectionPlaneVertexDeclara
 void FMobileSceneRenderer::InitPixelProjectedReflectionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize)
 {
 	checkSlow(!GPixelProjectedReflectionMobileOutputs.IsValid());
-	GRenderTargetPool.FindFreeElement(RHICmdList, FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_FloatRGBA, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV, false), GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture, TEXT("PixelProjectedReflectionTexture"), false);
+	GRenderTargetPool.FindFreeElement(RHICmdList, FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_FloatRGBA, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV, false), GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture, TEXT("PixelProjectedReflectionTexture"));
 }
 
 void FMobileSceneRenderer::ReleasePixelProjectedReflectionOutputs()
@@ -212,7 +214,7 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 	const FIntPoint BufferSize = PlanarReflectionSceneProxy->RenderTarget->GetSizeXY();
 
 #if PROJECTION_OUTPUT_TYPE == PROJECTION_OUTPUT_TYPE_TEXTURE
-	FRDGTextureRef ProjectionBuffer = GraphBuilder.CreateTexture(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R32_UINT, FClearValueBinding::Black, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false), TEXT("ProjectionTexture"));
+	FRDGTextureRef ProjectionBuffer = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(BufferSize, PF_R32_UINT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), TEXT("ProjectionTexture"));
 	FRDGTextureUAVRef ProjectionBufferUAV = GraphBuilder.CreateUAV(ProjectionBuffer);
 	uint32 ClearColor[4] = { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
 	AddClearUAVPass(GraphBuilder, ProjectionBufferUAV, ClearColor);
@@ -342,5 +344,5 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 
 	GraphBuilder.Execute();
 
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture->GetRenderTargetItem().TargetableTexture);
+	RHICmdList.Transition(FRHITransitionInfo(GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture->GetRenderTargetItem().TargetableTexture, ERHIAccess::RTV, ERHIAccess::SRVMask));
 }

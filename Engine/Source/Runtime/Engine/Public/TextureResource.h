@@ -329,17 +329,7 @@ class FTexture2DArrayResource : public FTextureResource
 {
 public:
 
-	FTexture2DArrayResource() :
-		SizeX(0),
-		SizeY(0),
-		NumMips(0),
-		NumSlices(0),
-		LODGroup(),
-		Format(PF_Unknown),
-		Filter(SF_Point),
-		bDirty(false),
-		bPreventingReallocation(false)
-	{}
+	FTexture2DArrayResource() {}
 
 	FTexture2DArrayResource(UTexture2DArray* InOwner);
 
@@ -400,19 +390,21 @@ private:
 	TMap<const UTexture2D*, FTextureArrayDataEntry> CachedData;
 	TArray<FTextureArrayDataEntry>					CachedInitialData;
 	FName LODGroupStatName;
-	UTexture2DArray* Owner;
+	UTexture2DArray* Owner = nullptr;
 
-	uint32 SizeX;
-	uint32 SizeY;
-	uint32 NumMips;
-	uint32 NumSlices;
-	TextureGroup LODGroup;
-	EPixelFormat Format;
-	ESamplerFilter Filter;
+	uint32 SizeX = 0;
+	uint32 SizeY = 0;
+	uint32 NumMips = 0;
+	uint32 NumSlices = 0;
+	EPixelFormat Format = PF_Unknown;
+	ESamplerFilter SamplerFilter = SF_Point;
+	ESamplerAddressMode SamplerXAddress = AM_Wrap;
+	ESamplerAddressMode SamplerYAddress = AM_Wrap;
+	ESamplerAddressMode SamplerZAddress = AM_Wrap;
 
-	bool bSRGB;
-	bool bDirty;
-	bool bPreventingReallocation;
+	bool bSRGB = false;
+	bool bDirty = false;
+	bool bPreventingReallocation = false;
 
 	/** Copies data from DataEntry into Dest, taking stride into account. */
 	void GetData(const FTextureArrayDataEntry& DataEntry, int32 MipIndex, void* Dest, uint32 DestPitch);
@@ -631,8 +623,7 @@ private:
 	FLinearColor ClearColor;
 	EPixelFormat Format;
 	int32 TargetSizeX,TargetSizeY;
-	/** cached params etc. for use with mip generator */
-	TSharedPtr<FGenerateMipsStruct> CachedMipsGenParams;
+	TRefCountPtr<IPooledRenderTarget> MipGenerationCache;
 };
 
 /**

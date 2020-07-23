@@ -38,17 +38,17 @@ void SuspendRenderAssetStreaming()
 
 	if (FPlatformAtomics::InterlockedIncrement(&GRenderAssetStreamingSuspension) == 1)
 	{
-		bool bHasPendingUpdate = false;
+		bool bHasPendingStreamingRequest= false;
 
 		// Wait for all assets to have their update lock unlocked. 
 		TArray<UStreamableRenderAsset*> LockedAssets;
 		for (TObjectIterator<UStreamableRenderAsset> It; It; ++It)
 		{
 			UStreamableRenderAsset* CurrentAsset = *It;
-			if (CurrentAsset && CurrentAsset->HasPendingUpdate())
+			if (CurrentAsset && CurrentAsset->HasPendingStreamingRequest())
 			{
-				bHasPendingUpdate = true;
-				if (CurrentAsset->IsPendingUpdateLocked())
+				bHasPendingStreamingRequest = true;
+				if (CurrentAsset->IsPendingStreamingRequestLocked())
 				{
 					LockedAssets.Add(CurrentAsset);
 				}
@@ -71,7 +71,7 @@ void SuspendRenderAssetStreaming()
 			for (int32 LockedIndex = 0; LockedIndex < LockedAssets.Num(); ++LockedIndex)
 			{
 				UStreamableRenderAsset* CurrentAsset = LockedAssets[LockedIndex];
-				if (!CurrentAsset || !CurrentAsset->IsPendingUpdateLocked())
+				if (!CurrentAsset || !CurrentAsset->IsPendingStreamingRequestLocked())
 				{
 					LockedAssets.RemoveAtSwap(LockedIndex);
 					--LockedIndex;
@@ -101,7 +101,7 @@ void SuspendRenderAssetStreaming()
 
 		// At this point, no more rendercommands or IO requests can be generated before a call to ResumeRenderAssetStreamingRenderTasksInternal().
 
-		if (bHasPendingUpdate)
+		if (bHasPendingStreamingRequest)
 		{
 			// Ensure any pending render command executes.
 			FlushRenderingCommands();

@@ -7,7 +7,14 @@
 #include "VulkanRHIPrivate.h"
 #include "IHeadMountedDisplayModule.h"
 #include "IHeadMountedDisplayVulkanExtensions.h"
-
+#include "VulkanRHIBridge.h"
+namespace VulkanRHIBridge
+{
+	extern TArray<const ANSICHAR*> InstanceExtensions;
+	extern TArray<const ANSICHAR*> InstanceLayers;
+	extern TArray<const ANSICHAR*> DeviceExtensions;
+	extern TArray<const ANSICHAR*> DeviceLayers;
+}
 #if VULKAN_HAS_DEBUGGING_ENABLED
 bool GRenderDocFound = false;
 #endif
@@ -93,17 +100,27 @@ static const ANSICHAR* GDeviceExtensions[] =
 #if VULKAN_SUPPORTS_MAINTENANCE_LAYER1
 	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
 #endif
+
 #if VULKAN_SUPPORTS_MAINTENANCE_LAYER2
 	VK_KHR_MAINTENANCE2_EXTENSION_NAME,
 #endif
+
 #if VULKAN_SUPPORTS_VALIDATION_CACHE
 	VK_EXT_VALIDATION_CACHE_EXTENSION_NAME,
 #endif
+
 #if VULKAN_SUPPORTS_MEMORY_PRIORITY
 	VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME,
 #endif
 
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+	// If we decide to support separate depth-stencil transitions, enable this.
+	//VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
+	//VK_KHR_SEPARATE_DEPTH_STENCIL_LAYOUTS_EXTENSION_NAME,
+#endif
+
 	//VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME,
+	
 	nullptr
 };
 
@@ -403,6 +420,10 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 		}
 	}
 
+	// plugins might have used the VulkanRHIBridge to enable additional extensions
+	OutInstanceExtensions.Append(VulkanRHIBridge::InstanceExtensions);
+	OutInstanceLayers.Append(VulkanRHIBridge::InstanceLayers);
+
 	TArray<const ANSICHAR*> PlatformExtensions;
 	FVulkanPlatform::GetInstanceExtensions(PlatformExtensions);
 
@@ -588,6 +609,10 @@ void FVulkanDevice::GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, EGpuVendo
 			UE_LOG(LogVulkanRHI, Warning, TEXT( "Trying to use Vulkan with an HMD, but required extensions aren't supported on the selected device!"));
 		}
 	}
+
+	// plugins might have used the VulkanRHIBridge to enable additional extensions
+	OutDeviceExtensions.Append(VulkanRHIBridge::DeviceExtensions);
+	OutDeviceLayers.Append(VulkanRHIBridge::DeviceLayers);
 
 	// Now gather the actually used extensions based on the enabled layers
 	TArray<const ANSICHAR*> AvailableExtensions;

@@ -36,12 +36,12 @@ IMPLEMENT_DENSITY_LIGHTMAPPED_SHADER_TYPE(TUniformLightMapPolicy<LMP_HQ_LIGHTMAP
 
 #endif
 
-IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FLightmapDensityPassUniformParameters, "LightmapDensityPass");
+IMPLEMENT_STATIC_UNIFORM_BUFFER_STRUCT(FLightmapDensityPassUniformParameters, "LightmapDensityPass", SceneTextures);
 
 void SetupLightmapDensityPassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FLightmapDensityPassUniformParameters& LightmapDensityPassParameters)
 {
 	FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
-	SetupSceneTextureUniformParameters(SceneRenderTargets, View.FeatureLevel, ESceneTextureSetupMode::None, LightmapDensityPassParameters.SceneTextures);
+	SetupSceneTextureUniformParameters(SceneRenderTargets, View, ESceneTextureSetupMode::None, LightmapDensityPassParameters.SceneTextures);
 	
 	LightmapDensityPassParameters.GridTexture = GEngine->LightMapDensityTexture->Resource->TextureRHI;
 	LightmapDensityPassParameters.GridTextureSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
@@ -76,9 +76,11 @@ bool FDeferredShadingSceneRenderer::RenderLightMapDensities(FRHICommandListImmed
 
 			FLightmapDensityPassUniformParameters LightmapDensityPassParameters;
 			SetupLightmapDensityPassUniformBuffer(RHICmdList, View, LightmapDensityPassParameters);
-			Scene->UniformBuffers.LightmapDensityPassUniformBuffer.UpdateUniformBufferImmediate(LightmapDensityPassParameters);
+			auto LightmapDensityPassUniformBuffer = TUniformBufferRef<FLightmapDensityPassUniformParameters>::CreateUniformBufferImmediate(LightmapDensityPassParameters, UniformBuffer_SingleFrame);
+			FUniformBufferStaticBindings GlobalUniformBuffers(LightmapDensityPassUniformBuffer);
+			SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
-			FMeshPassProcessorRenderState DrawRenderState(View, Scene->UniformBuffers.LightmapDensityPassUniformBuffer);
+			FMeshPassProcessorRenderState DrawRenderState(View);
 
 			// Opaque blending, depth tests and writes.
 			DrawRenderState.SetBlendState(TStaticBlendState<>::GetRHI());
@@ -347,7 +349,6 @@ FLightmapDensityMeshProcessor::FLightmapDensityMeshProcessor(const FScene* Scene
 	PassDrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
 
 	PassDrawRenderState.SetViewUniformBuffer(Scene->UniformBuffers.ViewUniformBuffer);
-	PassDrawRenderState.SetPassUniformBuffer(Scene->UniformBuffers.LightmapDensityPassUniformBuffer);
 }
 
 FMeshPassProcessor* CreateLightmapDensityPassProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, FMeshPassDrawListContext* InDrawListContext)

@@ -99,7 +99,6 @@ class FHairEnvironmentAO : public FGlobalShader
 		SHADER_PARAMETER(uint32, AO_SampleCount)
 		SHADER_PARAMETER(float, AO_DistanceThreshold)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HairCategorizationTexture)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
@@ -123,16 +122,13 @@ static void AddHairStrandsEnvironmentAOPass(
 	FRDGTextureRef Output)
 {
 	check(Output);
-
-	FSceneTextureParameters SceneTextures;
-	SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
 	FHairEnvironmentAO::FParameters* PassParameters = GraphBuilder.AllocParameters<FHairEnvironmentAO::FParameters>();
 	PassParameters->Voxel_MacroGroupId = MacroGroupData.MacroGroupId;
 	PassParameters->Voxel_TanConeAngle = FMath::Tan(FMath::DegreesToRadians(GetHairStrandsSkyLightingConeAngle()));
 	PassParameters->SceneTextures = SceneTextures;
 	PassParameters->VirtualVoxel = MacroGroupDatas.VirtualVoxelResources.UniformBuffer;
-	SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 
 	PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 	PassParameters->HairCategorizationTexture = GraphBuilder.RegisterExternalTexture(VisibilityData.CategorizationTexture);
@@ -236,7 +232,6 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer, HairVisibilityNodeCoord)
 
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HairCountTexture)
@@ -315,8 +310,7 @@ static void AddHairStrandsEnvironmentLightingPassPS(
 	const FRDGTextureRef SceneColorTexture,
 	FHairStrandsDebugData::Data* DebugData)
 {
-	FSceneTextureParameters SceneTextures;
-	SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
 	check(MacroGroupDatas.VirtualVoxelResources.IsValid());
 
@@ -365,7 +359,6 @@ static void AddHairStrandsEnvironmentLightingPassPS(
 	PassParameters->HairCountTexture = GraphBuilder.RegisterExternalTexture(VisibilityData.ViewHairCountTexture ? VisibilityData.ViewHairCountTexture : GSystemTextures.BlackDummy);
 	PassParameters->SceneTextures = SceneTextures;
 	PassParameters->VirtualVoxel = MacroGroupDatas.VirtualVoxelResources.UniformBuffer;
-	SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 	PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 	PassParameters->ReflectionCaptureData = View.ReflectionCaptureUniformBuffer;
 	{
@@ -438,8 +431,9 @@ static void AddHairStrandsEnvironmentLightingPassPS(
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 void RenderHairStrandsSceneColorScattering(
-	FRHICommandListImmediate& RHICmdList,
-	const TArray<FViewInfo>& Views,
+	FRDGBuilder& GraphBuilder,
+	FRDGTextureRef SceneColorTexture,
+	TArrayView<const FViewInfo> Views,
 	FHairStrandsRenderingData* HairDatas)
 {
 	if (Views.Num() == 0 || !HairDatas || GHairScatterSceneLighting <= 0)
@@ -473,9 +467,6 @@ void RenderHairStrandsSceneColorScattering(
 
 		if (bNeedScatterSceneLighting)
 		{
-			FRDGBuilder GraphBuilder(RHICmdList);
-			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-			FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor());
 			for (const FHairStrandsMacroGroupData& MacroGroupData : HairDatas->MacroGroupsPerViews.Views[ViewIndex].Datas)
 			{
 				if (MacroGroupData.bNeedScatterSceneLighting)
@@ -483,7 +474,6 @@ void RenderHairStrandsSceneColorScattering(
 					AddHairStrandsEnvironmentLightingPassPS(GraphBuilder, View, VisibilityData, MacroGroupDatas, MacroGroupData, SceneColorTexture, nullptr);
 				}
 			}
-			GraphBuilder.Execute();
 		}
 	}
 }
@@ -491,7 +481,7 @@ void RenderHairStrandsSceneColorScattering(
 void RenderHairStrandsEnvironmentLighting(
 	FRDGBuilder& GraphBuilder,
 	const uint32 ViewIndex,
-	const TArray<FViewInfo>& Views, 
+	TArrayView<const FViewInfo> Views,
 	FHairStrandsRenderingData* HairDatas)
 {
 	if (!GetHairStrandsSkyLightingEnable() || !HairDatas)
@@ -539,13 +529,15 @@ void RenderHairStrandsEnvironmentLighting(
 }
 
 void RenderHairStrandsAmbientOcclusion(
-	FRHICommandListImmediate& RHICmdList,
-	const TArray<FViewInfo>& Views,
+	FRDGBuilder& GraphBuilder,
+	TArrayView<const FViewInfo> Views,
 	const FHairStrandsRenderingData* HairDatas,
 	const TRefCountPtr<IPooledRenderTarget>& InAOTexture)
 {
 	if (!GetHairStrandsSkyAOEnable() || Views.Num() == 0 || !InAOTexture || !HairDatas)
 		return;
+
+	FRDGTextureRef AOTexture = InAOTexture ? GraphBuilder.RegisterExternalTexture(InAOTexture, TEXT("AOTexture")) : nullptr;
 
 	for (uint32 ViewIndex = 0; ViewIndex < uint32(Views.Num()); ++ViewIndex)
 	{
@@ -562,13 +554,9 @@ void RenderHairStrandsAmbientOcclusion(
 
 		const FViewInfo& View = Views[ViewIndex];
 		const FHairStrandsMacroGroupDatas& MacroGroupDatas = HairDatas->MacroGroupsPerViews.Views[ViewIndex];
-		FRDGBuilder GraphBuilder(RHICmdList);
-		FRDGTextureRef AOTexture = InAOTexture ? GraphBuilder.RegisterExternalTexture(InAOTexture, TEXT("AOTexture")) : nullptr;
 		for (const FHairStrandsMacroGroupData& MacroGroupData : HairDatas->MacroGroupsPerViews.Views[ViewIndex].Datas)
 		{
 			AddHairStrandsEnvironmentAOPass(GraphBuilder, View, VisibilityData, MacroGroupDatas, MacroGroupData, AOTexture);
-
 		}
-		GraphBuilder.Execute();
 	}
 }

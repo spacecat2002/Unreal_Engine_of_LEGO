@@ -233,4 +233,12 @@ float FDebugViewModeMaterialProxy::GetMaxDisplacement() const
 	return Resource ? Resource->GetMaxDisplacement() : 0.0f;
 }
 
+void FDebugViewModeMaterialProxy::GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const
+{
+	if (const FMaterialResource* Resource = MaterialInterface->GetMaterialResource(GMaxRHIFeatureLevel))
+	{
+		Resource->GetStaticParameterSet(Platform, OutSet);
+	}
+}
+
 #endif // WITH_EDITORONLY_DATA

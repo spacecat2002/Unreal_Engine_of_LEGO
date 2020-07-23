@@ -145,7 +145,7 @@ struct FStreamingRenderAsset
 
 	void UpdateOptionalMipsState_Async();
 	
-	void CancelPendingMipChangeRequest();
+	void CancelStreamingRequest();
 	void StreamWantedMips(FRenderAssetStreamingManager& Manager);
 
 	// Cache meta data (e.g. WantedMips) for StreamWantedMipsUsingCachedData to use later on

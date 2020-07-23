@@ -8,6 +8,7 @@
 #include "VulkanSwapChain.h"
 #include "VulkanPendingState.h"
 #include "VulkanContext.h"
+#include "VulkanBarriers.h"
 #include "GlobalShader.h"
 #include "HAL/PlatformAtomics.h"
 #include "Engine/RendererSettings.h"
@@ -29,7 +30,7 @@ struct FRHICommandProcessDeferredDeletionQueue final : public FRHICommand<FRHICo
 };
 
 
-FVulkanBackBuffer::FVulkanBackBuffer(FVulkanDevice& Device, FVulkanViewport* InViewport, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 UEFlags)
+FVulkanBackBuffer::FVulkanBackBuffer(FVulkanDevice& Device, FVulkanViewport* InViewport, EPixelFormat Format, uint32 SizeX, uint32 SizeY, ETextureCreateFlags UEFlags)
 	: FVulkanTexture2D(Device, Format, SizeX, SizeY, 1, 1, VK_NULL_HANDLE, UEFlags, FRHIResourceCreateInfo())
 	, Viewport(InViewport)
 {
@@ -64,9 +65,9 @@ void FVulkanBackBuffer::OnAdvanceBackBufferFrame(FRHICommandListImmediate& RHICm
 	ReleaseAcquiredImage();
 }
 
-void FVulkanBackBuffer::OnTransitionResource(FVulkanCommandListContext& Context, EResourceTransitionAccess TransitionType)
+void FVulkanBackBuffer::OnLayoutTransition(FVulkanCommandListContext& Context, VkImageLayout NewLayout)
 {
-	if (TransitionType == EResourceTransitionAccess::EWritable && GVulkanDelayAcquireImage == EDelayAcquireImageType::LazyAcquire)
+	if (NewLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && GVulkanDelayAcquireImage == EDelayAcquireImageType::LazyAcquire)
 	{
 		AcquireBackBufferImage(Context);
 	}
@@ -96,18 +97,13 @@ void FVulkanBackBuffer::AcquireBackBufferImage(FVulkanCommandListContext& Contex
 		DefaultView.ViewId = ImageView.ViewId;
 
 		// right after acquiring image is in undefined state
-		FTransitionAndLayoutManager& LayoutMgr = Context.GetTransitionAndLayoutManager();
-		VkImageLayout& CurrentLayout = LayoutMgr.FindOrAddLayoutRW(ImageView.Image, VK_IMAGE_LAYOUT_UNDEFINED);
+		FVulkanLayoutManager& LayoutMgr = Context.GetLayoutManager();
+		VkImageLayout& CurrentLayout = LayoutMgr.FindOrAddLayoutRW(ImageView.Image, VK_IMAGE_LAYOUT_UNDEFINED, 1, 1);
 		CurrentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		
 		FVulkanCommandBufferManager* CmdBufferManager = Context.GetCommandBufferManager();
 		FVulkanCmdBuffer* CmdBuffer = CmdBufferManager->GetActiveCmdBuffer();
-		if (CmdBuffer->IsInsideRenderPass())
-		{
-			// This could happen due to a SetRT(AndClear) call lingering around (so emulated needs to be ended); however REAL render passes should already have been ended!
-			checkf(!LayoutMgr.bInsideRealRenderPass, TEXT("Did not end Render Pass!"));
-			LayoutMgr.EndEmulatedRenderPass(CmdBuffer);
-		}
+		check(!CmdBuffer->IsInsideRenderPass());
 			
 		// Wait for semaphore signal before writing to backbuffer image
 		CmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, Viewport->AcquiredSemaphore);
@@ -118,7 +114,7 @@ FVulkanBackBuffer::~FVulkanBackBuffer()
 {
 	check(Surface.IsImageOwner() == false);
 	// Clear flags so ~FVulkanTexture2D() doesn't try to re-destroy it
-	Surface.UEFlags = 0;
+	Surface.UEFlags = TexCreate_None;
 	ReleaseAcquiredImage();
 }
 
@@ -377,9 +373,6 @@ FVulkanFramebuffer::FVulkanFramebuffer(FVulkanDevice& Device, const FRHISetRende
 		AttachmentTextureViews.Add(RTView);
 		AttachmentViewsToDelete.Add(RTView.View);
 
-		// Created a view to the surface memory... need to addref allocation so it doesn't get freed from under us
-		ResourceAllocationsToDelete.Add(Texture->Surface.GetResourceAllocation());
-
 		++NumColorAttachments;
 
 		// Check the RTLayout as well to make sure the resolve attachment is needed (Vulkan and Feature level specific)
@@ -497,12 +490,6 @@ void FVulkanFramebuffer::Destroy(FVulkanDevice& Device)
 		DEC_DWORD_STAT(STAT_VulkanNumImageViews);
 		Queue.EnqueueResource(VulkanRHI::FDeferredDeletionQueue2::EType::ImageView, AttachmentViewsToDelete[Index]);
 	}
-
-	for (int32 Index = 0; Index < ResourceAllocationsToDelete.Num(); ++Index)
-	{
-		Queue.EnqueueResourceAllocation(ResourceAllocationsToDelete[Index]);
-	}
-	ResourceAllocationsToDelete.Empty();
 
 	DEC_DWORD_STAT(STAT_VulkanNumFrameBuffers);
 }
@@ -656,19 +643,13 @@ void FVulkanViewport::CreateSwapchain(FVulkanSwapChainRecreateInfo* RecreateInfo
 
 			// Clear the swapchain to avoid a validation warning, and transition to ColorAttachment
 			{
-				VkImageSubresourceRange Range;
-				FMemory::Memzero(Range);
-				Range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-				Range.baseMipLevel = 0;
-				Range.levelCount = 1;
-				Range.baseArrayLayer = 0;
-				Range.layerCount = 1;
+				VkImageSubresourceRange Range = FVulkanPipelineBarrier::MakeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
 
 				VkClearColorValue Color;
 				FMemory::Memzero(Color);
-				VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), Images[Index], EImageLayoutBarrier::Undefined, EImageLayoutBarrier::TransferDest, Range);
+				VulkanSetImageLayout(CmdBuffer->GetHandle(), Images[Index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, Range);
 				VulkanRHI::vkCmdClearColorImage(CmdBuffer->GetHandle(), Images[Index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &Color, 1, &Range);
-				VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), Images[Index], EImageLayoutBarrier::TransferDest, EImageLayoutBarrier::ColorAttachment, Range);
+				VulkanSetImageLayout(CmdBuffer->GetHandle(), Images[Index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, Range);
 			}
 
 #if VULKAN_ENABLE_DRAW_MARKERS
@@ -703,7 +684,7 @@ void FVulkanViewport::CreateSwapchain(FVulkanSwapChainRecreateInfo* RecreateInfo
 
 	if (!FVulkanPlatform::SupportsStandardSwapchain() || GVulkanDelayAcquireImage == EDelayAcquireImageType::DelayAcquire)
 	{
-		RenderingBackBuffer = new FVulkanTexture2D(*Device, PixelFormat, SizeX, SizeY, 1, 1, TexCreate_RenderTargetable | TexCreate_ShaderResource, FRHIResourceCreateInfo());
+		RenderingBackBuffer = new FVulkanTexture2D(*Device, PixelFormat, SizeX, SizeY, 1, 1, TexCreate_RenderTargetable | TexCreate_ShaderResource, ERHIAccess::Present, FRHIResourceCreateInfo());
 #if VULKAN_ENABLE_DRAW_MARKERS
 		if (Device->GetDebugMarkerSetObjectName())
 		{
@@ -753,16 +734,13 @@ void FVulkanViewport::DestroySwapchain(FVulkanSwapChainRecreateInfo* RecreateInf
 
 inline static void CopyImageToBackBuffer(FVulkanCmdBuffer* CmdBuffer, bool bSourceReadOnly, VkImage SrcSurface, VkImage DstSurface, int32 SizeX, int32 SizeY, int32 WindowSizeX, int32 WindowSizeY)
 {
-	VulkanRHI::FPendingBarrier Barriers;
-	int32 SourceIndex = Barriers.AddImageBarrier(SrcSurface, VK_IMAGE_ASPECT_COLOR_BIT, 1);
-	int32 DestIndex = Barriers.AddImageBarrier(DstSurface, VK_IMAGE_ASPECT_COLOR_BIT, 1);
-
-	// Prepare for copy
-	Barriers.SetTransition(SourceIndex,
-		bSourceReadOnly ? EImageLayoutBarrier::PixelShaderRead : EImageLayoutBarrier::ColorAttachment,
-		EImageLayoutBarrier::TransferSource);
-	Barriers.SetTransition(DestIndex, EImageLayoutBarrier::Undefined, EImageLayoutBarrier::TransferDest);
-	Barriers.Execute(CmdBuffer);
+	{
+		FVulkanPipelineBarrier Barrier;
+		VkImageLayout SrcLayout = bSourceReadOnly ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		Barrier.AddImageLayoutTransition(SrcSurface, SrcLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, FVulkanPipelineBarrier::MakeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1));
+		Barrier.AddImageLayoutTransition(DstSurface, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, FVulkanPipelineBarrier::MakeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1));
+		Barrier.Execute(CmdBuffer->GetHandle());
+	}
 
 	VulkanRHI::DebugHeavyWeightBarrier(CmdBuffer->GetHandle(), 32);
 
@@ -813,13 +791,13 @@ inline static void CopyImageToBackBuffer(FVulkanCmdBuffer* CmdBuffer, bool bSour
 			1, &Region);
 	}
 
-	// Prepare for present
-	Barriers.ResetStages();
-	Barriers.SetTransition(SourceIndex,
-		EImageLayoutBarrier::TransferSource,
-		bSourceReadOnly ? EImageLayoutBarrier::PixelShaderRead : EImageLayoutBarrier::ColorAttachment);
-	Barriers.SetTransition(DestIndex, EImageLayoutBarrier::TransferDest, EImageLayoutBarrier::Present);
-	Barriers.Execute(CmdBuffer);
+	{
+		FVulkanPipelineBarrier Barrier;
+		VkImageLayout SrcLayout = bSourceReadOnly ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		Barrier.AddImageLayoutTransition(SrcSurface, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, SrcLayout, FVulkanPipelineBarrier::MakeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1));
+		Barrier.AddImageLayoutTransition(DstSurface, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, FVulkanPipelineBarrier::MakeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1));
+		Barrier.Execute(CmdBuffer->GetHandle());
+	}
 }
 
 bool FVulkanViewport::Present(FVulkanCommandListContext* Context, FVulkanCmdBuffer* CmdBuffer, FVulkanQueue* Queue, FVulkanQueue* PresentQueue, bool bLockToVsync)
@@ -855,8 +833,8 @@ bool FVulkanViewport::Present(FVulkanCommandListContext* Context, FVulkanCmdBuff
 			check(AcquiredImageIndex != -1);
 			check(RHIBackBuffer != nullptr && RHIBackBuffer->Surface.Image == BackBufferImages[AcquiredImageIndex]);
 
-			VkImageLayout& Layout = Context->GetTransitionAndLayoutManager().FindOrAddLayoutRW(BackBufferImages[AcquiredImageIndex], VK_IMAGE_LAYOUT_UNDEFINED);
-			VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), BackBufferImages[AcquiredImageIndex], VulkanRHI::GetImageLayoutFromVulkanLayout(Layout), EImageLayoutBarrier::Present, VulkanRHI::SetupImageSubresourceRange());
+			VkImageLayout& Layout = Context->GetLayoutManager().FindOrAddLayoutRW(BackBufferImages[AcquiredImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, 1, 1);
+			VulkanSetImageLayout(CmdBuffer->GetHandle(), BackBufferImages[AcquiredImageIndex], Layout, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, FVulkanPipelineBarrier::MakeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT));
 			Layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
 	}

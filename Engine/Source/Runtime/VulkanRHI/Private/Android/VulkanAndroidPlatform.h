@@ -36,7 +36,8 @@
 #define ENUM_VK_ENTRYPOINTS_OPTIONAL_PLATFORM_INSTANCE(EnumMacro) \
 	EnumMacro(PFN_vkGetRefreshCycleDurationGOOGLE, vkGetRefreshCycleDurationGOOGLE) \
 	EnumMacro(PFN_vkGetPastPresentationTimingGOOGLE, vkGetPastPresentationTimingGOOGLE) \
-	EnumMacro(PFN_vkGetPhysicalDeviceProperties2KHR, vkGetPhysicalDeviceProperties2KHR)
+	EnumMacro(PFN_vkGetPhysicalDeviceProperties2KHR, vkGetPhysicalDeviceProperties2KHR) \
+	EnumMacro(PFN_vkGetPhysicalDeviceFeatures2KHR, vkGetPhysicalDeviceFeatures2KHR)
 
 // and now, include the GenericPlatform class
 #include "../VulkanGenericPlatform.h"
@@ -113,8 +114,6 @@ public:
 	
 	// Does the platform allow a nullptr Pixelshader on the pipeline
 	static bool SupportsNullPixelShader() { return false; }
-
-	static bool RequiresRenderPassResolveAttachments() { return true; }
 
 	//#todo-rco: Detect Mali? Does the platform require depth to be written on stencil clear
 	static bool RequiresDepthWriteOnStencilClear() { return true; }

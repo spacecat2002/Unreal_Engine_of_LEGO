@@ -11,6 +11,7 @@
 #include "VulkanResources.h"
 #include "VulkanPendingState.h"
 #include "VulkanContext.h"
+#include "VulkanBarriers.h"
 #include "Misc/CommandLine.h"
 #include "GenericPlatform/GenericPlatformDriver.h"
 #include "Modules/ModuleManager.h"
@@ -95,20 +96,16 @@ FDynamicRHI* FVulkanDynamicRHIModule::CreateRHI(ERHIFeatureLevel::Type InRequest
 	check(GMaxRHIFeatureLevel != ERHIFeatureLevel::Num);
 
 	GVulkanRHI = new FVulkanDynamicRHI();
+	FDynamicRHI* FinalRHI = GVulkanRHI;
+
 #if ENABLE_RHI_VALIDATION
 	if (FParse::Param(FCommandLine::Get(), TEXT("RHIValidation")))
 	{
-		GValidationRHI = new FValidationRHI(GVulkanRHI);
+		FinalRHI = new FValidationRHI(FinalRHI);
 	}
-	else
-	{
-		check(!GValidationRHI);
-	}
-
-	return GValidationRHI ? (FDynamicRHI*)GValidationRHI : (FDynamicRHI*)GVulkanRHI;
-#else
-	return GVulkanRHI;
 #endif
+
+	return FinalRHI;
 }
 
 IMPLEMENT_MODULE(FVulkanDynamicRHIModule, VulkanRHI);
@@ -120,7 +117,6 @@ FVulkanCommandListContext::FVulkanCommandListContext(FVulkanDynamicRHI* InRHI, F
 	, Device(InDevice)
 	, Queue(InQueue)
 	, bSubmitAtNextSafePoint(false)
-	, bAutomaticFlushAfterComputeShader(true)
 	, UniformBufferUploader(nullptr)
 	, TempFrameAllocationBuffer(InDevice)
 	, CommandBufferManager(nullptr)
@@ -169,7 +165,7 @@ FVulkanCommandListContext::~FVulkanCommandListContext()
 	CommandBufferManager = nullptr;
 	GVulkanCommandBufferManager = nullptr;
 
-	TransitionAndLayoutManager.Destroy(*Device, Immediate ? &TransitionAndLayoutManager : nullptr);
+	LayoutManager.Destroy(*Device, Immediate ? &LayoutManager : nullptr);
 
 	delete UniformBufferUploader;
 	delete PendingGfxState;
@@ -197,6 +193,8 @@ FVulkanDynamicRHI::FVulkanDynamicRHI()
 	GPoolSizeVRAMPercentage = 0;
 	GTexturePoolSize = 0;
 	GRHISupportsMultithreading = true;
+	GRHITransitionPrivateData_SizeInBytes = sizeof(FVulkanPipelineBarrier);
+	GRHITransitionPrivateData_AlignInBytes = alignof(FVulkanPipelineBarrier);
 	GConfig->GetInt(TEXT("TextureStreaming"), TEXT("PoolSizeVRAMPercentage"), GPoolSizeVRAMPercentage, GEngineIni);
 }
 
@@ -232,7 +230,7 @@ void FVulkanDynamicRHI::Init()
 			
 	if (GPoolSizeVRAMPercentage > 0)
 	{
-		const uint64 TotalGPUMemory = Device->GetMemoryManager().GetTotalMemory(true);
+		const uint64 TotalGPUMemory = Device->GetDeviceMemoryManager().GetTotalMemory(true);
 
 		float PoolSize = float(GPoolSizeVRAMPercentage) * 0.01f * float(TotalGPUMemory);
 
@@ -248,7 +246,7 @@ void FVulkanDynamicRHI::Init()
 	{
 		GTexturePoolSize = (int64)StreamingPoolSizeValue * 1024 * 1024;
 
-		const uint64 TotalGPUMemory = Device->GetMemoryManager().GetTotalMemory(true);
+		const uint64 TotalGPUMemory = Device->GetDeviceMemoryManager().GetTotalMemory(true);
 		UE_LOG(LogRHI,Log,TEXT("Texture pool is %llu MB (of %llu MB total graphics mem)"),
 				GTexturePoolSize / 1024 / 1024,
 				TotalGPUMemory / 1024 / 1024);
@@ -326,6 +324,7 @@ void FVulkanDynamicRHI::Shutdown()
 
 #if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 	IConsoleManager::Get().UnregisterConsoleObject(DumpMemoryCmd);
+	IConsoleManager::Get().UnregisterConsoleObject(DumpStagingMemoryCmd);
 	IConsoleManager::Get().UnregisterConsoleObject(DumpLRUCmd);
 	IConsoleManager::Get().UnregisterConsoleObject(TrimLRUCmd);
 #endif
@@ -768,6 +767,13 @@ void FVulkanDynamicRHI::InitInstance()
 			FConsoleCommandDelegate::CreateStatic(DumpMemory),
 			ECVF_Default
 			);
+		DumpStagingMemoryCmd = IConsoleManager::Get().RegisterConsoleCommand(
+			TEXT("r.Vulkan.DumpStagingMemory"),
+			TEXT("Dumps staging memory map."),
+			FConsoleCommandDelegate::CreateStatic(DumpStagingMemory),
+			ECVF_Default
+		);
+
 		DumpLRUCmd = IConsoleManager::Get().RegisterConsoleCommand(
 			TEXT("r.Vulkan.DumpPSOLRU"),
 			TEXT("Dumps Vulkan PSO LRU."),
@@ -783,8 +789,10 @@ void FVulkanDynamicRHI::InitInstance()
 
 #endif
 
-		GRHICommandList.GetImmediateCommandList().SetContext(RHIGetDefaultContext());
-		GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(RHIGetDefaultAsyncComputeContext());
+		// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
+		GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
+		GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
+
 		FRenderResource::InitPreRHIResources();
 		GIsRHIInitialized = true;
 	}
@@ -834,17 +842,7 @@ void FVulkanCommandListContext::RHIEndDrawingViewport(FRHIViewport* ViewportRHI,
 	RHI->Present();
 */
 	FVulkanCmdBuffer* CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-	check(!CmdBuffer->HasEnded());
-	if (CmdBuffer->IsInsideRenderPass())
-	{
-		TransitionAndLayoutManager.EndEmulatedRenderPass(CmdBuffer);
-		if (GVulkanSubmitAfterEveryEndRenderPass)
-		{
-			CommandBufferManager->SubmitActiveCmdBuffer();
-			CommandBufferManager->PrepareForNewActiveCommandBuffer();
-			CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-		}
-	}
+	check(!CmdBuffer->HasEnded() && !CmdBuffer->IsInsideRenderPass());
 
 	WriteEndTimestamp(CmdBuffer);
 
@@ -869,8 +867,8 @@ void FVulkanCommandListContext::RHIEndFrame()
 	GetGPUProfiler().EndFrame();
 
 	Device->GetStagingManager().ProcessPendingFree(false, true);
-	Device->GetResourceHeapManager().ReleaseFreedPages();
-	
+	Device->GetMemoryManager().ReleaseFreedPages();
+
 	if (UseVulkanDescriptorCache())
 	{
 		Device->GetDescriptorSetCache().GC();
@@ -1033,25 +1031,25 @@ void FVulkanDynamicRHI::RHISubmitCommandsAndFlushGPU()
 	Device->SubmitCommandsAndFlushGPU();
 }
 
-FTexture2DRHIRef FVulkanDynamicRHI::RHICreateTexture2DFromResource(EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, VkImage Resource, uint32 Flags)
+FTexture2DRHIRef FVulkanDynamicRHI::RHICreateTexture2DFromResource(EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, VkImage Resource, ETextureCreateFlags Flags)
 {
 	const FRHIResourceCreateInfo ResourceCreateInfo(IsDepthOrStencilFormat(Format) ? FClearValueBinding::DepthZero : FClearValueBinding::Transparent);
 	return new FVulkanTexture2D(*Device, Format, SizeX, SizeY, NumMips, NumSamples, Resource, Flags, ResourceCreateInfo);
 }
 
-FTexture2DRHIRef FVulkanDynamicRHI::RHICreateTexture2DFromResource(EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, VkImage Resource, FSamplerYcbcrConversionInitializer& ConversionInitializer, uint32 Flags)
+FTexture2DRHIRef FVulkanDynamicRHI::RHICreateTexture2DFromResource(EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, VkImage Resource, FSamplerYcbcrConversionInitializer& ConversionInitializer, ETextureCreateFlags Flags)
 {
 	const FRHIResourceCreateInfo ResourceCreateInfo(IsDepthOrStencilFormat(Format) ? FClearValueBinding::DepthZero : FClearValueBinding::Transparent);
 	return new FVulkanTexture2D(*Device, Format, SizeX, SizeY, NumMips, NumSamples, Resource, ConversionInitializer, Flags, ResourceCreateInfo);
 }
 
-FTexture2DArrayRHIRef FVulkanDynamicRHI::RHICreateTexture2DArrayFromResource(EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, VkImage Resource, uint32 Flags)
+FTexture2DArrayRHIRef FVulkanDynamicRHI::RHICreateTexture2DArrayFromResource(EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, VkImage Resource, ETextureCreateFlags Flags)
 {
 	const FClearValueBinding ClearValueBinding(IsDepthOrStencilFormat(Format) ? FClearValueBinding::DepthZero : FClearValueBinding::Transparent);
 	return new FVulkanTexture2DArray(*Device, Format, SizeX, SizeY, ArraySize, NumMips, NumSamples, Resource, Flags, nullptr, ClearValueBinding);
 }
 
-FTextureCubeRHIRef FVulkanDynamicRHI::RHICreateTextureCubeFromResource(EPixelFormat Format, uint32 Size, bool bArray, uint32 ArraySize, uint32 NumMips, VkImage Resource, uint32 Flags)
+FTextureCubeRHIRef FVulkanDynamicRHI::RHICreateTextureCubeFromResource(EPixelFormat Format, uint32 Size, bool bArray, uint32 ArraySize, uint32 NumMips, VkImage Resource, ETextureCreateFlags Flags)
 {
 	const FClearValueBinding ClearValueBinding(IsDepthOrStencilFormat(Format) ? FClearValueBinding::DepthZero : FClearValueBinding::Transparent);
 	return new FVulkanTextureCube(*Device, Format, Size, bArray, ArraySize, NumMips, Resource, Flags, nullptr, ClearValueBinding);
@@ -1141,7 +1139,7 @@ FVulkanBuffer::FVulkanBuffer(FVulkanDevice& InDevice, uint32 InSize, VkFlags InU
 	VkMemoryRequirements MemoryRequirements;
 	VulkanRHI::vkGetBufferMemoryRequirements(Device.GetInstanceHandle(), Buf, &MemoryRequirements);
 
-	Allocation = InDevice.GetMemoryManager().Alloc(false, MemoryRequirements.size, MemoryRequirements.memoryTypeBits, InMemPropertyFlags, nullptr, VULKAN_MEMORY_MEDIUM_PRIORITY, File ? File : __FILE__, Line ? Line : __LINE__);
+	Allocation = InDevice.GetDeviceMemoryManager().Alloc(false, MemoryRequirements.size, MemoryRequirements.memoryTypeBits, InMemPropertyFlags, nullptr, VULKAN_MEMORY_MEDIUM_PRIORITY, File ? File : __FILE__, Line ? Line : __LINE__);
 	check(Allocation);
 	VERIFYVULKANRESULT_EXPANDED(VulkanRHI::vkBindBufferMemory(Device.GetInstanceHandle(), Buf, Allocation->GetHandle(), 0));
 }
@@ -1154,7 +1152,7 @@ FVulkanBuffer::~FVulkanBuffer()
 	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue2::EType::Buffer, Buf);
 	Buf = VK_NULL_HANDLE;
 
-	Device.GetMemoryManager().Free(Allocation);
+	Device.GetDeviceMemoryManager().Free(Allocation);
 	Allocation = nullptr;
 }
 
@@ -1676,83 +1674,22 @@ FVulkanRenderPass::~FVulkanRenderPass()
 	RenderPass = VK_NULL_HANDLE;
 }
 
-
-void VulkanSetImageLayout(
-	VkCommandBuffer CmdBuffer,
-	VkImage Image,
-	VkImageLayout OldLayout,
-	VkImageLayout NewLayout,
-	const VkImageSubresourceRange& SubresourceRange)
-{
-	VkImageMemoryBarrier ImageBarrier;
-	ZeroVulkanStruct(ImageBarrier, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
-	ImageBarrier.oldLayout = OldLayout;
-	ImageBarrier.newLayout = NewLayout;
-	ImageBarrier.image = Image;
-	ImageBarrier.subresourceRange = SubresourceRange;
-	ImageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	ImageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-	ImageBarrier.srcAccessMask = VulkanRHI::GetAccessMask(OldLayout);
-	ImageBarrier.dstAccessMask = VulkanRHI::GetAccessMask(NewLayout);
-
-	VkPipelineStageFlags SourceStages = VulkanRHI::GetStageFlags(OldLayout);
-	VkPipelineStageFlags DestStages = VulkanRHI::GetStageFlags(NewLayout);
-
-	VulkanRHI::vkCmdPipelineBarrier(CmdBuffer, SourceStages, DestStages, 0, 0, nullptr, 0, nullptr, 1, &ImageBarrier);
-}
-
-void VulkanResolveImage(VkCommandBuffer Cmd, FRHITexture* SourceTextureRHI, FRHITexture* DestTextureRHI)
-{
-	FVulkanTextureBase* Src = FVulkanTextureBase::Cast(SourceTextureRHI);
-	FVulkanTextureBase* Dst = FVulkanTextureBase::Cast(DestTextureRHI);
-
-	const VkImageAspectFlags AspectMask = Src->Surface.GetPartialAspectMask();
-	check(AspectMask == Dst->Surface.GetPartialAspectMask());
-
-	VkImageResolve ResolveDesc;
-	FMemory::Memzero(ResolveDesc);
-	ResolveDesc.srcSubresource.aspectMask = AspectMask;
-	ResolveDesc.srcSubresource.baseArrayLayer = 0;
-	ResolveDesc.srcSubresource.mipLevel = 0;
-	ResolveDesc.srcSubresource.layerCount = 1;
-	ResolveDesc.srcOffset.x = 0;
-	ResolveDesc.srcOffset.y = 0;
-	ResolveDesc.srcOffset.z = 0;
-	ResolveDesc.dstSubresource.aspectMask = AspectMask;
-	ResolveDesc.dstSubresource.baseArrayLayer = 0;
-	ResolveDesc.dstSubresource.mipLevel = 0;
-	ResolveDesc.dstSubresource.layerCount = 1;
-	ResolveDesc.dstOffset.x = 0;
-	ResolveDesc.dstOffset.y = 0;
-	ResolveDesc.dstOffset.z = 0;
-	ResolveDesc.extent.width = Src->Surface.Width;
-	ResolveDesc.extent.height = Src->Surface.Height;
-	ResolveDesc.extent.depth = 1;
-
-	VulkanRHI::vkCmdResolveImage(Cmd,
-		Src->Surface.Image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		Dst->Surface.Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		1, &ResolveDesc);
-}
-
 FVulkanRingBuffer::FVulkanRingBuffer(FVulkanDevice* InDevice, uint64 TotalSize, VkFlags Usage, VkMemoryPropertyFlags MemPropertyFlags)
 	: VulkanRHI::FDeviceChild(InDevice)
 	, BufferSize(TotalSize)
 	, BufferOffset(0)
 	, MinAlignment(0)
 {
-	BufferSuballocation = InDevice->GetResourceHeapManager().AllocateBuffer(TotalSize, Usage, MemPropertyFlags, __FILE__, __LINE__);
-	MinAlignment = BufferSuballocation->GetBufferAllocation()->GetAlignment();
 
+	InDevice->GetMemoryManager().AllocateBufferPooled(Allocation, this, TotalSize, Usage, MemPropertyFlags, EVulkanAllocationMetaRingBuffer, __FILE__, __LINE__);
+	MinAlignment = Allocation.GetBufferAlignment(Device);
 	// Start by wrapping around to set up the correct fence
 	BufferOffset = TotalSize;
 }
 
 FVulkanRingBuffer::~FVulkanRingBuffer()
 {
-	Device->GetDeferredDeletionQueue().EnqueueBufferSuballocationDirect(BufferSuballocation);
-	BufferSuballocation = 0;
+	Device->GetMemoryManager().FreeVulkanAllocation(Allocation);
 }
 
 uint64 FVulkanRingBuffer::WrapAroundAllocateMemory(uint64 Size, uint32 Alignment, FVulkanCmdBuffer* InCmdBuffer)
@@ -1842,7 +1779,9 @@ void FVulkanDynamicRHI::SaveValidationCache()
 void FVulkanDynamicRHI::DumpMemory()
 {
 	GVulkanRHI->Device->GetMemoryManager().DumpMemory();
-	GVulkanRHI->Device->GetResourceHeapManager().DumpMemory();
+}
+void FVulkanDynamicRHI::DumpStagingMemory()
+{
 	GVulkanRHI->Device->GetStagingManager().DumpMemory();
 }
 void FVulkanDynamicRHI::DumpLRU()
@@ -1855,8 +1794,6 @@ void FVulkanDynamicRHI::TrimLRU()
 	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
 	RHI->Device->PipelineStateCache->LRUDebugEvictAll();
 }
-
-
 #endif
 
 void FVulkanDynamicRHI::DestroySwapChain()

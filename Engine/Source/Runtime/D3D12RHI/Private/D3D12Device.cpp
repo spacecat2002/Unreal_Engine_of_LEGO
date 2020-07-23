@@ -4,8 +4,6 @@
 D3D12Device.cpp: D3D device RHI implementation.
 =============================================================================*/
 #include "D3D12RHIPrivate.h"
-#include "RHIValidation.h"
-
 
 namespace D3D12RHI
 {
@@ -233,7 +231,7 @@ void FD3D12Device::SetupAfterDeviceCreation()
 
 	if(bUnderGPUCapture)
 	{
-		GetDynamicRHI<FD3D12DynamicRHI>()->EnableIdealGPUCaptureOptions(true);
+		GDynamicRHI->EnableIdealGPUCaptureOptions(true);
 	}
 #endif
 
@@ -363,6 +361,9 @@ void FD3D12Device::Cleanup()
 
 	ReleasePooledUniformBuffers();
 
+	// Flush all pending deletes before destroying the device or any command contexts.
+	FRHIResource::FlushPendingDeletes();
+
 	// Delete array index 0 (the default context) last
 	for (int32 i = CommandContextArray.Num() - 1; i >= 0; i--)
 	{
@@ -377,8 +378,6 @@ void FD3D12Device::Cleanup()
 		AsyncComputeContextArray[i] = nullptr;
 	}
 
-	// Flush all pending deletes before destroying the device.
-	FRHIResource::FlushPendingDeletes();
 
 	/*
 	// Cleanup thread resources
