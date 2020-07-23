@@ -315,9 +315,9 @@ void FVulkanDevice::CreateDevice()
 	FVulkanPlatform::EnablePhysicalDeviceFeatureExtensions(DeviceInfo);
 
 #if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+	VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
 	if (bHasSeparateDepthStencilLayouts)
 	{
-		VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
 		ZeroVulkanStruct(SeparateDepthStencilLayoutsFeatures, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
 		SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts = VK_TRUE;
 		SeparateDepthStencilLayoutsFeatures.pNext = const_cast<void*>(DeviceInfo.pNext);
