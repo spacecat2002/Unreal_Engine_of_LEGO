@@ -1393,17 +1393,24 @@ int32 UMovieScene::AddMarkedFrame(const FMovieSceneMarkedFrame &InMarkedFrame)
 		MarkedFrames[MarkedIndex].Label = NewLabel;
 	}
 
-	return MarkedIndex;
+	SortMarkedFrames();
+	return FindMarkedFrameByFrameNumber(InMarkedFrame.FrameNumber);
 }
 
 void UMovieScene::DeleteMarkedFrame(int32 DeleteIndex)
 {
 	MarkedFrames.RemoveAt(DeleteIndex);
+	SortMarkedFrames();
 }
 
 void UMovieScene::DeleteMarkedFrames()
 {
 	MarkedFrames.Empty();
+}
+
+void UMovieScene::SortMarkedFrames()
+{
+	MarkedFrames.Sort([&](const FMovieSceneMarkedFrame& A, const FMovieSceneMarkedFrame& B) { return A.FrameNumber > B.FrameNumber; });
 }
 
 int32 UMovieScene::FindMarkedFrameByLabel(const FString& InLabel) const
