@@ -366,8 +366,9 @@ void FLuminOpenGL::ProcessExtensions(const FString& ExtensionsString)
 	}
 	bSupportsImageExternal = ImageExternalType != EImageExternalType::None;
 
-	glMapBufferOESa = (PFNGLMAPBUFFEROESPROC)((void*)eglGetProcAddress("glMapBufferOES"));
-	glUnmapBufferOESa = (PFNGLUNMAPBUFFEROESPROC)((void*)eglGetProcAddress("glUnmapBufferOES"));
+	// No longer defined in GLES3.0 - maps to glMapBufferRange and glUnmapBuffer; these entrypoints are not used so commenting out for now.
+	//glMapBufferOESa = (PFNGLMAPBUFFEROESPROC)((void*)eglGetProcAddress("glMapBufferOES"));
+	//glUnmapBufferOESa = (PFNGLUNMAPBUFFEROESPROC)((void*)eglGetProcAddress("glUnmapBufferOES"));
 }
 
 void FAndroidAppEntry::PlatformInit()
