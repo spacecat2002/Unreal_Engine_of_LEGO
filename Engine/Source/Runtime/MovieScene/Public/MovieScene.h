@@ -374,6 +374,7 @@ public:
 	virtual void Serialize( FArchive& Ar ) override;
 	virtual bool IsPostLoadThreadSafe() const override;
 	virtual void PostInitProperties() override;
+	virtual void PostLoad() override;
 
 public:
 

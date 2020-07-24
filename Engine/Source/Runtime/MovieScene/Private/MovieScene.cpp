@@ -75,6 +75,14 @@ void UMovieScene::PostInitProperties()
 	Super::PostInitProperties();
 }
 
+void UMovieScene::PostLoad()
+{
+	SortMarkedFrames();
+
+	Super::PostLoad();
+}
+
+
 void UMovieScene::Serialize( FArchive& Ar )
 {
 	Ar.UsingCustomVersion(FMovieSceneEvaluationCustomVersion::GUID);
@@ -1410,7 +1418,7 @@ void UMovieScene::DeleteMarkedFrames()
 
 void UMovieScene::SortMarkedFrames()
 {
-	MarkedFrames.Sort([&](const FMovieSceneMarkedFrame& A, const FMovieSceneMarkedFrame& B) { return A.FrameNumber > B.FrameNumber; });
+	MarkedFrames.Sort([&](const FMovieSceneMarkedFrame& A, const FMovieSceneMarkedFrame& B) { return A.FrameNumber < B.FrameNumber; });
 }
 
 int32 UMovieScene::FindMarkedFrameByLabel(const FString& InLabel) const
