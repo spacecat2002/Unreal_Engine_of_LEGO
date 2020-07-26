@@ -1026,7 +1026,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
 	bool IsUsingSkinWeightProfile() const { return bSkinWeightProfileSet == 1;  }
 
-	UE_DEPRECATED(4.26, "GetVertexOffsetUsage() has been deprecated. Support will be dropped in the future.")
+	//TODO: Zabir to fix
+	//UE_DEPRECATED(4.26, "GetVertexOffsetUsage() has been deprecated. Support will be dropped in the future.")
 	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
 	int32 GetVertexOffsetUsage(int32 LODIndex) const;
 
