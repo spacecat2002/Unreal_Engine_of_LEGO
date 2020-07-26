@@ -161,7 +161,7 @@ class SIOSWebBrowserWidget : public SLeafWidget
 								FRHIResourceCreateInfo CreateInfo;
 								FRHICommandListImmediate& LocalRHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 								FIntPoint Size = Params.Size;
-								VideoTexture = LocalRHICmdList.CreateTextureExternal2D(Size.X, Size.Y, PF_R8G8B8A8, 1, 1, 0, CreateInfo);
+								VideoTexture = LocalRHICmdList.CreateTextureExternal2D(Size.X, Size.Y, PF_R8G8B8A8, 1, 1, TexCreate_None, CreateInfo);
 								[NativeWebBrowser SetVideoTexture : VideoTexture];
 								//UE_LOG(LogIOS, Log, TEXT("NativeWebBrowser SetVideoTexture:VideoTexture!"));
 
