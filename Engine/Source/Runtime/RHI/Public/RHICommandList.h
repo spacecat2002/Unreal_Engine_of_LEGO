@@ -2528,22 +2528,16 @@ public:
 	inline void TransitionResources(ERHIAccess TransitionType, FRHITexture* const* InTextures, int32 NumTextures)
 	{
 		// Stack allocate the transition descriptors. These will get memcpy()ed onto the RHI command list if required.
-		FRHITransitionInfo* Infos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * NumTextures); //-V630
+		FMemMark Mark(FMemStack::Get());
+		TArray<FRHITransitionInfo, TMemStackAllocator<>> Infos;
+		Infos.Reserve(NumTextures);
 
-		// The MSVC static analyzer is confused about alloca() and thinks the buffer is too small. Disable the warning.
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 6386)
-#endif
 		for (int32 Index = 0; Index < NumTextures; ++Index)
 		{
-			Infos[Index] = FRHITransitionInfo(InTextures[Index], ERHIAccess::Unknown, TransitionType);
+			Infos.Add(FRHITransitionInfo(InTextures[Index], ERHIAccess::Unknown, TransitionType));
 		}
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
-		Transition(MakeArrayView(Infos, NumTextures));
+		Transition(Infos);
 	}
 
 	FORCEINLINE_DEBUGGABLE void TransitionResourceArrayNoCopy(ERHIAccess TransitionType, TArray<FRHITexture*>& InTextures)
@@ -2554,20 +2548,14 @@ public:
 	inline void TransitionResources(ERHIAccess TransitionType, EResourceTransitionPipeline /* ignored TransitionPipeline */, FRHIUnorderedAccessView* const* InUAVs, int32 NumUAVs, FRHIComputeFence* WriteFence)
 	{
 		// Stack allocate the transition descriptors. These will get memcpy()ed onto the RHI command list if required.
-		FRHITransitionInfo* Infos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * NumUAVs); //-V630
+		FMemMark Mark(FMemStack::Get());
+		TArray<FRHITransitionInfo, TMemStackAllocator<>> Infos;
+		Infos.Reserve(NumUAVs);
 
-		// The MSVC static analyzer is confused about alloca() and thinks the buffer is too small. Disable the warning.
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 6386)
-#endif
 		for (int32 Index = 0; Index < NumUAVs; ++Index)
 		{
-			Infos[Index] = FRHITransitionInfo(InUAVs[Index], ERHIAccess::Unknown, TransitionType);
+			Infos.Add(FRHITransitionInfo(InUAVs[Index], ERHIAccess::Unknown, TransitionType));
 		}
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 		if (WriteFence)
 		{
@@ -2576,13 +2564,13 @@ public:
 
 			// Cross-pipeline transition. Begin on the current context and store the
 			// transition in the "compute fence" so we can end it later on the other context.
-			WriteFence->Transition = RHICreateTransition(SrcPipeline, DstPipeline, ERHICreateTransitionFlags::None, MakeArrayView(Infos, NumUAVs));
+			WriteFence->Transition = RHICreateTransition(SrcPipeline, DstPipeline, ERHICreateTransitionFlags::None, Infos);
 			BeginTransitions(MakeArrayView(&WriteFence->Transition, 1));
 		}
 		else
 		{
 			// No compute fence, so this transition is happening entirely on the current pipe.
-			Transition(MakeArrayView(Infos, NumUAVs));
+			Transition(Infos);
 		}
 	}
 
