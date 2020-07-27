@@ -88,10 +88,7 @@ FUniformBufferRHIRef FD3D12DynamicRHI::RHICreateUniformBuffer(const void* Conten
 		}
 	}
 
-	if (UniformBufferOut)
-	{
-		UpdateBufferStats<FD3D12UniformBuffer>(&UniformBufferOut->ResourceLocation, true);
-	}
+	UpdateBufferStats<FD3D12UniformBuffer>(&UniformBufferOut->ResourceLocation, true);
 
 	return UniformBufferOut;
 }
