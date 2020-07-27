@@ -19,6 +19,10 @@
 	#define AR_DEBUG_MODE 0
 #endif
 
+DECLARE_STATS_GROUP(TEXT("ARComponent"), STATGROUP_ARComponent, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("Update FaceComponent"), STAT_UpdateFaceComponent, STATGROUP_ARComponent);
+DECLARE_CYCLE_STAT(TEXT("Calculate Vertex Normals"), STAT_CalculateVertexNormals, STATGROUP_ARComponent);
+
 static TMap<EARObjectClassification, FLinearColor> ClassificationColors =
 {
 	{ EARObjectClassification::Wall, FLinearColor::Green },
@@ -327,12 +331,8 @@ static UMRMeshComponent* CreateMRMeshComponent(AActor* Owner, const FARSessionPa
 		
 		MRMeshComponent->SetEnableMeshOcclusion(SessionPayload.HasFlag(EARSessionConfigFlags::UseMeshDataForOcclusion));
 		MRMeshComponent->SetUseWireframe(SessionPayload.HasFlag(EARSessionConfigFlags::RenderMeshDataInWireframe));
-		MRMeshComponent->SetWireframeMaterial(DefaultWireframeMeshMaterial);
 		MRMeshComponent->SetNeverCreateCollisionMesh(!SessionPayload.HasFlag(EARSessionConfigFlags::GenerateCollisionForMeshData));
 		MRMeshComponent->SetEnableNavMesh(SessionPayload.HasFlag(EARSessionConfigFlags::GenerateNavMeshForMeshData));
-		
-		MRMeshComponent->SetupAttachment(Owner->GetRootComponent());
-		MRMeshComponent->RegisterComponent();
 		
 		if (!DefaultMeshMaterial)
 		{
@@ -344,16 +344,18 @@ static UMRMeshComponent* CreateMRMeshComponent(AActor* Owner, const FARSessionPa
 			MRMeshComponent->SetMaterial(0, DefaultMeshMaterial);
 		}
 		
-
 		if (!DefaultWireframeMeshMaterial)
 		{
 			DefaultWireframeMeshMaterial = SessionPayload.DefaultWireframeMeshMaterial;
 		}
 
-		if (SessionPayload.DefaultWireframeMeshMaterial)
+		if (DefaultWireframeMeshMaterial)
 		{
-			MRMeshComponent->SetWireframeMaterial(SessionPayload.DefaultWireframeMeshMaterial);
+			MRMeshComponent->SetWireframeMaterial(DefaultWireframeMeshMaterial);
 		}
+		
+		MRMeshComponent->SetupAttachment(Owner->GetRootComponent());
+		MRMeshComponent->RegisterComponent();
 		
 		return MRMeshComponent;
 	}
@@ -572,8 +574,69 @@ void UARMeshComponent::UpdateVisualization_Implementation()
 	}
 }
 
+void FAccumulatedNormal::CalculateVertexNormals(TArray<FAccumulatedNormal>& AccumulatedNormals, const TArray<FVector>& Vertices, const TArray<uint32>& Indices, TArray<FPackedNormal>& OutTangentData, FVector MeshCenter, float PositionScale)
+{
+	SCOPE_CYCLE_COUNTER(STAT_CalculateVertexNormals);
+	
+	const auto NumVertices = Vertices.Num();
+	AccumulatedNormals.Reset(NumVertices);
+	AccumulatedNormals.SetNumZeroed(NumVertices);
+	// Manually going through each face of the mesh and calculate the face normal
+	for (auto Index = 0; Index < Indices.Num(); Index += 3)
+	{
+		uint32 VertIndices[3] =
+		{
+			Indices[Index],
+			Indices[Index + 1],
+			Indices[Index + 2]
+		};
+		const FVector Verts[3] =
+		{
+			Vertices[VertIndices[0]] * PositionScale,
+			Vertices[VertIndices[1]] * PositionScale,
+			Vertices[VertIndices[2]] * PositionScale
+		};
+		auto FaceNormal = (Verts[0] - Verts[1]) ^ (Verts[2] - Verts[0]);
+		FaceNormal.Normalize();
+		
+		// Add the face normal to the accumulated normals for all 3 vertices
+		for (auto VertIndex = 0; VertIndex < 3; ++VertIndex)
+		{
+			auto& AccumulatedNormal = AccumulatedNormals[VertIndices[VertIndex]];
+			AccumulatedNormal.Normal = AccumulatedNormal.Normal + FaceNormal;
+			++AccumulatedNormal.NumFaces;
+		}
+	}
+	
+	OutTangentData.SetNumUninitialized(NumVertices * 2);
+	for (auto Index = 0; Index < NumVertices; ++Index)
+	{
+		// Calculate the average normal for each vertex
+		auto& AccumulatedNormal = AccumulatedNormals[Index];
+		if (ensure(AccumulatedNormal.NumFaces))
+		{
+			AccumulatedNormal.Normal /= (float)AccumulatedNormal.NumFaces;
+			AccumulatedNormal.Normal.Normalize();
+		}
+		else
+		{
+			AccumulatedNormal.Normal = FVector(0, 0, 1);
+		}
+		
+		// We don't have UV info to calculate the correct tangent here
+		// so juse use an arbitrary vector to get a tangent perpendicular to the normal...
+		const auto Cross = (MeshCenter - Vertices[Index]) ^ AccumulatedNormal.Normal;
+		auto Tangent = (AccumulatedNormal.Normal ^ Cross);
+		Tangent.Normalize();
+		OutTangentData[2 * Index + 0] = FPackedNormal(Tangent);
+		OutTangentData[2 * Index + 1] = FPackedNormal(AccumulatedNormal.Normal);
+	}
+}
+
 void UARFaceComponent::UpdateVisualization_Implementation()
 {
+	SCOPE_CYCLE_COUNTER(STAT_UpdateFaceComponent);
+	
 	const auto& SessionPayload = ReplicatedPayload.SessionPayload;
 	
 	const bool bShowFaceMesh = GetDebugMode() == (int32)EFaceComponentDebugMode::ShowFaceMesh;
@@ -586,31 +649,77 @@ void UARFaceComponent::UpdateVisualization_Implementation()
 	
 	if (MRMeshComponent)
 	{
-#if AR_DEBUG_MODE
 		ManageMeshComponentForDebugMode(bShowFaceMesh, SessionPayload);
-		if (bShowFaceMesh && MRMeshComponent)
+		if (MRMeshComponent)
 		{
 			if (auto FaceGeometry = Cast<UARFaceGeometry>(MyTrackedGeometry))
 			{
-				auto WorldTransform = FaceGeometry->GetLocalToWorldTransform();
-#if PLATFORM_IOS
-				// The face vertices from ARKit is mirrored and in real world scale (1 unit = 1 meter)
-				// so we need to fix it here
-				WorldTransform = FTransform(FRotator(0, 180, 0), FVector::ZeroVector, FVector(100)) * WorldTransform;
-#endif
-				auto Vertices = FaceGeometry->GetVertexBuffer();
-				const auto& IndexBuffer = FaceGeometry->GetIndexBuffer();
-				const auto NumIndices = IndexBuffer.Num();
-				TArray<MRMESH_INDEX_TYPE> Indices;
-				Indices.AddUninitialized(NumIndices);
-				for (auto Index = 0; Index < NumIndices; ++Index)
+				auto RenderTransform = FTransform::Identity;
+				auto FaceTransform = FaceGeometry->GetLocalToWorldTransform();
+				switch (TransformSetting)
 				{
-					Indices[Index] = IndexBuffer[Index];
+					case EARFaceTransformMixing::ComponentOnly:
+					{
+						RenderTransform = GetComponentTransform();
+						break;
+					}
+						
+					case EARFaceTransformMixing::ComponentLocationTrackedRotation:
+					{
+						RenderTransform = GetComponentTransform();
+						FQuat TrackedRot = FaceTransform.GetRotation();
+						RenderTransform.SetRotation(TrackedRot);
+						break;
+					}
+						
+					case EARFaceTransformMixing::ComponentWithTracked:
+					{
+						RenderTransform = GetComponentTransform() * FaceTransform;
+						break;
+					}
+					case EARFaceTransformMixing::TrackingOnly:
+					{
+						RenderTransform = FaceTransform;
+						break;
+					}
 				}
-				MRMeshComponent->UpdateMesh(WorldTransform.GetLocation(), WorldTransform.GetRotation(), WorldTransform.GetScale3D(), Vertices, Indices);
+
+				auto bDefaultFaceOutOfScreen = true;
+#if PLATFORM_IOS
+				// Convert the vertices from ARKit's unit (meters) to UE4 units
+				RenderTransform.MultiplyScale3D(FVector(100.f));
+				// ARKit face into the screen by default
+				bDefaultFaceOutOfScreen = false;
+#endif
+				
+				if (bDefaultFaceOutOfScreen != bFaceOutOfScreen)
+				{
+					RenderTransform = FTransform(FRotator(0, 180, 0), FVector::ZeroVector) * RenderTransform;
+				}
+				
+				auto Vertices = FaceGeometry->GetVertexBuffer();
+				if (const auto NumVertices = Vertices.Num())
+				{
+					const auto& UV = FaceGeometry->GetUVs();
+					const auto& IndexBuffer = FaceGeometry->GetIndexBuffer();
+					
+					const auto NumIndices = IndexBuffer.Num();
+					TArray<MRMESH_INDEX_TYPE> Indices;
+					Indices.AddUninitialized(NumIndices);
+					for (auto Index = 0; Index < NumIndices; ++Index)
+					{
+						Indices[Index] = IndexBuffer[Index];
+					}
+					
+					if (bUpdateVertexNormal)
+					{
+						FAccumulatedNormal::CalculateVertexNormals(AccumulatedNormals, Vertices, Indices, TangentData, FVector::ZeroVector, 100.f);
+					}
+					
+					MRMeshComponent->UpdateMesh(RenderTransform.GetLocation(), RenderTransform.GetRotation(), RenderTransform.GetScale3D(), Vertices, Indices, UV, bUpdateVertexNormal ? TangentData : TArray<FPackedNormal>(), {});
+				}
 			}
 		}
-#endif
 	}
 }
 

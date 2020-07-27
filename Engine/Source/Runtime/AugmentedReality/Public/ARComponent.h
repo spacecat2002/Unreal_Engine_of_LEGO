@@ -203,6 +203,14 @@ struct FARGeoAnchorUpdatePayload
 	FString AnchorName;
 };
 
+struct AUGMENTEDREALITY_API FAccumulatedNormal
+{
+	FVector Normal = FVector::ZeroVector;
+	uint32 NumFaces = 0;
+	
+	static void CalculateVertexNormals(TArray<FAccumulatedNormal>& AccumulatedNormals, const TArray<FVector>& Vertices, const TArray<uint32>& Indices, TArray<FPackedNormal>& OutTangentData, FVector MeshCenter = FVector::ZeroVector, float PositionScale = 1.f);
+};
+
 /**
  * ARComponent handles replication and visualization update for AR tracked geometries
  * ARComponent is created in either multiplayer or local only environment
@@ -386,8 +394,24 @@ enum class EFaceComponentDebugMode : uint8
 	/** Display vectors for both eyes */
 	ShowEyeVectors = 1,
 	
-	/** Display the face mesh */
+	/** Display the face mesh in wireframe */
 	ShowFaceMesh = 2,
+};
+
+UENUM(BlueprintType)
+enum class EARFaceTransformMixing : uint8
+{
+	/** Uses the component's transform exclusively. Only setting for non-tracked meshes */
+	ComponentOnly,
+	
+	/** Use the component's location and apply the rotation from the tracked mesh */
+	ComponentLocationTrackedRotation,
+	
+	/** Concatenate the component and the tracked face transforms */
+	ComponentWithTracked,
+	
+	/** Use only the tracked face transform */
+	TrackingOnly
 };
 
 UCLASS(Blueprintable, BlueprintType, Category = "AR Gameplay")
@@ -413,6 +437,18 @@ public:
 	static void SetFaceComponentDebugMode(EFaceComponentDebugMode NewDebugMode);
 	
 protected:
+	/**	Determines how the transform from tracking data and the component's transform are mixed together. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AR Gameplay")
+	EARFaceTransformMixing TransformSetting = EARFaceTransformMixing::TrackingOnly;
+	
+	/**	Whether to automatically update the vertex normal when the mesh is updated. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AR Gameplay")
+	bool bUpdateVertexNormal = false;
+	
+	/**	Whether the mesh should be rotated so that it's facing out of the screen. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AR Gameplay")
+	bool bFaceOutOfScreen = true;
+	
 	UFUNCTION(Reliable, Server, WithValidation)
 	void ServerUpdatePayload(const FARFaceUpdatePayload& NewPayload);
 	
@@ -422,6 +458,12 @@ protected:
 	virtual void OnRep_Payload() override;
 	virtual void UpdateVisualization_Implementation() override;
 	static int32 GetDebugMode();
+	
+private:
+	/** Temporary data used for calculating the normals from vertices */
+	TArray<FAccumulatedNormal> AccumulatedNormals;
+	
+	TArray<FPackedNormal> TangentData;
 };
 
 UENUM(BlueprintType)
