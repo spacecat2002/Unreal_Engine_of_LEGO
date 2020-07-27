@@ -183,7 +183,10 @@ public:
 	{
 		Reset();
 		SetNumZeroed(InOther.Num());
-		RigVMCopy<T>(GetData(), InOther.GetData(), Num());
+		if (Num() > 0)
+		{
+			RigVMCopy<T>(GetData(), InOther.GetData(), Num());
+		}
 	}
 
 	// copies the contents of one array to this one
@@ -191,14 +194,20 @@ public:
 	{
 		Reset();
 		SetNumZeroed(InOther.Num());
-		RigVMCopy<T>(GetData(), InOther.GetData(), Num());
+		if (Num() > 0)
+		{
+			RigVMCopy<T>(GetData(), InOther.GetData(), Num());
+		}
 	}
 
 	FORCEINLINE_DEBUGGABLE void CopyTo(FRigVMDynamicArray<T>& InOther) const
 	{
 		InOther.Reset();
 		InOther.SetNumZeroed(Num());
-		RigVMCopy<T>(InOther.GetData(), GetData(), Num());
+		if (Num() > 0)
+		{
+			RigVMCopy<T>(InOther.GetData(), GetData(), Num());
+		}
 	}
 
 	// copies the contents of one array to this one
@@ -206,7 +215,10 @@ public:
 	{
 		InOther.Reset();
 		InOther.SetNumZeroed(Num());
-		RigVMCopy<T>(InOther.GetData(), GetData(), Num());
+		if (Num() > 0)
+		{
+			RigVMCopy<T>(InOther.GetData(), GetData(), Num());
+		}
 	}
 
 	FORCEINLINE_DEBUGGABLE const T& operator[](int32 InIndex) const
