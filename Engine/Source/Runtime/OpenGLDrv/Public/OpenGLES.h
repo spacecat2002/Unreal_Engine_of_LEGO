@@ -240,8 +240,6 @@ struct FOpenGLES : public FOpenGLBase
 		glEndQuery(QueryType);
 	}
 
-	static FORCEINLINE void QueryTimestampCounter(GLuint QueryID) UGL_OPTIONAL_VOID
-
 	static FORCEINLINE void GenQueries(GLsizei NumQueries, GLuint* QueryIDs)
 	{
 		glGenQueries(NumQueries, QueryIDs);
@@ -257,9 +255,7 @@ struct FOpenGLES : public FOpenGLBase
 		GLenum QueryName = (QueryMode == QM_Result) ? GL_QUERY_RESULT : GL_QUERY_RESULT_AVAILABLE;
 		glGetQueryObjectuiv(QueryId, QueryName, OutResult);
 	}
-
-	static FORCEINLINE void GetQueryObject(GLuint QueryId, EQueryMode QueryMode, uint64* OutResult) UGL_OPTIONAL_VOID
-
+		
 	static FORCEINLINE void LabelObject(GLenum Type, GLuint Object, const ANSICHAR* Name)
 	{
 		if (glLabelObjectEXT != nullptr)
