@@ -329,11 +329,14 @@ void FShaderParametersMetadata::InitializeLayout()
 		}
 		else if (BaseType == UBMT_REFERENCED_STRUCT || BaseType == UBMT_RDG_UNIFORM_BUFFER)
 		{
-			for (const FShaderParametersMetadata::FMember& Member : ChildStruct->GetMembers())
+			if (ChildStruct)
 			{
-				if (Member.GetBaseType() == UBMT_UAV)
+				for (const FShaderParametersMetadata::FMember& Member : ChildStruct->GetMembers())
 				{
-					Layout.bHasNonGraphOutputs = true;
+					if (Member.GetBaseType() == UBMT_UAV)
+					{
+						Layout.bHasNonGraphOutputs = true;
+					}
 				}
 			}
 		}

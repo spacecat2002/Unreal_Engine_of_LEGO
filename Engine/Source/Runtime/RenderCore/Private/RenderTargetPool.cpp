@@ -260,7 +260,9 @@ void FRenderTargetPool::TransitionTargetsWritable(FRHICommandListImmediate& RHIC
 	WaitForTransitionFence();
 
 	// Stack allocate the transition descriptors. These will get memcpy()ed onto the RHI command list if required.
-	FRHITransitionInfo* TransitionInfos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * PooledRenderTargets.Num());
+	FMemMark Mark(FMemStack::Get());
+	TArray<FRHITransitionInfo, TMemStackAllocator<>> TransitionInfos;
+	TransitionInfos.AddDefaulted(PooledRenderTargets.Num());
 	uint32 TransitionInfoCount = 0;
 
 	for (int32 i = 0; i < PooledRenderTargets.Num(); ++i)
@@ -286,7 +288,7 @@ void FRenderTargetPool::TransitionTargetsWritable(FRHICommandListImmediate& RHIC
 
 	if (TransitionInfoCount > 0)
 	{
-		RHICmdList.Transition(MakeArrayView(TransitionInfos, TransitionInfoCount));
+		RHICmdList.Transition(MakeArrayView(TransitionInfos.GetData(), TransitionInfoCount));
 		if (IsRunningRHIInSeparateThread())
 		{
 			TransitionFence = RHICmdList.RHIThreadFence(false);
