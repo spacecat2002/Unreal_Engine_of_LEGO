@@ -94,6 +94,7 @@ public:
 	UARPin* PinComponent(USceneComponent* ComponentToPin, const FARTraceResult& HitResult, const FName DebugName = NAME_None);
 	/** \see UARBlueprintLibrary::RemovePin() */
 	void RemovePin(UARPin* PinToRemove);
+	bool TryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InAnchorName, UARPin*& OutAnchor);
 
 	/** \see UARBlueprintLibrary::GetSupportedVideoFormats() */
 	TArray<FARVideoFormat> GetSupportedVideoFormats(EARSessionType SessionType = EARSessionType::World) const;

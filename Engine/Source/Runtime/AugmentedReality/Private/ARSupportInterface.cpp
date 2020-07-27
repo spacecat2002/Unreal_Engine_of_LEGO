@@ -254,6 +254,17 @@ void FARSupportInterface ::RemovePin(UARPin* PinToRemove)
 	}
 }
 
+bool FARSupportInterface ::TryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InPinName, UARPin*& OutPin)
+{
+	OutPin = nullptr;
+	if (ARImplemention)
+	{
+		return ARImplemention->OnTryGetOrCreatePinForNativeResource(InNativeResource, InPinName, OutPin);
+	}
+
+	return false;
+}
+
 TArray<FARVideoFormat> FARSupportInterface ::GetSupportedVideoFormats(EARSessionType SessionType) const
 {
 	if (ARImplemention)

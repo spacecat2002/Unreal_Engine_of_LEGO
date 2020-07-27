@@ -165,6 +165,13 @@ public:
 	 */
 	virtual void OnRemovePin(UARPin* PinToRemove) = 0;
 
+	/**
+	* Given the platform specific native resource for a pin, create a pin.
+	*
+	* @return true when a pin is successfully created, otherwise false
+	*/
+	virtual bool OnTryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InPinName, UARPin*& OutPin) { OutPin = nullptr;  return false; }
+
 	/** Tells the ARSystem to generate a capture probe at the specified location if supported */
 	virtual bool OnAddManualEnvironmentCaptureProbe(FVector Location, FVector Extent) = 0;
 	
