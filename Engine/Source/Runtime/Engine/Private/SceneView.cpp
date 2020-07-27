@@ -812,7 +812,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	SetupAntiAliasingMethod();
 
 	if ((AntiAliasingMethod == AAM_TemporalAA && GetFeatureLevel() >= ERHIFeatureLevel::SM5) &&
-		(CVarEnableTemporalUpsample.GetValueOnAnyThread() || Family->GetTemporalUpscalerInterface() != nullptr))
+		(CVarEnableTemporalUpsample.GetValueOnAnyThread() || (Family && Family->GetTemporalUpscalerInterface() != nullptr)))
 	{
 		PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::TemporalUpscale;
 	}
