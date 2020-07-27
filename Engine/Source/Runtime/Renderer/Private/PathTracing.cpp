@@ -527,6 +527,8 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 			};
 
 			{
+				// FIXME: cross-GPU fences aren't currently supported in the transition API, we need to figure it out.
+#if 0
 				// Begin mGPU fence
 				FRHIGPUMask GPUMask = FRHIGPUMask::All();
 				FComputeFenceRHIRef Fence = RHICmdList.CreateComputeFence(TEXT("PathTracingRayGen_Fence_Begin"));
@@ -542,6 +544,7 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 
 					RHICmdList.WaitComputeFence(Fence);
 				}
+#endif
 			}
 
 			for (int32 GPUIndex = 0; GPUIndex < GPUCount; ++GPUIndex)
@@ -592,6 +595,8 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 				}
 			}
 
+			// FIXME: cross-GPU fences aren't currently supported in the transition API, we need to figure it out.
+#if 0
 			{
 				// End mGPU fence
 				FRHIGPUMask GPUMask = FRHIGPUMask::All();
@@ -609,6 +614,7 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 					RHICmdList.WaitComputeFence(Fence);
 				}
 			}
+#endif
 		}
 		else
 		{
