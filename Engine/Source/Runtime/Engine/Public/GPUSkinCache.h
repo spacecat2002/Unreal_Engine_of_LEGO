@@ -46,6 +46,7 @@ class FGPUBaseSkinVertexFactory;
 class FMorphVertexBuffer;
 class FSkeletalMeshObjectGPUSkin;
 class FSkeletalMeshVertexClothBuffer;
+class FVertexOffsetBuffers;
 struct FClothSimulData;
 struct FSkelMeshRenderSection;
 struct FVertexBufferAndSRV;
@@ -153,13 +154,14 @@ public:
 		FGPUSkinPassthroughVertexFactory* TargetVertexFactory, 
 		const FSkelMeshRenderSection& BatchElement, 
 		FSkeletalMeshObjectGPUSkin* Skin,
+		FVertexOffsetBuffers* VertexOffsetBuffers,
 		const FMorphVertexBuffer* MorphVertexBuffer, 
 		const FSkeletalMeshVertexClothBuffer* ClothVertexBuffer, 
 		const FClothSimulData* SimData,
-		const FMatrix& ClothLocalToWorld, 
+		const FMatrix& ClothLocalToWorld,
 		float ClothBlendWeight, 
 		uint32 RevisionNumber, 
-		int32 Section,
+		int32 Section, 
 		FGPUSkinCacheEntry*& InOutEntry
 		);
 

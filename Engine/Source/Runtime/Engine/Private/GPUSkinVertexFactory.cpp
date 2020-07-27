@@ -382,6 +382,8 @@ void TGPUSkinVertexFactory<BoneInfluenceType>::ModifyCompilationEnvironment(cons
 	}
 	OutEnvironment.SetDefine(TEXT("GPUSKIN_USE_BONES_SRV_BUFFER"), SupportsBonesBufferSRV(Parameters.Platform) ? 1 : 0);
 	OutEnvironment.SetDefine(TEXT("GPUSKIN_UNLIMITED_BONE_INFLUENCE"), BoneInfluenceType == UnlimitedBoneInfluence ? 1 : 0);
+
+	OutEnvironment.SetDefine(TEXT("GPU_SKINNED_MESH_FACTORY"), 1);
 }
 
 
@@ -484,6 +486,26 @@ void TGPUSkinVertexFactory<BoneInfluenceType>::AddVertexElements(FDataType& InDa
 			OutElements.Add(AccessStreamComponent(InData.BoneIndices, 14));
 			OutElements.Add(AccessStreamComponent(InData.BoneWeights, 15));
 		}
+	}
+
+	if (InData.PreSkinningOffsets.VertexBuffer)
+	{
+		OutElements.Add(AccessStreamComponent(InData.PreSkinningOffsets, 11));
+	}
+	else
+	{
+		FVertexStreamComponent NullDeltaComponent(&GNullVertexBuffer, 0, 0, VET_Float3);
+		OutElements.Add(AccessStreamComponent(NullDeltaComponent, 11));
+	}
+
+	if (InData.PostSkinningOffsets.VertexBuffer)
+	{
+		OutElements.Add(AccessStreamComponent(InData.PostSkinningOffsets, 12));
+	}
+	else
+	{
+		FVertexStreamComponent NullDeltaComponent(&GNullVertexBuffer, 0, 0, VET_Float3);
+		OutElements.Add(AccessStreamComponent(NullDeltaComponent, 12));
 	}
 }
 

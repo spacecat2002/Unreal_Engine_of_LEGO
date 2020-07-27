@@ -273,6 +273,9 @@ public:
 
 	virtual int32 VertexColor() = 0;
 
+	virtual int32 PreSkinVertexOffset() = 0;
+	virtual int32 PostSkinVertexOffset() = 0;
+
 	virtual int32 PreSkinnedPosition() = 0;
 	virtual int32 PreSkinnedNormal() = 0;
 
