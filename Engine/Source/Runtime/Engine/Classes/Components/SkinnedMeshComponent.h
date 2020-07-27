@@ -103,13 +103,13 @@ namespace EBoneSpaces
 }
 
 UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
-enum class EVertexOffsetUsage : uint8
+enum class EVertexOffsetUsageType : uint8
 {
 	None = 0,
 	PreSkinningOffset = (1 << 0),
 	PostSkinningOffset = (1 << 1),
 };
-ENUM_CLASS_FLAGS(EVertexOffsetUsage);
+ENUM_CLASS_FLAGS(EVertexOffsetUsageType);
 
 /** Struct used to indicate one active morph target that should be applied to this USkeletalMesh when rendered. */
 struct FActiveMorphTarget
@@ -206,7 +206,7 @@ struct FVertexOffsetUsage
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (Bitmask, BitmaskEnum = EVertexOffsetUsage))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (Bitmask, BitmaskEnum = EVertexOffsetUsageType))
 	int32 Usage = 0;
 };
 
