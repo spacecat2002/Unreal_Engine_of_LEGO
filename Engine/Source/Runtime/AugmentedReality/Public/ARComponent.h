@@ -4,6 +4,8 @@
 
 #include "ARTypes.h"
 #include "Components/SceneComponent.h"
+#include "PackedNormal.h"
+#include "MRMeshBufferDefines.h"
 #include "ARComponent.generated.h"
 
 class USceneComponent;
@@ -208,7 +210,7 @@ struct AUGMENTEDREALITY_API FAccumulatedNormal
 	FVector Normal = FVector::ZeroVector;
 	uint32 NumFaces = 0;
 	
-	static void CalculateVertexNormals(TArray<FAccumulatedNormal>& AccumulatedNormals, const TArray<FVector>& Vertices, const TArray<uint32>& Indices, TArray<FPackedNormal>& OutTangentData, FVector MeshCenter = FVector::ZeroVector, float PositionScale = 1.f);
+	static void CalculateVertexNormals(TArray<FAccumulatedNormal>& AccumulatedNormals, const TArray<FVector>& Vertices, const TArray<MRMESH_INDEX_TYPE>& Indices, TArray<FPackedNormal>& OutTangentData, FVector MeshCenter = FVector::ZeroVector, float PositionScale = 1.f);
 };
 
 /**

@@ -17,8 +17,7 @@ namespace UnrealBuildTool.Rules
                     "Engine",
                     "EngineSettings",
                     "RenderCore",
-                    "RHI",
-                    "MRMesh"
+                    "RHI"
                 }
            );
 		   
@@ -30,6 +29,7 @@ namespace UnrealBuildTool.Rules
             PublicDependencyModuleNames.AddRange(
                 new string[]
                 {
+                    "MRMesh"
                 }
             );
 
