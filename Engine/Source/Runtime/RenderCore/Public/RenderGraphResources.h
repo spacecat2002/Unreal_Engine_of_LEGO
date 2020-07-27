@@ -716,6 +716,7 @@ public:
 		if (--RefCount == 0)
 		{
 			delete this;
+			return 0;
 		}
 		return RefCount;
 	}

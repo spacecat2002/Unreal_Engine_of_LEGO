@@ -2528,12 +2528,20 @@ public:
 	inline void TransitionResources(ERHIAccess TransitionType, FRHITexture* const* InTextures, int32 NumTextures)
 	{
 		// Stack allocate the transition descriptors. These will get memcpy()ed onto the RHI command list if required.
-		FRHITransitionInfo* Infos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * NumTextures);
+		FRHITransitionInfo* Infos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * NumTextures); //-V630
 
+		// The MSVC static analyzer is confused about alloca() and thinks the buffer is too small. Disable the warning.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 6386)
+#endif
 		for (int32 Index = 0; Index < NumTextures; ++Index)
 		{
 			Infos[Index] = FRHITransitionInfo(InTextures[Index], ERHIAccess::Unknown, TransitionType);
 		}
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 		Transition(MakeArrayView(Infos, NumTextures));
 	}
@@ -2546,12 +2554,20 @@ public:
 	inline void TransitionResources(ERHIAccess TransitionType, EResourceTransitionPipeline /* ignored TransitionPipeline */, FRHIUnorderedAccessView* const* InUAVs, int32 NumUAVs, FRHIComputeFence* WriteFence)
 	{
 		// Stack allocate the transition descriptors. These will get memcpy()ed onto the RHI command list if required.
-		FRHITransitionInfo* Infos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * NumUAVs);
+		FRHITransitionInfo* Infos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * NumUAVs); //-V630
 
+		// The MSVC static analyzer is confused about alloca() and thinks the buffer is too small. Disable the warning.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 6386)
+#endif
 		for (int32 Index = 0; Index < NumUAVs; ++Index)
 		{
 			Infos[Index] = FRHITransitionInfo(InUAVs[Index], ERHIAccess::Unknown, TransitionType);
 		}
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 		if (WriteFence)
 		{
