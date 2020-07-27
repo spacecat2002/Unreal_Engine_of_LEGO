@@ -516,8 +516,8 @@ public:
 		SetSRVParameter(RHICmdList, ShaderRHI, PositionInputBuffer, DispatchData.PositionBufferSRV);
 
 		SetShaderValue(RHICmdList, ShaderRHI, VertexOffsetUsage, Entry->VertexOffsetUsage);
-		SetSRVParameter(RHICmdList, ShaderRHI, PreSkinOffsets, Entry->PreSkinningVertexOffsetSRV);
-		SetSRVParameter(RHICmdList, ShaderRHI, PostSkinOffsets, Entry->PostSkinningVertexOffsetSRV);
+		SetSRVParameter(RHICmdList, ShaderRHI, PreSkinOffsets, Entry->PreSkinningVertexOffsetSRV ? Entry->PreSkinningVertexOffsetSRV : GNullVertexBuffer.VertexBufferSRV.GetReference());
+		SetSRVParameter(RHICmdList, ShaderRHI, PostSkinOffsets, Entry->PostSkinningVertexOffsetSRV ? Entry->PostSkinningVertexOffsetSRV : GNullVertexBuffer.VertexBufferSRV.GetReference());
 
 		SetShaderValue(RHICmdList, ShaderRHI, NumBoneInfluences, DispatchData.NumBoneInfluences);
 		SetShaderValue(RHICmdList, ShaderRHI, InputWeightIndexSize, Entry->InputWeightIndexSize);
