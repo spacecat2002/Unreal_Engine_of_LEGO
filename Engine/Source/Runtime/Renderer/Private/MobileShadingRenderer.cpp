@@ -371,7 +371,6 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 		const FViewInfo& View = Views[0];
 		// We want to wait for the extension jobs only when the view is being actually rendered for the first time
 		Scene->UniformBuffers.UpdateViewUniformBuffer(View, false);
-		UpdateDepthPrepassUniformBuffer(RHICmdList, View);
 		UpdateOpaqueBasePassUniformBuffer(RHICmdList, View);
 		UpdateTranslucentBasePassUniformBuffer(RHICmdList, View);
 		UpdateDirectionalLightUniformBuffers(RHICmdList, View);
@@ -548,9 +547,9 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		FVirtualTextureSystem::Get().Update(RHICmdList, ViewFeatureLevel, Scene);
 		// Clear virtual texture feedback to default value
 		FUnorderedAccessViewRHIRef FeedbackUAV = SceneContext.GetVirtualTextureFeedbackUAV();
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToGfx, FeedbackUAV);
+		RHICmdList.Transition(FRHITransitionInfo(FeedbackUAV, ERHIAccess::SRVMask, ERHIAccess::UAVMask));
 		RHICmdList.ClearUAVUint(FeedbackUAV, FUintVector4(~0u, ~0u, ~0u, ~0u));
-		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EGfxToGfx, FeedbackUAV);
+		RHICmdList.Transition(FRHITransitionInfo(FeedbackUAV, ERHIAccess::UAVMask, ERHIAccess::UAVMask));
 	}
 
 	// Generate the Sky/Atmosphere look up tables
@@ -561,10 +560,10 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 
 	// Notify the FX system that the scene is about to be rendered.
-	if (Scene->FXSystem && ViewFamily.EngineShowFlags.Particles)
+	if (FXSystem && ViewFamily.EngineShowFlags.Particles)
 	{
-		Scene->FXSystem->PreRender(RHICmdList, NULL, !Views[0].bIsPlanarReflection);
-		if (FGPUSortManager* GPUSortManager = Scene->FXSystem->GetGPUSortManager())
+		FXSystem->PreRender(RHICmdList, NULL, !Views[0].bIsPlanarReflection);
+		if (FGPUSortManager* GPUSortManager = FXSystem->GetGPUSortManager())
 		{
 			GPUSortManager->OnPreRender(RHICmdList);
 		}
@@ -602,18 +601,18 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SceneColor = RenderForward(RHICmdList, ViewList);
 	}
 		
-	if (Scene->FXSystem && Views.IsValidIndex(0))
+	if (FXSystem && Views.IsValidIndex(0))
 	{
 		check(RHICmdList.IsOutsideRenderPass());
 
-		Scene->FXSystem->PostRenderOpaque(
+		FXSystem->PostRenderOpaque(
 			RHICmdList,
 			Views[0].ViewUniformBuffer,
 			nullptr,
 			nullptr,
 			Views[0].AllowGPUParticleUpdate()
 		);
-		if (FGPUSortManager* GPUSortManager = Scene->FXSystem->GetGPUSortManager())
+		if (FGPUSortManager* GPUSortManager = FXSystem->GetGPUSortManager())
 		{
 			GPUSortManager->OnPostRenderOpaque(RHICmdList);
 		}
@@ -629,8 +628,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	
 	if (!bGammaSpace || bRenderToSceneColor)
 	{
-		// Transition scene color to readable for post-processing. If MSAA is enabled, post-processing will use the resolved texture
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, SceneColor);
+		RHICmdList.Transition(FRHITransitionInfo(SceneColor, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 	}
 
 	if (bRequiresPixelProjectedPlanarRelfectionPass)
@@ -659,7 +657,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (bUseVirtualTexturing)
 	{	
 		// No pass after this should make VT page requests
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToGfx, SceneContext.VirtualTextureFeedbackUAV);
+		RHICmdList.Transition(FRHITransitionInfo(SceneContext.VirtualTextureFeedbackUAV, ERHIAccess::UAVMask, ERHIAccess::SRVMask));
 
 		TArray<FIntRect, TInlineAllocator<4>> ViewRects;
 		ViewRects.AddUninitialized(Views.Num());
@@ -700,7 +698,10 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	RHICmdList.SetCurrentStat(GET_STATID(STAT_CLMM_SceneEnd));
 
-	RenderFinish(RHICmdList);
+	FRDGBuilder GraphBuilder(RHICmdList);
+	FRDGTextureRef ViewFamilyTexture = TryCreateViewFamilyTexture(GraphBuilder, ViewFamily);
+	RenderFinish(GraphBuilder, ViewFamilyTexture);
+	GraphBuilder.Execute();
 
 	FRHICommandListExecutor::GetImmediateCommandList().PollOcclusionQueries();
 	FRHICommandListExecutor::GetImmediateCommandList().ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
@@ -726,22 +727,30 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 			SceneColor = (View.bIsMobileMultiViewEnabled) ? SceneContext.MobileMultiViewSceneColor->GetRenderTargetItem().TargetableTexture : SceneContext.GetSceneColorSurface();
 			SceneColorResolve = GetMultiViewSceneColor(SceneContext);
 			ColorTargetAction = ERenderTargetActions::Clear_Resolve;
-			// Rendering to a backbuffer, make sure it's writeable
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, SceneColorResolve);
+			RHICmdList.Transition(FRHITransitionInfo(SceneColorResolve, ERHIAccess::Unknown, ERHIAccess::RTV | ERHIAccess::ResolveDst));
 		}
 		else
 		{
 			SceneColor = GetMultiViewSceneColor(SceneContext);
-			// Rendering to a backbuffer, make sure it's writeable
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, SceneColor);
+			RHICmdList.Transition(FRHITransitionInfo(SceneColor, ERHIAccess::Unknown, ERHIAccess::RTV));
 		}
 		SceneDepth = (View.bIsMobileMultiViewEnabled) ? SceneContext.MobileMultiViewSceneDepthZ->GetRenderTargetItem().TargetableTexture : static_cast<FTextureRHIRef>(SceneContext.GetSceneDepthSurface());
 	}
 	else
 	{
 		SceneColor = SceneContext.GetSceneColorSurface();
-		SceneColorResolve = bMobileMSAA ? SceneContext.GetSceneColorTexture() : nullptr;
-		ColorTargetAction = bMobileMSAA ? ERenderTargetActions::Clear_Resolve : ERenderTargetActions::Clear_Store;
+		if (bMobileMSAA)
+		{
+			SceneColorResolve = SceneContext.GetSceneColorTexture();
+			ColorTargetAction = ERenderTargetActions::Clear_Resolve;
+			RHICmdList.Transition(FRHITransitionInfo(SceneColorResolve, ERHIAccess::Unknown, ERHIAccess::RTV | ERHIAccess::ResolveDst));
+		}
+		else
+		{
+			SceneColorResolve = nullptr;
+			ColorTargetAction = ERenderTargetActions::Clear_Store;
+		}
+
 		SceneDepth = SceneContext.GetSceneDepthSurface();
 				
 		if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
@@ -1265,7 +1274,7 @@ void FMobileSceneRenderer::ConditionalResolveSceneDepth(FRHICommandListImmediate
 	if (IsSimulatedPlatform(ShaderPlatform)) // mobile emulation on PC
 	{
 		// resolve MSAA depth for translucency
-		SceneContext.ResolveSceneDepthTexture(RHICmdList, FResolveRect(0, 0, FamilySize.X, FamilySize.Y));
+		ResolveSceneDepth(RHICmdList);
 	}
 	else if (IsAndroidOpenGLESPlatform(ShaderPlatform))
 	{
@@ -1372,14 +1381,6 @@ void FMobileSceneRenderer::UpdateSkyReflectionUniformBuffer()
 	FMobileReflectionCaptureShaderParameters Parameters;
 	SetupMobileSkyReflectionUniformParameters(SkyLight, Parameters);
 	Scene->UniformBuffers.MobileSkyReflectionUniformBuffer.UpdateUniformBufferImmediate(Parameters);
-}
-
-void FMobileSceneRenderer::UpdateDepthPrepassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View)
-{
-	FSceneTexturesUniformParameters SceneTextureParameters;
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	SetupSceneTextureUniformParameters(SceneContext, View.FeatureLevel, ESceneTextureSetupMode::None, SceneTextureParameters);
-	Scene->UniformBuffers.DepthPassUniformBuffer.UpdateUniformBufferImmediate(SceneTextureParameters);
 }
 
 void FMobileSceneRenderer::CreateDirectionalLightUniformBuffers(FViewInfo& View)

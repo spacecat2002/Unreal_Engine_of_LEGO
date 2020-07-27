@@ -93,7 +93,7 @@ void FVirtualTexturePhysicalSpace::InitRHI()
 	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 
 	// Not all mobile RHIs support sRGB texture views/aliasing, use only linear targets on mobile
-	uint32 VT_SRGB = GetFeatureLevel() > ERHIFeatureLevel::ES3_1 ? TexCreate_SRGB : TexCreate_None;
+	ETextureCreateFlags VT_SRGB = GetFeatureLevel() > ERHIFeatureLevel::ES3_1 ? TexCreate_SRGB : TexCreate_None;
 
 	for (int32 Layer = 0; Layer < Description.NumLayers; ++Layer)
 	{

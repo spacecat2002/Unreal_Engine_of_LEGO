@@ -24,13 +24,16 @@ namespace CrossCompiler
 		NUM_SHADER_STAGES,
 	};
 
+	// Make sure these enums match hlslcc EArray on Engine\Source\ThirdParty\hlslcc\hlslcc\src\hlslcc_lib\glsl_parser_extras.h
 	enum class EPackedTypeName : int8
 	{
-		HighP	= 'h',	// Make sure these enums match hlslcc
+		HighP	= 'h',
 		MediumP	= 'm',
 		LowP	= 'l',
 		Int		= 'i',
 		Uint	= 'u',
+		Sampler	= 's',
+		Image	= 'g',
 
 		Invalid = ' ',
 	};
@@ -42,8 +45,10 @@ namespace CrossCompiler
 		LowP	= 2,
 		Int		= 3,
 		Uint	= 4,
+		Sampler	= 5,
+		Image	= 6,
 
-		Max		= 5,
+		Max		= 7,
 		Invalid = -1,
 	};
 

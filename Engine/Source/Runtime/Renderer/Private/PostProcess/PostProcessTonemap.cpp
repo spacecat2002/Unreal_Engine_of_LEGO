@@ -518,8 +518,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(FTonemapParameters, )
 	SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportTransform, ColorToBloom)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ColorTexture)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BloomTexture)
-	// SM5 and above use Texture2D for EyeAdaptation
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptation)
+	// SM5 and above use Texture2D for EyeAdaptationTexture
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
 	SHADER_PARAMETER_RDG_TEXTURE(, ColorGradingLUT)
 	SHADER_PARAMETER_TEXTURE(Texture2D, BloomDirtMaskTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, ColorSampler)
@@ -537,7 +537,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FTonemapParameters, )
 	SHADER_PARAMETER(float, DefaultEyeExposure)
 	SHADER_PARAMETER(float, EditorNITLevel)
 	SHADER_PARAMETER(uint32, bOutputInHDR)
-	//ES3_1 use Buffer for EyeAdaptation
+	// ES3_1 uses EyeAdaptationBuffer
 	SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
 END_SHADER_PARAMETER_STRUCT()
 
@@ -647,7 +647,8 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const FPostProcessSettings& PostProcessSettings = View.FinalPostProcessSettings;
 
-	const bool bEyeAdaptation = (View.GetFeatureLevel() >= ERHIFeatureLevel::SM5) ? Inputs.EyeAdaptationTexture != nullptr : Inputs.EyeAdaptationBuffer != nullptr;
+	const bool bIsEyeAdaptationResource = (View.GetFeatureLevel() >= ERHIFeatureLevel::SM5) ? Inputs.EyeAdaptationTexture != nullptr : Inputs.EyeAdaptationBuffer != nullptr;
+	const bool bEyeAdaptation = ViewFamily.EngineShowFlags.EyeAdaptation && bIsEyeAdaptationResource;
 
 	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
 
@@ -657,11 +658,11 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	{
 		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
-		OutputDesc.TargetableFlags |= View.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
+		OutputDesc.Flags |= View.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
+		OutputDesc.Flags |= GFastVRamConfig.Tonemap;
 		// RGB is the color in LDR, A is the luminance for PostprocessAA
 		OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_B8G8R8A8;
 		OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
-		OutputDesc.Flags |= GFastVRamConfig.Tonemap;
 
 		const FTonemapperOutputDeviceParameters OutputDeviceParameters = GetTonemapperOutputDeviceParameters(*View.Family);
 		const ETonemapperOutputDevice OutputDevice = static_cast<ETonemapperOutputDevice>(OutputDeviceParameters.OutputDevice);
@@ -683,7 +684,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 
 	const FScreenPassTextureViewport OutputViewport(Output);
 
-	FRHITexture* BloomDirtMaskTexture = GSystemTextures.BlackDummy->GetRenderTargetItem().TargetableTexture;
+	FRHITexture* BloomDirtMaskTexture = GBlackTexture->TextureRHI;
 
 	if (PostProcessSettings.BloomDirtMask && PostProcessSettings.BloomDirtMask->Resource)
 	{
@@ -750,7 +751,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	CommonParameters.Output = GetScreenPassTextureViewportParameters(OutputViewport);
 	CommonParameters.ColorTexture = Inputs.SceneColor.Texture;
 	CommonParameters.BloomTexture = Inputs.Bloom.Texture;
-	CommonParameters.EyeAdaptation = Inputs.EyeAdaptationTexture;
+	CommonParameters.EyeAdaptationTexture = Inputs.EyeAdaptationTexture;
 	CommonParameters.ColorGradingLUT = Inputs.ColorGradingTexture;
 	CommonParameters.BloomDirtMaskTexture = BloomDirtMaskTexture;
 	CommonParameters.ColorSampler = BilinearClampSampler;
@@ -805,7 +806,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	}
 
 	// Override output might not support UAVs.
-	const bool bComputePass = (Output.Texture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV ? View.bUseComputePasses : false;
+	const bool bComputePass = (Output.Texture->Desc.Flags & TexCreate_UAV) == TexCreate_UAV ? View.bUseComputePasses : false;
 
 	if (bComputePass)
 	{
@@ -854,8 +855,8 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 			OutputViewport,
 			SceneColorViewport,
 			FScreenPassPipelineState(VertexShader, PixelShader, BlendState, DepthStencilState),
-			DrawFlags,
 			PassParameters,
+			DrawFlags,
 			[VertexShader, PixelShader, PassParameters](FRHICommandList& RHICmdList)
 		{
 			SetShaderParameters(RHICmdList, VertexShader, VertexShader.GetVertexShader(), PassParameters->Tonemap);
@@ -895,7 +896,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	// If we didn't calculate the LUT during post processing, see if we've cached it on the view.
 	if (!ColorGradingTexture)
 	{
-		ColorGradingTexture = GraphBuilder.TryRegisterExternalTexture(View.GetTonemappingLUT());
+		ColorGradingTexture = TryRegisterExternalTexture(GraphBuilder, View.GetTonemappingLUT());
 	}
 
 	FRDGTextureRef OutputTexture = FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("OutputTexture"));
@@ -919,13 +920,13 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	{
 		FRDGTextureDesc OutputDesc = SceneColorTexture->Desc;
 		OutputDesc.Reset();
-		OutputDesc.TargetableFlags |= View.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
+		OutputDesc.Flags |= View.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
+		OutputDesc.Flags |= GFastVRamConfig.Tonemap;
 		OutputDesc.Format = PF_B8G8R8A8;
 
 		// RGB is the color in LDR, A is the luminance for PostprocessAA
 		OutputDesc.Format = bHDROutput ? GRHIHDRDisplayOutputFormat : OutputDesc.Format;
 		OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
-		OutputDesc.Flags |= GFastVRamConfig.Tonemap;
 
 		const FTonemapperOutputDeviceParameters OutputDeviceParameters = GetTonemapperOutputDeviceParameters(*View.Family);
 
@@ -968,7 +969,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.bFlipYAxis = ShouldMobilePassFlipVerticalAxis(Context, this);
 	Inputs.bGammaOnly = bDoGammaOnly;
 	Inputs.bMetalMSAAHDRDecode = bMetalMSAAHDRDecode;
-	Inputs.EyeAdaptationBuffer = bDoEyeAdaptation && View.GetLastEyeAdaptationBuffer() ? View.GetLastEyeAdaptationBuffer()->SRV : nullptr;
+	Inputs.EyeAdaptationBuffer = bDoEyeAdaptation && View.GetLastEyeAdaptationBuffer(Context.RHICmdList) ? View.GetLastEyeAdaptationBuffer(Context.RHICmdList)->SRV : nullptr;
 
 	AddTonemapPass(GraphBuilder, View, Inputs);
 
@@ -1122,7 +1123,7 @@ class FPostProcessTonemapPS_Mobile : public FGlobalShader
 			bool bUseDof = GetMobileDepthOfFieldScale(View) > 0.0f && (!Settings.bMobileHQGaussian || (View.GetFeatureLevel() < ERHIFeatureLevel::ES3_1));
 
 			MobilePermutationVector.Set<FTonemapperDOFDim>(bUseDof);
-			MobilePermutationVector.Set<FTonemapperLightShaftsDim>(View.bLightShaftUse);
+			MobilePermutationVector.Set<FTonemapperLightShaftsDim>(View.MobileLightShaft.IsSet());
 		}
 		else
 		{
@@ -1392,7 +1393,7 @@ public:
 		float FixedExposure = bEyeAdaptation ? 0.0f : GetEyeAdaptationFixedExposure(Context.View);
 		SetShaderValue(Context.RHICmdList, ShaderRHI, DefaultEyeExposure, FixedExposure);
 
-		SetSRVParameter(Context.RHICmdList, ShaderRHI, EyeAdaptationBuffer, bEyeAdaptation && Context.View.GetLastEyeAdaptationBuffer() ? Context.View.GetLastEyeAdaptationBuffer()->SRV : nullptr);
+		SetSRVParameter(Context.RHICmdList, ShaderRHI, EyeAdaptationBuffer, bEyeAdaptation && Context.View.GetLastEyeAdaptationBuffer(Context.RHICmdList) ? Context.View.GetLastEyeAdaptationBuffer(Context.RHICmdList)->SRV : nullptr);
 	}
 };
 

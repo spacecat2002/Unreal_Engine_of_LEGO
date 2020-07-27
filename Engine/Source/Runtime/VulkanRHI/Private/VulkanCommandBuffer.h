@@ -167,7 +167,7 @@ public:
 	uint8 bIsUploadOnly					: 1;
 	uint8 bIsUniformBufferBarrierAdded	: 1;
 
-	// You never want to call Begin/EndRenderPass directly as it will mess up with the FTransitionAndLayoutManager
+	// You never want to call Begin/EndRenderPass directly as it will mess up the layout manager.
 	void BeginRenderPass(const FVulkanRenderTargetLayout& Layout, class FVulkanRenderPass* RenderPass, class FVulkanFramebuffer* Framebuffer, const VkClearValue* AttachmentClearValues);
 	void EndRenderPass();
 
@@ -233,7 +233,7 @@ public:
 	TMap<uint32, class FVulkanTypedDescriptorPoolSet*> TypedDescriptorPoolSets;
 
 	friend class FVulkanDynamicRHI;
-	friend class FTransitionAndLayoutManager;
+	friend class FVulkanLayoutManager;
 };
 
 class FVulkanCommandBufferPool

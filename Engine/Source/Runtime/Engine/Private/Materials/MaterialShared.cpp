@@ -1401,6 +1401,11 @@ bool FMaterialResource::HasEmissiveColorConnected() const
 	return HasMaterialAttributesConnected() || Material->HasEmissiveColorConnected();
 }
 
+bool FMaterialResource::HasAnisotropyConnected() const
+{
+	return HasMaterialAttributesConnected() || Material->HasAnisotropyConnected();
+}
+
 bool FMaterialResource::RequiresSynchronousCompilation() const
 {
 	return Material->IsDefaultMaterial();
@@ -1617,11 +1622,14 @@ void FMaterial::SetupMaterialEnvironment(
 
 	if ((RHISupportsTessellation(Platform) == false) || (GetTessellationMode() == MTM_NoTessellation))
 	{
+		// Make sure this define is in sync with FShaderCompilerInput::IsUsingTessellation
 		OutEnvironment.SetDefine(TEXT("USING_TESSELLATION"),TEXT("0"));
 	}
 	else
 	{
+		// Make sure this define is in sync with FShaderCompilerInput::IsUsingTessellation
 		OutEnvironment.SetDefine(TEXT("USING_TESSELLATION"),TEXT("1"));
+
 		if (GetTessellationMode() == MTM_FlatTessellation)
 		{
 			OutEnvironment.SetDefine(TEXT("TESSELLATION_TYPE_FLAT"),TEXT("1"));
@@ -2338,7 +2346,7 @@ void FMaterialVirtualTextureStack::GetTextureValues(const FMaterialRenderContext
 
 void FMaterialVirtualTextureStack::GetTextureValue(const FMaterialRenderContext& Context, const FUniformExpressionSet& UniformExpressionSet, const URuntimeVirtualTexture*& OutValue) const
 {
-	OutValue = GetIndexedTexture<URuntimeVirtualTexture>(Context.Material, PreallocatedStackTextureIndex);
+	UniformExpressionSet.GetTextureValue(PreallocatedStackTextureIndex, Context, Context.Material, OutValue);
 }
 
 void FMaterialVirtualTextureStack::Serialize(FArchive& Ar)

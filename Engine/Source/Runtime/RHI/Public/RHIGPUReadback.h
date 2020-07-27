@@ -66,9 +66,12 @@ public:
 	 */
 	virtual void Unlock() = 0;
 
+	FORCEINLINE const FRHIGPUMask& GetLastCopyGPUMask() const { return LastCopyGPUMask; }
+
 protected:
 
 	FGPUFenceRHIRef Fence;
+	FRHIGPUMask LastCopyGPUMask;
 };
 
 /** Buffer readback implementation. */

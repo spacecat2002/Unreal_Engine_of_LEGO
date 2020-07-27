@@ -20,6 +20,7 @@
 #include "MetalShaderResources.h"
 #include "MetalLLM.h"
 #include "Engine/RendererSettings.h"
+#include "MetalTransitionData.h"
 
 DEFINE_LOG_CATEGORY(LogMetal)
 
@@ -400,6 +401,9 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 			   GTexturePoolSize / 1024 / 1024,
 			   MemoryStats.TotalGraphicsMemory / 1024 / 1024);
 	}
+
+	GRHITransitionPrivateData_SizeInBytes = sizeof(FMetalTransitionData);
+	GRHITransitionPrivateData_AlignInBytes = alignof(FMetalTransitionData);
 
 	GRHISupportsRHIThread = false;
 	if (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5)
@@ -877,7 +881,7 @@ FMetalDynamicRHI::~FMetalDynamicRHI()
 #endif
 }
 
-uint64 FMetalDynamicRHI::RHICalcTexture2DPlatformSize(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign)
+uint64 FMetalDynamicRHI::RHICalcTexture2DPlatformSize(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign)
 {
 	@autoreleasepool {
 	OutAlign = 0;
@@ -885,7 +889,7 @@ uint64 FMetalDynamicRHI::RHICalcTexture2DPlatformSize(uint32 SizeX, uint32 SizeY
 	}
 }
 
-uint64 FMetalDynamicRHI::RHICalcTexture3DPlatformSize(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign)
+uint64 FMetalDynamicRHI::RHICalcTexture3DPlatformSize(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign)
 {
 	@autoreleasepool {
 	OutAlign = 0;
@@ -893,7 +897,7 @@ uint64 FMetalDynamicRHI::RHICalcTexture3DPlatformSize(uint32 SizeX, uint32 SizeY
 	}
 }
 
-uint64 FMetalDynamicRHI::RHICalcTextureCubePlatformSize(uint32 Size, uint8 Format, uint32 NumMips, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign)
+uint64 FMetalDynamicRHI::RHICalcTextureCubePlatformSize(uint32 Size, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign)
 {
 	@autoreleasepool {
 	OutAlign = 0;
@@ -908,8 +912,10 @@ uint64 FMetalDynamicRHI::RHIGetMinimumAlignmentForBufferBackedSRV(EPixelFormat F
 
 void FMetalDynamicRHI::Init()
 {
-	GRHICommandList.GetImmediateCommandList().SetContext(RHIGetDefaultContext());
-	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(RHIGetDefaultAsyncComputeContext());
+	// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
+	GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
+	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
+
 	FRenderResource::InitPreRHIResources();
 	GIsRHIInitialized = true;
 }

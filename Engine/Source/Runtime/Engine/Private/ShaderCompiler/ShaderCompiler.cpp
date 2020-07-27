@@ -285,14 +285,6 @@ static TAutoConsoleVariable<int32> CVarD3DForceShaderConductorDXCRewrite(
 	TEXT(" 1: Force ShaderConductor rewrite"),
 	ECVF_ReadOnly);
 
-static TAutoConsoleVariable<int32> CVarMetalForceDXC(
-	TEXT("r.Metal.ForceDXC"),
-	(PLATFORM_WINDOWS || PLATFORM_MAC || PLATFORM_IOS),
-	TEXT("Forces DirectX Shader Compiler (DXC) to be used for all Metal shaders instead of hlslcc.\n")
-	TEXT(" 0: Disable\n")
-	TEXT(" 1: Use new compiler for all shaders (default)"),
-	ECVF_ReadOnly);
-
 static TAutoConsoleVariable<int32> CVarOpenGLForceDXC(
 	TEXT("r.OpenGL.ForceDXC"),
 	0,
@@ -2273,6 +2265,7 @@ FProcHandle FShaderCompilingManager::LaunchWorker(const FString& WorkingDirector
 
 	// Launch the worker process
 	int32 PriorityModifier = -1; // below normal
+	GConfig->GetInt(TEXT("DevOptions.Shaders"), TEXT("WorkerProcessPriority"), PriorityModifier, GEngineIni);
 
 	if (DEBUG_SHADERCOMPILEWORKER)
 	{
@@ -2563,7 +2556,7 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 					Material->RemoveOutstandingCompileId(ShaderMap->CompilingId);
 
 					// Only process results that still match the ID which requested a compile
-					// This avoids applying shadermaps which are out of date and a newer one is in the async compiling pipeline
+					// This avoids applying shader maps which are out of date and a newer one is in the async compiling pipeline
 					if (Material->GetMaterialId() == CompletedShaderMap->GetShaderMapId().BaseMaterialId)
 					{
 						if (!bSuccess)
@@ -2578,11 +2571,11 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 								// Log the errors unsuppressed before the fatal error, so it's always obvious from the log what the compile error was
 								for (int32 ErrorIndex = 0; ErrorIndex < Errors.Num(); ErrorIndex++)
 								{
-									UE_LOG(LogShaderCompilers, Warning, TEXT("	%s"), *Errors[ErrorIndex]);
+									UE_LOG(LogShaderCompilers, Display, TEXT("%s"), *Errors[ErrorIndex]);
 								}
 
 								// Assert if a default material could not be compiled, since there will be nothing for other failed materials to fall back on.
-								UE_LOG(LogShaderCompilers, Fatal,TEXT("Failed to compile default material %s!"), *Material->GetBaseMaterialPathName());
+								UE_LOG(LogShaderCompilers, Fatal, TEXT("Failed to compile default material %s!"), *Material->GetBaseMaterialPathName());
 							}
 
 							UE_LOG(LogShaderCompilers, Warning, TEXT("Failed to compile Material %s for platform %s, Default Material will be used in game."),
@@ -2613,7 +2606,7 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 									*LegacyShaderPlatformToShaderFormat(ShaderMap->GetShaderPlatform()).ToString());
 								for (int32 ErrorIndex = 0; ErrorIndex < Errors.Num(); ErrorIndex++)
 								{
-									UE_LOG(LogShaders, Warning, TEXT("	%s"), *Errors[ErrorIndex]);
+									UE_LOG(LogShaderCompilers, Display, TEXT("%s"), *Errors[ErrorIndex]);
 								}
 							}
 						}
@@ -3374,10 +3367,10 @@ static void PullRootShaderParametersLayout(FShaderCompilerInput& CompileInput, c
 			// RHI don't need to care about render target bindings slot anyway.
 		}
 		else if (
-			BaseType == UBMT_RDG_BUFFER_COPY_DEST ||
-			BaseType == UBMT_RDG_TEXTURE_COPY_DEST)
+			BaseType == UBMT_RDG_BUFFER_ACCESS ||
+			BaseType == UBMT_RDG_TEXTURE_ACCESS)
 		{
-			// Shaders don't care about copy destination parameters.
+			// Shaders don't care about RDG access parameters.
 		}
 		else if (
 			BaseType == UBMT_RDG_BUFFER_UAV ||
@@ -3680,11 +3673,6 @@ void GlobalBeginCompileShader(
 			Input.Environment.CompilerFlags.Add(CFLAG_ForceRemoveUnusedInterpolators);
 		}
 
-		if (CVarD3DForceDXC.GetValueOnAnyThread() != 0)
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-		}
-
 		if (CVarD3DCheckedForTypedUAVs.GetValueOnAnyThread() == 0)
 		{
 			Input.Environment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
@@ -3776,32 +3764,14 @@ void GlobalBeginCompileShader(
 				Input.Environment.CompilerFlags.Add(CFLAG_NoFastMath);
 			}
 		}
-
-		if (CVarMetalForceDXC.GetValueOnAnyThread() != 0)
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-		}
 	}
 
-	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform))
+	// Add compiler flag CFLAG_ForceDXC if DXC is enabled
+	const bool bIsDxcEnabled = IsDxcEnabledForPlatform((EShaderPlatform)Target.Platform);
+	Input.Environment.SetDefine(TEXT("COMPILER_DXC"), bIsDxcEnabled);
+	if (bIsDxcEnabled)
 	{
-		if (CVarOpenGLForceDXC.GetValueOnAnyThread() != 0)
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-		}
-	}
-
-	if (IsVulkanPlatform((EShaderPlatform)Target.Platform))
-	{
-		int32 VulkanForceDXC = CVarVulkanForceDXC.GetValueOnAnyThread();
-		const bool bIsVulkanMobile = IsVulkanMobilePlatform((EShaderPlatform)Target.Platform);
-		const bool bIsDXCEnabledForDesktop = (VulkanForceDXC == 1 && !bIsVulkanMobile);
-		const bool bIsDXCEnabledForMobile = (VulkanForceDXC == 2 && bIsVulkanMobile);
-		const bool bIsDXCEnableForAll = (VulkanForceDXC == 3);
-		if (bIsDXCEnabledForDesktop || bIsDXCEnabledForMobile || bIsDXCEnableForAll)
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-		}
+		Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 	}
 
 	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform) &&
@@ -3853,10 +3823,6 @@ void GlobalBeginCompileShader(
 
 	{
 		Input.Environment.SetDefine(TEXT("GBUFFER_HAS_VELOCITY"), IsUsingBasePassVelocity((EShaderPlatform)Target.Platform) ? 1 : 0);
-	}
-
-	{
-		Input.Environment.SetDefine(TEXT("GBUFFER_HAS_TANGENT"), BasePassCanOutputTangent(Target.GetPlatform()) ? 1 : 0);
 	}
 
 	{
@@ -4408,15 +4374,15 @@ FShader* FGlobalShaderTypeCompiler::FinishCompileShader(FGlobalShaderType* Shade
 			UE_LOG(LogShaderCompilers, Error, TEXT("Errors compiling global shader %s %s %s:\n"), CurrentJob.ShaderType->GetName(), ShaderPipelineType ? TEXT("ShaderPipeline") : TEXT(""), ShaderPipelineType ? ShaderPipelineType->GetName() : TEXT(""));
 			for (int32 ErrorIndex = 0; ErrorIndex < CurrentJob.Output.Errors.Num(); ErrorIndex++)
 			{
-				UE_LOG(LogShaderCompilers, Error, TEXT("\t%s"), *CurrentJob.Output.Errors[ErrorIndex].GetErrorStringWithLineMarker());
+				UE_LOG(LogShaderCompilers, Display, TEXT("%s"), *CurrentJob.Output.Errors[ErrorIndex].GetErrorStringWithLineMarker());
 			}
 		}
-		else if (CVarShowShaderWarnings->GetInt())
+		else if (GShowShaderWarnings)
 		{
 			UE_LOG(LogShaderCompilers, Warning, TEXT("Warnings compiling global shader %s %s %s:\n"), CurrentJob.ShaderType->GetName(), ShaderPipelineType ? TEXT("ShaderPipeline") : TEXT(""), ShaderPipelineType ? ShaderPipelineType->GetName() : TEXT(""));
 			for (int32 ErrorIndex = 0; ErrorIndex < CurrentJob.Output.Errors.Num(); ErrorIndex++)
 			{
-				UE_LOG(LogShaderCompilers, Warning, TEXT("\t%s"), *CurrentJob.Output.Errors[ErrorIndex].GetErrorStringWithLineMarker());
+				UE_LOG(LogShaderCompilers, Display, TEXT("%s"), *CurrentJob.Output.Errors[ErrorIndex].GetErrorStringWithLineMarker());
 			}
 		}
 	}

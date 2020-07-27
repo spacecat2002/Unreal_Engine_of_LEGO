@@ -66,7 +66,7 @@ public:
 	{
 		if (!PassUniformBuffer.IsBound())
 		{
-			PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTexturesUniformParameters::StaticStructMetadata.GetShaderVariableName());
+			PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTextureUniformParameters::StaticStructMetadata.GetShaderVariableName());
 		}
 	}
 
@@ -109,7 +109,7 @@ public:
 	{
 		if (!PassUniformBuffer.IsBound())
 		{
-			PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTexturesUniformParameters::StaticStructMetadata.GetShaderVariableName());
+			PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTextureUniformParameters::StaticStructMetadata.GetShaderVariableName());
 		}
 	}
 

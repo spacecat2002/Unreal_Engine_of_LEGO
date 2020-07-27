@@ -252,7 +252,7 @@ public:
 };
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FTranslucencyDepthPassUniformParameters,)
-	SHADER_PARAMETER_STRUCT(FSceneTexturesUniformParameters, SceneTextures)
+	SHADER_PARAMETER_STRUCT(FSceneTextureUniformParameters, SceneTextures)
 	SHADER_PARAMETER(FMatrix, ProjectionMatrix)
 	SHADER_PARAMETER(float, bClampToNearPlane)
 	SHADER_PARAMETER(float, InvMaxSubjectDepth)
@@ -271,7 +271,7 @@ void SetupTranslucencyDepthPassUniformBuffer(
 	// This is incorrect when rendering a shadowmap as it's not from the camera's POV
 	// Set the scene depth texture to something safe when rendering shadow depths
 	FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
-	SetupSceneTextureUniformParameters(SceneRenderTargets, View.FeatureLevel, ESceneTextureSetupMode::None, TranslucencyDepthPassParameters.SceneTextures);
+	SetupSceneTextureUniformParameters(SceneRenderTargets, View, ESceneTextureSetupMode::None, TranslucencyDepthPassParameters.SceneTextures);
 
 	TranslucencyDepthPassParameters.ProjectionMatrix = FTranslationMatrix(ShadowInfo->PreShadowTranslation - View.ViewMatrices.GetPreViewTranslation()) * ShadowInfo->SubjectAndReceiverMatrix;
 
@@ -902,13 +902,13 @@ public:
 					VolumetricCloudShadowmapTexture,
 					VolumetricCloudShadowmapTextureSampler,
 					TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
-					GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture);
+					GBlackTexture->TextureRHI);
 			}
 		}
 		
 		const bool bLightAtmospherePerPixelTransmittance = ShouldRenderSkyAtmosphere(LightSceneInfo->Scene, View.Family->EngineShowFlags) &&
-														(  (AtmosphereLight0Proxy && AtmosphereLight0Proxy == LightSceneInfo->Proxy && AtmosphereLight0Proxy->GetUsePerPixelAtmosphereTransmittance())
-														|| (AtmosphereLight1Proxy && AtmosphereLight1Proxy == LightSceneInfo->Proxy && AtmosphereLight1Proxy->GetUsePerPixelAtmosphereTransmittance()));
+														(  (AtmosphereLight0Proxy == LightSceneInfo->Proxy && AtmosphereLight0Proxy->GetUsePerPixelAtmosphereTransmittance())
+														|| (AtmosphereLight1Proxy == LightSceneInfo->Proxy && AtmosphereLight1Proxy->GetUsePerPixelAtmosphereTransmittance()));
 		SetShaderValue(RHICmdList, ShaderRHI, AtmospherePerPixelTransmittanceEnabled, bLightAtmospherePerPixelTransmittance ? 1 : 0);
 	}
 
@@ -947,16 +947,20 @@ IMPLEMENT_INJECTION_PIXELSHADER_TYPE(LightType_Point,false,false,true);
 IMPLEMENT_INJECTION_PIXELSHADER_TYPE(LightType_Point,true,false,false); 
 IMPLEMENT_INJECTION_PIXELSHADER_TYPE(LightType_Point,false,false,false); 
 
-void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdList, int32 ViewIndex)
+void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLighting(FRDGBuilder& GraphBuilder, int32 ViewIndex)
 {
-	if (GUseTranslucentLightingVolumes && GSupportsVolumeTextureRendering)
+	if (!GUseTranslucentLightingVolumes || !GSupportsVolumeTextureRendering)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, ClearTranslucentVolumeLighting);
-		SCOPED_GPU_STAT(RHICmdList, TranslucentLighting);
-
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		SceneContext.ClearTranslucentVolumeLighting(RHICmdList, ViewIndex);		
+		return;
 	}
+
+	RDG_GPU_STAT_SCOPE(GraphBuilder, TranslucentLighting);
+
+	AddPass(GraphBuilder, RDG_EVENT_NAME("ClearTranslucentVolumeLighting"), [this, ViewIndex](FRHICommandListImmediate& RHICmdList)
+	{
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+		SceneContext.ClearTranslucentVolumeLighting(RHICmdList, ViewIndex);
+	});
 }
 
 class FClearTranslucentLightingVolumeCS : public FGlobalShader
@@ -1030,11 +1034,6 @@ void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLightingAsyncCompute(F
 	const int32 NumUAVs = 4;
 
 	TShaderMapRef<FClearTranslucentLightingVolumeCS> ComputeShader(GetGlobalShaderMap(FeatureLevel));
-	static const FName EndComputeFenceName(TEXT("TranslucencyLightingVolumeClearEndComputeFence"));
-	TranslucencyLightingVolumeClearEndFence = RHICmdList.CreateComputeFence(EndComputeFenceName);
-
-	static const FName BeginComputeFenceName(TEXT("TranslucencyLightingVolumeClearBeginComputeFence"));
-	FComputeFenceRHIRef ClearBeginFence = RHICmdList.CreateComputeFence(BeginComputeFenceName);
 
 	TArray<FRHIUnorderedAccessView*, SceneRenderingAllocator> VolumeUAVs;
 	VolumeUAVs.Reserve(Views.Num() * NumUAVs);
@@ -1046,8 +1045,21 @@ void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLightingAsyncCompute(F
 		VolumeUAVs.Add(SceneContext.TranslucencyLightingVolumeDirectional[(i * NumTranslucentVolumeRenderTargetSets) + 1]->GetRenderTargetItem().UAV);
 	}
 
-	//write fence on the Gfx pipe so the async clear compute shader won't clear until the Gfx pipe is caught up.
-	RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, VolumeUAVs.GetData(), VolumeUAVs.Num(), ClearBeginFence);
+	TArray<FRHITransitionInfo, SceneRenderingAllocator> UAVTransitions;
+	TArray<FRHITransitionInfo, SceneRenderingAllocator> SRVTransitions;
+	for (FRHIUnorderedAccessView* UAV : VolumeUAVs)
+	{
+		UAVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+		SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+	}
+
+	// Transition should have already been ended before
+	check(TranslucencyLightingVolumeClearEndTransition == nullptr);
+	const FRHITransition* UAVTransition = RHICreateTransition(ERHIPipeline::Graphics, ERHIPipeline::AsyncCompute, ERHICreateTransitionFlags::None, MakeArrayView(UAVTransitions.GetData(), UAVTransitions.Num()));
+	TranslucencyLightingVolumeClearEndTransition = RHICreateTransition(ERHIPipeline::AsyncCompute, ERHIPipeline::Graphics, ERHICreateTransitionFlags::None, MakeArrayView(SRVTransitions.GetData(), SRVTransitions.Num()));
+
+	// Begin the UAV transition on the Gfx pipe so the async clear compute shader won't clear until the Gfx pipe is caught up.
+	RHICmdList.BeginTransition(UAVTransition);
 
 	const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
 
@@ -1055,11 +1067,12 @@ void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLightingAsyncCompute(F
 	FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
 	{
 		SCOPED_COMPUTE_EVENTF(RHICmdListComputeImmediate, ClearTranslucencyLightingVolume, TEXT("ClearTranslucencyLightingVolumeCompute %d"), TranslucencyLightingVolumeDim);
+
+		// we must wait on the transition from the Gfx pipe to let us know all our dependencies are ready.
+		RHICmdListComputeImmediate.EndTransition(UAVTransition);
+
 		for (int i = 0; i < Views.Num(); ++i)
 		{
-			//we must wait on the fence written from the Gfx pipe to let us know all our dependencies are ready.
-			RHICmdListComputeImmediate.WaitComputeFence(ClearBeginFence);
-
 			//standard compute setup, but on the async commandlist.
 			RHICmdListComputeImmediate.SetComputeShader(ComputeShader.GetComputeShader());
 
@@ -1071,8 +1084,8 @@ void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLightingAsyncCompute(F
 			ComputeShader->UnsetParameters(RHICmdListComputeImmediate);
 		}
 
-		//transition the output to readable and write the fence to allow the Gfx pipe to carry on.
-		RHICmdListComputeImmediate.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, VolumeUAVs.GetData(), VolumeUAVs.Num(), TranslucencyLightingVolumeClearEndFence);
+		//transition the output to readable on the async compute queue - gfx will call end transition when needed
+		RHICmdListComputeImmediate.BeginTransition(TranslucencyLightingVolumeClearEndTransition);
 	}
 
 	//immediately dispatch our async compute commands to the RHI thread to be submitted to the GPU as soon as possible.
@@ -1115,9 +1128,14 @@ public:
 
 IMPLEMENT_SHADER_TYPE(,FInjectAmbientCubemapPS,TEXT("/Engine/Private/TranslucentLightingShaders.usf"),TEXT("InjectAmbientCubemapMainPS"),SF_Pixel);
 
-void FDeferredShadingSceneRenderer::InjectAmbientCubemapTranslucentVolumeLighting(FRHICommandList& RHICmdList, const FViewInfo& View, int32 ViewIndex)
+void FDeferredShadingSceneRenderer::InjectAmbientCubemapTranslucentVolumeLighting(FRDGBuilder& GraphBuilder, const FViewInfo& View, int32 ViewIndex)
 {
-	if (GUseTranslucentLightingVolumes && GSupportsVolumeTextureRendering && View.FinalPostProcessSettings.ContributingCubemaps.Num())
+	if (!GUseTranslucentLightingVolumes || !GSupportsVolumeTextureRendering || !View.FinalPostProcessSettings.ContributingCubemaps.Num())
+	{
+		return;
+	}
+
+	AddUntrackedAccessPass(GraphBuilder, [this, &View, ViewIndex](FRHICommandList& RHICmdList)
 	{
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
@@ -1129,7 +1147,7 @@ void FDeferredShadingSceneRenderer::InjectAmbientCubemapTranslucentVolumeLightin
 		const FVolumeBounds VolumeBounds(TranslucencyLightingVolumeDim);
 
 		auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
-		
+
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
@@ -1158,17 +1176,17 @@ void FDeferredShadingSceneRenderer::InjectAmbientCubemapTranslucentVolumeLightin
 #endif
 				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 				GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
-									
+
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 				VertexShader->SetParameters(RHICmdList, VolumeBounds, FIntVector(TranslucencyLightingVolumeDim));
-				if(GeometryShader.IsValid())
+				if (GeometryShader.IsValid())
 				{
 					GeometryShader->SetParameters(RHICmdList, VolumeBounds.MinZ);
 				}
 
 				uint32 Count = View.FinalPostProcessSettings.ContributingCubemaps.Num();
-				for(uint32 i = 0; i < Count; ++i)
+				for (uint32 i = 0; i < Count; ++i)
 				{
 					const FFinalPostProcessSettings::FCubemapEntry& CubemapEntry = View.FinalPostProcessSettings.ContributingCubemaps[i];
 
@@ -1180,7 +1198,7 @@ void FDeferredShadingSceneRenderer::InjectAmbientCubemapTranslucentVolumeLightin
 			RHICmdList.EndRenderPass();
 			RHICmdList.CopyToResolveTarget(RT0->GetRenderTargetItem().TargetableTexture, RT0->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
 		}
-	}
+	});
 }
 
 void FDeferredShadingSceneRenderer::ClearTranslucentVolumePerObjectShadowing(FRHICommandList& RHICmdList, const int32 ViewIndex)
@@ -1460,152 +1478,150 @@ static void AddLightForInjection(
 }
 
 /** Injects all the lights in LightInjectionData into the translucent lighting volume textures. */
-static void InjectTranslucentLightArray(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, const TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>& LightInjectionData, int32 ViewIndex)
+static void InjectTranslucentLightArray(FRDGBuilder& GraphBuilder, const FViewInfo& View, const TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>& LightInjectionData, int32 ViewIndex)
 {
-	check(RHICmdList.IsOutsideRenderPass());
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	INC_DWORD_STAT_BY(STAT_NumLightsInjectedIntoTranslucency, LightInjectionData.Num());
-
-	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, SceneContext.GetCurrentFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
-	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
-	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
-
-	// Inject into each volume cascade
-	// Operate on one cascade at a time to reduce render target switches
-	for (uint32 VolumeCascadeIndex = 0; VolumeCascadeIndex < TVC_MAX; VolumeCascadeIndex++)
+	AddUntrackedAccessPass(GraphBuilder, RDG_EVENT_NAME("InjectTranslucentLightArray"), [&View, &LightInjectionData, ViewIndex](FRHICommandListImmediate& RHICmdList)
 	{
-		const IPooledRenderTarget* RT0 = SceneContext.TranslucencyLightingVolumeAmbient[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
-		const IPooledRenderTarget* RT1 = SceneContext.TranslucencyLightingVolumeDirectional[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+		INC_DWORD_STAT_BY(STAT_NumLightsInjectedIntoTranslucency, LightInjectionData.Num());
 
-		GVisualizeTexture.SetCheckPoint(RHICmdList, RT0);
-		GVisualizeTexture.SetCheckPoint(RHICmdList, RT1);
-
-		FRHITexture* RenderTargets[2];
-		RenderTargets[0] = RT0->GetRenderTargetItem().TargetableTexture;
-		RenderTargets[1] = RT1->GetRenderTargetItem().TargetableTexture;
-
-		FRHIRenderPassInfo RPInfo(UE_ARRAY_COUNT(RenderTargets), RenderTargets, ERenderTargetActions::Load_Store);
-		TransitionRenderPassTargets(RHICmdList, RPInfo);
-
-		RHICmdList.BeginRenderPass(RPInfo, TEXT("InjectTranslucentLightArray"));
+		// Inject into each volume cascade
+		// Operate on one cascade at a time to reduce render target switches
+		for (uint32 VolumeCascadeIndex = 0; VolumeCascadeIndex < TVC_MAX; VolumeCascadeIndex++)
 		{
-			FGraphicsPipelineStateInitializer GraphicsPSOInit;
-			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+			IPooledRenderTarget* RT0 = SceneContext.TranslucencyLightingVolumeAmbient[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
+			IPooledRenderTarget* RT1 = SceneContext.TranslucencyLightingVolumeDirectional[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
 
-			GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-			GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+			GVisualizeTexture.SetCheckPoint(RHICmdList, RT0);
+			GVisualizeTexture.SetCheckPoint(RHICmdList, RT1);
 
-			for (int32 LightIndex = 0; LightIndex < LightInjectionData.Num(); LightIndex++)
+			FRHITexture* RenderTargets[2];
+			RenderTargets[0] = RT0->GetRenderTargetItem().TargetableTexture;
+			RenderTargets[1] = RT1->GetRenderTargetItem().TargetableTexture;
+
+			FRHIRenderPassInfo RPInfo(UE_ARRAY_COUNT(RenderTargets), RenderTargets, ERenderTargetActions::Load_Store);
+			TransitionRenderPassTargets(RHICmdList, RPInfo);
+
+			RHICmdList.BeginRenderPass(RPInfo, TEXT("InjectTranslucentLightArray"));
 			{
-				const FTranslucentLightInjectionData& InjectionData = LightInjectionData[LightIndex];
-				const FLightSceneInfo* const LightSceneInfo = InjectionData.LightSceneInfo;
-				const bool bInverseSquared = LightSceneInfo->Proxy->IsInverseSquared();
-				const bool bDirectionalLight = LightSceneInfo->Proxy->GetLightType() == LightType_Directional;
-				const FVolumeBounds VolumeBounds = CalculateLightVolumeBounds(LightSceneInfo->Proxy->GetBoundingSphere(), View, VolumeCascadeIndex, bDirectionalLight);
+				FGraphicsPipelineStateInitializer GraphicsPSOInit;
+				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
-				if (VolumeBounds.IsValid())
+				GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+				GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+
+				for (int32 LightIndex = 0; LightIndex < LightInjectionData.Num(); LightIndex++)
 				{
-					TShaderMapRef<FWriteToSliceVS> VertexShader(View.ShaderMap);
-					TOptionalShaderMapRef<FWriteToSliceGS> GeometryShader(View.ShaderMap);
+					const FTranslucentLightInjectionData& InjectionData = LightInjectionData[LightIndex];
+					const FLightSceneInfo* const LightSceneInfo = InjectionData.LightSceneInfo;
+					const bool bInverseSquared = LightSceneInfo->Proxy->IsInverseSquared();
+					const bool bDirectionalLight = LightSceneInfo->Proxy->GetLightType() == LightType_Directional;
+					const FVolumeBounds VolumeBounds = CalculateLightVolumeBounds(LightSceneInfo->Proxy->GetBoundingSphere(), View, VolumeCascadeIndex, bDirectionalLight);
 
-					if (bDirectionalLight)
+					if (VolumeBounds.IsValid())
 					{
-						// Accumulate the contribution of multiple lights
-						// Directional lights write their shadowing into alpha of the ambient texture
-						GraphicsPSOInit.BlendState = TStaticBlendState<
-							CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One,
-							CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One>::GetRHI();
+						TShaderMapRef<FWriteToSliceVS> VertexShader(View.ShaderMap);
+						TOptionalShaderMapRef<FWriteToSliceGS> GeometryShader(View.ShaderMap);
 
-						if (InjectionData.ProjectedShadowInfo)
+						if (bDirectionalLight)
 						{
-							// shadows, restricting light contribution to the cascade bounds (except last cascade far to get light functions and no shadows there)
-							SetInjectionShader<LightType_Directional, true>(RHICmdList, GraphicsPSOInit, View, InjectionData.LightFunctionMaterialProxy, LightSceneInfo,
-								InjectionData.ProjectedShadowInfo, InjectionData.ProjectedShadowInfo->CascadeSettings.ShadowSplitIndex, VolumeCascadeIndex,
-								VertexShader, GeometryShader, InjectionData.bApplyLightFunction, false);
+							// Accumulate the contribution of multiple lights
+							// Directional lights write their shadowing into alpha of the ambient texture
+							GraphicsPSOInit.BlendState = TStaticBlendState<
+								CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One,
+								CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One>::GetRHI();
+
+							if (InjectionData.ProjectedShadowInfo)
+							{
+								// shadows, restricting light contribution to the cascade bounds (except last cascade far to get light functions and no shadows there)
+								SetInjectionShader<LightType_Directional, true>(RHICmdList, GraphicsPSOInit, View, InjectionData.LightFunctionMaterialProxy, LightSceneInfo,
+									InjectionData.ProjectedShadowInfo, InjectionData.ProjectedShadowInfo->CascadeSettings.ShadowSplitIndex, VolumeCascadeIndex,
+									VertexShader, GeometryShader, InjectionData.bApplyLightFunction, false);
+							}
+							else
+							{
+								// no shadows
+								SetInjectionShader<LightType_Directional, false>(RHICmdList, GraphicsPSOInit, View, InjectionData.LightFunctionMaterialProxy, LightSceneInfo,
+									InjectionData.ProjectedShadowInfo, INDEX_NONE, VolumeCascadeIndex,
+									VertexShader, GeometryShader, InjectionData.bApplyLightFunction, false);
+							}
 						}
 						else
 						{
-							// no shadows
-							SetInjectionShader<LightType_Directional, false>(RHICmdList, GraphicsPSOInit, View, InjectionData.LightFunctionMaterialProxy, LightSceneInfo,
-								InjectionData.ProjectedShadowInfo, INDEX_NONE, VolumeCascadeIndex,
-								VertexShader, GeometryShader, InjectionData.bApplyLightFunction, false);
-						}
-					}
-					else
-					{
-						// Accumulate the contribution of multiple lights
-						GraphicsPSOInit.BlendState = TStaticBlendState<
-							CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One,
-							CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One>::GetRHI();
+							// Accumulate the contribution of multiple lights
+							GraphicsPSOInit.BlendState = TStaticBlendState<
+								CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One,
+								CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One>::GetRHI();
 
-						if (InjectionData.ProjectedShadowInfo)
+							if (InjectionData.ProjectedShadowInfo)
+							{
+								SetInjectionShader<LightType_Point, true>(RHICmdList, GraphicsPSOInit, View, InjectionData.LightFunctionMaterialProxy, LightSceneInfo,
+									InjectionData.ProjectedShadowInfo, INDEX_NONE, VolumeCascadeIndex,
+									VertexShader, GeometryShader, InjectionData.bApplyLightFunction, bInverseSquared);
+							}
+							else
+							{
+								SetInjectionShader<LightType_Point, false>(RHICmdList, GraphicsPSOInit, View, InjectionData.LightFunctionMaterialProxy, LightSceneInfo,
+									InjectionData.ProjectedShadowInfo, INDEX_NONE, VolumeCascadeIndex,
+									VertexShader, GeometryShader, InjectionData.bApplyLightFunction, bInverseSquared);
+							}
+						}
+
+						const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
+
+						VertexShader->SetParameters(RHICmdList, VolumeBounds, FIntVector(TranslucencyLightingVolumeDim));
+						if (GeometryShader.IsValid())
 						{
-							SetInjectionShader<LightType_Point, true>(RHICmdList, GraphicsPSOInit, View, InjectionData.LightFunctionMaterialProxy, LightSceneInfo,
-								InjectionData.ProjectedShadowInfo, INDEX_NONE, VolumeCascadeIndex,
-								VertexShader, GeometryShader, InjectionData.bApplyLightFunction, bInverseSquared);
+							GeometryShader->SetParameters(RHICmdList, VolumeBounds.MinZ);
 						}
-						else
-						{
-							SetInjectionShader<LightType_Point, false>(RHICmdList, GraphicsPSOInit, View, InjectionData.LightFunctionMaterialProxy, LightSceneInfo,
-								InjectionData.ProjectedShadowInfo, INDEX_NONE, VolumeCascadeIndex,
-								VertexShader, GeometryShader, InjectionData.bApplyLightFunction, bInverseSquared);
-						}
+						RasterizeToVolumeTexture(RHICmdList, VolumeBounds);
 					}
-
-					const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
-
-					VertexShader->SetParameters(RHICmdList, VolumeBounds, FIntVector(TranslucencyLightingVolumeDim));
-					if(GeometryShader.IsValid())
-					{
-						GeometryShader->SetParameters(RHICmdList, VolumeBounds.MinZ);
-					}
-					RasterizeToVolumeTexture(RHICmdList, VolumeBounds);
 				}
 			}
+			RHICmdList.EndRenderPass();
+			RHICmdList.CopyToResolveTarget(RT0->GetRenderTargetItem().TargetableTexture, RT0->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+			RHICmdList.CopyToResolveTarget(RT1->GetRenderTargetItem().TargetableTexture, RT1->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
 		}
-		RHICmdList.EndRenderPass();
-		RHICmdList.CopyToResolveTarget(RT0->GetRenderTargetItem().TargetableTexture, RT0->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(RT1->GetRenderTargetItem().TargetableTexture, RT1->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-	}
+	});
 }
 
-void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& LightSceneInfo, const FProjectedShadowInfo* InProjectedShadowInfo, const FViewInfo& View, int32 ViewIndex)
+void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLighting(FRDGBuilder& GraphBuilder, const FLightSceneInfo& LightSceneInfo, const FProjectedShadowInfo* InProjectedShadowInfo, const FViewInfo& View, int32 ViewIndex)
 {
 	if (GUseTranslucentLightingVolumes && GSupportsVolumeTextureRendering)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_TranslucentInjectTime);
 
-		TArray<FTranslucentLightInjectionData, SceneRenderingAllocator> LightInjectionData;
+		auto& LightInjectionData = *GraphBuilder.AllocObject<TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>>();
 
 		AddLightForInjection(*this, LightSceneInfo, InProjectedShadowInfo, LightInjectionData);
 
 		// shadowed or unshadowed (InProjectedShadowInfo==0)
-		InjectTranslucentLightArray(RHICmdList, View, LightInjectionData, ViewIndex);
+		InjectTranslucentLightArray(GraphBuilder, View, LightInjectionData, ViewIndex);
 	}
 }
 
-void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLightingArray(FRHICommandListImmediate& RHICmdList, const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights, int32 FirstLightIndex, int32 LightsEndIndex)
+void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLightingArray(FRDGBuilder& GraphBuilder, const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights, int32 FirstLightIndex, int32 LightsEndIndex)
 {
 	SCOPE_CYCLE_COUNTER(STAT_TranslucentInjectTime);
 
-	TArray<FTranslucentLightInjectionData, SceneRenderingAllocator> *LightInjectionData = new TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>[Views.Num()];
-	for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+	using FLightInjectionData = TArray<TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>>;
+	auto& LightInjectionData = *GraphBuilder.AllocObject<FLightInjectionData>();
+	LightInjectionData.SetNum(Views.Num());
+
+	for (int32 ViewIndex = 0; ViewIndex < LightInjectionData.Num(); ++ViewIndex)
 	{
-		CA_SUPPRESS(6385);	// Doesn't like COM
-		LightInjectionData[ViewIndex].Empty(LightsEndIndex - FirstLightIndex);
+		LightInjectionData[ViewIndex].Reserve(LightsEndIndex - FirstLightIndex);
 	}
-	
 
 	for (int32 LightIndex = FirstLightIndex; LightIndex < LightsEndIndex; LightIndex++)
 	{
 		const FSortedLightSceneInfo& SortedLightInfo = SortedLights[LightIndex];
 		const FLightSceneInfo* const LightSceneInfo = SortedLightInfo.LightSceneInfo;
-		for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
-			if(LightSceneInfo->ShouldRenderLight(Views[ViewIndex]))
+			if (LightSceneInfo->ShouldRenderLight(Views[ViewIndex]))
 			{
-				CA_SUPPRESS(6385);	// Doesn't like COM
 				AddLightForInjection(*this, *LightSceneInfo, NULL, LightInjectionData[ViewIndex]);
 			}
 		}
@@ -1614,11 +1630,8 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLightingArray(FRHICom
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		// non-shadowed, non-light function lights
-		CA_SUPPRESS(6385);
-		InjectTranslucentLightArray(RHICmdList, Views[ViewIndex], LightInjectionData[ViewIndex], ViewIndex);
+		InjectTranslucentLightArray(GraphBuilder, Views[ViewIndex], LightInjectionData[ViewIndex], ViewIndex);
 	}
-
-	delete[] LightInjectionData;
 }
 
 /** Pixel shader used to inject simple lights into the translucent lighting volume */
@@ -1662,9 +1675,8 @@ private:
 
 IMPLEMENT_SHADER_TYPE(,FSimpleLightTranslucentLightingInjectPS,TEXT("/Engine/Private/TranslucentLightInjectionShaders.usf"),TEXT("SimpleLightInjectMainPS"),SF_Pixel);
 
-void FDeferredShadingSceneRenderer::InjectSimpleTranslucentVolumeLightingArray(FRHICommandListImmediate& RHICmdList, const FSimpleLightArray& SimpleLights, const FViewInfo& View, const int32 ViewIndex)
+void FDeferredShadingSceneRenderer::InjectSimpleTranslucentVolumeLightingArray(FRDGBuilder& GraphBuilder, const FSimpleLightArray& SimpleLights, const FViewInfo& View, const int32 ViewIndex)
 {
-	check(RHICmdList.IsOutsideRenderPass());
 	SCOPE_CYCLE_COUNTER(STAT_TranslucentInjectTime);
 
 	int32 NumLightsToInject = 0;
@@ -1679,127 +1691,17 @@ void FDeferredShadingSceneRenderer::InjectSimpleTranslucentVolumeLightingArray(F
 
 	if (NumLightsToInject > 0)
 	{
-		INC_DWORD_STAT_BY(STAT_NumLightsInjectedIntoTranslucency, NumLightsToInject);
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-
-		// Inject into each volume cascade
-		// Operate on one cascade at a time to reduce render target switches
-		for (int32 VolumeCascadeIndex = 0; VolumeCascadeIndex < TVC_MAX; VolumeCascadeIndex++)
+		AddUntrackedAccessPass(GraphBuilder, [this, &SimpleLights, &View, ViewIndex, NumLightsToInject](FRHICommandListImmediate& RHICmdList)
 		{
-			const IPooledRenderTarget* RT0 = SceneContext.TranslucencyLightingVolumeAmbient[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
-			const IPooledRenderTarget* RT1 = SceneContext.TranslucencyLightingVolumeDirectional[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
+			INC_DWORD_STAT_BY(STAT_NumLightsInjectedIntoTranslucency, NumLightsToInject);
+			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
-			GVisualizeTexture.SetCheckPoint(RHICmdList, RT0);
-			GVisualizeTexture.SetCheckPoint(RHICmdList, RT1);
-
-			FRHITexture* RenderTargets[2];
-			RenderTargets[0] = RT0->GetRenderTargetItem().TargetableTexture;
-			RenderTargets[1] = RT1->GetRenderTargetItem().TargetableTexture;
-
-			FRHIRenderPassInfo RPInfo(UE_ARRAY_COUNT(RenderTargets), RenderTargets, ERenderTargetActions::Load_Store);
-			TransitionRenderPassTargets(RHICmdList, RPInfo);
-			RHICmdList.BeginRenderPass(RPInfo, TEXT("InjectSimpleTranslucentVolumeLightingArray"));
-			{
-				FGraphicsPipelineStateInitializer GraphicsPSOInit;
-				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-
-				GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-				// Accumulate the contribution of multiple lights
-				GraphicsPSOInit.BlendState = TStaticBlendState<
-					CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One>::GetRHI();
-				GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
-		
-				for (int32 LightIndex = 0; LightIndex < SimpleLights.InstanceData.Num(); LightIndex++)
-				{
-					const FSimpleLightEntry& SimpleLight = SimpleLights.InstanceData[LightIndex];
-					const FSimpleLightPerViewEntry& SimpleLightPerViewData = SimpleLights.GetViewDependentData(LightIndex, ViewIndex, Views.Num());
-
-					if (SimpleLight.bAffectTranslucency)
-					{
-						const FSphere LightBounds(SimpleLightPerViewData.Position, SimpleLight.Radius);
-						const FVolumeBounds VolumeBounds = CalculateLightVolumeBounds(LightBounds, View, VolumeCascadeIndex, false);
-
-						if (VolumeBounds.IsValid())
-						{
-							TShaderMapRef<FWriteToSliceVS> VertexShader(View.ShaderMap);
-							TOptionalShaderMapRef<FWriteToSliceGS> GeometryShader(View.ShaderMap);
-							TShaderMapRef<FSimpleLightTranslucentLightingInjectPS> PixelShader(View.ShaderMap);
-
-							GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
-							GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-							GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
-#endif
-							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
-
-							SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-
-							const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
-
-							VertexShader->SetParameters(RHICmdList, VolumeBounds, FIntVector(TranslucencyLightingVolumeDim));
-							if(GeometryShader.IsValid())
-							{
-								GeometryShader->SetParameters(RHICmdList, VolumeBounds.MinZ);
-							}
-							PixelShader->SetParameters(RHICmdList, View, SimpleLight, SimpleLightPerViewData, VolumeCascadeIndex);
-
-
-
-							RasterizeToVolumeTexture(RHICmdList, VolumeBounds);
-						}
-					}
-				}
-			}
-			RHICmdList.EndRenderPass();
-			RHICmdList.CopyToResolveTarget(RT0->GetRenderTargetItem().TargetableTexture, RT0->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-			RHICmdList.CopyToResolveTarget(RT1->GetRenderTargetItem().TargetableTexture, RT1->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		}
-	}
-}
-
-void FDeferredShadingSceneRenderer::FilterTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, const int32 ViewIndex)
-{
-	if (GUseTranslucentLightingVolumes && GSupportsVolumeTextureRendering)
-	{
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-#if 0
-		// textures have to be finalized before reading.
-		for (int32 VolumeCascadeIndex = 0; VolumeCascadeIndex < TVC_MAX; VolumeCascadeIndex++)
-		{
-			const IPooledRenderTarget* RT0 = SceneContext.TranslucencyLightingVolumeAmbient[VolumeCascadeIndex];
-			const IPooledRenderTarget* RT1 = SceneContext.TranslucencyLightingVolumeDirectional[VolumeCascamdeIndex];
-			FTextureRHIRef TargetTexture0 = RT0->GetRenderTargetItem().TargetableTexture;
-			FTextureRHIRef TargetTexture1 = RT1->GetRenderTargetItem().TargetableTexture;
-			RHICmdList.CopyToResolveTarget(TargetTexture0, TargetTexture0, FResolveParams());
-			RHICmdList.CopyToResolveTarget(TargetTexture1, TargetTexture1, FResolveParams());
-		}
-#endif
-
-		if (GUseTranslucencyVolumeBlur)
-		{
-			const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
-			SCOPED_DRAW_EVENTF(RHICmdList, FilterTranslucentVolume, TEXT("FilterTranslucentVolume %dx%dx%d Cascades:%d"),
-				TranslucencyLightingVolumeDim, TranslucencyLightingVolumeDim, TranslucencyLightingVolumeDim, TVC_MAX);
-
-			SCOPED_GPU_STAT(RHICmdList, TranslucentLighting);
-
-			FGraphicsPipelineStateInitializer GraphicsPSOInit;
-			GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-			GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-
-			bool bTransitionedToWriteable = (GUseTranslucentLightingVolumes && GSupportsVolumeTextureRendering && View.FinalPostProcessSettings.ContributingCubemaps.Num());
-
-			// Filter each cascade
+			// Inject into each volume cascade
+			// Operate on one cascade at a time to reduce render target switches
 			for (int32 VolumeCascadeIndex = 0; VolumeCascadeIndex < TVC_MAX; VolumeCascadeIndex++)
 			{
-				const IPooledRenderTarget* RT0 = SceneContext.GetTranslucencyVolumeAmbient((ETranslucencyVolumeCascade)VolumeCascadeIndex, ViewIndex);
-				const IPooledRenderTarget* RT1 = SceneContext.GetTranslucencyVolumeDirectional((ETranslucencyVolumeCascade)VolumeCascadeIndex, ViewIndex);
-
-				const IPooledRenderTarget* Input0 = SceneContext.TranslucencyLightingVolumeAmbient[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
-				const IPooledRenderTarget* Input1 = SceneContext.TranslucencyLightingVolumeDirectional[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
+				IPooledRenderTarget* RT0 = SceneContext.TranslucencyLightingVolumeAmbient[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
+				IPooledRenderTarget* RT1 = SceneContext.TranslucencyLightingVolumeDirectional[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
 
 				GVisualizeTexture.SetCheckPoint(RHICmdList, RT0);
 				GVisualizeTexture.SetCheckPoint(RHICmdList, RT1);
@@ -1808,57 +1710,170 @@ void FDeferredShadingSceneRenderer::FilterTranslucentVolumeLighting(FRHICommandL
 				RenderTargets[0] = RT0->GetRenderTargetItem().TargetableTexture;
 				RenderTargets[1] = RT1->GetRenderTargetItem().TargetableTexture;
 
-				FRHITexture* Inputs[2];
-				Inputs[0] = Input0->GetRenderTargetItem().TargetableTexture;
-				Inputs[1] = Input1->GetRenderTargetItem().TargetableTexture;
-
-				static_assert(TVC_MAX == 2, "Final transition logic should change");
-
-				//the volume textures should still be writable from the injection phase on the first loop.
-				if (!bTransitionedToWriteable || VolumeCascadeIndex > 0)
-				{
-					RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, RenderTargets, 2);
-				}
-				RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, Inputs, 2);
-
 				FRHIRenderPassInfo RPInfo(UE_ARRAY_COUNT(RenderTargets), RenderTargets, ERenderTargetActions::Load_Store);
 				TransitionRenderPassTargets(RHICmdList, RPInfo);
-				RHICmdList.BeginRenderPass(RPInfo, TEXT("FilterTranslucentVolumeLighting"));
+				RHICmdList.BeginRenderPass(RPInfo, TEXT("InjectSimpleTranslucentVolumeLightingArray"));
 				{
+					FGraphicsPipelineStateInitializer GraphicsPSOInit;
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
-					const FVolumeBounds VolumeBounds(TranslucencyLightingVolumeDim);
-					TShaderMapRef<FWriteToSliceVS> VertexShader(View.ShaderMap);
-					TOptionalShaderMapRef<FWriteToSliceGS> GeometryShader(View.ShaderMap);
-					TShaderMapRef<FFilterTranslucentVolumePS> PixelShader(View.ShaderMap);
-				
-					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
-#endif
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+					GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+					// Accumulate the contribution of multiple lights
+					GraphicsPSOInit.BlendState = TStaticBlendState<
+						CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One,
+						CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One>::GetRHI();
 					GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
 
-					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-
-					VertexShader->SetParameters(RHICmdList, VolumeBounds, FIntVector(TranslucencyLightingVolumeDim));
-					if(GeometryShader.IsValid())
+					for (int32 LightIndex = 0; LightIndex < SimpleLights.InstanceData.Num(); LightIndex++)
 					{
-						GeometryShader->SetParameters(RHICmdList, VolumeBounds.MinZ);
-					}
-					PixelShader->SetParameters(RHICmdList, View, VolumeCascadeIndex, ViewIndex);
+						const FSimpleLightEntry& SimpleLight = SimpleLights.InstanceData[LightIndex];
+						const FSimpleLightPerViewEntry& SimpleLightPerViewData = SimpleLights.GetViewDependentData(LightIndex, ViewIndex, Views.Num());
 
-					RasterizeToVolumeTexture(RHICmdList, VolumeBounds);
+						if (SimpleLight.bAffectTranslucency)
+						{
+							const FSphere LightBounds(SimpleLightPerViewData.Position, SimpleLight.Radius);
+							const FVolumeBounds VolumeBounds = CalculateLightVolumeBounds(LightBounds, View, VolumeCascadeIndex, false);
+
+							if (VolumeBounds.IsValid())
+							{
+								TShaderMapRef<FWriteToSliceVS> VertexShader(View.ShaderMap);
+								TOptionalShaderMapRef<FWriteToSliceGS> GeometryShader(View.ShaderMap);
+								TShaderMapRef<FSimpleLightTranslucentLightingInjectPS> PixelShader(View.ShaderMap);
+
+								GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
+								GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
+								GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+#endif
+								GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+
+								SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+								const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
+
+								VertexShader->SetParameters(RHICmdList, VolumeBounds, FIntVector(TranslucencyLightingVolumeDim));
+								if (GeometryShader.IsValid())
+								{
+									GeometryShader->SetParameters(RHICmdList, VolumeBounds.MinZ);
+								}
+								PixelShader->SetParameters(RHICmdList, View, SimpleLight, SimpleLightPerViewData, VolumeCascadeIndex);
+
+
+
+								RasterizeToVolumeTexture(RHICmdList, VolumeBounds);
+							}
+						}
+					}
 				}
 				RHICmdList.EndRenderPass();
+				RHICmdList.CopyToResolveTarget(RT0->GetRenderTargetItem().TargetableTexture, RT0->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+				RHICmdList.CopyToResolveTarget(RT1->GetRenderTargetItem().TargetableTexture, RT1->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+			}
+		});
+	}
+}
 
-				//only do readable transition on the final loop since the other ones will do this up front.
-				//if (VolumeCascadeIndex == TVC_MAX - 1)
-				{					
-					RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, RenderTargets, 2);
+void FDeferredShadingSceneRenderer::FilterTranslucentVolumeLighting(FRDGBuilder& GraphBuilder, const FViewInfo& View, const int32 ViewIndex)
+{
+	if (!GUseTranslucentLightingVolumes || !GSupportsVolumeTextureRendering || !GUseTranslucencyVolumeBlur)
+	{
+		return;
+	}
+
+	AddUntrackedAccessPass(GraphBuilder, [this, &View, ViewIndex](FRHICommandListImmediate& RHICmdList)
+	{
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
+		const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
+		SCOPED_DRAW_EVENTF(RHICmdList, FilterTranslucentVolume, TEXT("FilterTranslucentVolume %dx%dx%d Cascades:%d"),
+			TranslucencyLightingVolumeDim, TranslucencyLightingVolumeDim, TranslucencyLightingVolumeDim, TVC_MAX);
+
+		SCOPED_GPU_STAT(RHICmdList, TranslucentLighting);
+
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+
+		bool bTransitionedToWriteable = (GUseTranslucentLightingVolumes && GSupportsVolumeTextureRendering && View.FinalPostProcessSettings.ContributingCubemaps.Num());
+
+		// Filter each cascade
+		for (int32 VolumeCascadeIndex = 0; VolumeCascadeIndex < TVC_MAX; VolumeCascadeIndex++)
+		{
+			IPooledRenderTarget* RT0 = SceneContext.GetTranslucencyVolumeAmbient((ETranslucencyVolumeCascade)VolumeCascadeIndex, ViewIndex);
+			IPooledRenderTarget* RT1 = SceneContext.GetTranslucencyVolumeDirectional((ETranslucencyVolumeCascade)VolumeCascadeIndex, ViewIndex);
+
+			const IPooledRenderTarget* Input0 = SceneContext.TranslucencyLightingVolumeAmbient[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
+			const IPooledRenderTarget* Input1 = SceneContext.TranslucencyLightingVolumeDirectional[VolumeCascadeIndex + NumTranslucentVolumeRenderTargetSets * ViewIndex];
+
+			GVisualizeTexture.SetCheckPoint(RHICmdList, RT0);
+			GVisualizeTexture.SetCheckPoint(RHICmdList, RT1);
+
+			FRHITexture* RenderTargets[2];
+			RenderTargets[0] = RT0->GetRenderTargetItem().TargetableTexture;
+			RenderTargets[1] = RT1->GetRenderTargetItem().TargetableTexture;
+
+			FRHITransitionInfo Inputs[2];
+			Inputs[0] = FRHITransitionInfo(Input0->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics);
+			Inputs[1] = FRHITransitionInfo(Input1->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics);
+
+			static_assert(TVC_MAX == 2, "Final transition logic should change");
+
+			//the volume textures should still be writable from the injection phase on the first loop.
+			if (!bTransitionedToWriteable || VolumeCascadeIndex > 0)
+			{
+				FRHITransitionInfo RTVTransitions[2];
+				for (int RT = 0; RT < 2; ++RT)
+				{
+					RTVTransitions[RT] = FRHITransitionInfo(RenderTargets[RT], ERHIAccess::Unknown, ERHIAccess::RTV);
 				}
+				RHICmdList.Transition(MakeArrayView(RTVTransitions, 2));
+			}
+			RHICmdList.Transition(MakeArrayView(Inputs, 2));
+
+			FRHIRenderPassInfo RPInfo(UE_ARRAY_COUNT(RenderTargets), RenderTargets, ERenderTargetActions::Load_Store);
+			TransitionRenderPassTargets(RHICmdList, RPInfo);
+			RHICmdList.BeginRenderPass(RPInfo, TEXT("FilterTranslucentVolumeLighting"));
+			{
+				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+				const FVolumeBounds VolumeBounds(TranslucencyLightingVolumeDim);
+				TShaderMapRef<FWriteToSliceVS> VertexShader(View.ShaderMap);
+				TOptionalShaderMapRef<FWriteToSliceGS> GeometryShader(View.ShaderMap);
+				TShaderMapRef<FFilterTranslucentVolumePS> PixelShader(View.ShaderMap);
+
+				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
+				GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+#endif
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+
+				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+				VertexShader->SetParameters(RHICmdList, VolumeBounds, FIntVector(TranslucencyLightingVolumeDim));
+				if (GeometryShader.IsValid())
+				{
+					GeometryShader->SetParameters(RHICmdList, VolumeBounds.MinZ);
+				}
+				PixelShader->SetParameters(RHICmdList, View, VolumeCascadeIndex, ViewIndex);
+
+				RasterizeToVolumeTexture(RHICmdList, VolumeBounds);
+			}
+			RHICmdList.EndRenderPass();
+
+			//only do readable transition on the final loop since the other ones will do this up front.
+			//if (VolumeCascadeIndex == TVC_MAX - 1)
+			{
+				FRHITransitionInfo SRVTransitions[2];
+				for (int RT = 0; RT < 2; ++RT)
+				{
+					SRVTransitions[RT] = FRHITransitionInfo(RenderTargets[RT], ERHIAccess::Unknown, ERHIAccess::SRVMask);
+				}
+				RHICmdList.Transition(MakeArrayView(SRVTransitions, 2));
 			}
 		}
-	}
+	});
 }

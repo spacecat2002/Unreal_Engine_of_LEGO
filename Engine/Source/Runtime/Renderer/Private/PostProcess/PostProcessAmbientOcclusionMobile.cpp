@@ -432,7 +432,7 @@ void FMobileSceneRenderer::InitAmbientOcclusionOutputs(FRHICommandListImmediate&
 
 	FIntPoint Extent = FIntPoint::DivideAndRoundUp(BufferSize, DownsampleFactor);
 
-	GRenderTargetPool.FindFreeElement(RHICmdList, FPooledRenderTargetDesc::Create2DDesc(Extent, PF_R8G8B8A8, FClearValueBinding::Black, TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV, false), AmbientOcclusionMobileOutputs.AmbientOcclusionTexture, TEXT("AmbientOcclusionTexture"), false);
+	GRenderTargetPool.FindFreeElement(RHICmdList, FPooledRenderTargetDesc::Create2DDesc(Extent, PF_R8G8B8A8, FClearValueBinding::Black, TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV, false), AmbientOcclusionMobileOutputs.AmbientOcclusionTexture, TEXT("AmbientOcclusionTexture"));
 }
 
 void FMobileSceneRenderer::ReleaseAmbientOcclusionOutputs()
@@ -478,7 +478,8 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHIC
 
 	float ThicknessBlend = GTAOThicknessBlendCVar ? GTAOThicknessBlendCVar->GetValueOnRenderThread() : 0.1f;
 
-	FRDGTextureRef HorizonSearchIntegralTexture = GraphBuilder.CreateTexture(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R8G8B8A8, FClearValueBinding::Black, TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV, false), TEXT("HorizonSearchIntegralTexture"));
+	ETextureCreateFlags TextureCreateFlags = TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV;
+	FRDGTextureRef HorizonSearchIntegralTexture = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(BufferSize, PF_R8G8B8A8, FClearValueBinding::Black, TexCreate_None, TextureCreateFlags), TEXT("HorizonSearchIntegralTexture"));
 	FRDGTextureUAVRef HorizonSearchIntegralTextureUAV = GraphBuilder.CreateUAV(HorizonSearchIntegralTexture);
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)

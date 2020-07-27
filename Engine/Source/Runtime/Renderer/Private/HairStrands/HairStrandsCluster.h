@@ -27,7 +27,7 @@
 struct FHairMacroGroupAABBData
 {
 	uint32 MacroGroupCount = 0;
-	TRefCountPtr<FPooledRDGBuffer>	MacroGroupAABBsBuffer;
+	TRefCountPtr<FRDGPooledBuffer>	MacroGroupAABBsBuffer;
 };
 
 /// Hair macro group infos
@@ -80,6 +80,6 @@ struct FHairStrandsMacroGroupViews
 };
 
 FHairStrandsMacroGroupViews CreateHairStrandsMacroGroups(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const FScene* Scene,
 	const TArray<FViewInfo>& Views);

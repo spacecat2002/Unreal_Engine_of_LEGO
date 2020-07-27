@@ -520,7 +520,7 @@ void FStaticMeshStreamIn_IO::ReportIOError(const FContext& Context)
 			StreamingManager.MarkMountedStateDirty(Context.Mesh->GetMipIoFilenameHash(MipIndex));
 		}
 
-		UE_LOG(LogContentStreaming, Warning, TEXT("[%s] Stream in request failed due to IO error."), *Context.Mesh->GetName());
+		UE_LOG(LogContentStreaming, Warning, TEXT("[%s] StaticMesh stream in request failed due to IO error (LOD %d-%d)."), *Context.Mesh->GetName(), PendingFirstMip, CurrentFirstLODIdx - 1);
 	}
 }
 

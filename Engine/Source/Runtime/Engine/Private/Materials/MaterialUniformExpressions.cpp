@@ -111,6 +111,33 @@ static void GetTextureParameterValue(const FHashedMaterialParameterInfo& Paramet
 	}
 }
 
+static void GetTextureParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, int32 TextureIndex, const FMaterialRenderContext& Context, const URuntimeVirtualTexture*& OutValue)
+{
+	if (ParameterInfo.Name.IsNone())
+	{
+		OutValue = GetIndexedTexture<URuntimeVirtualTexture>(Context.Material, TextureIndex);
+	}
+	else if (!Context.MaterialRenderProxy || !Context.MaterialRenderProxy->GetTextureValue(ParameterInfo, &OutValue, Context))
+	{
+		URuntimeVirtualTexture* Value = nullptr;
+
+		if (AreExperimentalMaterialLayersEnabled())
+		{
+			UMaterialInterface* Interface = Context.Material.GetMaterialInterface();
+			if (!Interface || !Interface->GetRuntimeVirtualTextureParameterDefaultValue(ParameterInfo, Value))
+			{
+				Value = GetIndexedTexture<URuntimeVirtualTexture>(Context.Material, TextureIndex);
+			}
+		}
+		else
+		{
+			Value = GetIndexedTexture<URuntimeVirtualTexture>(Context.Material, TextureIndex);
+		}
+
+		OutValue = Value;
+	}
+}
+
 FMaterialUniformExpressionType::FMaterialUniformExpressionType(const TCHAR* InName)
 	: Name(InName)
 {
@@ -1045,11 +1072,11 @@ void FUniformExpressionSet::GetTextureValue(EMaterialTextureParameterType Type, 
 	GetTextureParameterValue(Parameter.ParameterInfo, Parameter.TextureIndex, Context, OutValue);
 }
 
-void FUniformExpressionSet::GetTextureValue(int32 Index, const FMaterial& Material, const URuntimeVirtualTexture*& OutValue) const
+void FUniformExpressionSet::GetTextureValue(int32 Index, const FMaterialRenderContext& Context, const FMaterial& Material, const URuntimeVirtualTexture*& OutValue) const
 {
 	check(IsInParallelRenderingThread());
 	const FMaterialTextureParameterInfo& Parameter = GetTextureParameter(EMaterialTextureParameterType::Virtual, Index);
-	OutValue = GetIndexedTexture<URuntimeVirtualTexture>(Material, Parameter.TextureIndex);
+	GetTextureParameterValue(Parameter.ParameterInfo, Parameter.TextureIndex, Context, OutValue);
 }
 
 void FUniformExpressionSet::FillUniformBuffer(const FMaterialRenderContext& MaterialRenderContext, const FUniformExpressionCache& UniformExpressionCache, uint8* TempBuffer, int TempBufferSize) const
@@ -1112,7 +1139,7 @@ void FUniformExpressionSet::FillUniformBuffer(const FMaterialRenderContext& Mate
 			if (!bFoundTexture)
 			{
 				const URuntimeVirtualTexture* Texture = nullptr;
-				GetTextureValue(ExpressionIndex, MaterialRenderContext.Material, Texture);
+				GetTextureValue(ExpressionIndex, MaterialRenderContext, MaterialRenderContext.Material, Texture);
 				if (Texture != nullptr)
 				{
 					IAllocatedVirtualTexture const* AllocatedVT = Texture->GetAllocatedVirtualTexture();
@@ -1509,7 +1536,7 @@ void FUniformExpressionSet::FillUniformBuffer(const FMaterialRenderContext& Mate
 			if (!bValidResources)
 			{
 				const URuntimeVirtualTexture* Texture = nullptr;
-				GetTextureValue(ExpressionIndex, MaterialRenderContext.Material, Texture);
+				GetTextureValue(ExpressionIndex, MaterialRenderContext, MaterialRenderContext.Material, Texture);
 				if (Texture != nullptr)
 				{
 					IAllocatedVirtualTexture const* AllocatedVT = Texture->GetAllocatedVirtualTexture();

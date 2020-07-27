@@ -128,9 +128,12 @@ public:
 	void FinishFrame(bool const bImmediateContext);
 
 	// Track Write->Read transitions for TBDR Fragment->Verex fencing
-	void TransitionResources(FRHIUnorderedAccessView** InUAVs, int32 NumUAVs);
-	void TransitionResources(FRHITexture** InTextures, int32 NumTextures);
-	
+	void TransitionResource(FRHIUnorderedAccessView* InResource);
+	void TransitionResource(FRHITexture* InResource);
+
+	template<typename T>
+	void TransitionRHIResource(T* InResource);
+
 protected:
 	/** The underlying Metal device */
 	mtlpp::Device Device;
@@ -171,6 +174,15 @@ protected:
 	bool bValidationEnabled;
 };
 
+template<typename T>
+void FMetalContext::TransitionRHIResource(T* InResource)
+{
+	auto Resource = ResourceCast(InResource);
+	if (Resource->Buffer)
+	{
+		RenderPass.TransitionResources(Resource->Buffer);
+	}
+}
 
 class FMetalDeviceContext : public FMetalContext
 {

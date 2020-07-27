@@ -50,6 +50,7 @@
 #include "SceneTextureParameters.h"
 #include "PixelShaderUtils.h"
 #include "ScreenSpaceRayTracing.h"
+#include "SceneViewExtension.h"
 
 /** The global center for all post processing activities. */
 FPostProcessing GPostProcessing;
@@ -166,18 +167,16 @@ class FComposeSeparateTranslucencyPS : public FGlobalShader
 
 IMPLEMENT_GLOBAL_SHADER(FComposeSeparateTranslucencyPS, "/Engine/Private/ComposeSeparateTranslucency.usf", "MainPS", SF_Pixel);
 
-FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColor, FRDGTextureRef SeparateTranslucency, FRDGTextureRef SeparateModulation)
+FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColor, const FSeparateTranslucencyTextures& SeparateTranslucencyTextures)
 {
 	FRDGTextureDesc SceneColorDesc = SceneColor->Desc;
-	SceneColorDesc.TargetableFlags &= ~TexCreate_UAV;
-	SceneColorDesc.TargetableFlags |= TexCreate_RenderTargetable;
+	SceneColorDesc.Reset();
 
 	FRDGTextureRef NewSceneColor = GraphBuilder.CreateTexture(SceneColorDesc, TEXT("SceneColor"));
+	FRDGTextureRef SeparateTranslucency = SeparateTranslucencyTextures.GetColorForRead(GraphBuilder);
 
-	const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get_FrameConstantsOnly();
-
-	FIntRect SeparateTranslucencyRect = SceneContext.GetSeparateTranslucencyViewRect(View);
-	bool bScaleSeparateTranslucency = SeparateTranslucencyRect != View.ViewRect;
+	const FIntRect SeparateTranslucencyRect = SeparateTranslucencyTextures.GetDimensions().GetViewport(View.ViewRect).Rect;
+	const bool bScaleSeparateTranslucency = SeparateTranslucencyRect != View.ViewRect;
 
 	FComposeSeparateTranslucencyPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FComposeSeparateTranslucencyPS::FParameters>();
 	PassParameters->SeparateTranslucencyBilinearUVMinMax.X = (SeparateTranslucencyRect.Min.X + 0.5f) / float(SeparateTranslucency->Desc.Extent.X);
@@ -188,7 +187,7 @@ FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder,
 	PassParameters->SceneColorSampler = TStaticSamplerState<SF_Point>::GetRHI();
 	PassParameters->SeparateTranslucency = SeparateTranslucency;
 	PassParameters->SeparateTranslucencySampler = bScaleSeparateTranslucency ? TStaticSamplerState<SF_Bilinear>::GetRHI() : TStaticSamplerState<SF_Point>::GetRHI();
-	PassParameters->SeparateModulation = SeparateModulation;
+	PassParameters->SeparateModulation = SeparateTranslucencyTextures.GetColorModulateForRead(GraphBuilder);
 	PassParameters->SeparateModulationSampler = bScaleSeparateTranslucency ? TStaticSamplerState<SF_Bilinear>::GetRHI() : TStaticSamplerState<SF_Point>::GetRHI();
 	PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 	PassParameters->RenderTargets[0] = FRenderTargetBinding(NewSceneColor, ERenderTargetLoadAction::ENoAction);
@@ -210,7 +209,7 @@ FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder,
 
 void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPostProcessingInputs& Inputs)
 {
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderPostProcessing);
+	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderPostProcessing);
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_PostProcessing_Process);
 
 	check(IsInRenderingThread());
@@ -219,17 +218,17 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 	const FIntRect PrimaryViewRect = View.ViewRect;
 
-	const FSceneTextureParameters& SceneTextures = *Inputs.SceneTextures;
+	const FSceneTextureParameters SceneTextureParameters = GetSceneTextureParameters(GraphBuilder, Inputs.SceneTextures);
+
 	const FScreenPassRenderTarget ViewFamilyOutput = FScreenPassRenderTarget::CreateViewFamilyOutput(Inputs.ViewFamilyTexture, View);
-	const FScreenPassTexture SceneDepth(SceneTextures.SceneDepthBuffer, PrimaryViewRect);
-	const FScreenPassTexture SeparateTranslucency(Inputs.SeparateTranslucency, PrimaryViewRect);
-	const FScreenPassTexture SeparateModulation(Inputs.SeparateModulation, PrimaryViewRect);
-	const FScreenPassTexture CustomDepth(Inputs.CustomDepth, PrimaryViewRect);
-	const FScreenPassTexture Velocity(SceneTextures.SceneVelocityBuffer, PrimaryViewRect);
+	const FScreenPassTexture SceneDepth(SceneTextureParameters.SceneDepthTexture, PrimaryViewRect);
+	const FScreenPassTexture SeparateTranslucency(Inputs.SeparateTranslucencyTextures->GetColorForRead(GraphBuilder), PrimaryViewRect);
+	const FScreenPassTexture CustomDepth((*Inputs.SceneTextures)->CustomDepthTexture, PrimaryViewRect);
+	const FScreenPassTexture Velocity(SceneTextureParameters.GBufferVelocityTexture, PrimaryViewRect);
 	const FScreenPassTexture BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder));
 
 	// Scene color is updated incrementally through the post process pipeline.
-	FScreenPassTexture SceneColor(Inputs.SceneColor, PrimaryViewRect);
+	FScreenPassTexture SceneColor((*Inputs.SceneTextures)->SceneColorTexture, PrimaryViewRect);
 
 	// Assigned before and after the tonemapper.
 	FScreenPassTexture SceneColorBeforeTonemap;
@@ -278,6 +277,21 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PrimaryUpscale,
 		SecondaryUpscale,
 		MAX
+	};
+
+	const auto TranslatePass = [](ISceneViewExtension::EPostProcessingPass Pass) -> EPass
+	{
+		switch (Pass)
+		{
+			case ISceneViewExtension::EPostProcessingPass::MotionBlur            : return EPass::MotionBlur;
+			case ISceneViewExtension::EPostProcessingPass::Tonemap               : return EPass::Tonemap;
+			case ISceneViewExtension::EPostProcessingPass::FXAA                  : return EPass::FXAA;
+			case ISceneViewExtension::EPostProcessingPass::VisualizeDepthOfField : return EPass::VisualizeDepthOfField;
+
+			default:
+				check(false);
+				return EPass::MAX;
+		};
 	};
 
 	const TCHAR* PassNames[] =
@@ -331,18 +345,41 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 	PassSequence.SetEnabled(EPass::PrimaryUpscale, PaniniConfig.IsEnabled() || (View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::SpatialUpscale && PrimaryViewRect.Size() != View.GetSecondaryViewRectSize()));
 	PassSequence.SetEnabled(EPass::SecondaryUpscale, View.RequiresSecondaryUpscale());
 
+	const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity](FScreenPassTexture InSceneColor)
+	{ 
+		FPostProcessMaterialInputs PostProcessMaterialInputs;
+
+		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SceneColor, InSceneColor);
+		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
+		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
+		PostProcessMaterialInputs.CustomDepthTexture = CustomDepth.Texture;
+
+		return PostProcessMaterialInputs;
+	};
+
+	const auto AddAfterPass = [&](EPass InPass, FScreenPassTexture InSceneColor) -> FScreenPassTexture
+	{
+		// In some cases (e.g. OCIO color conversion) we want View Extensions to be able to add extra custom post processing after the pass.
+
+		FAfterPassCallbackDelegateArray& PassCallbacks = PassSequence.GetAfterPassCallbacks(InPass);
+
+		if (PassCallbacks.Num())
+		{
+			FPostProcessMaterialInputs InOutPostProcessAfterPassInputs = GetPostProcessMaterialInputs(InSceneColor);
+
+			for (int32 AfterPassCallbackIndex = 0; AfterPassCallbackIndex < PassCallbacks.Num(); AfterPassCallbackIndex++)
+			{
+				FAfterPassCallbackDelegate& AfterPassCallback = PassCallbacks[AfterPassCallbackIndex];
+				PassSequence.AcceptOverrideIfLastPass(InPass, InOutPostProcessAfterPassInputs.OverrideOutput, AfterPassCallbackIndex);
+				InSceneColor = AfterPassCallback.Execute(GraphBuilder, View, InOutPostProcessAfterPassInputs);
+			}
+		}
+
+		return MoveTemp(InSceneColor);
+	};
+
 	if (IsPostProcessingEnabled(View))
 	{
-		const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity] (FScreenPassTexture InSceneColor)
-		{
-			FPostProcessMaterialInputs PostProcessMaterialInputs;
-			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SceneColor, InSceneColor);
-			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
-			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
-			PostProcessMaterialInputs.CustomDepthTexture = CustomDepth.Texture;
-			return PostProcessMaterialInputs;
-		};
-
 		const EStereoscopicPass StereoPass = View.StereoPass;
 		const bool bPrimaryView = IStereoRendering::IsAPrimaryView(View);
 		const bool bHasViewState = View.ViewState != nullptr;
@@ -386,6 +423,21 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassSequence.SetEnabled(EPass::FXAA, AntiAliasingMethod == AAM_FXAA);
 		PassSequence.SetEnabled(EPass::PostProcessMaterialAfterTonemapping, PostProcessMaterialAfterTonemappingChain.Num() != 0);
 		PassSequence.SetEnabled(EPass::VisualizeDepthOfField, bVisualizeDepthOfField);
+
+		for (int32 ViewExt = 0; ViewExt < View.Family->ViewExtensions.Num(); ++ViewExt)
+		{
+			for (int32 SceneViewPassId = 0; SceneViewPassId != static_cast<int>(ISceneViewExtension::EPostProcessingPass::MAX); SceneViewPassId++)
+			{
+				ISceneViewExtension::EPostProcessingPass SceneViewPass = static_cast<ISceneViewExtension::EPostProcessingPass>(SceneViewPassId);
+				EPass PostProcessingPass = TranslatePass(SceneViewPass);
+
+				View.Family->ViewExtensions[ViewExt]->SubscribeToPostProcessingPass(
+					SceneViewPass,
+					PassSequence.GetAfterPassCallbacks(PostProcessingPass),
+					PassSequence.IsEnabled(PostProcessingPass));
+			}
+		}
+
 		PassSequence.Finalize();
 
 		// Post Process Material Chain - Before Translucency
@@ -404,14 +456,13 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 			if (bDepthOfFieldEnabled)
 			{
-				LocalSceneColorTexture = DiaphragmDOF::AddPasses(GraphBuilder, SceneTextures, View, SceneColor.Texture, SeparateTranslucency.Texture);
+				LocalSceneColorTexture = DiaphragmDOF::AddPasses(GraphBuilder, SceneTextureParameters, View, SceneColor.Texture, *Inputs.SeparateTranslucencyTextures);
 			}
 
 			// DOF passes were not added, therefore need to compose Separate translucency manually.
-			// If modulation pass was not run, SeparateModulation should be the GSystemTextures.WhiteDummy texture.
-			if (LocalSceneColorTexture == SceneColor.Texture && SeparateTranslucency.Texture && SeparateModulation.Texture)
+			if (LocalSceneColorTexture == SceneColor.Texture)
 			{
-				LocalSceneColorTexture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, SeparateTranslucency.Texture, SeparateModulation.Texture);
+				LocalSceneColorTexture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, *Inputs.SeparateTranslucencyTextures);
 			}
 
 			SceneColor.Texture = LocalSceneColorTexture;
@@ -444,13 +495,36 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 				// TemporalAA is only able to match the low quality mode (box filter).
 				GetDownsampleQuality() == EDownsampleQuality::Low;
 
-			AddTemporalAAPass(
+
+			int32 UpscaleMode = ITemporalUpscaler::GetTemporalUpscalerMode();
+
+			const ITemporalUpscaler* DefaultTemporalUpscaler = ITemporalUpscaler::GetDefaultTemporalUpscaler();
+			const ITemporalUpscaler* UpscalerToUse = ( UpscaleMode == 0 || !View.Family->GetTemporalUpscalerInterface())? DefaultTemporalUpscaler : View.Family->GetTemporalUpscalerInterface();
+
+			const TCHAR* UpscalerName = UpscalerToUse->GetDebugName();
+
+			// Standard event scope for temporal upscaler to have all profiling information not matter what, and with explicit detection of third party.
+			RDG_EVENT_SCOPE_CONDITIONAL(
 				GraphBuilder,
-				SceneTextures,
+				UpscalerToUse != DefaultTemporalUpscaler,
+				"ThirdParty %s %dx%d -> %dx%d",
+				UpscalerToUse->GetDebugName(),
+				View.ViewRect.Width(), View.ViewRect.Height(),
+				View.GetSecondaryViewRectSize().X, View.GetSecondaryViewRectSize().Y);
+
+			ITemporalUpscaler::FPassInputs UpscalerPassInputs;
+
+			UpscalerPassInputs.bAllowDownsampleSceneColor = bAllowSceneDownsample;
+			UpscalerPassInputs.DownsampleOverrideFormat = DownsampleOverrideFormat;
+			UpscalerPassInputs.SceneColorTexture = SceneColor.Texture;
+			UpscalerPassInputs.SceneDepthTexture = SceneDepth.Texture;
+			UpscalerPassInputs.SceneVelocityTexture = Velocity.Texture;
+			UpscalerPassInputs.EyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
+
+			UpscalerToUse->AddPasses(
+				GraphBuilder,
 				View,
-				bAllowSceneDownsample,
-				DownsampleOverrideFormat,
-				SceneColor.Texture,
+				UpscalerPassInputs,
 				&SceneColor.Texture,
 				&SecondaryViewRect,
 				&HalfResolutionSceneColor.Texture,
@@ -511,6 +585,8 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 				SceneColor = AddMotionBlurPass(GraphBuilder, View, PassInputs);
 			}
 		}
+
+		SceneColor = AddAfterPass(EPass::MotionBlur, SceneColor);
 
 		// If TAA didn't do it, downsample the scene color texture by half.
 		if (!HalfResolutionSceneColor.Texture)
@@ -643,9 +719,14 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 					ColorGradingTexture = AddCombineLUTPass(GraphBuilder, View);
 				}
 				// We can re-use the color grading texture from the primary view.
+				else if (View.GetTonemappingLUT())
+				{
+					ColorGradingTexture = TryRegisterExternalTexture(GraphBuilder, View.GetTonemappingLUT());
+				}
 				else
 				{
-					ColorGradingTexture = GraphBuilder.TryRegisterExternalTexture(View.GetTonemappingLUT());
+					const FViewInfo* PrimaryView = static_cast<const FViewInfo*>(View.Family->Views[0]);
+					ColorGradingTexture = TryRegisterExternalTexture(GraphBuilder, PrimaryView->GetTonemappingLUT());
 				}
 
 				FTonemapInputs PassInputs;
@@ -660,6 +741,8 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 				SceneColor = AddTonemapPass(GraphBuilder, View, PassInputs);
 			}
 		}
+		
+		SceneColor = AddAfterPass(EPass::Tonemap, SceneColor);
 
 		SceneColorAfterTonemap = SceneColor;
 
@@ -672,6 +755,8 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 			SceneColor = AddFXAAPass(GraphBuilder, View, PassInputs);
 		}
+
+		SceneColor = AddAfterPass(EPass::FXAA, SceneColor);
 
 		// Post Process Material Chain - After Tonemapping
 		if (PassSequence.IsEnabled(EPass::PostProcessMaterialAfterTonemapping))
@@ -693,6 +778,8 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 			SceneColor = AddVisualizeDOFPass(GraphBuilder, View, PassInputs);
 		}
+
+		SceneColor = AddAfterPass(EPass::VisualizeDepthOfField, SceneColor);
 	}
 	// Minimal PostProcessing - Separate translucency composition and gamma-correction only.
 	else
@@ -704,7 +791,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassSequence.SetEnabled(EPass::VisualizeDepthOfField, false);
 		PassSequence.Finalize();
 
-		SceneColor.Texture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, SeparateTranslucency.Texture, SeparateModulation.Texture);
+		SceneColor.Texture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, *Inputs.SeparateTranslucencyTextures);
 
 		SceneColorBeforeTonemap = SceneColor;
 
@@ -719,6 +806,8 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 			SceneColor = AddTonemapPass(GraphBuilder, View, PassInputs);
 		}
+
+		SceneColor = AddAfterPass(EPass::Tonemap, SceneColor);
 
 		SceneColorAfterTonemap = SceneColor;
 	}
@@ -765,6 +854,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassSequence.AcceptOverrideIfLastPass(EPass::SelectionOutline, PassInputs.OverrideOutput);
 		PassInputs.SceneColor = SceneColor;
 		PassInputs.SceneDepth = SceneDepth;
+		PassInputs.SceneTextures.SceneTextures = Inputs.SceneTextures;
 
 		SceneColor = AddSelectionOutlinePass(GraphBuilder, View, PassInputs);
 	}
@@ -788,7 +878,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		FVisualizeShadingModelInputs PassInputs;
 		PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeShadingModels, PassInputs.OverrideOutput);
 		PassInputs.SceneColor = SceneColor;
-		PassInputs.SceneTextures = &SceneTextures;
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		SceneColor = AddVisualizeShadingModelPass(GraphBuilder, View, PassInputs);
 	}
@@ -801,7 +891,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeGBufferHints, PassInputs.OverrideOutput);
 		PassInputs.SceneColor = SceneColor;
 		PassInputs.OriginalSceneColor = OriginalSceneColor;
-		PassInputs.SceneTextures = &SceneTextures;
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		SceneColor = AddVisualizeGBufferHintsPass(GraphBuilder, View, PassInputs);
 	}
@@ -813,7 +903,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		FVisualizeSubsurfaceInputs PassInputs;
 		PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeSubsurface, PassInputs.OverrideOutput);
 		PassInputs.SceneColor = SceneColor;
-		PassInputs.SceneTextures = &SceneTextures;
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		SceneColor = AddVisualizeSubsurfacePass(GraphBuilder, View, PassInputs);
 	}
@@ -855,7 +945,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassInputs.SceneColor = SceneColor;
 		PassInputs.SceneColorBeforeTonemap = SceneColorBeforeTonemap;
 		PassInputs.OriginalSceneColor = OriginalSceneColor;
-		PassInputs.SceneTextures = &SceneTextures;
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		SceneColor = AddPixelInspectorPass(GraphBuilder, View, PassInputs);
 	}
@@ -924,7 +1014,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 void AddDebugViewPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPostProcessingInputs& Inputs)
 {
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderPostProcessing);
+	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderPostProcessing);
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_PostProcessing_Process);
 
 	check(IsInRenderingThread());
@@ -933,10 +1023,11 @@ void AddDebugViewPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo
 
 	const FIntRect PrimaryViewRect = View.ViewRect;
 
-	const FSceneTextureParameters& SceneTextures = *Inputs.SceneTextures;
+	const FSceneTextureParameters SceneTextureParameters = GetSceneTextureParameters(GraphBuilder, Inputs.SceneTextures);
+
 	const FScreenPassRenderTarget ViewFamilyOutput = FScreenPassRenderTarget::CreateViewFamilyOutput(Inputs.ViewFamilyTexture, View);
-	const FScreenPassTexture SceneDepth(SceneTextures.SceneDepthBuffer, PrimaryViewRect);
-	FScreenPassTexture SceneColor(Inputs.SceneColor, PrimaryViewRect);
+	const FScreenPassTexture SceneDepth(SceneTextureParameters.SceneDepthTexture, PrimaryViewRect);
+	FScreenPassTexture SceneColor((*Inputs.SceneTextures)->SceneColorTexture, PrimaryViewRect);
 
 	ensure(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale);
 
@@ -1039,12 +1130,14 @@ void AddDebugViewPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo
 		case DVSM_RayTracingDebug:
 		{
 			FTAAPassParameters Parameters(View);
+			Parameters.SceneDepthTexture = SceneTextureParameters.SceneDepthTexture;
+			Parameters.SceneVelocityTexture = SceneTextureParameters.GBufferVelocityTexture;
 			Parameters.SceneColorInput = SceneColor.Texture;
 
 			const FTemporalAAHistory& InputHistory = View.PrevViewInfo.TemporalAAHistory;
 			FTemporalAAHistory* OutputHistory = &View.ViewState->PrevFrameViewInfo.TemporalAAHistory;
 
-			FTAAOutputs Outputs = AddTemporalAAPass(GraphBuilder, SceneTextures, View, Parameters, InputHistory, OutputHistory);
+			FTAAOutputs Outputs = AddTemporalAAPass(GraphBuilder, View, Parameters, InputHistory, OutputHistory);
 			SceneColor.Texture = Outputs.SceneColor;
 
 			break;
@@ -1109,7 +1202,7 @@ void AddDebugViewPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo
 
 void AddVisualizeCalibrationMaterialPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPostProcessingInputs& Inputs, const UMaterialInterface* InMaterialInterface)
 {
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderPostProcessing);
+	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderPostProcessing);
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_PostProcessing_Process);
 
 	check(IsInRenderingThread());
@@ -1119,11 +1212,11 @@ void AddVisualizeCalibrationMaterialPostProcessingPasses(FRDGBuilder& GraphBuild
 
 	const FIntRect PrimaryViewRect = View.ViewRect;
 
-	const FSceneTextureParameters& SceneTextures = *Inputs.SceneTextures;
+	const FSceneTextureParameters& SceneTextures = GetSceneTextureParameters(GraphBuilder, Inputs.SceneTextures);
 	const FScreenPassRenderTarget ViewFamilyOutput = FScreenPassRenderTarget::CreateViewFamilyOutput(Inputs.ViewFamilyTexture, View);
 
 	// Scene color is updated incrementally through the post process pipeline.
-	FScreenPassTexture SceneColor(Inputs.SceneColor, PrimaryViewRect);
+	FScreenPassTexture SceneColor((*Inputs.SceneTextures)->SceneColorTexture, PrimaryViewRect);
 
 	const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
 	const bool bVisualizeHDR = EngineShowFlags.VisualizeHDR;
@@ -1416,7 +1509,7 @@ void FPostProcessing::ProcessMobile(FRHICommandListImmediate& RHICmdList, FScene
 			const EMobileHDRMode HDRMode = GetMobileHDRMode();
 			bool bHDRModeAllowsPost = HDRMode == EMobileHDRMode::EnabledFloat16;
 
-			bool bUseSun = View.bLightShaftUse;
+			bool bUseSun = View.MobileLightShaft.IsSet();
 			
 			bool bUseBloom = View.FinalPostProcessSettings.BloomIntensity > 0.0f;
 			bool bUseVignette = View.FinalPostProcessSettings.VignetteIntensity > 0.0f;
@@ -1950,21 +2043,21 @@ void FPostProcessing::ProcessPlanarReflection(FRHICommandListImmediate& RHICmdLi
 
 		FRDGBuilder GraphBuilder(RHICmdList);
 
-		FSceneTextureParameters SceneTextures;
-		SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
-
-		// Planar reflections don't support velocity.
-		SceneTextures.SceneVelocityBuffer = nullptr;
+		FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
 		const FTemporalAAHistory& InputHistory = View.PrevViewInfo.TemporalAAHistory;
 		FTemporalAAHistory* OutputHistory = &ViewState->PrevFrameViewInfo.TemporalAAHistory;
 
 		FTAAPassParameters Parameters(View);
+		Parameters.SceneDepthTexture = SceneTextures.SceneDepthTexture;
+
+		// Planar reflections don't support velocity.
+		Parameters.SceneVelocityTexture = nullptr;
+
 		Parameters.SceneColorInput = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
 
 		FTAAOutputs PassOutputs = AddTemporalAAPass(
 			GraphBuilder,
-			SceneTextures,
 			View,
 			Parameters,
 			InputHistory,

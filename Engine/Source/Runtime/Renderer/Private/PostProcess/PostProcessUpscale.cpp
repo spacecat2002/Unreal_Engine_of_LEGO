@@ -175,7 +175,7 @@ FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 
 	if (!Output.IsValid())
 	{
-		FPooledRenderTargetDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
+		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
 
 		if (Inputs.Stage == EUpscaleStage::PrimaryToSecondary)

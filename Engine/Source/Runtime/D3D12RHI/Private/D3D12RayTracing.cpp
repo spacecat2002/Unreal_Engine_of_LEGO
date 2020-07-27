@@ -1716,6 +1716,7 @@ public:
 		CompileCompletionList.Reserve(MaxTotalShaders);
 
 		// Helper function to acquire a D3D12_EXISTING_COLLECTION_DESC for a compiled shader via cache
+
 		auto AddShaderCollection = [Device, RayTracingDevice, GlobalRootSignature = this->GlobalRootSignature, PipelineCache,
 										&UniqueShaderHashes = this->PipelineShaderHashes, &UniqueShaderCollections, &Initializer, &NumCacheHits, &CompileTime,
 										&CompileCompletionList]
@@ -2065,6 +2066,7 @@ public:
 	uint32 MaxHitGroupViewDescriptors = 0;
 
 	TSet<uint64> PipelineShaderHashes;
+
 	uint32 PipelineStackSize = 0;
 
 #if !NO_LOGGING

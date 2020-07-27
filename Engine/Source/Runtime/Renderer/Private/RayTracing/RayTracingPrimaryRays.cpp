@@ -54,7 +54,6 @@ class FRayTracingPrimaryRaysRGS : public FGlobalShader
 		SHADER_PARAMETER_STRUCT_REF(FFogUniformParameters, FogUniformParameters)
 
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 
@@ -97,10 +96,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingPrimaryRaysView(
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
-	FSceneTextureParameters SceneTextures;
-	SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
-	FSceneTextureSamplerParameters SceneTextureSamplers;
-	SetupSceneTextureSamplers(&SceneTextureSamplers);
+	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
 	int32 UpscaleFactor = int32(1.0f / ResolutionFraction);
 	ensure(ResolutionFraction == 1.0 / UpscaleFactor);
@@ -108,11 +104,11 @@ void FDeferredShadingSceneRenderer::RenderRayTracingPrimaryRaysView(
 	FIntPoint RayTracingResolution = FIntPoint::DivideAndRoundUp(View.ViewRect.Size(), UpscaleFactor);
 
 	{
-		FPooledRenderTargetDesc Desc = SceneContext.GetSceneColor()->GetDesc();
+		FRDGTextureDesc Desc = Translate(SceneContext.GetSceneColor()->GetDesc());
 		Desc.Format = PF_FloatRGBA;
 		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
+		Desc.Flags |= TexCreate_UAV;
 		Desc.Extent /= UpscaleFactor;
-		Desc.TargetableFlags |= TexCreate_UAV;
 
 		if(*InOutColorTexture == nullptr) 
 		{
@@ -150,7 +146,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingPrimaryRaysView(
 	PassParameters->LightDataBuffer = View.RayTracingLightingDataSRV;
 
 	PassParameters->SceneTextures = SceneTextures;
-	PassParameters->SceneTextureSamplers = SceneTextureSamplers;
 
 	FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
 	PassParameters->SceneColorTexture = SceneColorTexture;

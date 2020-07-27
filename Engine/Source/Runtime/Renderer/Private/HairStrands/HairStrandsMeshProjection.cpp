@@ -791,7 +791,14 @@ void TransitBufferToReadable(FRHICommandList& RHICmdList, FBufferTransitionQueue
 {
 	if (BuffersToTransit.Num())
 	{
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, BuffersToTransit.GetData(), BuffersToTransit.Num());
+		FMemMark Mark(FMemStack::Get());
+		TArray<FRHITransitionInfo, TMemStackAllocator<>> Transitions;
+		Transitions.Reserve(BuffersToTransit.Num());
+		for (FRHIUnorderedAccessView* UAV : BuffersToTransit)
+		{
+			Transitions.Add(FRHITransitionInfo(UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
+		}
+		RHICmdList.Transition(Transitions);
 		BuffersToTransit.SetNum(0, false);
 	}
 }
@@ -1194,11 +1201,9 @@ void GenerateFolliculeMask(
 		OutputDesc.ClearValue = FClearValueBinding(ClearColor);
 		OutputDesc.Extent.X = Resolution.X;
 		OutputDesc.Extent.Y = Resolution.Y;
-		OutputDesc.Depth = 0;
 		OutputDesc.Format = PF_R8G8B8A8;
 		OutputDesc.NumMips = MipCount;
-		OutputDesc.Flags = 0;
-		OutputDesc.TargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV;
+		OutputDesc.Flags = TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV;
 		OutTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("FollicleMask"));
 	}
 
@@ -1262,7 +1267,7 @@ void AddComputeMipsPass(
 		GraphBuilder.AddPass(
 			RDG_EVENT_NAME("HairStrandsComputeVoxelMip"),
 			Parameters,
-			ERDGPassFlags::Compute | ERDGPassFlags::GenerateMips,
+			ERDGPassFlags::Compute,
 			[Parameters, ComputeShader, TargetResolution](FRHICommandList& RHICmdList)
 		{
 			const FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(FIntPoint(TargetResolution, TargetResolution), FIntPoint(8, 8));
