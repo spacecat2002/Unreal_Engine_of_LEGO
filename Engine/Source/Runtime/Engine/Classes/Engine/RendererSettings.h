@@ -214,7 +214,7 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 
 	UPROPERTY(config, EditAnywhere, Category=Culling, meta=(
 		ConsoleVariable="r.AllowOcclusionQueries",DisplayName="Occlusion Culling",
-		ToolTip="Allows occluded meshes to be culled and no rendered."))
+		ToolTip="Allows occluded meshes to be culled and not rendered."))
 	uint32 bOcclusionCulling:1;
 
 	UPROPERTY(config, EditAnywhere, Category=Culling, meta=(
