@@ -9,8 +9,9 @@ RenderAssetUpdate.h: Base class of helpers to stream in and out texture/mesh LOD
 #include "CoreMinimal.h"
 #include "HAL/ThreadSafeCounter.h"
 #include "Async/AsyncWork.h"
-#include "Engine/StreamableRenderAsset.h"
 #include "RenderingThread.h"
+
+class UStreamableRenderAsset;
 
 /** SRA stands for StreamableRenderAsset */
 #define SRA_UPDATE_CALLBACK(FunctionName) [this](const FContext& C){ FunctionName(C); }
