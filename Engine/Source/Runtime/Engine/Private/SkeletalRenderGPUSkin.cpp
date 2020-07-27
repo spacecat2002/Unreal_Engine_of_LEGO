@@ -181,7 +181,9 @@ void FSkeletalMeshObjectGPUSkin::InitResources(USkinnedMeshComponent* InMeshComp
 				CompLODInfo = &InMeshComponent->LODInfo[LODIndex];
 			}
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			SkelLOD.InitResources(InMeshComponent->GetVertexOffsetUsage(LODIndex), MeshLODInfo, CompLODInfo, FeatureLevel);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 	}
 
