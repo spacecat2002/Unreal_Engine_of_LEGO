@@ -547,10 +547,6 @@ FVulkanSurface::FVulkanSurface(FVulkanDevice& InDevice, FVulkanTextureBase* Owne
 
 	VERIFYVULKANRESULT(VulkanRHI::vkCreateImage(InDevice.GetInstanceHandle(), &ImageCreateInfo.ImageCreateInfo, VULKAN_CPU_ALLOCATOR, &Image));
 
-	// forcing new textures's layouts to be undefined in the map, temp fix
-	VkImageLayout& Layout = Device->GetImmediateContext().GetLayoutManager().FindOrAddLayoutRW(Image, VK_IMAGE_LAYOUT_UNDEFINED, GetNumMips(), GetNumberOfArrayLevels());
-	Layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
 	// Fetch image size
 	VulkanRHI::vkGetImageMemoryRequirements(InDevice.GetInstanceHandle(), Image, &MemoryRequirements);
 
@@ -1136,6 +1132,7 @@ void FVulkanSurface::SetInitialImageState(FVulkanCommandListContext& Context, Vk
 		VulkanSetImageLayout(CmdBuffer->GetHandle(), Image, CurrentLayout, InitialLayout, SubresourceRange);
 	}
 
+	checkSlow(Context.GetLayoutManager().GetFullLayout(Image) == nullptr);
 	Context.GetLayoutManager().GetOrAddFullLayout(*this, InitialLayout);
 }
 
