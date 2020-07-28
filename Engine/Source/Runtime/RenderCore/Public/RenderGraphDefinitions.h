@@ -337,13 +337,18 @@ public:
 	using ObjectType = typename HandleType::ObjectType;
 	using IndexType = typename HandleType::IndexType;
 
+	void Insert(ObjectType* Object)
+	{
+		Array.Emplace(Object);
+		Object->Handle = Last();
+	}
+
 	template<typename DerivedType = ObjectType, class ...TArgs>
 	DerivedType* Allocate(FRDGAllocator& Allocator, TArgs&&... Args)
 	{
 		static_assert(TIsDerivedFrom<DerivedType, ObjectType>::Value, "You must specify a type that derives from ObjectType");
 		DerivedType* Object = Allocator.AllocObject<DerivedType>(Forward<TArgs>(Args)...);
-		Array.Emplace(Object);
-		Object->Handle = Last();
+		Insert(Object);
 		return Object;
 	}
 

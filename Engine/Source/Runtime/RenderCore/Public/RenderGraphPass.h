@@ -284,6 +284,10 @@ private:
 	FRDGPassHandle GraphicsForkPass;
 	FRDGPassHandle GraphicsJoinPass;
 
+	/** The passes which are handling the epilogue / prologue barriers meant for this pass. */
+	FRDGPassHandle PrologueBarrierPass;
+	FRDGPassHandle EpilogueBarrierPass;
+
 	/** Lists of producer / consumer passes. */
 	FRDGPassHandleArray Producers;
 	FRDGPassHandleArray Consumers;
@@ -309,6 +313,9 @@ private:
 
 			/** Whether subresource accesses are the same across textures. */
 			uint32 bSubresourceTrackingRequired : 1;
+
+			/** Whether the pass writes to a UAV. */
+			uint32 bUAVAccess : 1;
 
 			/** Whether this pass allocated a texture through the pool. */
 			IF_RDG_ENABLE_DEBUG(uint32 bFirstTextureAllocated : 1);
