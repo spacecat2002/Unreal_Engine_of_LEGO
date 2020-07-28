@@ -44,6 +44,7 @@
 class FGPUSkinPassthroughVertexFactory;
 class FGPUBaseSkinVertexFactory;
 class FMorphVertexBuffer;
+class FSkeletalMeshLODRenderData;
 class FSkeletalMeshObjectGPUSkin;
 class FSkeletalMeshVertexClothBuffer;
 class FVertexOffsetBuffers;

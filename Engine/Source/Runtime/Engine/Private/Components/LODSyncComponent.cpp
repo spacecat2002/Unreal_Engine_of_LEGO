@@ -1,6 +1,9 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/LODSyncComponent.h"
+
+#include "Components/PrimitiveComponent.h"
+#include "GameFramework/Actor.h"
 #include "LODSyncInterface.h"
 
 /* ULODSyncComponent interface
