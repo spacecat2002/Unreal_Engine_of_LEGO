@@ -33,8 +33,8 @@ CREATE_FUNCTION_SHIM(ml_dispatch, MLResult, MLDispatchReleaseUri)
 #define MLDispatchReleaseUri ::MLSDK_API::MLDispatchReleaseUriShim
 CREATE_FUNCTION_SHIM(ml_dispatch, MLResult, MLDispatchTryOpenApplication)
 #define MLDispatchTryOpenApplication ::MLSDK_API::MLDispatchTryOpenApplicationShim
-CREATE_FUNCTION_SHIM(ml_dispatch, MLResult, MLDispatchOAuthRegisterSchema)
-#define MLDispatchOAuthRegisterSchema ::MLSDK_API::MLDispatchOAuthRegisterSchemaShim
+CREATE_FUNCTION_SHIM(ml_dispatch, MLResult, MLDispatchOAuthRegisterSchemaEx)
+#define MLDispatchOAuthRegisterSchemaEx ::MLSDK_API::MLDispatchOAuthRegisterSchemaExShim
 CREATE_FUNCTION_SHIM(ml_dispatch, MLResult, MLDispatchOAuthUnregisterSchema)
 #define MLDispatchOAuthUnregisterSchema ::MLSDK_API::MLDispatchOAuthUnregisterSchemaShim
 CREATE_FUNCTION_SHIM(ml_dispatch, MLResult, MLDispatchOAuthOpenWindow)
