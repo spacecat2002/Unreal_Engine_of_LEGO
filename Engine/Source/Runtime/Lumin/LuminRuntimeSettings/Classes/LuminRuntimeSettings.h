@@ -25,8 +25,6 @@ enum class ELuminComponentType : uint8
 	Fullscreen,
 	SearchProvider,
 	MusicService,
-	Screens,
-	ScreensImmersive,
 	Console,
 	SystemUI,
 };
