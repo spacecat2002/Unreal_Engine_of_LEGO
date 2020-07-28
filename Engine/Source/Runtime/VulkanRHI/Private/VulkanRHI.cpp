@@ -1788,13 +1788,11 @@ void FVulkanDynamicRHI::DumpStagingMemory()
 }
 void FVulkanDynamicRHI::DumpLRU()
 {
-	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
-	RHI->Device->PipelineStateCache->LRUDump();
+	GVulkanRHI->Device->PipelineStateCache->LRUDump();
 }
 void FVulkanDynamicRHI::TrimLRU()
 {
-	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
-	RHI->Device->PipelineStateCache->LRUDebugEvictAll();
+	GVulkanRHI->Device->PipelineStateCache->LRUDebugEvictAll();
 }
 #endif
 
@@ -1805,8 +1803,7 @@ void FVulkanDynamicRHI::DestroySwapChain()
 		FlushRenderingCommands();
 	}
 
-	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
-	TArray<FVulkanViewport*> Viewports = RHI->Viewports;
+	TArray<FVulkanViewport*> Viewports = GVulkanRHI->Viewports;
 	ENQUEUE_RENDER_COMMAND(VulkanDestroySwapChain)(
 		[Viewports](FRHICommandListImmediate& RHICmdList)
 	{
