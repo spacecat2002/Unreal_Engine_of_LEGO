@@ -995,6 +995,7 @@ void FD3D11DynamicRHI::SetRenderTargets(
 	ID3D11DepthStencilView* DepthStencilView = NULL;
 	if(NewDepthStencilTarget)
 	{
+		check(NewDepthStencilTargetRHI);
 		CurrentDSVAccessType = NewDepthStencilTargetRHI->GetDepthStencilAccess();
 		DepthStencilView = NewDepthStencilTarget->GetDepthStencilView(CurrentDSVAccessType);
 
