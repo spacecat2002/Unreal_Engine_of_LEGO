@@ -12,6 +12,7 @@
 #include "Texture2D.generated.h"
 
 class FTexture2DResourceMem;
+class FTexture2DResource;
 
 UCLASS(hidecategories=Object, MinimalAPI, BlueprintType)
 class UTexture2D : public UTexture
@@ -123,29 +124,14 @@ public:
 	//~ End UTexture Interface.
 
 	//~ Begin UStreamableRenderAsset Interface
-	virtual int32 GetNumMipsForStreaming() const final override { return GetNumMips(); }
-	virtual int32 GetNumNonStreamingMips() const final override;
-	virtual int32 CalcNumOptionalMips() const final override;
 	virtual int32 CalcCumulativeLODSize(int32 NumLODs) const final override { return CalcTextureMemorySize(NumLODs); }
 	virtual FIoFilenameHash GetMipIoFilenameHash(const int32 MipIndex) const final override;
 	virtual bool DoesMipDataExist(const int32 MipIndex) const final override;
-	
-	/**
-	* Returns whether the texture is ready for streaming aka whether it has had InitRHI called on it.
-	*
-	* @return true if initialized and ready for streaming, false otherwise
-	*/
-	virtual bool IsReadyForStreaming() const final override
-	{
-		FTexture2DResource* Texture2DResource = (FTexture2DResource*)Resource;
-		return Texture2DResource && Texture2DResource->bReadyForStreaming;
-	}
-
-	ENGINE_API virtual int32 GetNumResidentMips() const final override;
-
+	ENGINE_API int32 GetNumResidentMips() const;
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets = nullptr) final override;
+	virtual bool HasPendingRenderResourceInitialization() const final override;
+	virtual bool HasPendingLODTransition() const final override;
 	virtual void InvalidateLastRenderTimeForStreaming() final override;
 	virtual float GetLastRenderTimeForStreaming() const final override;
 	virtual bool ShouldMipLevelsBeForcedResident() const final override;
@@ -189,20 +175,13 @@ public:
 		}
 		return PF_Unknown;
 	}
-	FORCEINLINE int32 GetMipTailBaseIndex() const
-	{
-		if (PlatformData)
-		{
-			const int32 NumMipsInTail = PlatformData->GetNumMipsInTail();
-			return FMath::Max(0, NumMipsInTail > 0 ? (PlatformData->Mips.Num() - NumMipsInTail) : (PlatformData->Mips.Num() - 1));
-		}
-		return 0;
-	}
+
 	FORCEINLINE const TIndirectArray<FTexture2DMipMap>& GetPlatformMips() const
 	{
 		check(PlatformData);
 		return PlatformData->Mips;
 	}
+
 	FORCEINLINE int32 GetExtData() const
 	{
 		if (PlatformData)
@@ -211,8 +190,6 @@ public:
 		}
 		return 0;
 	}
-
-	FORCEINLINE int32 GetStreamingIndex() const { return StreamingIndex; }
 
 	/**
 	 * Calculates the maximum number of mips the engine allows to be loaded for this texture. 
@@ -255,16 +232,6 @@ public:
 	ENGINE_API void GetMipData(int32 FirstMipToLoad, void** OutMipData);
 
 	/**
-	 * Computes the minimum and maximum allowed mips for a texture.
-	 * @param MipCount - The number of mip levels in the texture.
-	 * @param NumNonStreamingMips - The number of mip levels that are not allowed to stream.
-	 * @param LODBias - Bias applied to the number of mip levels.
-	 * @param OutMinAllowedMips - Returns the minimum number of mip levels that must be loaded.
-	 * @param OutMaxAllowedMips - Returns the maximum number of mip levels that must be loaded.
-	 */
-	static void CalcAllowedMips( int32 MipCount, int32 NumNonStreamingMips, int32 LODBias, int32& OuMinAllowedMips, int32& OutMaxAllowedMips );
-
-	/**
 	 * Calculates the size of this texture in bytes if it had MipCount miplevels streamed in.
 	 *
 	 * @param	MipCount	Number of mips to calculate size for, counting from the smallest 1x1 mip-level and up.
@@ -304,32 +271,12 @@ public:
 	ENGINE_API bool HasAlphaChannel() const;
 
 	/**
-	 * Waits until all streaming requests for this texture has been fully processed.
-	 */
-	virtual void WaitForStreaming() override;
-
-	/**
 	 * Returns the size of the object/ resource for display to artists/ LDs in the Editor.
 	 *
 	 * @return size of resource as to be displayed to artists/ LDs in the Editor.
 	 */
 	virtual void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) override;
 
-	/**
-	 * Whether all miplevels of this texture have been fully streamed in, LOD settings permitting.
-	 */
-	ENGINE_API bool IsFullyStreamedIn();
-
-	/**
-	 * Links texture to the texture streaming manager.
-	 */
-	void LinkStreaming();
-
-	/**
-	 * Unlinks texture from the texture streaming manager.
-	 */
-	void UnlinkStreaming();
-	
 	/**
 	 * Cancels any pending texture streaming actions if possible.
 	 * Returns when no more async loading requests are in flight.

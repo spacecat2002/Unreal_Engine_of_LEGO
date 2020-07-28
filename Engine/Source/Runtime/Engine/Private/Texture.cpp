@@ -22,6 +22,7 @@
 #include "Interfaces/ITargetPlatform.h"
 #include "Engine/TextureLODSettings.h"
 #include "RenderUtils.h"
+#include "Rendering/StreamableTextureResource.h"
 
 #if WITH_EDITORONLY_DATA
 	#include "EditorFramework/AssetImportData.h"
@@ -108,8 +109,9 @@ void UTexture::ReleaseResource()
 {
 	if (Resource)
 	{
-		UTexture2D* Texture2D = Cast<UTexture2D>(this);
-		check( !Texture2D  || !Texture2D->HasPendingStreamingRequest() );
+		UnlinkStreaming();
+		check(!HasPendingInitOrStreaming());
+		CachedSRRState.Clear();
 
 		// Free the resource.
 		BeginReleaseResource(Resource);
@@ -131,10 +133,30 @@ void UTexture::UpdateResource()
 	{
 		// Create a new texture resource.
 		Resource = CreateResource();
-		if( Resource )
+
+		if (Resource)
 		{
 			LLM_SCOPE(ELLMTag::Textures);
+
+			if (FStreamableTextureResource* StreamableResource = Resource->GetStreamableTextureResource())
+			{
+				// State the gamethread coherent resource state.
+				CachedSRRState = StreamableResource->GetPostInitState();
+				if (CachedSRRState.IsValid())
+				{
+					// Cache the pending InitRHI flag.
+					CachedSRRState.bHasPendingInitHint = true;
+				}
+			}
+
+			// Init the texture reference, which needs to be set from a render command, since TextureReference.TextureReferenceRHI is gamethread coherent.
+			ENQUEUE_RENDER_COMMAND(SetTextureReference)([this](FRHICommandListImmediate& RHICmdList)
+			{
+				Resource->SetTextureReference(TextureReference.TextureReferenceRHI);
+			});
 			BeginInitResource(Resource);
+			// Now that the resource is ready for streaming, bind it to the streamer.
+			LinkStreaming();
 		}
 	}
 }
@@ -404,56 +426,45 @@ void UTexture::PostLoad()
 	}
 }
 
+void UTexture::BeginFinalReleaseResource()
+{
+	check(!bAsyncResourceReleaseHasBeenStarted);
+	// Send the rendering thread a release message for the texture's resource.
+	if (Resource)
+	{
+		BeginReleaseResource(Resource);
+	}
+	if (TextureReference.IsInitialized_GameThread())
+	{
+		TextureReference.BeginRelease_GameThread();
+	}
+	ReleaseFence.BeginFence();
+	// Keep track that we already kicked off the async release.
+	bAsyncResourceReleaseHasBeenStarted = true;
+}
+
+
 void UTexture::BeginDestroy()
 {
 	Super::BeginDestroy();
-	if( !UpdateStreamingStatus() && (Resource || TextureReference.IsInitialized_GameThread()) )
+
+	if (!HasPendingInitOrStreaming())
 	{
-		// Send the rendering thread a release message for the texture's resource.
-		if (Resource)
-		{
-			BeginReleaseResource(Resource);
-		}
-		if (TextureReference.IsInitialized_GameThread())
-		{
-			TextureReference.BeginRelease_GameThread();
-		}
-		ReleaseFence.BeginFence();
-		// Keep track that we already kicked off the async release.
-		bAsyncResourceReleaseHasBeenStarted = true;
+		BeginFinalReleaseResource();
 	}
 }
 
 bool UTexture::IsReadyForFinishDestroy()
 {
-	bool bReadyForFinishDestroy = false;
-	// Check whether super class is ready and whether we have any pending streaming requests in flight.
-	if( Super::IsReadyForFinishDestroy() && !UpdateStreamingStatus() )
+	if (!Super::IsReadyForFinishDestroy())
 	{
-		// Kick off async resource release if we haven't already.
-		if( !bAsyncResourceReleaseHasBeenStarted && (Resource || TextureReference.IsInitialized_GameThread()) )
-		{
-			// Send the rendering thread a release message for the texture's resource.
-			if (Resource)
-			{
-				BeginReleaseResource(Resource);
-			}
-			if (TextureReference.IsInitialized_GameThread())
-			{
-				TextureReference.BeginRelease_GameThread();
-			}
-			ReleaseFence.BeginFence();
-			// Keep track that we already kicked off the async release.
-			bAsyncResourceReleaseHasBeenStarted = true;
-		}
-
-		// Only allow FinishDestroy to be called once the texture resource has finished its rendering thread cleanup.
-		if( !bAsyncResourceReleaseHasBeenStarted || ReleaseFence.IsFenceComplete() )
-		{
-			bReadyForFinishDestroy = true;
-		}
+		return false;
 	}
-	return bReadyForFinishDestroy;
+	if (!bAsyncResourceReleaseHasBeenStarted)
+	{
+		BeginFinalReleaseResource();
+	}
+	return ReleaseFence.IsFenceComplete();
 }
 
 void UTexture::FinishDestroy()
@@ -577,7 +588,6 @@ void UTexture::PostCDOContruct()
 {
 	GetPixelFormatEnum();
 }
-
 
 bool UTexture::ForceUpdateTextureStreaming()
 {

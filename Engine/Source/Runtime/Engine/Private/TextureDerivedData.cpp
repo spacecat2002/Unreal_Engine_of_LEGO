@@ -1207,7 +1207,14 @@ int32 FTexturePlatformData::GetNumNonStreamingMips() const
 			}
 		}
 
-		return NumNonStreamingMips;
+		if (NumNonStreamingMips == 0 && Mips.Num())
+		{
+			return 1;
+		}
+		else
+		{
+			return NumNonStreamingMips;
+		}
 	}
 	else if (Mips.Num() > 0)
 	{
@@ -1233,6 +1240,59 @@ int32 FTexturePlatformData::GetNumNonStreamingMips() const
 		return 0;
 	}
 }
+
+int32 FTexturePlatformData::GetNumNonOptionalMips() const
+{
+	// TODO : Count from last mip to first.
+	if (FPlatformProperties::RequiresCookedData())
+	{
+		int32 NumNonOptionalMips = Mips.Num();
+
+		for (const FTexture2DMipMap& Mip : Mips)
+		{
+			if (Mip.BulkData.IsOptional())
+			{
+				--NumNonOptionalMips;
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		if (NumNonOptionalMips == 0 && Mips.Num())
+		{
+			return 1;
+		}
+		else
+		{
+			return NumNonOptionalMips;
+		}
+	}
+	else // Otherwise, all mips are available.
+	{
+		return Mips.Num();
+	}
+}
+
+bool FTexturePlatformData::CanBeLoaded() const
+{
+	for (const FTexture2DMipMap& Mip : Mips)
+	{
+#if WITH_EDITORONLY_DATA
+		if (!Mip.DerivedDataKey.IsEmpty())
+		{
+			return true;
+		}
+#endif 
+		if (Mip.BulkData.CanLoadFromDisk())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 
 int32 FTexturePlatformData::GetNumVTMips() const
 {

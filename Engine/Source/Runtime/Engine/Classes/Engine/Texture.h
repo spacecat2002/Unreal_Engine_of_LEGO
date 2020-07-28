@@ -577,7 +577,12 @@ public:
 	bool AreDerivedVTChunksAvailable() const;
 #endif
 
+	/** Return the number of mips that are not streamable. */
 	int32 GetNumNonStreamingMips() const;
+	/** Return the number of mips that streamable but not optional. */
+	int32 GetNumNonOptionalMips() const;
+	/** Return true if at least one mip can be loaded either from DDC or disk. */
+	bool CanBeLoaded() const;
 
 	// Only because we don't want to expose FVirtualTextureBuiltData
 	ENGINE_API int32 GetNumVTMips() const;
@@ -886,13 +891,6 @@ public:
 	virtual EMaterialValueType GetMaterialType() const PURE_VIRTUAL(UTexture::GetMaterialType,return MCT_Texture;);
 
 	/**
-	 * Waits until all streaming requests for this texture has been fully processed.
-	 */
-	virtual void WaitForStreaming()
-	{
-	}
-
-	/**
 	 * Returns if the texture is actually being rendered using virtual texturing right now.
 	 * Unlike the 'VirtualTextureStreaming' property which reflects the user's desired state
 	 * this reflects the actual current state on the renderer depending on the platform, VT
@@ -1040,7 +1038,7 @@ public:
 
 	//~ Begin UStreamableRenderAsset Interface
 	virtual int32 GetLODGroupForStreaming() const final override { return static_cast<int32>(LODGroup); }
-	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets = nullptr) override { return false; }
+	virtual EStreamableRenderAssetType GetRenderAssetType() const final override { return EStreamableRenderAssetType::Texture; }
 	//~ End UStreamableRenderAsset Interface
 
 	/**
@@ -1137,7 +1135,9 @@ protected:
 	/** Notify any loaded material instances that the texture has changed. */
 	ENGINE_API void NotifyMaterials();
 
-#endif //WITH_EDOTIR
+#endif //WITH_EDITOR
+
+	void BeginFinalReleaseResource();
 };
 
 /** 

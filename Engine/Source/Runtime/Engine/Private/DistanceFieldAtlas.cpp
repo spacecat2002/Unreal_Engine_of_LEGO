@@ -1536,7 +1536,7 @@ void FLandscapeTextureAtlas::UpdateAllocations(FRHICommandListImmediate& RHICmdL
 		const uint32 SizeX = SourceTexture->GetSizeX();
 		const uint32 SizeY = SourceTexture->GetSizeY();
 		const uint32 DownSampleLevel = CalculateDownSampleLevel(SizeX, SizeY);
-		const uint32 NumMissingMips = SourceTexture->GetNumMips() - SourceTexture->GetCachedNumResidentLODs();
+		const uint32 NumMissingMips = SourceTexture->GetNumMips() - SourceTexture->GetNumResidentMips();
 
 		if (NumMissingMips <= DownSampleLevel)
 		{
@@ -1577,7 +1577,7 @@ void FLandscapeTextureAtlas::UpdateAllocations(FRHICommandListImmediate& RHICmdL
 					continue;
 				}
 
-				const uint32 NumMissingMips = SourceTexture->GetNumMips() - SourceTexture->GetCachedNumResidentLODs();
+				const uint32 NumMissingMips = SourceTexture->GetNumMips() - SourceTexture->GetNumResidentMips();
 				const uint32 SourceMipBias = NumMissingMips > DownSampleLevel ? 0 : DownSampleLevel - NumMissingMips;
 
 				if (NumMissingMips > DownSampleLevel)
@@ -1623,7 +1623,7 @@ void FLandscapeTextureAtlas::UpdateAllocations(FRHICommandListImmediate& RHICmdL
 				break;
 			}
 
-			const uint32 NumMissingMips = SourceTexture->GetNumMips() - SourceTexture->GetCachedNumResidentLODs();
+			const uint32 NumMissingMips = SourceTexture->GetNumMips() - SourceTexture->GetNumResidentMips();
 			const uint32 SourceMipBias = NumMissingMips > DownSampleLevel ? 0 : DownSampleLevel - NumMissingMips;
 
 			if (NumMissingMips > DownSampleLevel)
