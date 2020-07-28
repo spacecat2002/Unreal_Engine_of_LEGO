@@ -1306,74 +1306,6 @@ void SaveThumbnails(UPackage* InOuter, FLinkerSave* Linker, FStructuredArchive::
 #endif
 }
 
-void SaveAssetRegistryData(UPackage* InOuter, FLinkerSave* Linker, FStructuredArchive::FSlot Slot)
-{
-	// Make a copy of the tag map
-	TArray<UObject*> AssetObjects;
-
-	if( !(Linker->Summary.PackageFlags & PKG_FilterEditorOnly) )
-	{
-		// Find any exports which are not in the tag map
-		for( int32 i=0; i<Linker->ExportMap.Num(); i++ )
-		{
-			FObjectExport& Export = Linker->ExportMap[i];
-			if( Export.Object && Export.Object->IsAsset() )
-			{
-				AssetObjects.Add(Export.Object);
-			}
-		}
-	}
-
-	// Store the asset registry offset in the file
-	Linker->Summary.AssetRegistryDataOffset = Linker->Tell();
-
-	// Save the number of objects in the tag map
-	int32 ObjectCount = AssetObjects.Num();
-	FStructuredArchive::FArray AssetArray = Slot.EnterArray(ObjectCount);
-
-	// If there are any Asset Registry tags, add them to the summary
-	for (int32 ObjectIdx = 0; ObjectIdx < AssetObjects.Num(); ++ObjectIdx)
-	{
-		const UObject* Object = AssetObjects[ObjectIdx];
-
-		// Exclude the package name in the object path, we just need to know the path relative to the package we are saving
-		FString ObjectPath = Object->GetPathName(InOuter);
-		FString ObjectClassName = Object->GetClass()->GetName();
-		
-		TArray<UObject::FAssetRegistryTag> SourceTags;
-		Object->GetAssetRegistryTags(SourceTags);
-
-		TArray<UObject::FAssetRegistryTag> Tags;
-		for (UObject::FAssetRegistryTag& SourceTag : SourceTags)
-		{
-			UObject::FAssetRegistryTag* Existing = Tags.FindByPredicate([SourceTag](const UObject::FAssetRegistryTag& InTag) { return InTag.Name == SourceTag.Name; });
-			if (Existing)
-			{
-				Existing->Value = SourceTag.Value;
-			}
-			else
-			{
-				Tags.Add(SourceTag);
-			}
-		}
-
-		int32 TagCount = Tags.Num();
-
-		FStructuredArchive::FRecord AssetRecord = AssetArray.EnterElement().EnterRecord();
-		AssetRecord << SA_VALUE(TEXT("Path"), ObjectPath) << SA_VALUE(TEXT("Class"), ObjectClassName);
-
-		FStructuredArchive::FMap TagMap = AssetRecord.EnterField(SA_FIELD_NAME(TEXT("Tags"))).EnterMap(TagCount);
-				
-		for (TArray<UObject::FAssetRegistryTag>::TConstIterator TagIter(Tags); TagIter; ++TagIter)
-		{
-			FString Key = TagIter->Name.ToString();
-			FString Value = TagIter->Value;
-
-			TagMap.EnterElement(Key) << Value;
-		}
-	}
-}
-
 void SaveBulkData(FLinkerSave* Linker, const UPackage* InOuter, const TCHAR* Filename, const ITargetPlatform* TargetPlatform,
 				  FSavePackageContext* SavePackageContext, const bool bTextFormat, const bool bDiffing, const bool bComputeHash, TAsyncWorkSequence<FMD5>& AsyncWriteAndHashSequence, int64& TotalPackageSizeUncompressed)
 {
@@ -1688,4 +1620,111 @@ bool UPackage::IsEmptyPackage(UPackage* Package, const UObject* LastReferencer)
 
 	// Invalid package
 	return false;
+}
+
+
+namespace UE
+{
+namespace AssetRegistry
+{
+	// See the corresponding ReadPackageDataMain and ReadPackageDataDependencies defined in PackageReader.cpp in AssetRegistry module
+	void WritePackageData(FStructuredArchiveRecord& ParentRecord, const UPackage* Package, FLinkerSave* Linker, const TSet<UObject*>& ImportsUsedInGame, const TSet<FName>& SoftPackagesUsedInGame)
+	{
+		// WritePackageData is currently only called if not bTextFormat; we rely on that to save offsets
+		FArchive& BinaryArchive = ParentRecord.GetUnderlyingArchive();
+		check(!BinaryArchive.IsTextFormat());
+
+		// Store the asset registry offset in the file and enter a record for the asset registry data
+		Linker->Summary.AssetRegistryDataOffset = BinaryArchive.Tell();
+		FStructuredArchiveRecord AssetRegistryRecord = ParentRecord.EnterField(SA_FIELD_NAME(TEXT("AssetRegistry"))).EnterRecord();
+
+		// Write placeholder data for the offset to the separately-serialized AssetRegistryDependencyData
+		int64 OffsetToAssetRegistryDependencyDataOffset = BinaryArchive.Tell();
+		int64 AssetRegistryDependencyDataOffset = 0;
+		AssetRegistryRecord << SA_VALUE(TEXT("AssetRegistryDependencyDataOffset"), AssetRegistryDependencyDataOffset);
+		check(BinaryArchive.Tell() == OffsetToAssetRegistryDependencyDataOffset + sizeof(AssetRegistryDependencyDataOffset));
+
+		// Collect the tag map and add it to the Record
+		TArray<UObject*> AssetObjects;
+		if (!(Linker->Summary.PackageFlags & PKG_FilterEditorOnly))
+		{
+			// Find any exports which are not in the tag map
+			for (int32 i = 0; i < Linker->ExportMap.Num(); i++)
+			{
+				FObjectExport& Export = Linker->ExportMap[i];
+				if (Export.Object && Export.Object->IsAsset())
+				{
+					AssetObjects.Add(Export.Object);
+				}
+			}
+		}
+		int32 ObjectCount = AssetObjects.Num();
+		FStructuredArchive::FArray AssetArray = AssetRegistryRecord.EnterArray(SA_FIELD_NAME(TEXT("TagMap")), ObjectCount);
+		for (int32 ObjectIdx = 0; ObjectIdx < AssetObjects.Num(); ++ObjectIdx)
+		{
+			const UObject* Object = AssetObjects[ObjectIdx];
+
+			// Exclude the package name in the object path, we just need to know the path relative to the package we are saving
+			FString ObjectPath = Object->GetPathName(Package);
+			FString ObjectClassName = Object->GetClass()->GetName();
+
+			TArray<UObject::FAssetRegistryTag> SourceTags;
+			Object->GetAssetRegistryTags(SourceTags);
+
+			TArray<UObject::FAssetRegistryTag> Tags;
+			for (UObject::FAssetRegistryTag& SourceTag : SourceTags)
+			{
+				UObject::FAssetRegistryTag* Existing = Tags.FindByPredicate([SourceTag](const UObject::FAssetRegistryTag& InTag) { return InTag.Name == SourceTag.Name; });
+				if (Existing)
+				{
+					Existing->Value = SourceTag.Value;
+				}
+				else
+				{
+					Tags.Add(SourceTag);
+				}
+			}
+
+			int32 TagCount = Tags.Num();
+
+			FStructuredArchive::FRecord AssetRecord = AssetArray.EnterElement().EnterRecord();
+			AssetRecord << SA_VALUE(TEXT("Path"), ObjectPath) << SA_VALUE(TEXT("Class"), ObjectClassName);
+
+			FStructuredArchive::FMap TagMap = AssetRecord.EnterField(SA_FIELD_NAME(TEXT("Tags"))).EnterMap(TagCount);
+
+			for (TArray<UObject::FAssetRegistryTag>::TConstIterator TagIter(Tags); TagIter; ++TagIter)
+			{
+				FString Key = TagIter->Name.ToString();
+				FString Value = TagIter->Value;
+
+				TagMap.EnterElement(Key) << Value;
+			}
+		}
+
+		// Overwrite the placeholder offset for the AssetRegistryDependencyData and enter a record for the asset registry dependency data
+		AssetRegistryDependencyDataOffset = Linker->Tell();
+		BinaryArchive.Seek(OffsetToAssetRegistryDependencyDataOffset);
+		BinaryArchive << AssetRegistryDependencyDataOffset;
+		BinaryArchive.Seek(AssetRegistryDependencyDataOffset);
+		FStructuredArchiveRecord DependencyDataRecord = ParentRecord.EnterField(SA_FIELD_NAME(TEXT("AssetRegistryDependencyData"))).EnterRecord();
+
+		// Convert the IsUsedInGame sets into a bitarray with a value per import/softpackagereference
+		TBitArray<> ImportUsedInGameBits;
+		TBitArray<> SoftPackageUsedInGameBits;
+		ImportUsedInGameBits.Reserve(Linker->ImportMap.Num());
+		for (int32 ImportIndex = 0; ImportIndex < Linker->ImportMap.Num(); ++ImportIndex)
+		{
+			ImportUsedInGameBits.Add(ImportsUsedInGame.Contains(Linker->ImportMap[ImportIndex].XObject));
+		}
+		SoftPackageUsedInGameBits.Reserve(Linker->SoftPackageReferenceList.Num());
+		for (int32 SoftPackageIndex = 0; SoftPackageIndex < Linker->SoftPackageReferenceList.Num(); ++SoftPackageIndex)
+		{
+			SoftPackageUsedInGameBits.Add(SoftPackagesUsedInGame.Contains(Linker->SoftPackageReferenceList[SoftPackageIndex]));
+		}
+
+		// Serialize the Dependency section
+		DependencyDataRecord << SA_VALUE(TEXT("ImportUsedInGame"), ImportUsedInGameBits);
+		DependencyDataRecord << SA_VALUE(TEXT("SoftPackageUsedInGame"), SoftPackageUsedInGameBits);
+	}
+}
 }

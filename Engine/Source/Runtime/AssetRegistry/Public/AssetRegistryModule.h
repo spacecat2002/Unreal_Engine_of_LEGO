@@ -86,10 +86,18 @@ public:
 	}
 
 	/** Access the dependent package names for a given source package */
-	void GetDependencies(FName InPackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) override
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	virtual void GetDependencies(FName InPackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) override
 	{
 		Get().GetDependencies(InPackageName, OutDependencies, InDependencyType);
 	}
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+	virtual void GetDependencies(FName InPackageName, TArray<FName>& OutDependencies, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::Package, const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) override
+	{
+		Get().GetDependencies(InPackageName, OutDependencies, Category, Flags);
+	}
+
 
 private:
 	TWeakObjectPtr<class UAssetRegistryImpl> AssetRegistry;

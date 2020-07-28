@@ -32,6 +32,7 @@ struct ASSETREGISTRY_API FAssetRegistryVersion
 		RemovedMD5Hash,			// Removed MD5 hash from package data
 		AddedHardManage,		// Added hard/soft manage references
 		AddedCookedMD5Hash,		// Added MD5 hash of cooked package to package data
+		AddedDependencyFlags,   // Added UE::AssetRegistry::EDependencyProperty to each dependency
 
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,

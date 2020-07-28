@@ -389,6 +389,11 @@ public:
 		return Imports;
 	}
 
+	const TSet<UObject*>& GetImportsUsedInGame() const
+	{
+		return ImportsUsedInGame;
+	}
+
 	const TArray<FName>& GetSoftPackageReferenceList() const
 	{
 		return SoftPackageReferenceList;
@@ -397,6 +402,11 @@ public:
 	TArray<FName>& GetSoftPackageReferenceList()
 	{
 		return SoftPackageReferenceList;
+	}
+
+	const TSet<FName>& GetSoftPackagesUsedInGame() const
+	{
+		return SoftPackagesUsedInGame;
 	}
 
 	const TMap<UObject*, TArray<FName>>& GetSearchableNamesObjectMap() const
@@ -546,10 +556,15 @@ private:
 	TSet<FTaggedExport> Exports;
 	// Set of objects marked as import
 	TSet<UObject*> Imports;
+	// Subset of this->Imports which are referenced from not-editoronly properties
+	TSet<UObject*> ImportsUsedInGame;
 	// Set of names referenced
 	TSet<FNameEntryId> ReferencedNames;
 	// List of soft package reference found
 	TArray<FName> SoftPackageReferenceList;
+	// Subset of this->SoftPackageReferenceList which are referenced from not-editoronly properties
+	TSet<FName> SoftPackagesUsedInGame;
+
 	// Map of objects to their list of searchable names
 	TMap<UObject*, TArray<FName>> SearchableNamesObjectMap;
 	// Map of objects to their dependencies

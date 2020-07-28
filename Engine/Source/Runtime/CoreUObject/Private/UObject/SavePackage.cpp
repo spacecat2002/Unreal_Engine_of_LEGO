@@ -17,6 +17,7 @@
 #include "Serialization/LargeMemoryWriter.h"
 #include "Serialization/LargeMemoryReader.h"
 #include "Serialization/BufferArchive.h"
+#include "Misc/AssetRegistryInterface.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/FeedbackContext.h"
 #include "Misc/ScopedSlowTask.h"
@@ -359,6 +360,9 @@ public:
 	TArray<UObject*> NativeDependencies;
 	TArray<UObject*> OtherImports;
 	bool bIgnoreDependencies;
+	bool bReferencerIsEditorOnly;
+	TSet<UObject*>& ImportsUsedInGame;
+	TSet<FName>& SoftPackagesUsedInGame;
 
 	/** Helper object to save/store state of bIgnoreDependencies */
 	class FScopeIgnoreDependencies
@@ -379,10 +383,13 @@ public:
 		}
 	};
 
-	FArchiveSaveTagImports(FLinkerSave* InLinker, FPackageNameMapSaver& InNameMapSaver)
+	FArchiveSaveTagImports(FLinkerSave* InLinker, FPackageNameMapSaver& InNameMapSaver, TSet<UObject*>& InImportsUsedInGame, TSet<FName>& InSoftPackagesUsedInGame, bool bInReferencerIsEditorOnly)
 		: Linker(InLinker)
 		, NameMapSaver(InNameMapSaver)
 		, bIgnoreDependencies(false)
+		, bReferencerIsEditorOnly(bInReferencerIsEditorOnly)
+		, ImportsUsedInGame(InImportsUsedInGame)
+		, SoftPackagesUsedInGame(InSoftPackagesUsedInGame)
 	{
 		check(Linker);
 
@@ -496,6 +503,12 @@ FArchive& FArchiveSaveTagImports::operator<<( UObject*& Obj )
 
 				// Mark this object as an import
 				Obj->Mark(OBJECTMARK_TagImp);
+#if WITH_EDITORONLY_DATA
+				if (!bReferencerIsEditorOnly && !IsEditorOnlyPropertyOnTheStack())
+#endif
+				{
+					ImportsUsedInGame.Add(Obj);
+				}
 				UClass* ClassObj = Cast<UClass>(Obj);
 
 				// Don't recurse into CDOs if we're already ignoring dependencies, we only want to recurse into our outer chain in that case
@@ -590,6 +603,10 @@ FArchive& FArchiveSaveTagImports::operator<<(FSoftObjectPath& Value)
 			FName PackageName = FName(*FPackageName::ObjectPathToPackageName(Path));
 			NameMapSaver.MarkNameAsReferenced(PackageName);
 			Linker->SoftPackageReferenceList.AddUnique(PackageName);
+			if (CollectType != ESoftObjectPathCollectType::EditorOnlyCollect && !bReferencerIsEditorOnly)
+			{
+				SoftPackagesUsedInGame.Add(PackageName);
+			}
 		}
 	}
 	return *this;
@@ -2677,6 +2694,8 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 
 				// Import objects & names.
 				TSet<UPackage*> PrestreamPackages;
+				TSet<UObject*> ImportsUsedInGame;
+				TSet<FName> SoftPackagesUsedInGame;
 				{
 					SCOPED_SAVETIMER(UPackage_Save_TagImports);
 					
@@ -2688,7 +2707,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 						check(Obj->HasAnyMarks(OBJECTMARK_TagExp));
 
 						// Build list.
-						FArchiveSaveTagImports ImportTagger(Linker.Get(), NameMapSaver);
+						FArchiveSaveTagImports ImportTagger(Linker.Get(), NameMapSaver, ImportsUsedInGame, SoftPackagesUsedInGame, IsEditorOnlyObject(Obj, true /* bCheckRecursive */, true /* bCheckMarks */));
 						ImportTagger.SetPortFlags(ComparisonFlags);
 						ImportTagger.SetFilterEditorOnly(FilterEditorOnly);
 						ImportTagger.SetSerializeContext(SaveContext);
@@ -2835,6 +2854,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 						if (!Pkg->HasAnyMarks(OBJECTMARK_TagImp))
 						{
 							Pkg->Mark(OBJECTMARK_TagImp);
+							ImportsUsedInGame.Add(Pkg);
 							KeptPrestreamPackages.Add(Pkg);
 						}
 					}
@@ -3732,7 +3752,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 					{	
 						// Save asset registry data so the editor can search for information about assets in this package
 						SCOPED_SAVETIMER(UPackage_Save_SaveAssetRegistryData);
-						SavePackageUtilities::SaveAssetRegistryData(InOuter, Linker.Get(), StructuredArchiveRoot.EnterField(SA_FIELD_NAME(TEXT("AssetRegistry"))));
+						UE::AssetRegistry::WritePackageData(StructuredArchiveRoot, InOuter, Linker.Get(), ImportsUsedInGame, SoftPackagesUsedInGame);
 					}
 
 					// Save level information used by World browser

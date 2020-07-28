@@ -3,17 +3,20 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/BitArray.h"
 #include "AssetData.h"
 #include "Misc/AssetRegistryInterface.h"
 #include "UObject/Interface.h"
 #include "ARFilter.h"
 #include "IAssetRegistry.generated.h"
 
-
+class FArchive;
 struct FARFilter;
 struct FARCompiledFilter;
 struct FAssetRegistrySerializationOptions;
 class FAssetRegistryState;
+class FDependsNode;
+struct FPackageFileSummary;
 
 namespace EAssetAvailability
 {
@@ -60,25 +63,13 @@ struct FAssetRegistryDependencyOptions
 {
 	GENERATED_BODY()
 
-	void SetFromFlags(const EAssetRegistryDependencyType::Type InFlags)
-	{
-		bIncludeSoftPackageReferences = (InFlags & EAssetRegistryDependencyType::Soft);
-		bIncludeHardPackageReferences = (InFlags & EAssetRegistryDependencyType::Hard);
-		bIncludeSearchableNames = (InFlags & EAssetRegistryDependencyType::SearchableName);
-		bIncludeSoftManagementReferences = (InFlags & EAssetRegistryDependencyType::SoftManage);
-		bIncludeHardManagementReferences = (InFlags & EAssetRegistryDependencyType::HardManage);
-	}
-
-	EAssetRegistryDependencyType::Type GetAsFlags() const
-	{
-		uint32 Flags = EAssetRegistryDependencyType::None;
-		Flags |= (bIncludeSoftPackageReferences ? EAssetRegistryDependencyType::Soft : EAssetRegistryDependencyType::None);
-		Flags |= (bIncludeHardPackageReferences ? EAssetRegistryDependencyType::Hard : EAssetRegistryDependencyType::None);
-		Flags |= (bIncludeSearchableNames ? EAssetRegistryDependencyType::SearchableName : EAssetRegistryDependencyType::None);
-		Flags |= (bIncludeSoftManagementReferences ? EAssetRegistryDependencyType::SoftManage : EAssetRegistryDependencyType::None);
-		Flags |= (bIncludeHardManagementReferences ? EAssetRegistryDependencyType::HardManage : EAssetRegistryDependencyType::None);
-		return (EAssetRegistryDependencyType::Type)Flags;
-	}
+	UE_DEPRECATED(4.26, "Implementation detail that is no longer needed by the AssetRegistry; contact Epic if you need it on your project")
+	void SetFromFlags(const EAssetRegistryDependencyType::Type InFlags);
+	UE_DEPRECATED(4.26, "Implementation detail that is no longer needed by the AssetRegistry; contact Epic if you need it on your project")
+	EAssetRegistryDependencyType::Type GetAsFlags() const;
+	bool GetPackageQuery(UE::AssetRegistry::FDependencyQuery& Flags) const;
+	bool GetSearchableNameQuery(UE::AssetRegistry::FDependencyQuery& Flags) const;
+	bool GetManageQuery(UE::AssetRegistry::FDependencyQuery& Flags) const;
 
 	/** Dependencies which don't need to be loaded for the object to be used (i.e. soft object paths) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AssetRegistry")
@@ -99,6 +90,18 @@ struct FAssetRegistryDependencyOptions
 	/** Reference that says one object directly manages another object, set when Primary Assets manage things explicitly */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AssetRegistry")
 	bool bIncludeHardManagementReferences = false;
+};
+
+/** An output struct to hold both an AssetIdentifier and the properties of the dependency on that AssetIdentifier */
+struct FAssetDependency
+{
+	FAssetIdentifier AssetId;
+	UE::AssetRegistry::EDependencyCategory Category;
+	UE::AssetRegistry::EDependencyProperty Properties;
+	bool operator==(const FAssetDependency& Other) const
+	{
+		return AssetId == Other.AssetId && Category == Other.Category && Properties == Other.Properties;
+	}
 };
 
 UINTERFACE(MinimalApi, BlueprintType, meta = (CannotImplementInterfaceInBlueprint))
@@ -214,23 +217,30 @@ public:
 	 */
 	virtual bool EnumerateAllAssets(TFunctionRef<bool(const FAssetData&)> Callback, bool bIncludeOnlyOnDiskAssets = false) const = 0;
 
+	UE_DEPRECATED(4.26, "Use GetDependencies that takes a UE::AssetRegistry::EDependencyCategory instead")
+	virtual bool GetDependencies(const FAssetIdentifier& AssetIdentifier, TArray<FAssetIdentifier>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) const = 0;
 	/**
-	 * Gets a list of packages and searchable names that are referenced by the supplied package or name. (On disk references ONLY)
+	 * Gets a list of AssetIdentifiers or FAssetDependencies that are referenced by the supplied AssetIdentifier. (On disk references ONLY)
 	 *
-	 * @param AssetIdentifier	the name of the package/name for which to gather dependencies
-	 * @param OutDependencies	a list of things that are referenced by AssetIdentifier
-	 * @param InDependencyType	which kinds of dependency to include in the output list
+	 * @param AssetIdentifier	the name of the package/name for which to gather dependencies.
+	 * @param OutDependencies	a list of things that are referenced by AssetIdentifier.
+	 * @param Category	which category(ies) of dependencies to include in the output list. Dependencies matching ANY of the OR'd categories will be returned.
+	 * @param Flags	which flags are required present or not present on the dependencies. Dependencies matching ALL required and NONE excluded bits will be returned. For each potentially returned dependency, flags not applicable to their category are ignored.
 	 */
-	virtual bool GetDependencies(const FAssetIdentifier& AssetIdentifier, TArray<FAssetIdentifier>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType = EAssetRegistryDependencyType::All) const = 0;
+	virtual bool GetDependencies(const FAssetIdentifier& AssetIdentifier, TArray<FAssetIdentifier>& OutDependencies, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::All, const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) const = 0;
+	virtual bool GetDependencies(const FAssetIdentifier& AssetIdentifier, TArray<FAssetDependency>& OutDependencies, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::All, const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) const = 0;
 
+	UE_DEPRECATED(4.26, "Use GetDependencies that takes a UE::AssetRegistry::EDependencyCategory instead")
+	virtual bool GetDependencies(FName PackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) const = 0;
 	/**
-	 * Gets a list of paths to objects that are referenced by the supplied package. (On disk references ONLY)
+	 * Gets a list of PackageNames that are referenced by the supplied package. (On disk references ONLY)
 	 *
 	 * @param PackageName		the name of the package for which to gather dependencies (eg, /Game/MyFolder/MyAsset)
 	 * @param OutDependencies	a list of packages that are referenced by the package whose path is PackageName
-	 * @param InDependencyType	which kinds of dependency to include in the output list
+	 * @param Category	which category(ies) of dependencies to include in the output list. Dependencies matching ANY of the OR'd categories will be returned.
+	 * @param Flags	which flags are required present or not present on the dependencies. Dependencies matching ALL required and NONE excluded bits will be returned. For each potentially returned dependency, flags not applicable to their category are ignored.
 	 */
-	virtual bool GetDependencies(FName PackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType = EAssetRegistryDependencyType::Packages) const = 0;
+	virtual bool GetDependencies(FName PackageName, TArray<FName>& OutDependencies, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::Package, const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) const = 0;
 
 	/**
 	 * Gets a list of paths to objects that are referenced by the supplied package. (On disk references ONLY)
@@ -240,28 +250,32 @@ public:
 	 * @param OutDependencies	a list of packages that are referenced by the package whose path is PackageName
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure=false, Category = "AssetRegistry", meta=(DisplayName="Get Dependencies", ScriptName="GetDependencies"))
-	virtual bool K2_GetDependencies(FName PackageName, const FAssetRegistryDependencyOptions& DependencyOptions, TArray<FName>& OutDependencies) const
-	{
-		return GetDependencies(PackageName, OutDependencies, DependencyOptions.GetAsFlags());
-	}
+	virtual bool K2_GetDependencies(FName PackageName, const FAssetRegistryDependencyOptions& DependencyOptions, TArray<FName>& OutDependencies) const;
 
+	UE_DEPRECATED(4.26, "Use GetReferencers that takes a UE::AssetRegistry::EDependencyCategory instead")
+	virtual bool GetReferencers(const FAssetIdentifier& AssetIdentifier, TArray<FAssetIdentifier>& OutReferencers, EAssetRegistryDependencyType::Type InReferenceType) const = 0;
 	/**
-	 * Gets a list of packages and searchable names that reference the supplied package or name. (On disk references ONLY)
+	 * Gets a list of AssetIdentifiers or FAssetDependencies that reference the supplied AssetIdentifier. (On disk references ONLY)
 	 *
-	 * @param AssetIdentifier	the name of the package/name for which to gather dependencies (eg, /Game/MyFolder/MyAsset)
-	 * @param OutReferencers	a list of things that reference AssetIdentifier
-	 * @param InReferenceType	which kinds of reference to include in the output list
+	 * @param AssetIdentifier	the name of the package/name for which to gather referencers (eg, /Game/MyFolder/MyAsset)
+	 * @param OutReferencers	a list of things that reference AssetIdentifier.
+	 * @param Category	which category(ies) of referencers to include in the output list. Referencers that have a dependency matching ANY of the OR'd categories will be returned.
+	 * @param Flags	which flags are required present or not present on the referencer's dependency. Referencers that have a dependency matching ALL required and NONE excluded bits will be returned. For each potentially returned dependency, flags not applicable to their category are ignored.
 	 */
-	virtual bool GetReferencers(const FAssetIdentifier& AssetIdentifier, TArray<FAssetIdentifier>& OutReferencers, EAssetRegistryDependencyType::Type InReferenceType = EAssetRegistryDependencyType::All) const = 0;
+	virtual bool GetReferencers(const FAssetIdentifier& AssetIdentifier, TArray<FAssetIdentifier>& OutReferencers, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::All, const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) const = 0;
+	virtual bool GetReferencers(const FAssetIdentifier& AssetIdentifier, TArray<FAssetDependency>& OutReferencers, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::All, const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) const = 0;
 
+	UE_DEPRECATED(4.26, "Use GetReferencers that takes a UE::AssetRegistry::EDependencyCategory instead")
+	virtual bool GetReferencers(FName PackageName, TArray<FName>& OutReferencers, EAssetRegistryDependencyType::Type InReferenceType) const = 0;
 	/**
-	 * Gets a list of packages that reference the supplied package. (On disk references ONLY)
+	 * Gets a list of PackageNames that reference the supplied package. (On disk references ONLY)
 	 *
 	 * @param PackageName		the name of the package for which to gather dependencies (eg, /Game/MyFolder/MyAsset)
 	 * @param OutReferencers	a list of packages that reference the package whose path is PackageName
-	 * @param InReferenceType	which kinds of reference to include in the output list
+	 * @param Category	which category(ies) of referencers to include in the output list. Referencers that have a dependency matching ANY of the OR'd categories will be returned.
+	 * @param Flags	which flags are required present or not present on the referencer's dependency. Referencers that have a dependency matching ALL required and NONE excluded bits will be returned. For each potentially returned dependency, flags not applicable to their category are ignored.
 	 */
-	virtual bool GetReferencers(FName PackageName, TArray<FName>& OutReferencers, EAssetRegistryDependencyType::Type InReferenceType = EAssetRegistryDependencyType::Packages) const = 0;
+	virtual bool GetReferencers(FName PackageName, TArray<FName>& OutReferencers, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::Package, const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) const = 0;
 
 	/**
 	 * Gets a list of packages that reference the supplied package. (On disk references ONLY)
@@ -271,10 +285,7 @@ public:
 	 * @param OutReferencers	a list of packages that reference the package whose path is PackageName
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure=false, Category = "AssetRegistry", meta=(DisplayName="Get Referencers", ScriptName="GetReferencers"))
-	virtual bool K2_GetReferencers(FName PackageName, const FAssetRegistryDependencyOptions& ReferenceOptions, TArray<FName>& OutReferencers) const
-	{
-		return GetReferencers(PackageName, OutReferencers, ReferenceOptions.GetAsFlags());
-	}
+	virtual bool K2_GetReferencers(FName PackageName, const FAssetRegistryDependencyOptions& ReferenceOptions, TArray<FName>& OutReferencers) const;
 
 	/** Finds Package data for a package name. This data is only updated on save and can only be accessed for valid packages */
 	virtual const FAssetPackageData* GetAssetPackageData(FName PackageName) const = 0;
@@ -525,7 +536,7 @@ protected:
 	friend class UAssetManager;
 	
 	/**
-	 * Predicate called to decide rather to recurse into a reference when setting manager
+	 * Predicate called to decide whether to recurse into a reference when setting manager references
 	 *
 	 * @param Manager			Identifier of what manager will be set
 	 * @param Source			Identifier of the reference currently being iterated
@@ -533,7 +544,7 @@ protected:
 	 * @param DependencyType	Type of dependencies to recurse over
 	 * @param Flags				Flags describing this particular set attempt
 	 */
-	typedef TFunction<EAssetSetManagerResult::Type(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetRegistryDependencyType::Type DependencyType, EAssetSetManagerFlags::Type Flags)> ShouldSetManagerPredicate;
+	typedef TFunction<EAssetSetManagerResult::Type(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetSetManagerFlags::Type Flags)> ShouldSetManagerPredicate;
 
 	/**
 	 * Specifies a list of manager mappings, optionally recursing to dependencies. These mappings can then be queried later to see which assets "manage" other assets
@@ -544,7 +555,7 @@ protected:
 	 * @param RecurseType		Dependency types to recurse into, from the value of the manager map
 	 * @param RecursePredicate	Predicate that is called on recursion if bound, return true if it should recurse into that node
 	 */
-	virtual void SetManageReferences(const TMultiMap<FAssetIdentifier, FAssetIdentifier>& ManagerMap, bool bClearExisting, EAssetRegistryDependencyType::Type RecurseType, ShouldSetManagerPredicate ShouldSetManager = nullptr) = 0;
+	virtual void SetManageReferences(const TMultiMap<FAssetIdentifier, FAssetIdentifier>& ManagerMap, bool bClearExisting, UE::AssetRegistry::EDependencyCategory RecurseType, TSet<FDependsNode*>& ExistingManagedNodes, ShouldSetManagerPredicate ShouldSetManager = nullptr) = 0;
 
 	/** Sets the PrimaryAssetId for a specific asset. This should only be called by the AssetManager, and is needed when the AssetManager is more up to date than the on disk Registry */
 	virtual bool SetPrimaryAssetIdForObjectPath(const FName ObjectPath, FPrimaryAssetId PrimaryAssetId) = 0;
@@ -552,3 +563,21 @@ protected:
 	/** Returns pointer to cached AssetData for an object path. This is always the on disk version. This will return null if not found, and is exposed for  */
 	virtual const FAssetData* GetCachedAssetDataForObjectPath(const FName ObjectPath) const = 0;
 };
+
+namespace UE
+{
+namespace AssetRegistry
+{
+	enum EReadPackageDataMainErrorCode
+	{
+		Unknown = 0,
+		InvalidObjectCount = 1,
+		InvalidTagCount = 2,
+		InvalidTag = 3,
+	};
+	// Functions to read and write the data used by the AssetRegistry in each package; the format of this data is separate from the format of the data in the asset registry
+	// WritePackageData is declared in AssetRegistryInterface.h, in the CoreUObject module, because it is needed by SavePackage in CoreUObject
+	ASSETREGISTRY_API bool ReadPackageDataMain(FArchive& BinaryArchive, const FString& PackageName, const FPackageFileSummary& PackageFileSummary, int64& OutDependencyDataOffset, TArray<FAssetData*>& OutAssetDataList, EReadPackageDataMainErrorCode& OutError);
+	ASSETREGISTRY_API bool ReadPackageDataDependencies(FArchive& BinaryArchive, TBitArray<>& OutImportUsedInGame, TBitArray<>& OutSoftPackageUsedInGame);
+}
+}

@@ -187,6 +187,7 @@ bool DoesObjectNeedLoadForEditorGame(UObject* InObject)
 
 FPackageHarvester::FPackageHarvester(FSaveContext& InContext)
 	: SaveContext(InContext)
+	, bIsEditorOnlyExportOnStack(false)
 {
 	this->SetIsSaving(true);
 	this->SetIsPersistent(true);
@@ -209,7 +210,7 @@ UObject* FPackageHarvester::PopExportToProcess()
 void FPackageHarvester::ProcessExport(UObject* InObject)
 {
 	check(SaveContext.IsExport(InObject));
-	FExportScope HarvesterScope(*this, InObject);
+	FExportScope HarvesterScope(*this, InObject, IsEditorOnlyObject(InObject, true /* bCheckRecursive */, true /* bCheckMarks */));
 
 	// Harvest its class 
 	UClass* Class = InObject->GetClass();
@@ -334,6 +335,12 @@ void FPackageHarvester::TryHarvestImport(UObject* InObject)
 	{
 		bool bIsNative = IsObjNative(InObject);
 		SaveContext.AddImport(InObject);
+#if WITH_EDITORONLY_DATA
+		if (!bIsEditorOnlyExportOnStack && !IsEditorOnlyPropertyOnTheStack())
+#endif
+		{
+			SaveContext.ImportsUsedInGame.Add(InObject);
+		}
 
 		UObject* ObjOuter = InObject->GetOuter();
 		UClass* ObjClass = InObject->GetClass();
@@ -501,6 +508,12 @@ FArchive& FPackageHarvester::operator<<(FSoftObjectPath& Value)
 			FName PackageName = FName(*FPackageName::ObjectPathToPackageName(Path));
 			HarvestName(PackageName);
 			SaveContext.SoftPackageReferenceList.AddUnique(PackageName);
+#if WITH_EDITORONLY_DATA
+			if (CollectType != ESoftObjectPathCollectType::EditorOnlyCollect && !bIsEditorOnlyExportOnStack)
+#endif
+			{
+				SaveContext.SoftPackagesUsedInGame.Add(PackageName);
+			}
 		}
 	}
 	return *this;

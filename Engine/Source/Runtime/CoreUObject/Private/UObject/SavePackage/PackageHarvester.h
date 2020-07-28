@@ -23,16 +23,18 @@ public:
 	class FExportScope
 	{
 	public:
-		FExportScope(FPackageHarvester& InHarvester, UObject* InExport)
+		FExportScope(FPackageHarvester& InHarvester, UObject* InExport, bool bIsEditorOnlyObject)
 			: Harvester(InHarvester)
 		{
 			check(Harvester.CurrentExportDependencies.CurrentExport == nullptr);
 			Harvester.CurrentExportDependencies = { InExport };
+			Harvester.bIsEditorOnlyExportOnStack = bIsEditorOnlyObject;
 		}
 
 		~FExportScope()
 		{
 			Harvester.AppendCurrentExportDependencies();
+			Harvester.bIsEditorOnlyExportOnStack = false;
 		}
 	private:
 		FPackageHarvester& Harvester;
@@ -94,4 +96,5 @@ private:
 	FSaveContext& SaveContext;
 	TQueue<UObject*> ExportsToProcess;
 	FExportDependencies CurrentExportDependencies;
+	bool bIsEditorOnlyExportOnStack;
 };

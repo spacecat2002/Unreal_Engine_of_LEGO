@@ -9,6 +9,7 @@
 #include "HAL/FileManager.h"
 #include "Internationalization/TextPackageNamespaceUtil.h"
 #include "IO/IoDispatcher.h"
+#include "Misc/AssetRegistryInterface.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/FeedbackContext.h"
 #include "Misc/MessageDialog.h"
@@ -1429,7 +1430,7 @@ ESavePackageResult WritePackageHeader(FStructuredArchive::FRecord& StructuredArc
 	{
 		// Save asset registry data so the editor can search for information about assets in this package
 		TRACE_CPUPROFILER_EVENT_SCOPE(UPackage_Save_SaveAssetRegistryData);
-		SavePackageUtilities::SaveAssetRegistryData(SaveContext.GetPackage(), Linker, StructuredArchiveRoot.EnterField(SA_FIELD_NAME(TEXT("AssetRegistry"))));
+		UE::AssetRegistry::WritePackageData(StructuredArchiveRoot, SaveContext.GetPackage(), Linker, SaveContext.GetImportsUsedInGame(), SaveContext.GetSoftPackagesUsedInGame());
 	}
 	// Save level information used by World browser
 	{

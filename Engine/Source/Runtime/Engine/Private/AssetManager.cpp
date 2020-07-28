@@ -2599,7 +2599,7 @@ void UAssetManager::DumpReferencersForPackage(const TArray< FString >& PackageNa
 	{
 		TArray<FAssetIdentifier> FoundReferencers;
 
-		AssetRegistry.GetReferencers(FName(*PackageString), FoundReferencers, EAssetRegistryDependencyType::Packages);
+		AssetRegistry.GetReferencers(FName(*PackageString), FoundReferencers, UE::AssetRegistry::EDependencyCategory::Package);
 
 		for (const FAssetIdentifier& Identifier : FoundReferencers)
 		{
@@ -2750,7 +2750,7 @@ bool UAssetManager::GetManagedPackageList(FPrimaryAssetId PrimaryAssetId, TArray
 	TArray<FString> DependencyStrings;
 
 	IAssetRegistry& AssetRegistry = GetAssetRegistry();
-	AssetRegistry.GetDependencies(PrimaryAssetId, FoundDependencies, EAssetRegistryDependencyType::Manage);
+	AssetRegistry.GetDependencies(PrimaryAssetId, FoundDependencies, UE::AssetRegistry::EDependencyCategory::Manage);
 
 	for (const FAssetIdentifier& Identifier : FoundDependencies)
 	{
@@ -2771,7 +2771,7 @@ bool UAssetManager::GetPackageManagers(FName PackageName, bool bRecurseToParents
 	TArray<FAssetIdentifier> ReferencingPrimaryAssets;
 	ReferencingPrimaryAssets.Reserve(128);
 
-	AssetRegistry.GetReferencers(PackageName, ReferencingPrimaryAssets, EAssetRegistryDependencyType::Manage);
+	AssetRegistry.GetReferencers(PackageName, ReferencingPrimaryAssets, UE::AssetRegistry::EDependencyCategory::Manage);
 
 	for (int32 IdentifierIndex = 0; IdentifierIndex < ReferencingPrimaryAssets.Num(); IdentifierIndex++)
 	{
@@ -2847,6 +2847,11 @@ bool UAssetManager::IsPathExcludedFromScan(const FString& Path) const
 #if WITH_EDITOR
 
 EAssetSetManagerResult::Type UAssetManager::ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetRegistryDependencyType::Type DependencyType, EAssetSetManagerFlags::Type Flags) const
+{
+	return ShouldSetManager(Manager, Source, Target, Flags);
+}
+
+EAssetSetManagerResult::Type UAssetManager::ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetSetManagerFlags::Type Flags) const
 {
 	FPrimaryAssetId ManagerPrimaryAssetId = Manager.GetPrimaryAssetId();
 	FPrimaryAssetId TargetPrimaryAssetId = Target.GetPrimaryAssetId();
@@ -3100,9 +3105,9 @@ void UAssetManager::UpdateManagementDatabase(bool bForceRefresh)
 	const bool bAllowInPIE = true;
 	SlowTask.MakeDialog(bShowCancelButton, bAllowInPIE);
 
-	auto SetManagerPredicate = [this, &PackagesToUpdateChunksFor](const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetRegistryDependencyType::Type DependencyType, EAssetSetManagerFlags::Type Flags)
+	auto SetManagerPredicate = [this, &PackagesToUpdateChunksFor](const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetSetManagerFlags::Type Flags)
 	{
-		EAssetSetManagerResult::Type Result = this->ShouldSetManager(Manager, Source, Target, DependencyType, Flags);
+		EAssetSetManagerResult::Type Result = this->ShouldSetManager(Manager, Source, Target, Flags);
 		if (Result != EAssetSetManagerResult::DoNotSet && Target.IsPackage())
 		{
 			PackagesToUpdateChunksFor.Add(Target.PackageName);
@@ -3110,19 +3115,20 @@ void UAssetManager::UpdateManagementDatabase(bool bForceRefresh)
 		return Result;
 	};
 
+	TSet<FDependsNode*> ExistingManagedNodes;
 	for (int32 PriorityIndex = 0; PriorityIndex < PriorityArray.Num(); PriorityIndex++)
 	{
 		TMultiMap<FAssetIdentifier, FAssetIdentifier>* ManagerMap = PriorityManagementMap.Find(PriorityArray[PriorityIndex]);
 
 		SlowTask.EnterProgressFrame(1);
 
-		AssetRegistry.SetManageReferences(*ManagerMap, PriorityIndex == 0, EAssetRegistryDependencyType::Packages, SetManagerPredicate);
+		AssetRegistry.SetManageReferences(*ManagerMap, PriorityIndex == 0, UE::AssetRegistry::EDependencyCategory::Package, ExistingManagedNodes, SetManagerPredicate);
 	}
 
 	// Do non recursive set last
 	if (NoReferenceManagementMap.Num() > 0)
 	{
-		AssetRegistry.SetManageReferences(NoReferenceManagementMap, false, EAssetRegistryDependencyType::None);
+		AssetRegistry.SetManageReferences(NoReferenceManagementMap, false, UE::AssetRegistry::EDependencyCategory::None, ExistingManagedNodes);
 	}
 
 
@@ -3185,7 +3191,7 @@ void UAssetManager::UpdateManagementDatabase(bool bForceRefresh)
 
 	if (PrimaryAssetIdManagementMap.Num() > 0)
 	{
-		AssetRegistry.SetManageReferences(PrimaryAssetIdManagementMap, false, EAssetRegistryDependencyType::None);
+		AssetRegistry.SetManageReferences(PrimaryAssetIdManagementMap, false, UE::AssetRegistry::EDependencyCategory::None, ExistingManagedNodes);
 	}
 
 	UProjectPackagingSettings* ProjectPackagingSettings = GetMutableDefault<UProjectPackagingSettings>();

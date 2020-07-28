@@ -565,8 +565,10 @@ protected:
 	bool OnAssetRegistryAvailableAfterInitialization(FName InName, FAssetRegistryState& OutNewState);
 
 #if WITH_EDITOR
-	/** Function used during creating Management references to decide when to recurse and set references */
+	UE_DEPRECATED(4.26, "ShouldSetManager no longer takes a DependencyType")
 	virtual EAssetSetManagerResult::Type ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetRegistryDependencyType::Type DependencyType, EAssetSetManagerFlags::Type Flags) const;
+	/** Function used during creating Management references to decide when to recurse and set references */
+	virtual EAssetSetManagerResult::Type ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetSetManagerFlags::Type Flags) const;
 
 	/** Helper function which requests the asset register scan a list of directories/assets */
 	virtual void ScanPathsSynchronous(const TArray<FString>& PathsToScan) const;
