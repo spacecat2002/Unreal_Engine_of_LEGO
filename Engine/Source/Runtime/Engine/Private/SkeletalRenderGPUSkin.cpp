@@ -1758,9 +1758,10 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(uint32 Ve
 	// vertex buffer for each lod has already been created when skelmesh was loaded
 	FSkeletalMeshLODRenderData& LODData = SkelMeshRenderData->LODRenderData[LODIndex];
 	
+	check(CompLODInfo);
+
 	// If we have a skin weight override buffer (and it's the right size) use it
-	if (CompLODInfo &&
-		CompLODInfo->OverrideSkinWeights &&
+	if (CompLODInfo->OverrideSkinWeights &&
 		CompLODInfo->OverrideSkinWeights->GetNumVertices() == LODData.StaticVertexBuffers.PositionVertexBuffer.GetNumVertices())
 	{
 		check(LODData.SkinWeightVertexBuffer.GetMaxBoneInfluences() == CompLODInfo->OverrideSkinWeights->GetMaxBoneInfluences());
@@ -1778,8 +1779,7 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(uint32 Ve
 	}
 
 	// If we have a vertex color override buffer (and it's the right size) use it
-	if (CompLODInfo &&
-		CompLODInfo->OverrideVertexColors &&
+	if (CompLODInfo->OverrideVertexColors &&
 		CompLODInfo->OverrideVertexColors->GetNumVertices() == LODData.StaticVertexBuffers.PositionVertexBuffer.GetNumVertices())
 	{
 		MeshObjectColorBuffer = CompLODInfo->OverrideVertexColors;
