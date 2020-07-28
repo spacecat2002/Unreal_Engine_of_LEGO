@@ -4459,7 +4459,7 @@ uint64 FScopedSampleMallocChurn::DumpFrame = 0;
 
 #endif
 
-bool bTraceFrameEventEmitted = false;
+static uint32 TraceFrameEventThreadId = (uint32) -1;
 
 static inline void BeginFrameRenderThread(FRHICommandListImmediate& RHICmdList, uint64 CurrentFrameCounter)
 {
@@ -4478,9 +4478,10 @@ static inline void BeginFrameRenderThread(FRHICommandListImmediate& RHICmdList, 
 #endif
 
 #if CPUPROFILERTRACE_ENABLED
-	bTraceFrameEventEmitted = UE_TRACE_CHANNELEXPR_IS_ENABLED(CpuChannel);
-	if (bTraceFrameEventEmitted)
+	TraceFrameEventThreadId = (uint32) -1;
+	if (UE_TRACE_CHANNELEXPR_IS_ENABLED(CpuChannel))
 	{
+		TraceFrameEventThreadId = FPlatformTLS::GetCurrentThreadId();
 		FCpuProfilerTrace::OutputBeginDynamicEvent(TEXT("Frame"));
 	}
 #endif //CPUPROFILERTRACE_ENABLED
@@ -4525,7 +4526,7 @@ static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList, ui
 	FPlatformMisc::EndNamedEvent();
 #endif
 #if CPUPROFILERTRACE_ENABLED
-	if (bTraceFrameEventEmitted)
+	if (TraceFrameEventThreadId == FPlatformTLS::GetCurrentThreadId())
 	{
 		FCpuProfilerTrace::OutputEndEvent();
 	}
