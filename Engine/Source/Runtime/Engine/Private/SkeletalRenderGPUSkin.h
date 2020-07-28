@@ -253,13 +253,13 @@ public:
 
 	void Init(uint32 Usage, const TArray<FVector>& PreSkinningOffsets, const TArray<FVector>& PostSkinningOffsets)
 	{
-		if (Usage & uint32(EVertexOffsetUsage::PreSkinningOffset))
+		if (Usage & uint32(EVertexOffsetUsageType::PreSkinningOffset))
 		{
 			ensure(PreSkinningOffsets.Num() > 0);
 			PreSkinningOffsetsVertexBuffer.Init(PreSkinningOffsets);
 		}
 
-		if (Usage & uint32(EVertexOffsetUsage::PostSkinningOffset))
+		if (Usage & uint32(EVertexOffsetUsageType::PostSkinningOffset))
 		{
 			ensure(PostSkinningOffsets.Num() > 0);
 			PostSkinningOffsetsVertexBuffer.Init(PostSkinningOffsets);
@@ -293,12 +293,12 @@ public:
 
 		if (PreSkinningOffsetsVertexBuffer.GetNumVertices() > 0)
 		{
-			Usage |= uint32(EVertexOffsetUsage::PreSkinningOffset);
+			Usage |= uint32(EVertexOffsetUsageType::PreSkinningOffset);
 		}
 
 		if (PostSkinningOffsetsVertexBuffer.GetNumVertices() > 0)
 		{
-			Usage |= uint32(EVertexOffsetUsage::PostSkinningOffset);
+			Usage |= uint32(EVertexOffsetUsageType::PostSkinningOffset);
 		}
 
 		return Usage;
