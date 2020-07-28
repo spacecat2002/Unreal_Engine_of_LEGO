@@ -17251,6 +17251,7 @@ void UMaterialExpressionSkyAtmosphereDistantLightScatteredLuminance::GetCaption(
 ///////////////////////////////////////////////////////////////////////////////
 // UMaterialExpressionSkinningVertexOffsets
 ///////////////////////////////////////////////////////////////////////////////
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 UMaterialExpressionSkinningVertexOffsets::UMaterialExpressionSkinningVertexOffsets(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -17275,6 +17276,7 @@ UMaterialExpressionSkinningVertexOffsets::UMaterialExpressionSkinningVertexOffse
 	bShowOutputNameOnPin = true;
 #endif
 }
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 #if WITH_EDITOR
 int32 UMaterialExpressionSkinningVertexOffsets::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)
