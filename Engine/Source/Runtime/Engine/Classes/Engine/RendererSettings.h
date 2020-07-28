@@ -798,11 +798,6 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true))
 		uint32 bSupportReversedIndexBuffers : 1;
 
-	UPROPERTY(config, EditAnywhere, Category = Materials, meta = (
-		ConsoleVariable = "r.SupportMaterialLayers", Tooltip = "Support new material layering system.",
-		ConfigRestartRequired = true))
-		uint32 bSupportMaterialLayers : 1;
-
 	UPROPERTY(config, EditAnywhere, Category = Lighting, meta = (
 		ConsoleVariable = "r.LightPropagationVolume", DisplayName = "Light Propagation Volumes",
 		ToolTip = "Whether to allow the usage and compilation of Light Propagation Volumes.",
