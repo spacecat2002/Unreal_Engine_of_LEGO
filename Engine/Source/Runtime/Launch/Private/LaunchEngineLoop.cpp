@@ -5234,13 +5234,13 @@ bool LaunchCorrectEditorExecutable(const FString& EditorTargetFileName)
 	FPaths::MakeStandardFilename(CurrentExecutableName);
 
 	// Nothing to do if they're the same
-	if(LaunchExecutableName == CurrentExecutableName)
+	if(FPaths::IsSamePath(LaunchExecutableName, CurrentExecutableName))
 	{
 		return false;
 	}
 
 	// Relaunch the correct executable
-	UE_LOG(LogInit, Display, TEXT("Running incorrect executable for target. Launching %s..."), *LaunchExecutableName);
+	UE_LOG(LogInit, Display, TEXT("Running incorrect executable for target (%s). Launching %s instead..."), *CurrentExecutableName, *LaunchExecutableName);
 	FPlatformProcess::CreateProc(*IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*LaunchExecutableName), FCommandLine::GetOriginal(), true, false, false, nullptr, 0, nullptr, nullptr, nullptr);
 	return true;
 }
