@@ -181,9 +181,9 @@ void FSkeletalMeshObjectGPUSkin::InitResources(USkinnedMeshComponent* InMeshComp
 				CompLODInfo = &InMeshComponent->LODInfo[LODIndex];
 			}
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
+			PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			SkelLOD.InitResources(InMeshComponent->GetVertexOffsetUsage(LODIndex), MeshLODInfo, CompLODInfo, FeatureLevel);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 	}
 
@@ -1742,12 +1742,12 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(uint32 Ve
 		MeshObjectColorBuffer = &LODData.StaticVertexBuffers.ColorVertexBuffer;
 	}
 
-	if ((VertexOffsetUsage & uint32(EVertexOffsetUsage::PreSkinningOffset)) && CompLODInfo->PreSkinningOffsets.Num() == 0)
+	if ((VertexOffsetUsage & uint32(EVertexOffsetUsageType::PreSkinningOffset)) && CompLODInfo->PreSkinningOffsets.Num() == 0)
 	{
 		CompLODInfo->PreSkinningOffsets.SetNumZeroed(LODData.GetNumVertices());
 	}
 
-	if ((VertexOffsetUsage & uint32(EVertexOffsetUsage::PostSkinningOffset)) && CompLODInfo->PostSkinningOffsets.Num() == 0)
+	if ((VertexOffsetUsage & uint32(EVertexOffsetUsageType::PostSkinningOffset)) && CompLODInfo->PostSkinningOffsets.Num() == 0)
 	{
 		CompLODInfo->PostSkinningOffsets.SetNumZeroed(LODData.GetNumVertices());
 	}
