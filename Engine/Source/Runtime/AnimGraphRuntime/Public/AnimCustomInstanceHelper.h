@@ -31,6 +31,7 @@
 #include "SequencerAnimationSupport.h"
 
 
+PRAGMA_DISABLE_OPTIMIZATION
 class ANIMGRAPHRUNTIME_API FAnimCustomInstanceHelper
 {
 public:
@@ -141,6 +142,7 @@ public:
 					if (NewSequencerInterface->DoesSupportDifferentSourceAnimInstance())
 					{
 						InSkeletalMeshComponent->AnimScriptInstance = NewInstance;
+						ensureAlways(NewInstance != CurSourceInstance);
 						NewSequencerInterface->SetSourceAnimInstance(CurSourceInstance);
 
 						InSkeletalMeshComponent->AnimScriptInstance->InitializeAnimation();
@@ -196,6 +198,8 @@ public:
 						// if we have source, replace with it
 						if (SourceAnimInstance)
 						{
+							// clear before you remove
+							SequencerInterface->SetSourceAnimInstance(nullptr);
 							InSkeletalMeshComponent->AnimScriptInstance = SourceAnimInstance;
 							bClearAnimScriptInstance = false;
 						}
@@ -222,6 +226,7 @@ public:
 					// this can be animBP, we want to return that
 					else if (SourceInstance)
 					{
+						SequencerInterface->SetSourceAnimInstance(nullptr);
 						InSkeletalMeshComponent->AnimScriptInstance = SourceInstance;
 					}
 				}
@@ -236,6 +241,7 @@ public:
 				UAnimInstance* SourceInstance = SequencerInterface->GetSourceAnimInstance();
 				if (SourceInstance)
 				{
+					SequencerInterface->SetSourceAnimInstance(nullptr);
 					InSkeletalMeshComponent->AnimScriptInstance = SourceInstance;
 					AnimInstance = SourceInstance;
 				}
@@ -264,3 +270,4 @@ private:
 	/** Helper function for BindToSkeletalMeshComponent */
 	static bool ShouldCreateCustomInstancePlayer(const USkeletalMeshComponent* SkeletalMeshComponent);
 };
+PRAGMA_ENABLE_OPTIMIZATION
