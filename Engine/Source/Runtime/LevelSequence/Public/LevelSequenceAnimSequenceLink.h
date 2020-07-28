@@ -26,7 +26,7 @@ public:
 	UPROPERTY()
 	bool bExportCurves;
 	UPROPERTY()
-	bool bIncludeComponentTransform;
+	bool bRecordInWorldSpace;
 
 	void SetAnimSequence(UAnimSequence* InAnimSequence);
 	UAnimSequence* ResolveAnimSequence();
