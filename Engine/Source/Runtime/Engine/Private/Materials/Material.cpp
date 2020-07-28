@@ -2125,11 +2125,6 @@ bool UMaterial::GetScalarParameterValue_New(const FHashedMaterialParameterInfo& 
 #if WITH_EDITOR
 bool UMaterial::GetScalarParameterValue_Legacy(const FHashedMaterialParameterInfo& ParameterInfo, float& OutValue, bool bOveriddenOnly) const
 {
-	if (bOveriddenOnly && !AreExperimentalMaterialLayersEnabled())
-	{
-		return false;
-	}
-
 	// In the case of duplicate parameters with different values, this will return the
 	// first matching expression found, not necessarily the one that's used for rendering
 	UMaterialExpressionScalarParameter* Parameter = nullptr;
@@ -2268,11 +2263,6 @@ bool UMaterial::GetVectorParameterValue_New(const FHashedMaterialParameterInfo& 
 #if WITH_EDITOR
 bool UMaterial::GetVectorParameterValue_Legacy(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor& OutValue, bool bOveriddenOnly) const
 {
-	if (bOveriddenOnly && !AreExperimentalMaterialLayersEnabled())
-	{
-		return false;
-	}
-
 	// In the case of duplicate parameters with different values, this will return the
 	// first matching expression found, not necessarily the one that's used for rendering
 	UMaterialExpressionVectorParameter* Parameter = nullptr;
@@ -2398,11 +2388,6 @@ bool UMaterial::GetTextureParameterValue_New(const FHashedMaterialParameterInfo&
 #if WITH_EDITOR
 bool UMaterial::GetTextureParameterValue_Legacy(const FHashedMaterialParameterInfo& ParameterInfo, UTexture*& OutValue, bool bOveriddenOnly) const
 {
-	if (bOveriddenOnly && !AreExperimentalMaterialLayersEnabled())
-	{
-		return false;
-	}
-
 	// In the case of duplicate parameters with different values, this will return the
 	// first matching expression found, not necessarily the one that's used for rendering
 	UMaterialExpressionTextureSampleParameter* Parameter = nullptr;
@@ -2500,11 +2485,6 @@ bool UMaterial::GetRuntimeVirtualTextureParameterValue_New(const FHashedMaterial
 #if WITH_EDITOR
 bool UMaterial::GetRuntimeVirtualTextureParameterValue_Legacy(const FHashedMaterialParameterInfo& ParameterInfo, URuntimeVirtualTexture*& OutValue, bool bOveriddenOnly) const
 {
-	if (bOveriddenOnly && !AreExperimentalMaterialLayersEnabled())
-	{
-		return false;
-	}
-
 	// In the case of duplicate parameters with different values, this will return the
 	// first matching expression found, not necessarily the one that's used for rendering
 	UMaterialExpressionRuntimeVirtualTextureSampleParameter* Parameter = nullptr;
