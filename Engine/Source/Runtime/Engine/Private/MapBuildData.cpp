@@ -307,7 +307,15 @@ FArchive& operator<<(FArchive& Ar, FReflectionCaptureMapBuildData& ReflectionCap
 
 	if (Ar.CustomVer(FMobileObjectVersion::GUID) >= FMobileObjectVersion::StoreReflectionCaptureCompressedMobile)
 	{
-		Ar << ReflectionCaptureMapBuildData.EncodedCaptureData;
+		if (Ar.IsCooking() && !Ar.CookingTarget()->SupportsFeature(ETargetPlatformFeatures::MobileRendering))
+		{
+			UTextureCube* Dummy = NULL;
+			Ar << Dummy;
+		}
+		else
+		{
+			Ar << ReflectionCaptureMapBuildData.EncodedCaptureData;
+		}
 	}
 	else
 	{
@@ -392,16 +400,20 @@ void UMapBuildDataRegistry::PostLoad()
 
 	if (ReflectionCaptureBuildData.Num() > 0 
 		// Only strip in PostLoad for cooked platforms.  Uncooked may need to generate encoded HDR data in UReflectionCaptureComponent::OnRegister().
-		&& FPlatformProperties::RequiresCookedData()
-		&& GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5)
+		&& FPlatformProperties::RequiresCookedData())
 	{
+		bool bFullDataRequired = GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5;
+
 		for (TMap<FGuid, FReflectionCaptureMapBuildData>::TIterator It(ReflectionCaptureBuildData); It; ++It)
 		{
 			FReflectionCaptureMapBuildData& CaptureBuildData = It.Value();
 
-			CaptureBuildData.FullHDRCapturedData.Empty();
+			if (!bFullDataRequired)
+			{
+				CaptureBuildData.FullHDRCapturedData.Empty();
+			}
 
-			check(CaptureBuildData.FullHDRCapturedData.Num() > 0  || FApp::CanEverRender() == false);
+			check(CaptureBuildData.EncodedCaptureData != nullptr || CaptureBuildData.FullHDRCapturedData.Num() > 0  || FApp::CanEverRender() == false);
 		}
 	}
 
