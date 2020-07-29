@@ -1574,8 +1574,8 @@ void FSceneRenderer::RenderSkyAtmosphereInternal(FRDGBuilder& GraphBuilder, FSky
 	const FVector ViewOrigin = ViewMatrices.GetViewOrigin();
 	const FVector PlanetCenter = Atmosphere.PlanetCenterKm * KM_TO_CM;
 	const float TopOfAtmosphere = Atmosphere.TopRadiusKm * KM_TO_CM;
-	const float SafeEdge = 1000.0f;	// 10 meters
-	const bool ForceRayMarching = SkyRC.bForceRayMarching || (FVector::Distance(ViewOrigin, PlanetCenter) - TopOfAtmosphere - SafeEdge) > 0.0f;
+	const float PlanetRadiusTraceSafeEdgeCm = 1000.0f;	// 10 meters, must match PLANET_RADIUS_SAFE_TRACE_EDGE
+	const bool ForceRayMarching = SkyRC.bForceRayMarching || (FVector::Distance(ViewOrigin, PlanetCenter) - TopOfAtmosphere - PlanetRadiusTraceSafeEdgeCm) > 0.0f;
 	const bool bDisableBlending = SkyRC.bDisableBlending;
 
 	// Render the sky, and optionally the atmosphere aerial perspective, on the scene luminance buffer
