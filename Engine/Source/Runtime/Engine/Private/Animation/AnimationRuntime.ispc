@@ -278,6 +278,7 @@ export void BlendCurves(const struct TArrayBlendedCurves* uniform SourceCurves, 
 			const varying int ValidityBitPosition = CurveID & 0x1F; // % 32;
 			const varying int ValidityBitMask = 0x1 << ValidityBitPosition;
 
+			#pragma ignore warning(perf)
 			if ((SourceCurves->DataPtr[CurveIndex].ValidCurveWeights.Data[ValidityArrayIndex] & ValidityBitMask) == 0)
 			{
 				continue;
