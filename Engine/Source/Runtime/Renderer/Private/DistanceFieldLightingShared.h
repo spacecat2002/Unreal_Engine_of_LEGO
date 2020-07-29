@@ -328,8 +328,6 @@ public:
 			CulledObjectBoxBounds.SetBuffer(RHICmdList, ShaderRHI, ObjectBuffers.BoxBounds);
 		}
 
-		RHICmdList.Transition(FRHITransitionInfo(TextureAtlas, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-
 		SetTextureParameter(
 			RHICmdList,
 			ShaderRHI,
