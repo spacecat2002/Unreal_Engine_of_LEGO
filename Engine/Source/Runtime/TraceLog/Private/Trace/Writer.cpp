@@ -18,10 +18,11 @@ namespace Trace {
 namespace Private {
 
 ////////////////////////////////////////////////////////////////////////////////
-int32	Encode(const void*, int32, void*, int32);
-void	Writer_UpdateControl();
-void	Writer_InitializeControl();
-void	Writer_ShutdownControl();
+int32		Encode(const void*, int32, void*, int32);
+static void	Writer_EndThreadBuffer();
+void		Writer_UpdateControl();
+void		Writer_InitializeControl();
+void		Writer_ShutdownControl();
 
 
 
@@ -60,8 +61,6 @@ UE_TRACE_EVENT_END()
 ////////////////////////////////////////////////////////////////////////////////
 static bool						GInitialized;		// = false;
 static uint64					GStartCycle;		// = 0;
-static FWriteBuffer				GNullWriteBuffer	= { 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
-thread_local FWriteBuffer*		GTlsWriteBuffer		= &GNullWriteBuffer;
 TRACELOG_API uint32 volatile	GLogSerial;			// = 0;
 
 
@@ -87,10 +86,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 FWriteTlsContext::~FWriteTlsContext()
 {
-	if (GInitialized && GTlsWriteBuffer != &GNullWriteBuffer)
+	if (GInitialized)
 	{
-		UPTRINT EtxOffset = UPTRINT((uint8*)GTlsWriteBuffer - GTlsWriteBuffer->Cursor);
-		AtomicStoreRelaxed(&(GTlsWriteBuffer->EtxOffset), EtxOffset);
+		Writer_EndThreadBuffer();
 	}
 }
 
@@ -176,6 +174,8 @@ T_ALIGN static FWriteBuffer* volatile	GNewThreadList;		// = nullptr;
 T_ALIGN static FPoolPage* volatile		GPoolPageList;		// = nullptr;
 static uint32							GPoolUsage;			// = 0;
 static uint32							GPoolUsageThreshold;// = 0;
+static FWriteBuffer						GNullWriteBuffer	= { 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
+thread_local FWriteBuffer*				GTlsWriteBuffer		= &GNullWriteBuffer;
 #undef T_ALIGN
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -349,6 +349,18 @@ TRACELOG_API FWriteBuffer* Writer_NextBuffer(int32 Size)
 
 	NextBuffer->Cursor += Size;
 	return NextBuffer;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_EndThreadBuffer()
+{
+	if (GTlsWriteBuffer == &GNullWriteBuffer)
+	{
+		return;
+	}
+
+	UPTRINT EtxOffset = UPTRINT((uint8*)GTlsWriteBuffer - GTlsWriteBuffer->Cursor);
+	AtomicStoreRelaxed(&(GTlsWriteBuffer->EtxOffset), EtxOffset);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
