@@ -2848,10 +2848,12 @@ bool UAssetManager::IsPathExcludedFromScan(const FString& Path) const
 
 EAssetSetManagerResult::Type UAssetManager::ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetRegistryDependencyType::Type DependencyType, EAssetSetManagerFlags::Type Flags) const
 {
-	return ShouldSetManager(Manager, Source, Target, Flags);
+	checkf(false, TEXT("Call ShouldSetManager that takes a Category instead"));
+	return EAssetSetManagerResult::DoNotSet;
 }
 
-EAssetSetManagerResult::Type UAssetManager::ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetSetManagerFlags::Type Flags) const
+EAssetSetManagerResult::Type UAssetManager::ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target,
+	UE::AssetRegistry::EDependencyCategory Category, UE::AssetRegistry::EDependencyProperty Properties, EAssetSetManagerFlags::Type Flags) const
 {
 	FPrimaryAssetId ManagerPrimaryAssetId = Manager.GetPrimaryAssetId();
 	FPrimaryAssetId TargetPrimaryAssetId = Target.GetPrimaryAssetId();
@@ -3105,9 +3107,10 @@ void UAssetManager::UpdateManagementDatabase(bool bForceRefresh)
 	const bool bAllowInPIE = true;
 	SlowTask.MakeDialog(bShowCancelButton, bAllowInPIE);
 
-	auto SetManagerPredicate = [this, &PackagesToUpdateChunksFor](const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetSetManagerFlags::Type Flags)
+	auto SetManagerPredicate = [this, &PackagesToUpdateChunksFor](const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target,
+		UE::AssetRegistry::EDependencyCategory Category, UE::AssetRegistry::EDependencyProperty Properties, EAssetSetManagerFlags::Type Flags)
 	{
-		EAssetSetManagerResult::Type Result = this->ShouldSetManager(Manager, Source, Target, Flags);
+		EAssetSetManagerResult::Type Result = this->ShouldSetManager(Manager, Source, Target, Category, Properties, Flags);
 		if (Result != EAssetSetManagerResult::DoNotSet && Target.IsPackage())
 		{
 			PackagesToUpdateChunksFor.Add(Target.PackageName);

@@ -127,7 +127,7 @@ protected:
 				}
 				++NumValues;
 			};
-			while (NumValues != 0)
+			while (NumValues > 0)
 			{
 				if (NumValues == TupleWidth)
 				{

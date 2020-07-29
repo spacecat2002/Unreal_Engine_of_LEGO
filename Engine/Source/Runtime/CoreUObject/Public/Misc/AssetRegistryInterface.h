@@ -180,11 +180,18 @@ public:
 	}
 
 	UE_DEPRECATED(4.26, "Use GetDependencies that takes a UE::AssetRegistry::EDependencyCategory instead")
-	virtual void GetDependencies(FName InPackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) = 0;
+	void GetDependencies(FName InPackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType)
+	{
+		GetDependenciesDeprecated(InPackageName, OutDependencies, InDependencyType);
+	}
 
 	/**
 	 * Lookup dependencies for the given package name and fill OutDependencies with direct dependencies
 	 */
 	virtual void GetDependencies(FName InPackageName, TArray<FName>& OutDependencies, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::Package, const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) = 0;
+
+protected:
+	/* This function is a workaround for platforms that don't support disable of deprecation warnings on override functions*/
+	virtual void GetDependenciesDeprecated(FName InPackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) = 0;
 };
 
