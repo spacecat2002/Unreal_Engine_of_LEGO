@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "RigVMArray.h"
+#include "RigVMExternalVariable.h"
 #include "RigVMExecuteContext.generated.h"
 
 USTRUCT()
@@ -168,6 +169,7 @@ struct RIGVM_API FRigVMExecuteContext
 		Slices.Add(FRigVMSlice());
 		SliceOffsets.Reset();
 		InstructionIndex = 0;
+		ExternalVariables.Reset();
 	}
 
 	FORCEINLINE const FRigVMSlice& GetSlice() const
@@ -205,10 +207,35 @@ struct RIGVM_API FRigVMExecuteContext
 		return GetSlice().IsComplete();
 	}
 
+	FORCEINLINE const FRigVMExternalVariable* FindExternalVariable(const FName& InExternalVariableName) const
+	{
+		for (const FRigVMExternalVariable& ExternalVariable : ExternalVariables)
+		{
+			if (ExternalVariable.Name == InExternalVariableName)
+			{
+				return &ExternalVariable;
+			}
+		}
+		return nullptr;
+	}
+
+	FORCEINLINE FRigVMExternalVariable* FindExternalVariable(const FName& InExternalVariableName)
+	{
+		for (FRigVMExternalVariable& ExternalVariable : ExternalVariables)
+		{
+			if (ExternalVariable.Name == InExternalVariableName)
+			{
+				return &ExternalVariable;
+			}
+		}
+		return nullptr;
+	}
+
 	FName EventName;
 	FName FunctionName;
 	uint16 InstructionIndex;
 	FRigVMFixedArray<void*> OpaqueArguments;
+	TArray<FRigVMExternalVariable> ExternalVariables;
 	TArray<FRigVMSlice> Slices;
 	TArray<uint16> SliceOffsets;
 };

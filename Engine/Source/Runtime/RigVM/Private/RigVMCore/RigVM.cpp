@@ -115,6 +115,7 @@ void URigVM::Reset()
 	Parameters.Reset();
 	ParametersNameMap.Reset();
 	DeferredVMToCopy = nullptr;
+	ExternalVariables.Reset();
 
 	WorkMemoryPtr = &WorkMemoryStorage;
 	LiteralMemoryPtr = &LiteralMemoryStorage;
@@ -136,6 +137,7 @@ void URigVM::Empty()
 	Parameters.Empty();
 	ParametersNameMap.Empty();
 	DeferredVMToCopy = nullptr;
+	ExternalVariables.Empty();
 
 	InvalidateCachedMemory();
 
@@ -610,6 +612,7 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<v
 	Context.Reset();
 	Context.SliceOffsets.AddZeroed(Instructions.Num());
 	Context.OpaqueArguments = AdditionalArguments;
+	Context.ExternalVariables = ExternalVariables;
 
 	while (Instructions.IsValidIndex(Context.InstructionIndex))
 	{
@@ -871,6 +874,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void
 	Context.Reset();
 	Context.SliceOffsets.AddZeroed(Instructions.Num());
 	Context.OpaqueArguments = AdditionalArguments;
+	Context.ExternalVariables = ExternalVariables;
 
 	if (!InEntryName.IsNone())
 	{
@@ -1253,6 +1257,18 @@ bool URigVM::Execute(const FName& InEntryName)
 	return Execute(FRigVMMemoryContainerPtrArray(), FRigVMFixedArray<void*>(), InEntryName);
 }
 
+FRigVMExternalVariable URigVM::GetExternalVariableByName(const FName& InExternalVariableName)
+{
+	for (const FRigVMExternalVariable& ExternalVariable : ExternalVariables)
+	{
+		if (ExternalVariable.Name == InExternalVariableName)
+		{
+			return ExternalVariable;
+		}
+	}
+	return FRigVMExternalVariable();
+}
+
 void URigVM::SetRegisterValueFromString(const FRigVMOperand& InOperand, const FString& InCPPType, const UObject* InCPPTypeObject, const TArray<FString>& InDefaultValues)
 {
 	if (InOperand.GetMemoryType() == ERigVMMemoryType::Literal)
@@ -1555,6 +1571,16 @@ FString URigVM::GetOperandLabel(const FRigVMOperand& InOperand) const
 
 void URigVM::CacheSingleMemoryHandle(const FRigVMOperand& InArg, bool bForExecute)
 {
+	if (InArg.GetMemoryType() == ERigVMMemoryType::External)
+	{
+		ensure(ExternalVariables.IsValidIndex(InArg.GetRegisterIndex()));
+
+		FRigVMExternalVariable& ExternalVariable = ExternalVariables[InArg.GetRegisterIndex()];
+		check(ExternalVariable.Memory);
+		CachedMemoryHandles.Add(ExternalVariable.GetHandle(InArg.GetRegisterOffset()));
+		return;
+	}
+
 	const FRigVMRegister& Register = CachedMemory[InArg.GetContainerIndex()]->GetRegister(InArg);
 	
 	CachedMemoryHandles.Add(CachedMemory[InArg.GetContainerIndex()]->GetHandle(Register, InArg.GetRegisterOffset()));

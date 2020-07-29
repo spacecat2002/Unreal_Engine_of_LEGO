@@ -424,6 +424,33 @@ public:
 		SetParameterValue<FTransform>(InParameterName, InValue, InArrayIndex);
 	}
 
+	// Returns the external variables of the VM
+	const TArray<FRigVMExternalVariable>& GetExternalVariables() const { return ExternalVariables; }
+
+	// Returns an external variable given it's name
+	FRigVMExternalVariable GetExternalVariableByName(const FName& InExternalVariableName);
+
+	// Adds a new external / unowned variable to the VM
+	FORCEINLINE_DEBUGGABLE FRigVMOperand AddExternalVariable(const FRigVMExternalVariable& InExternalVariable)
+	{
+		int32 VariableIndex = ExternalVariables.Add(InExternalVariable);
+		return FRigVMOperand(ERigVMMemoryType::External, VariableIndex);
+	}
+
+	// Adds a new external / unowned variable to the VM
+	template<typename T>
+	FORCEINLINE_DEBUGGABLE FRigVMOperand AddExternalVariable(const FName& InExternalVariableName, T& InValue)
+	{
+		return AddExternalVariable(FRigVMExternalVariable::Make(InExternalVariableName, InValue));
+	}
+
+	// Adds a new external / unowned variable to the VM
+	template<typename T>
+	FORCEINLINE_DEBUGGABLE FRigVMOperand AddExternalVariable(const FName& InExternalVariableName, TArray<T>& InValue)
+	{
+		return AddExternalVariable(FRigVMExternalVariable::Make(InExternalVariableName, InValue));
+	}
+
 	void SetRegisterValueFromString(const FRigVMOperand& InOperand, const FString& InCPPType, const UObject* InCPPTypeObject, const TArray<FString>& InDefaultValues);
 
 	// returns the statistics information
@@ -492,6 +519,7 @@ private:
 	TArray<uint32> FirstHandleForInstruction;
 	TArray<FRigVMMemoryHandle> CachedMemoryHandles;
 	TArray<FRigVMMemoryContainer*> CachedMemory;
+	TArray<FRigVMExternalVariable> ExternalVariables;
 
 #if WITH_EDITOR
 	TArray<bool> InstructionVisitedDuringLastRun;

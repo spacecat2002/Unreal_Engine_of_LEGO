@@ -32,6 +32,7 @@ enum class ERigVMMemoryType: uint8
 {
 	Work, // Mutable state
 	Literal, // Const / fixed state
+	External, // Unowned external memory
 	Invalid
 };
 
