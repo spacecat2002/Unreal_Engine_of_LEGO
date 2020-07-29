@@ -1196,8 +1196,13 @@ void FD3D12StateCacheBase::SetShaderResourceView(FD3D12ShaderResourceView* SRV, 
 		}
 
 		// Find the highest set SRV
-		(Cache.BoundMask[ShaderFrequency] == 0) ? Cache.MaxBoundIndex[ShaderFrequency] = INDEX_NONE :
-			Cache.MaxBoundIndex[ShaderFrequency] = FMath::FloorLog2(Cache.BoundMask[ShaderFrequency]);
+		Cache.MaxBoundIndex[ShaderFrequency] =
+			(Cache.BoundMask[ShaderFrequency] == 0)? INDEX_NONE :
+#if MAX_SRVS > 32
+			FMath::FloorLog2_64(Cache.BoundMask[ShaderFrequency]);
+#else
+			FMath::FloorLog2(Cache.BoundMask[ShaderFrequency]);
+#endif
 
 		CurrentShaderResourceViews[ResourceIndex] = SRV;
 		FD3D12ShaderResourceViewCache::DirtySlot(Cache.DirtySlotMask[ShaderFrequency], ResourceIndex);

@@ -70,6 +70,17 @@ struct FWindowsPlatformMath : public TUnrealPlatformMathSSE4Base<FGenericPlatfor
 
 		return 0;
 	}
+	static FORCEINLINE uint64 FloorLog2_64(uint64 Value) 
+	{
+		// Use BSR to return the log2 of the integer
+		unsigned long Log2;
+		if (_BitScanReverse64(&Log2, Value) != 0)
+		{
+			return Log2;
+		}
+
+		return 0;
+	}
 	static FORCEINLINE uint32 CountLeadingZeros(uint32 Value)
 	{
 		// Use BSR to return the log2 of the integer
