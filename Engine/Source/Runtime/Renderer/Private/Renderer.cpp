@@ -442,6 +442,13 @@ static bool RendererExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		InWorld->Scene->DumpUnbuiltLightInteractions(Ar);
 		return true;
 	}
+	else if(FParse::Command(&Cmd, TEXT("r.RHI.Name")))
+	{
+		Ar.Logf( TEXT( "Running on the %s RHI" ), GDynamicRHI 
+			? (GDynamicRHI->GetName() ? GDynamicRHI->GetName() : TEXT("<NULL Name>"))
+			: TEXT("<NULL DynamicRHI>"));
+		return true;
+	}
 #endif
 
 	return false;
