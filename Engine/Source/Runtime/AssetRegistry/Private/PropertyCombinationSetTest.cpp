@@ -402,13 +402,16 @@ protected:
 					{
 						TPropertyCombinationSet<BitWidth> Set1;
 						TPropertyCombinationSet<BitWidth> Set2;
+						bool bFirst = true;
 						for (int n = 0; n < SplitIndex; ++n)
 						{
-							Set1.Add(n == 0 ? FirstIndex : SecondIndex);
+							Set1.Add(bFirst ? FirstIndex : SecondIndex);
+							bFirst = false;
 						}
 						for (int n = SplitIndex; n < 2; ++n)
 						{
-							Set2.Add(n == 0 ? FirstIndex : SecondIndex);
+							Set2.Add(bFirst ? FirstIndex : SecondIndex);
+							bFirst = false;
 						}
 						Set1.AddRange(Set2);
 						TestTrue(TEXT("Generic AddRange results in same set as adding all values to a single set"), Set1 == Set);
