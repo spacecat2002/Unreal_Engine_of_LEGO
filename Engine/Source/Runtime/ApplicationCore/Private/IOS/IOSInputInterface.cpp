@@ -2,6 +2,7 @@
 
 #include "IOS/IOSInputInterface.h"
 #include "IOS/IOSAppDelegate.h"
+#include "IOS/IOSApplication.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/ScopeLock.h"
 #include "HAL/IConsoleManager.h"
