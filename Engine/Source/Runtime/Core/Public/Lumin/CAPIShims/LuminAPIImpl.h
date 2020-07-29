@@ -76,7 +76,7 @@ public:
 				TArray<FString> ZIShimPath = GetZIShimPath(MLSDK);
 				if (ZIShimPath.Num() > 0)
 				{
-					DllSearchPaths.Append(GetZIShimPath(MLSDK));
+					DllSearchPaths.Append(ZIShimPath);
 				}
 				else
 				{
@@ -157,9 +157,105 @@ public:
 private:
 	TArray<FString> DllSearchPaths;
 
-	/** Fills the Variables with the evaluated contents of the SDK Shim discovery data. */
-	bool GetZIShimVariables(const FString & MLSDK, TMap<FString, FString> & ResultVariables) const
+	bool GetZIShimVariablesLabDriver(const FString& MLSDK, TMap<FString, FString>& ResultVariables) const
 	{
+		bool bRetVal = false;
+		void* PipeRead = nullptr;
+		void* PipeWrite = nullptr;
+
+		if (!FPlatformProcess::CreatePipe(PipeRead, PipeWrite))
+		{
+			return false;
+		}
+
+		FString Args(TEXT(""));
+		FString ExecutablePath(TEXT(""));
+#if PLATFORM_WINDOWS
+		Args = FString::Printf(TEXT("/C %s/labdriver.cmd -pretty com.magicleap.zi:get-shim-search-paths -release -sdk=%s"), *MLSDK, *MLSDK);
+		ExecutablePath = TEXT("cmd.exe");
+#elif PLATFORM_LINUX
+		Args = FString::Printf(TEXT("-pretty com.magicleap.zi:get-shim-search-paths -release -sdk=%s"), *MLSDK);
+		ExecutablePath = FString::Printf(TEXT("%s/labdriver"), *MLSDK);
+#elif PLATFORM_MAC
+		Args = FString::Printf(TEXT("-pretty com.magicleap.zi:get-shim-search-paths -release -sdk=%s"), *MLSDK);
+		ExecutablePath = FString::Printf(TEXT("%s/labdriver"), *MLSDK);
+#endif // PLATFORM_WINDOWS
+		FProcHandle ProcHandle = FPlatformProcess::CreateProc(*ExecutablePath, *Args, false, true, true, nullptr, 0, nullptr, PipeWrite);
+		FString StringOutput;
+		if (ProcHandle.IsValid())
+		{
+			while (FPlatformProcess::IsProcRunning(ProcHandle))
+			{
+				FString ThisRead = FPlatformProcess::ReadPipe(PipeRead);
+				StringOutput += ThisRead;
+			}
+
+			StringOutput += FPlatformProcess::ReadPipe(PipeRead);
+			int32 ReturnCode = -1;
+			FPlatformProcess::GetProcReturnCode(ProcHandle, &ReturnCode);
+			bRetVal = StringOutput.Contains(TEXT("\"success\": true"));
+		}
+
+		FPlatformProcess::ClosePipe(PipeRead, PipeWrite);
+
+		if (bRetVal)
+		{
+			// Reset bRetVal.  We've only succeeded if we add at least one path to ResultVariables
+			bRetVal = false;
+			TArray<FString> Output;
+			StringOutput.ParseIntoArrayLines(Output);
+
+			int32 FirstOutputLineIndex = INDEX_NONE;
+			FString ShimPathResult;
+			for (int32 i = 0; i < Output.Num(); i++)
+			{
+				// Find the start of the output section
+				if (Output[i].Contains(TEXT("\"output\": [")))
+				{
+					FirstOutputLineIndex = i + 1;
+					continue;
+				}
+
+				// Parse the output section to get the paths
+				if (FirstOutputLineIndex >= 0 && i >= FirstOutputLineIndex)
+				{
+					FString TempString = Output[i].RightChop(Output[i].Find(TEXT("\"")) + 1);
+					TempString = TempString.Mid(0, TempString.Find(TEXT("\"")));
+					ShimPathResult += TempString;
+					bRetVal = true;
+
+					// If the next line is the end of the output, we're done.  Otherwise, add a semi-colon to prepare to add the next path
+					if ((i + 1) < Output.Num() && !Output[i+1].Contains(TEXT("],")))
+					{
+						ShimPathResult += TEXT(";");
+					}
+					else
+					{
+						break;
+					}
+				}
+			}
+#if PLATFORM_WINDOWS
+			ResultVariables.Add(TEXT("ZI_SHIM_PATH_win64"), ShimPathResult);
+#elif PLATFORM_LINUX
+			ResultVariables.Add(TEXT("ZI_SHIM_PATH_linux64"), ShimPathResult);
+#elif PLATFORM_MAC
+			ResultVariables.Add(TEXT("ZI_SHIM_PATH_osx"), ShimPathResult);
+#endif // PLATFORM_WINDOWS
+		}
+
+		return bRetVal;
+	}
+
+	/** Fills the Variables with the evaluated contents of the SDK Shim discovery data. */
+	bool GetZIShimVariables(const FString& MLSDK, TMap<FString, FString>& ResultVariables) const
+	{
+		// First try to get the shim variables from lab driver
+		if (GetZIShimVariablesLabDriver(MLSDK, ResultVariables))
+		{
+			return true;
+		}
+
 		// The known path to the paths file.
 		FString SDKShimDiscoveryFile = FPaths::Combine(MLSDK, TEXT(".metadata"), TEXT("sdk_shim_discovery.txt"));
 		if (!FPaths::FileExists(SDKShimDiscoveryFile))
