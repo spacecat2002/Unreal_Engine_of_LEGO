@@ -1308,18 +1308,6 @@ template<class VertexFactoryType>
 void InitAPEXClothVertexFactoryComponents(typename VertexFactoryType::FDataType* VertexFactoryData, 
 										const FSkeletalMeshObjectGPUSkin::FVertexFactoryBuffers& VertexBuffers)
 {
-	// barycentric coord for positions
-	VertexFactoryData->CoordPositionComponent = FVertexStreamComponent(
-		VertexBuffers.APEXClothVertexBuffer,STRUCT_OFFSET(FMeshToMeshVertData,PositionBaryCoordsAndDist),sizeof(FMeshToMeshVertData),VET_Float4);
-	// barycentric coord for normals
-	VertexFactoryData->CoordNormalComponent = FVertexStreamComponent(
-		VertexBuffers.APEXClothVertexBuffer,STRUCT_OFFSET(FMeshToMeshVertData,NormalBaryCoordsAndDist),sizeof(FMeshToMeshVertData),VET_Float4);
-	// barycentric coord for tangents
-	VertexFactoryData->CoordTangentComponent = FVertexStreamComponent(
-		VertexBuffers.APEXClothVertexBuffer,STRUCT_OFFSET(FMeshToMeshVertData,TangentBaryCoordsAndDist),sizeof(FMeshToMeshVertData),VET_Float4);
-	// indices for reference physics mesh vertices
-	VertexFactoryData->SimulIndicesComponent = FVertexStreamComponent(
-		VertexBuffers.APEXClothVertexBuffer,STRUCT_OFFSET(FMeshToMeshVertData, SourceMeshVertIndices),sizeof(FMeshToMeshVertData),VET_UShort4);
 	VertexFactoryData->ClothBuffer = VertexBuffers.APEXClothVertexBuffer->GetSRV();
 	VertexFactoryData->ClothIndexMapping = VertexBuffers.APEXClothVertexBuffer->GetClothIndexMapping();
 }

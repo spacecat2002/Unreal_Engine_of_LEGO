@@ -855,15 +855,6 @@ public:
 
 	struct FDataType : TGPUSkinVertexFactory<BoneInfluenceType>::FDataType
 	{
-		/** stream which has the physical mesh position + height offset */
-		FVertexStreamComponent CoordPositionComponent;
-		/** stream which has the physical mesh coordinate for normal + offset */
-		FVertexStreamComponent CoordNormalComponent;
-		/** stream which has the physical mesh coordinate for tangent + offset */
-		FVertexStreamComponent CoordTangentComponent;
-		/** stream which has the physical mesh vertex indices */
-		FVertexStreamComponent SimulIndicesComponent;
-
 		FShaderResourceViewRHIRef ClothBuffer;
 		// Packed Map: u32 Key, u32 Value
 		TArray<uint64> ClothIndexMapping;
@@ -978,14 +969,6 @@ public:
 	*/
 	virtual void InitRHI() override;
 	virtual void ReleaseDynamicRHI() override;
-
-protected:
-	/**
-	* Add the decl elements for the streams
-	* @param InData - type with stream components
-	* @param OutElements - vertex decl list to modify
-	*/
-	void AddVertexElements(FDataType& InData, FVertexDeclarationElementList& OutElements);
 
 private:
 	/** stream component data bound to this vertex factory */
