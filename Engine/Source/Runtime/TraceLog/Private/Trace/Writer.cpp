@@ -173,7 +173,6 @@ T_ALIGN static UPTRINT volatile			GPoolFutex;			// = 0
 T_ALIGN static FWriteBuffer* volatile	GNewThreadList;		// = nullptr;
 T_ALIGN static FPoolPage* volatile		GPoolPageList;		// = nullptr;
 static uint32							GPoolUsage;			// = 0;
-static uint32							GPoolUsageThreshold;// = 0;
 static FWriteBuffer						GNullWriteBuffer	= { 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
 thread_local FWriteBuffer*				GTlsWriteBuffer		= &GNullWriteBuffer;
 static FWriteBuffer* __restrict			GActiveThreadList;	// = nullptr;
@@ -212,14 +211,6 @@ static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
 		{
 			NextBuffer = (FWriteBuffer*)Owned;
 			break;
-		}
-
-		// Throttle back if memory usage is growing past a comfortable threshold
-		if (GPoolUsageThreshold && (GPoolUsage > GPoolUsageThreshold))
-		{
-			/* TODO: If there's no worker thread, now what? Force update maybe... */
-			ThreadSleep(0);
-			continue;
 		}
 
 		// The free list is empty. Map some more memory.
@@ -797,13 +788,6 @@ void Writer_Initialize(const FInitializeDesc& Desc)
 	{
 		Writer_WorkerCreate();
 	}
-
-	GPoolUsageThreshold = Desc.MaxMemoryHintMb;
-	if (GPoolUsageThreshold > 2 << 10)
-	{
-		GPoolUsageThreshold = 2 << 10;
-	}
-	GPoolUsageThreshold <<= 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

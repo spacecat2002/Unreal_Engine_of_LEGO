@@ -384,17 +384,12 @@ void FTraceAuxiliary::Initialize(const TCHAR* CommandLine)
 	// Initialize Trace
 	Trace::FInitializeDesc Desc;
 	Desc.bUseWorkerThread = FPlatformProcess::SupportsMultithreading();
-
-	FString Parameter;
-	if (FParse::Value(CommandLine, TEXT("-tracememmb="), Parameter))
-	{
-		Desc.MaxMemoryHintMb = uint32(FCString::Strtoi(*Parameter, nullptr, 10));
-	}
 	Trace::Initialize(Desc);
 
 	FCoreDelegates::OnEndFrame.AddStatic(Trace::Update);
 
 	// Extract an explicit channel set from the command line.
+	FString Parameter;
 	if (FParse::Value(CommandLine, TEXT("-trace="), Parameter, false))
 	{
 		GTraceAuxiliary.AddChannels(*Parameter);
