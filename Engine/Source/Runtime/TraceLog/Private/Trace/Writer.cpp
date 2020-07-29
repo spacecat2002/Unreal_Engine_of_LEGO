@@ -176,6 +176,7 @@ static uint32							GPoolUsage;			// = 0;
 static uint32							GPoolUsageThreshold;// = 0;
 static FWriteBuffer						GNullWriteBuffer	= { 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
 thread_local FWriteBuffer*				GTlsWriteBuffer		= &GNullWriteBuffer;
+static FWriteBuffer* __restrict			GActiveThreadList;	// = nullptr;
 #undef T_ALIGN
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -352,148 +353,7 @@ TRACELOG_API FWriteBuffer* Writer_NextBuffer(int32 Size)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static void Writer_EndThreadBuffer()
-{
-	if (GTlsWriteBuffer == &GNullWriteBuffer)
-	{
-		return;
-	}
-
-	UPTRINT EtxOffset = UPTRINT((uint8*)GTlsWriteBuffer - GTlsWriteBuffer->Cursor);
-	AtomicStoreRelaxed(&(GTlsWriteBuffer->EtxOffset), EtxOffset);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-static void Writer_InitializeBuffers()
-{
-	Writer_NextBufferInternal(GPoolInitPageSize);
-
-	static_assert(GPoolPageSize >= 0x10000, "Page growth must be >= 64KB");
-	static_assert(GPoolInitPageSize >= 0x10000, "Initial page size must be >= 64KB");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-static void Writer_ShutdownBuffers()
-{
-	// Claim ownership of the pool page list. There really should be no one
-	// creating so we'll just read it an go instead of a CAS loop.
-	for (auto* Page = AtomicLoadRelaxed(&GPoolPageList); Page != nullptr;)
-	{
-		FPoolPage* NextPage = Page->NextPage;
-		Writer_MemoryFree(Page, Page->AllocSize, PLATFORM_CACHE_LINE_SIZE);
-		Page = NextPage;
-	}
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-static UPTRINT					GDataHandle;		// = 0
-UPTRINT							GPendingDataHandle;	// = 0
-static FWriteBuffer* __restrict GActiveThreadList;	// = nullptr;
-
-////////////////////////////////////////////////////////////////////////////////
-static uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
-{
-	if (!GDataHandle)
-	{
-		return 0;
-	}
-
-	struct FPacketBase
-	{
-		uint16 PacketSize;
-		uint16 ThreadId;
-	};
-
-	// Smaller buffers usually aren't redundant enough to benefit from being
-	// compressed. They often end up being larger.
-	if (Size <= 384)
-	{
-		static_assert(sizeof(FPacketBase) == sizeof(uint32), "");
-		Data -= sizeof(FPacketBase);
-		Size += sizeof(FPacketBase);
-		auto* Packet = (FPacketBase*)Data;
-		Packet->ThreadId = uint16(ThreadId & 0x7fff);
-		Packet->PacketSize = uint16(Size);
-
-		if (!IoWrite(GDataHandle, Data, Size))
-		{
-			IoClose(GDataHandle);
-			GDataHandle = 0;
-		}
-
-		return Size;
-	}
-
-	struct FPacketEncoded
-		: public FPacketBase
-	{
-		uint16	DecodedSize;
-	};
-
-	struct FPacket
-		: public FPacketEncoded
-	{
-		uint8 Data[GPoolBlockSize + 64];
-	};
-
-	FPacket Packet;
-	Packet.ThreadId = 0x8000 | uint16(ThreadId & 0x7fff);
-	Packet.DecodedSize = uint16(Size);
-	Packet.PacketSize = Encode(Data, Packet.DecodedSize, Packet.Data, sizeof(Packet.Data));
-	Packet.PacketSize += sizeof(FPacketEncoded);
-
-	if (!IoWrite(GDataHandle, (uint8*)&Packet, Packet.PacketSize))
-	{
-		IoClose(GDataHandle);
-		GDataHandle = 0;
-	}
-
-	return Packet.PacketSize;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-static void Writer_DescribeAnnounce()
-{
-	if (!GDataHandle)
-	{
-		return;
-	}
-
-	// Describe new events
-	{
-		TWriteBufferRedirect<4096> TraceData;
-
-		FEventNode::FIter Iter = FEventNode::ReadNew();
-		while (const FEventNode* Event = Iter.GetNext())
-		{
-			Event->Describe();
-
-			// Flush just in case an NewEvent event will be larger than 512 bytes.
-			if (TraceData.GetSize() >= (TraceData.GetCapacity() - 512))
-			{
-				Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
-				TraceData.Reset();
-			}
-		}
-
-		if (TraceData.GetSize())
-		{
-			Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
-		}
-	}
-
-	// Announce new channels
-	FChannel::Iter Iter = FChannel::ReadNew();
-	while (const FChannel* Channel = Iter.GetNext())
-	{
-		Channel->Announce();
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-static void Writer_ConsumeEvents()
+static void Writer_DrainBuffers()
 {
 	struct FRetireList
 	{
@@ -600,6 +460,146 @@ static void Writer_ConsumeEvents()
 	}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_EndThreadBuffer()
+{
+	if (GTlsWriteBuffer == &GNullWriteBuffer)
+	{
+		return;
+	}
+
+	UPTRINT EtxOffset = UPTRINT((uint8*)GTlsWriteBuffer - GTlsWriteBuffer->Cursor);
+	AtomicStoreRelaxed(&(GTlsWriteBuffer->EtxOffset), EtxOffset);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_InitializeBuffers()
+{
+	Writer_NextBufferInternal(GPoolInitPageSize);
+
+	static_assert(GPoolPageSize >= 0x10000, "Page growth must be >= 64KB");
+	static_assert(GPoolInitPageSize >= 0x10000, "Initial page size must be >= 64KB");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_ShutdownBuffers()
+{
+	// Claim ownership of the pool page list. There really should be no one
+	// creating so we'll just read it an go instead of a CAS loop.
+	for (auto* Page = AtomicLoadRelaxed(&GPoolPageList); Page != nullptr;)
+	{
+		FPoolPage* NextPage = Page->NextPage;
+		Writer_MemoryFree(Page, Page->AllocSize, PLATFORM_CACHE_LINE_SIZE);
+		Page = NextPage;
+	}
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+static UPTRINT					GDataHandle;		// = 0
+UPTRINT							GPendingDataHandle;	// = 0
+
+////////////////////////////////////////////////////////////////////////////////
+static uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
+{
+	if (!GDataHandle)
+	{
+		return 0;
+	}
+
+	struct FPacketBase
+	{
+		uint16 PacketSize;
+		uint16 ThreadId;
+	};
+
+	// Smaller buffers usually aren't redundant enough to benefit from being
+	// compressed. They often end up being larger.
+	if (Size <= 384)
+	{
+		static_assert(sizeof(FPacketBase) == sizeof(uint32), "");
+		Data -= sizeof(FPacketBase);
+		Size += sizeof(FPacketBase);
+		auto* Packet = (FPacketBase*)Data;
+		Packet->ThreadId = uint16(ThreadId & 0x7fff);
+		Packet->PacketSize = uint16(Size);
+
+		if (!IoWrite(GDataHandle, Data, Size))
+		{
+			IoClose(GDataHandle);
+			GDataHandle = 0;
+		}
+
+		return Size;
+	}
+
+	struct FPacketEncoded
+		: public FPacketBase
+	{
+		uint16	DecodedSize;
+	};
+
+	struct FPacket
+		: public FPacketEncoded
+	{
+		uint8 Data[GPoolBlockSize + 64];
+	};
+
+	FPacket Packet;
+	Packet.ThreadId = 0x8000 | uint16(ThreadId & 0x7fff);
+	Packet.DecodedSize = uint16(Size);
+	Packet.PacketSize = Encode(Data, Packet.DecodedSize, Packet.Data, sizeof(Packet.Data));
+	Packet.PacketSize += sizeof(FPacketEncoded);
+
+	if (!IoWrite(GDataHandle, (uint8*)&Packet, Packet.PacketSize))
+	{
+		IoClose(GDataHandle);
+		GDataHandle = 0;
+	}
+
+	return Packet.PacketSize;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_DescribeAnnounce()
+{
+	if (!GDataHandle)
+	{
+		return;
+	}
+
+	// Describe new events
+	{
+		TWriteBufferRedirect<4096> TraceData;
+
+		FEventNode::FIter Iter = FEventNode::ReadNew();
+		while (const FEventNode* Event = Iter.GetNext())
+		{
+			Event->Describe();
+
+			// Flush just in case an NewEvent event will be larger than 512 bytes.
+			if (TraceData.GetSize() >= (TraceData.GetCapacity() - 512))
+			{
+				Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
+				TraceData.Reset();
+			}
+		}
+
+		if (TraceData.GetSize())
+		{
+			Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
+		}
+	}
+
+	// Announce new channels
+	FChannel::Iter Iter = FChannel::ReadNew();
+	while (const FChannel* Channel = Iter.GetNext())
+	{
+		Channel->Announce();
+	}
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -680,7 +680,7 @@ static void Writer_WorkerUpdate()
 	Writer_UpdateControl();
 	Writer_UpdateData();
 	Writer_DescribeAnnounce();
-	Writer_ConsumeEvents();
+	Writer_DrainBuffers();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -714,7 +714,7 @@ static void Writer_WorkerThread()
 		ThreadSleep(SleepMs);
 	}
 
-	Writer_ConsumeEvents();
+	Writer_DrainBuffers();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
