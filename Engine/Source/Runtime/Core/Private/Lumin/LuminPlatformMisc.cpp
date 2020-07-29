@@ -26,6 +26,7 @@ static int32 GBuiltinDisplayHeight = 960;
 
 FString FLuminPlatformMisc::WritableDirPath = "";
 FString FLuminPlatformMisc::PackageDirPath = "";
+FString FLuminPlatformMisc::TempDirPath = "";
 FString FLuminPlatformMisc::PackageName = "";
 FString FLuminPlatformMisc::ComponentName = "";
 bool FLuminPlatformMisc::ApplicationPathsInitialized = false;
@@ -272,6 +273,12 @@ const FString& FLuminPlatformMisc::GetApplicationPackageDirectoryPath()
 	return PackageDirPath;
 }
 
+const FString& FLuminPlatformMisc::GetApplicationTempDirectoryPath()
+{
+	InitApplicationPaths();
+	return TempDirPath;
+}
+
 const FString& FLuminPlatformMisc::GetApplicationApplicationPackageName()
 {
 	InitApplicationPaths();
@@ -354,6 +361,8 @@ void FLuminPlatformMisc::InitApplicationPaths()
 	WritableDirPath.RemoveFromEnd(TEXT("/"));
 	PackageDirPath = FString(ANSI_TO_TCHAR(SelfInfo->package_dir_path));
 	PackageDirPath.RemoveFromEnd(TEXT("/"));
+	TempDirPath = FString(ANSI_TO_TCHAR(SelfInfo->tmp_dir_path));
+	TempDirPath.RemoveFromEnd(TEXT("/"));
 	PackageName = FString(ANSI_TO_TCHAR(SelfInfo->package_name));
 	ComponentName = FString(ANSI_TO_TCHAR(SelfInfo->component_name));
 

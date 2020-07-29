@@ -55,6 +55,7 @@ struct CORE_API FLuminPlatformMisc : public FAndroidMisc
 	static bool ShouldUseDesktopOpenGL();
 	static const FString& GetApplicationWritableDirectoryPath();
 	static const FString& GetApplicationPackageDirectoryPath();
+	static const FString& GetApplicationTempDirectoryPath();
 	static const FString& GetApplicationApplicationPackageName();
 	static const FString& GetApplicationComponentName();
 
@@ -67,6 +68,7 @@ private:
 private:
 	static FString WritableDirPath;
 	static FString PackageDirPath;
+	static FString TempDirPath;
 	static FString PackageName;
 	static FString ComponentName;
 
