@@ -21,8 +21,20 @@ DECLARE_CYCLE_STAT(TEXT("ConvertMeshRotPoseToLocalSpace"), STAT_ConvertMeshRotPo
 DECLARE_CYCLE_STAT(TEXT("AccumulateMeshSpaceRotAdditiveToLocalPose"), STAT_AccumulateMeshSpaceRotAdditiveToLocalPose, STATGROUP_Anim);
 DECLARE_CYCLE_STAT(TEXT("BlendPosesPerBoneFilter"), STAT_BlendPosesPerBoneFilter, STATGROUP_Anim);
 
-
 //////////////////////////////////////////////////////////////////////////
+
+#if INTEL_ISPC
+static_assert(sizeof(ispc::FTransform) == sizeof(FTransform), "sizeof(ispc::FTransform) != sizeof(FTransform)");
+static_assert(sizeof(ispc::FBlendedCurve) == sizeof(FBlendedCurve), "sizeof(ispc::FBlendedCurve) != sizeof(FBlendedCurve)");
+static_assert(offsetof(ispc::FBlendedCurve, CurveWeights) == offsetof(FBlendedCurve, CurveWeights), "offsetof(ispc::FBlendedCurve, CurveWeights) != offsetof(FBlendedCurve, CurveWeights)");
+static_assert(offsetof(ispc::FBlendedCurve, ValidCurveWeights) == offsetof(FBlendedCurve, ValidCurveWeights), "offsetof(ispc::FBlendedCurve, ValidCurveWeights) != offsetof(FBlendedCurve, ValidCurveWeights)");
+static_assert(offsetof(ispc::FBlendedCurve, UIDToArrayIndexLUT) == offsetof(FBlendedCurve, UIDToArrayIndexLUT), "offsetof(ispc::FBlendedCurve, UIDToArrayIndexLUT) != offsetof(FBlendedCurve, UIDToArrayIndexLUT)");
+static_assert(offsetof(ispc::FBlendedCurve, NumValidCurveCount) == offsetof(FBlendedCurve, NumValidCurveCount), "offsetof(ispc::FBlendedCurve, NumValidCurveCount) != offsetof(FBlendedCurve, NumValidCurveCount)");
+static_assert(offsetof(ispc::FBlendedCurve, bInitialized) == offsetof(FBlendedCurve, bInitialized), "offsetof(ispc::FBlendedCurve, bInitialized) != offsetof(FBlendedCurve, bInitialized)");
+static_assert(sizeof(ispc::FPerBoneBlendWeight) == sizeof(FPerBoneBlendWeight), "sizeof(ispc::FPerBoneBlendWeight) != sizeof(FPerBoneBlendWeight)");
+static_assert(offsetof(ispc::FPerBoneBlendWeight, SourceIndex) == offsetof(FPerBoneBlendWeight, SourceIndex), "offsetof(ispc::FPerBoneBlendWeight, SourceIndex) != offsetof(FPerBoneBlendWeight, SourceIndex)");
+static_assert(offsetof(ispc::FPerBoneBlendWeight, BlendWeight) == offsetof(FPerBoneBlendWeight, BlendWeight), "offsetof(ispc::FPerBoneBlendWeight, BlendWeight) != offsetof(FPerBoneBlendWeight, BlendWeight)");
+#endif
 
 void FAnimationRuntime::NormalizeRotations(const FBoneContainer& RequiredBones, /*inout*/ FTransformArrayA2& Atoms)
 {
@@ -139,6 +151,32 @@ FORCEINLINE void BlendCurves(const TArrayView<const FBlendedCurve* const> Source
 		for(int32 CurveIndex=1; CurveIndex<SourceCurves.Num(); ++CurveIndex)
 		{
 			OutCurve.Accumulate(*SourceCurves[CurveIndex], SourceWeights[CurveIndex]);
+		}
+	}
+}
+
+FORCEINLINE void BlendCurves(const TArrayView<const FBlendedCurve> SourceCurves, const TArrayView<const float> SourceWeights, FBlendedCurve& OutCurve)
+{
+	if (SourceCurves.Num() > 0)
+	{
+		if (INTEL_ISPC)
+		{
+#if INTEL_ISPC
+			OutCurve.InitFrom(SourceCurves[0]);
+			ispc::BlendCurves(
+				(struct ispc::TArrayBlendedCurves*)&SourceCurves,
+				SourceWeights.GetData(),
+				(struct ispc::FBlendedCurve*)&OutCurve
+			);
+#endif
+		}
+		else
+		{
+			OutCurve.Override(SourceCurves[0], SourceWeights[0]);
+			for (int32 CurveIndex = 1; CurveIndex < SourceCurves.Num(); ++CurveIndex)
+			{
+				OutCurve.Accumulate(SourceCurves[CurveIndex], SourceWeights[CurveIndex]);
+			}
 		}
 	}
 }
@@ -647,28 +685,43 @@ void FAnimationRuntime::LerpPosesWithBoneIndexList(FCompactPose& PoseA, const FC
 
 void FAnimationRuntime::LerpBoneTransforms(TArray<FTransform>& A, const TArray<FTransform>& B, float Alpha, const TArray<FBoneIndexType>& RequiredBonesArray)
 {
-	if (FAnimWeight::IsFullWeight(Alpha))
+	if (INTEL_ISPC)
 	{
-		A = B;
+#if INTEL_ISPC
+		ispc::LerpBoneTransforms(
+			(ispc::FTransform*)A.GetData(),
+			(ispc::FTransform*)B.GetData(),
+			Alpha,
+			RequiredBonesArray.GetData(),
+			A.Num()
+		);
+#endif
 	}
-	else if (FAnimWeight::IsRelevant(Alpha))
+	else
 	{
-		FTransform* ATransformData = A.GetData(); 
-		const FTransform* BTransformData = B.GetData();
-		const ScalarRegister VAlpha(Alpha);
-		const ScalarRegister VOneMinusAlpha(1.f - Alpha);
-
-		for (int32 Index=0; Index<RequiredBonesArray.Num(); Index++)
+		if (FAnimWeight::IsFullWeight(Alpha))
 		{
-			const int32& BoneIndex = RequiredBonesArray[Index];
-			FTransform* TA = ATransformData + BoneIndex;
-			const FTransform* TB = BTransformData + BoneIndex;
+			A = B;
+		}
+		else if (FAnimWeight::IsRelevant(Alpha))
+		{
+			FTransform* ATransformData = A.GetData();
+			const FTransform* BTransformData = B.GetData();
+			const ScalarRegister VAlpha(Alpha);
+			const ScalarRegister VOneMinusAlpha(1.f - Alpha);
 
-			*TA *= VOneMinusAlpha;
-			TA->AccumulateWithShortestRotation(*TB, VAlpha);
-			TA->NormalizeRotation();
+			for (int32 Index=0; Index<RequiredBonesArray.Num(); Index++)
+			{
+				const int32& BoneIndex = RequiredBonesArray[Index];
+				FTransform* TA = ATransformData + BoneIndex;
+				const FTransform* TB = BTransformData + BoneIndex;
 
-// 			TA->BlendWith(*TB, Alpha);
+				*TA *= VOneMinusAlpha;
+				TA->AccumulateWithShortestRotation(*TB, VAlpha);
+				TA->NormalizeRotation();
+
+//				TA->BlendWith(*TB, Alpha);
+			}
 		}
 	}
 }

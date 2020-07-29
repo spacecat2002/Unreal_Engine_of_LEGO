@@ -6,6 +6,8 @@
 #include "Math/Matrix.isph"
 #include "Math/Quat.isph"
 #include "Math/Transform.isph"
+#include "Math/WideVector.isph"
+#include "Animation/AnimationCurves.isph"
 
 #define INDEX_NONE -1
 
@@ -117,9 +119,19 @@ static inline uniform bool IsRelevant(const uniform float InWeight)
 	return (InWeight > ZERO_ANIMWEIGHT_THRESH);
 }
 
+static inline varying bool IsRelevant(const varying float InWeight)
+{
+	return (InWeight > ZERO_ANIMWEIGHT_THRESH);
+}
+
 static inline uniform bool IsFullWeight(const uniform float InWeight)
 {
 	return (InWeight >= (1.f - ZERO_ANIMWEIGHT_THRESH));
+}
+
+static inline uniform bool IsNearlyEqual(const uniform float A, const uniform float B)
+{
+	return abs(A - B) <= SMALL_NUMBER;
 }
 
 // Set this Transform to the weighted blend of it and the supplied Transform.
@@ -239,5 +251,150 @@ export void BlendPosesPerBoneFilterScaleRotation(uniform FTransform OutPose[],
 		BlendScales[BoneIndex] = BlendScale;
 
 		OutPose[BoneIndex] = BlendAtom;
+	}
+}
+
+export void BlendCurves(const struct TArrayBlendedCurves* uniform SourceCurves, const float* uniform SourceWeights, struct FBlendedCurve* uniform OutCurve)
+{
+	// Note: Run OutCurve.InitFrom(SourceCurves) before this function runs
+
+	uniform float InitWeight = SourceWeights[0];
+	if (IsNearlyEqual(InitWeight, 1.0f))
+	{
+		InitWeight = 1.0f;
+	}
+
+	uniform int32 CurveLength = OutCurve->CurveWeights.ArrayNum;
+
+	//////////////////
+	// Merge Curves //
+	//////////////////
+	for (uniform int32 CurveIndex = 0; CurveIndex < SourceCurves->ArrayNum; ++CurveIndex)
+	{
+		foreach (CurveID = 0 ... CurveLength)
+		{
+			// Skip if the source curve is not valid
+			const varying int ValidityArrayIndex = floor(CurveID / 32.0f);
+			const varying int ValidityBitPosition = CurveID & 0x1F; // % 32;
+			const varying int ValidityBitMask = 0x1 << ValidityBitPosition;
+
+			if ((SourceCurves->DataPtr[CurveIndex].ValidCurveWeights.Data[ValidityArrayIndex] & ValidityBitMask) == 0)
+			{
+				continue;
+			}
+
+			varying float CurveWeight = OutCurve->CurveWeights.DataPtr[CurveID];
+
+			if (CurveIndex == 0)
+			{
+				CurveWeight = SourceCurves->DataPtr[0].CurveWeights.DataPtr[CurveID] * InitWeight;
+			}
+			else if (IsRelevant(SourceWeights[CurveIndex]))
+			{
+				CurveWeight += SourceCurves->DataPtr[CurveIndex].CurveWeights.DataPtr[CurveID] * SourceWeights[CurveIndex];
+			}
+
+			OutCurve->CurveWeights.DataPtr[CurveID] = CurveWeight;
+		}
+
+		foreach (CurveID = 0 ... ceil(CurveLength / 32.0))
+		{
+			if (CurveIndex == 0)
+			{
+				OutCurve->ValidCurveWeights.Data[CurveID] = SourceCurves->DataPtr[0].ValidCurveWeights.Data[CurveID];
+			}
+			else
+			{
+				OutCurve->ValidCurveWeights.Data[CurveID] |= SourceCurves->DataPtr[CurveIndex].ValidCurveWeights.Data[CurveID];
+			}
+		}
+	}
+}
+
+export void LerpBoneTransforms(	uniform FTransform ATransformData[],
+								uniform FTransform BTransformData[],
+								const uniform float Alpha,
+								const uniform unsigned int16 RequiredBonesArray[],
+								const uniform int32 NumOfBones)
+{
+	if (IsFullWeight(Alpha))
+	{
+		memcpy(ATransformData, BTransformData, NumOfBones * sizeof(uniform FTransform));
+	}
+	else if (IsRelevant(Alpha))
+	{
+		const uniform float OneMinusAlpha = 1 - Alpha;
+
+		uniform int NumOfBonesBase = NumOfBones & ~(programCount-1);
+
+		for (uniform int Index = 0; Index < NumOfBonesBase; Index+=programCount/4)
+		{
+			uniform int BoneIndex[programCount / 4];
+
+			for (uniform int i = 0; i < programCount / 4; i++)
+			{
+				BoneIndex[i] = RequiredBonesArray[Index + i] * 3;
+			}
+			uniform int *uniform pBoneIndex = (uniform int* uniform)&BoneIndex;
+
+			// Do rotation work
+			uniform WideFVector4 ARotation, BRotation;
+			LoadIndexedWideFVector4((uniform FVector4 *uniform)&ARotation, (uniform FVector4 *uniform)&ATransformData[0].Rotation, pBoneIndex);
+			LoadIndexedWideFVector4((uniform FVector4 *uniform)&BRotation, (uniform FVector4 *uniform)&BTransformData[0].Rotation, pBoneIndex);
+
+			// AccumulateWithShortestRotation
+			ARotation = ARotation * OneMinusAlpha;
+			BRotation = BRotation * Alpha;
+
+			ARotation = VectorAccumulateQuaternionShortestPath(ARotation, BRotation);
+			ARotation = VectorNormalizeQuaternion(ARotation);
+
+			StoreIndexedWideFVector4((uniform FVector4 *uniform)&ATransformData[0].Rotation, (uniform FVector4 *uniform)&ARotation, pBoneIndex);
+
+			// Do translation work
+			uniform WideFVector4 ATranslation, BTranslation;
+			LoadIndexedWideFVector4((uniform FVector4 *uniform)&ATranslation, (uniform FVector4 *uniform)&ATransformData[0].Translation, pBoneIndex);
+			LoadIndexedWideFVector4((uniform FVector4 *uniform)&BTranslation, (uniform FVector4 *uniform)&BTransformData[0].Translation, pBoneIndex);
+
+			ATranslation = ATranslation * OneMinusAlpha + BTranslation * Alpha;
+
+			StoreIndexedWideFVector4((uniform FVector4 *uniform)&ATransformData[0].Translation, (uniform FVector4 *uniform)&ATranslation, pBoneIndex);
+
+			// Do scale work
+			uniform WideFVector4 AScale3D, BScale3D;
+			LoadIndexedWideFVector4((uniform FVector4 *uniform)&AScale3D, (uniform FVector4 *uniform)&ATransformData[0].Scale3D, pBoneIndex);
+			LoadIndexedWideFVector4((uniform FVector4 *uniform)&BScale3D, (uniform FVector4 *uniform)&BTransformData[0].Scale3D, pBoneIndex);
+
+			AScale3D = AScale3D * OneMinusAlpha + BScale3D * Alpha;
+
+			StoreIndexedWideFVector4((uniform FVector4 *uniform)&ATransformData[0].Scale3D, (uniform FVector4 *uniform)&AScale3D, pBoneIndex);
+		}
+
+		for (uniform int Index = NumOfBonesBase; Index < NumOfBones; Index++)
+		{
+			// Do rotation work
+			const uniform int32 BoneIndex = RequiredBonesArray[Index];
+			uniform FVector4 ARotation = ATransformData[BoneIndex].Rotation;
+			uniform FVector4 BRotation = BTransformData[BoneIndex].Rotation;
+
+			// AccumulateWithShortestRotation
+			ARotation = ARotation * OneMinusAlpha;
+			BRotation = BRotation * Alpha;
+
+			ARotation = VectorAccumulateQuaternionShortestPath(ARotation, BRotation);
+			ATransformData[BoneIndex].Rotation = VectorNormalizeQuaternion(ARotation);
+
+			// Do translation work
+			const uniform FVector4 ATranslation = ATransformData[BoneIndex].Translation;
+			const uniform FVector4 BTranslation = BTransformData[BoneIndex].Translation;
+
+			ATransformData[BoneIndex].Translation = ATranslation * OneMinusAlpha + BTranslation * Alpha;
+
+			// Do scale work
+			const uniform FVector4 AScale3D = ATransformData[BoneIndex].Scale3D;
+			const uniform FVector4 BScale3D = BTransformData[BoneIndex].Scale3D;
+
+			ATransformData[BoneIndex].Scale3D = AScale3D * OneMinusAlpha + BScale3D * Alpha;
+		}
 	}
 }

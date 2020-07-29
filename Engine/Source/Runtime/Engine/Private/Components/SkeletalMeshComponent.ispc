@@ -7,6 +7,7 @@
 #include "Math/Matrix.isph"
 #include "Math/Quat.isph"
 #include "Math/Transform.isph"
+#include "Animation/AnimationCurves.isph"
 
 export void FillComponentSpaceTransforms(uniform FTransform ComponentSpaceData[],
 										const uniform FTransform LocalTransformsData[],
@@ -32,5 +33,23 @@ export void FillComponentSpaceTransforms(uniform FTransform ComponentSpaceData[]
 		SpaceBase.Rotation = VectorNormalizeQuaternion(SpaceBase.Rotation);
 
 		ComponentSpaceData[BoneIndex] = SpaceBase;
+	}
+}
+
+static inline float Lerp(float A, float B, float Alpha)
+{
+	return (1.0f-Alpha)*A + Alpha*B;
+}
+
+export void LerpCurves(const struct FBlendedCurve* uniform Curve1, const struct FBlendedCurve* uniform Curve2, uniform const float Alpha)
+{
+	foreach (CurveId = 0 ... Curve1->CurveWeights.ArrayNum)
+	{
+		Curve1->CurveWeights.DataPtr[CurveId] = Lerp(Curve1->CurveWeights.DataPtr[CurveId], Curve2->CurveWeights.DataPtr[CurveId], Alpha);
+	}
+
+	foreach (CurveSet = 0 ... Curve1->CurveWeights.ArrayNum / 32)
+	{
+		Curve1->ValidCurveWeights.Data[CurveSet] |= Curve2->ValidCurveWeights.Data[CurveSet];
 	}
 }

@@ -80,6 +80,15 @@ FAutoConsoleTaskPriority CPrio_ParallelAnimationEvaluationTask(
 	ENamedThreads::HighTaskPriority // if we don't have hi pri threads, then use normal priority threads at high task priority instead
 	);
 
+#if INTEL_ISPC
+static_assert(sizeof(ispc::FBlendedCurve) == sizeof(FBlendedHeapCurve), "sizeof(ispc::FBlendedCurve) != sizeof(FBlendedHeapCurve)");
+static_assert(offsetof(ispc::FBlendedCurve, CurveWeights) == offsetof(FBlendedHeapCurve, CurveWeights), "offsetof(ispc::FBlendedCurve, CurveWeights) != offsetof(FBlendedHeapCurve, CurveWeights)");
+static_assert(offsetof(ispc::FBlendedCurve, ValidCurveWeights) == offsetof(FBlendedHeapCurve, ValidCurveWeights), "offsetof(ispc::FBlendedCurve, ValidCurveWeights) != offsetof(FBlendedHeapCurve, ValidCurveWeights)");
+static_assert(offsetof(ispc::FBlendedCurve, UIDToArrayIndexLUT) == offsetof(FBlendedHeapCurve, UIDToArrayIndexLUT), "offsetof(ispc::FBlendedCurve, UIDToArrayIndexLUT) != offsetof(FBlendedHeapCurve, UIDToArrayIndexLUT)");
+static_assert(offsetof(ispc::FBlendedCurve, NumValidCurveCount) == offsetof(FBlendedHeapCurve, NumValidCurveCount), "offsetof(ispc::FBlendedCurve, NumValidCurveCount) != offsetof(FBlendedHeapCurve, NumValidCurveCount)");
+static_assert(offsetof(ispc::FBlendedCurve, bInitialized) == offsetof(FBlendedHeapCurve, bInitialized), "offsetof(ispc::FBlendedCurve, bInitialized) != offsetof(FBlendedHeapCurve, bInitialized)");
+#endif
+
 class FParallelAnimationEvaluationTask
 {
 	TWeakObjectPtr<USkeletalMeshComponent> SkeletalMeshComponent;
@@ -3647,8 +3656,21 @@ void USkeletalMeshComponent::ParallelDuplicateAndInterpolate(FAnimationEvaluatio
 			FAnimationRuntime::LerpBoneTransforms(InAnimEvaluationContext.BoneSpaceTransforms, InAnimEvaluationContext.CachedBoneSpaceTransforms, Alpha, RequiredBones);
 			FillComponentSpaceTransforms(InAnimEvaluationContext.SkeletalMesh, InAnimEvaluationContext.BoneSpaceTransforms, InAnimEvaluationContext.ComponentSpaceTransforms);
 
-			// interpolate curve
-			InAnimEvaluationContext.Curve.LerpTo(InAnimEvaluationContext.CachedCurve, Alpha);
+			if (INTEL_ISPC)
+			{
+#if INTEL_ISPC
+				ispc::LerpCurves(
+					(ispc::FBlendedCurve*)&InAnimEvaluationContext.Curve,
+					(ispc::FBlendedCurve*)&InAnimEvaluationContext.CachedCurve,
+					Alpha
+				);
+#endif
+			}
+			else
+			{
+				// interpolate curve
+				InAnimEvaluationContext.Curve.LerpTo(InAnimEvaluationContext.CachedCurve, Alpha);
+			}
 		}
 	}
 }
