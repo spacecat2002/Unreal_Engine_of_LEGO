@@ -1406,6 +1406,11 @@ bool FMaterialResource::HasAnisotropyConnected() const
 	return HasMaterialAttributesConnected() || Material->HasAnisotropyConnected();
 }
 
+bool FMaterialResource::HasAmbientOcclusionConnected() const
+{
+	return HasMaterialAttributesConnected() || Material->HasAmbientOcclusionConnected();
+}
+
 bool FMaterialResource::RequiresSynchronousCompilation() const
 {
 	return Material->IsDefaultMaterial();

@@ -1730,6 +1730,7 @@ public:
 	bool HasSpecularConnected() const { return Specular.IsConnected(); }
 	bool HasEmissiveColorConnected() const { return EmissiveColor.IsConnected(); }
 	bool HasAnisotropyConnected() const { return Anisotropy.IsConnected(); }
+	bool HasAmbientOcclusionConnected() const { return AmbientOcclusion.IsConnected(); }
 
 #if WITH_EDITOR
 	static void NotifyCompilationFinished(UMaterialInterface* Material);
