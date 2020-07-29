@@ -128,6 +128,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::GetCameraIntrinsics() */
 	bool GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const;
+	
+	/** \see UARBlueprintLibrary::IsARSupported() */
+	bool IsARAvailable() const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

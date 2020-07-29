@@ -449,6 +449,15 @@ bool FARSupportInterface::GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntr
 	return false;
 }
 
+bool FARSupportInterface::IsARAvailable() const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->IsARAvailable();
+	}
+	return false;
+}
+
 #define DEFINE_AR_SI_DELEGATE_FUNCS(DelegateName) \
 FDelegateHandle FARSupportInterface::Add##DelegateName##Delegate_Handle(const F##DelegateName##Delegate& Delegate) \
 { \

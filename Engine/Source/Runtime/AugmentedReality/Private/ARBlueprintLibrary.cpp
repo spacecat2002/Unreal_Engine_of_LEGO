@@ -38,9 +38,12 @@ EARTrackingQualityReason UARBlueprintLibrary::GetTrackingQualityReason()
 
 bool UARBlueprintLibrary::IsARSupported(void)
 {
-	// @todo merge-check
-//	return GetARSystem().IsValid() && GetARSystem()->IsARAvailable();
-	return true;
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->IsARAvailable();
+	}
+	return false;
 }
 
 void UARBlueprintLibrary::StartARSession(UARSessionConfig* SessionConfig)
