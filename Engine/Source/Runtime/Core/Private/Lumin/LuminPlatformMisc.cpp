@@ -198,7 +198,7 @@ void FLuminPlatformMisc::LowLevelOutputDebugStringfWithVerbosity(ELogVerbosity::
 // @todo override FOutputDevice and FOutputDeviceError to actually utilize this
 void FLuminPlatformMisc::LocalPrintWithVerbosity(const TCHAR *Message, ELogVerbosity::Type Verbosity)
 {
-#if !UE_BUILD_SHIPPING
+#if !UE_BUILD_SHIPPING || USE_LOGGING_IN_SHIPPING
 	MLLogLevel logLevel = MLLogLevel_Debug;
 	switch (Verbosity)
 	{
