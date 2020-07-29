@@ -38,7 +38,7 @@ FString FEngineShowFlags::ToString() const
 		{
 		}
 
-		bool OnEngineShowFlag(uint32 InIndex, const FString& InName)
+		bool HandleShowFlag(uint32 InIndex, const FString& InName)
 		{
 			EShowFlagGroup Group = FEngineShowFlags::FindShowFlagGroup(*InName);
 			if (Group != SFG_Transient)
@@ -54,6 +54,16 @@ FString FEngineShowFlags::ToString() const
 				ret += EngineShowFlags.GetSingleFlag(InIndex) ? (TCHAR)'1' : (TCHAR)'0';
 			}
 			return true;
+		}
+
+		bool OnEngineShowFlag(uint32 InIndex, const FString& InName)
+		{
+			return HandleShowFlag(InIndex, InName);
+		}
+
+		bool OnCustomShowFlag(uint32 InIndex, const FString& InName)
+		{
+			return HandleShowFlag(InIndex, InName);
 		}
 
 		FString ret;
@@ -131,6 +141,10 @@ bool FEngineShowFlags::GetSingleFlag(uint32 Index) const
 	#define SHOWFLAG_ALWAYS_ACCESSIBLE(a,...) case SF_##a: return a != 0;
 	#include "ShowFlagsValues.inl"
 	default:
+		if (Index >= SF_FirstCustom && (Index - SF_FirstCustom) < (uint32)CustomShowFlags.Num())
+		{
+			return CustomShowFlags[Index - SF_FirstCustom];
+		}
 		{
 			checkNoEntry();
 			return false;
@@ -159,6 +173,12 @@ void FEngineShowFlags::SetSingleFlag(uint32 Index, bool bSet)
 	#endif
 	#include "ShowFlagsValues.inl"
 	default:
+		UpdateNewCustomShowFlags();
+		if (Index >= SF_FirstCustom && (Index - SF_FirstCustom) < (uint32)CustomShowFlags.Num())
+		{
+			CustomShowFlags[Index - SF_FirstCustom] = bSet;
+			return;
+		}
 		{
 			checkNoEntry();
 		}
@@ -182,6 +202,11 @@ int32 FEngineShowFlags::FindIndexByName(const TCHAR* Name, const TCHAR *CommaSep
 
 		#include "ShowFlagsValues.inl"
 
+		ECustomShowFlag CustomFlagIndex = FindCustomShowFlagByName(Name);
+		if (CustomFlagIndex != ECustomShowFlag::None)
+		{
+			return SF_FirstCustom + (uint32)CustomFlagIndex;
+		}
 		return INDEX_NONE;
 	}
 	else
@@ -223,6 +248,7 @@ FString FEngineShowFlags::FindNameByIndex(uint32 InIndex)
 	{
 		#include "ShowFlagsValues.inl"
 	default:
+		return GetCustomShowFlagName(ECustomShowFlag(InIndex - SF_FirstCustom));
 		break;
 	}
 
@@ -236,6 +262,11 @@ void FEngineShowFlags::AddNameByIndex(uint32 InIndex, FString& Out)
 	{
 		#include "ShowFlagsValues.inl"
 		default:
+			FString Name = GetCustomShowFlagName(ECustomShowFlag(InIndex - SF_FirstCustom));
+			if (Name.IsEmpty() == false)
+			{
+				Out += Name;
+			}
 			break;
 	}
 }
@@ -580,6 +611,8 @@ void EngineShowFlagOverride(EShowFlagInitMode ShowFlagInitMode, EViewModeIndex V
 			++Force1Ptr;
 		}
 	}
+
+	EngineShowFlags.EngineOverrideCustomShowFlagsFromCVars();
 }
 
 void EngineShowFlagOrthographicOverride(bool bIsPerspective, FEngineShowFlags& EngineShowFlags)
@@ -733,4 +766,189 @@ const TCHAR* GetViewModeName(EViewModeIndex ViewModeIndex)
 		case VMI_HLODColoration:			return TEXT("HLODColoration");
 	}
 	return TEXT("");
+}
+
+struct FCustomShowFlagData
+{
+	FString			Name;
+	FText			DisplayName;
+	EShowFlagGroup	Group = SFG_Custom;
+	IConsoleVariable* CVar = nullptr;
+};
+
+namespace CustomShowFlagsInternal
+{
+	TMap<FString, FEngineShowFlags::ECustomShowFlag> NameToIndex;;
+	TArray<FCustomShowFlagData> RegisteredCustomShowFlags;
+
+	FRWLock Lock; 
+	TBitArray<> DefaultState;
+
+}
+
+
+// Public custom show flags functions
+FEngineShowFlags::ECustomShowFlag FEngineShowFlags::RegisterCustomShowFlag(const TCHAR* InName, bool DefaultEnabled, EShowFlagGroup Group, FText DisplayName)
+{
+	check(IsInGameThread()); // Have to register on game thread to make access to FEngineShowFlags::OnCustomShowFlagRegistered safe
+
+	// Sanitize names, only keeping valid characters. Required for FEngineShowFlags::SetFromString() to work.
+	const TCHAR* CurrentChar = InName;
+	FString Name;
+	while (*CurrentChar)
+	{
+		if (ensureMsgf(IsValidNameChar(*CurrentChar), TEXT("Custom showflag \"%s\" contains invalid characters"), InName))
+		{
+			Name += *CurrentChar;
+		}
+		++CurrentChar;
+	}
+
+	FEngineShowFlags::ECustomShowFlag ReturnIndex;
+	{
+		FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_Write);
+		FCustomShowFlagData* Data = nullptr;
+
+		if (FEngineShowFlags::ECustomShowFlag* Existing = CustomShowFlagsInternal::NameToIndex.Find(Name))
+		{
+			ReturnIndex = *Existing;
+		}
+		else
+		{
+			ReturnIndex = (FEngineShowFlags::ECustomShowFlag)CustomShowFlagsInternal::RegisteredCustomShowFlags.AddDefaulted(1);
+			CustomShowFlagsInternal::DefaultState.Add(1);
+			CustomShowFlagsInternal::NameToIndex.Add(Name, ReturnIndex);
+		}
+
+		if (ReturnIndex == ECustomShowFlag::None)
+		{
+			UE_LOG(LogEngine, Error, TEXT("Attempted to register a custom showflag with the same name as an engine showflag: %s"), *Name);
+			return ECustomShowFlag::None;
+		}
+
+		Data = &CustomShowFlagsInternal::RegisteredCustomShowFlags[(int32)ReturnIndex];
+		Data->Name = MoveTemp(Name);
+		Data->DisplayName = DisplayName.IsEmpty() ? FText::FromString(Data->Name) : DisplayName;
+		Data->Group = Group;
+		if (Data->CVar == nullptr)
+		{
+			Data->CVar = IConsoleManager::Get().RegisterConsoleVariable(*FString::Printf(TEXT("ShowFlag.%s"), *Data->Name), 2,
+				TEXT("Allows to override a specific showflag (works in editor and game, \"show\" only works in game and UI only in editor)\n")
+				TEXT("Useful to run a build many time with the same showflags (when put in consolevariables.ini like \"showflag.abc=0\")\n")
+				TEXT(" 0: force the showflag to be OFF\n")
+				TEXT(" 1: force the showflag to be ON\n")
+				TEXT(" 2: do not override this showflag (default)"),
+				ECVF_Default
+			);
+		}
+
+		CustomShowFlagsInternal::DefaultState[(int32)ReturnIndex] = DefaultEnabled;
+	}
+
+	FEngineShowFlags::OnCustomShowFlagRegistered.Broadcast();
+
+	return ReturnIndex;
+}
+
+void FEngineShowFlags::IterateCustomFlags(TFunctionRef<bool(uint32, const FString&)> Functor)
+{
+	check(IsInGameThread());
+
+	for (int32 Idx = 0; Idx < CustomShowFlagsInternal::RegisteredCustomShowFlags.Num(); ++Idx)
+	{
+		if (!Functor(Idx + SF_FirstCustom, CustomShowFlagsInternal::RegisteredCustomShowFlags[Idx].Name))
+		{
+			return;
+		}
+	}
+}
+
+FSimpleMulticastDelegate FEngineShowFlags::OnCustomShowFlagRegistered;
+
+// Private custom show flags functions
+FEngineShowFlags::ECustomShowFlag FEngineShowFlags::FindCustomShowFlagByName(const FString& Name)
+{
+	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+
+	if (FEngineShowFlags::ECustomShowFlag* Existing = CustomShowFlagsInternal::NameToIndex.Find(Name))
+	{
+		return *Existing;
+	}
+	return ECustomShowFlag::None;
+}
+
+FString FEngineShowFlags::GetCustomShowFlagName(ECustomShowFlag Index)
+{
+	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	if (CustomShowFlagsInternal::RegisteredCustomShowFlags.IsValidIndex((uint32)Index))
+	{
+		return  CustomShowFlagsInternal::RegisteredCustomShowFlags[(uint32)Index].Name;
+	}
+	return FString();
+}
+
+FText FEngineShowFlags::GetCustomShowFlagDisplayName(ECustomShowFlag Index)
+{
+	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	if (CustomShowFlagsInternal::RegisteredCustomShowFlags.IsValidIndex((uint32)Index))
+	{
+		return CustomShowFlagsInternal::RegisteredCustomShowFlags[(uint32)Index].DisplayName;
+	}
+	return FText();
+}
+
+EShowFlagGroup FEngineShowFlags::GetCustomShowFlagGroup(ECustomShowFlag Index)
+{
+	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	if (CustomShowFlagsInternal::RegisteredCustomShowFlags.IsValidIndex((uint32)Index))
+	{
+		return CustomShowFlagsInternal::RegisteredCustomShowFlags[(uint32)Index].Group;
+	}
+	return SFG_Normal;
+}
+
+void FEngineShowFlags::InitCustomShowFlags(EShowFlagInitMode InitMode)
+{
+	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	if (InitMode == ESFIM_All0)
+	{
+		CustomShowFlags.Init(false, CustomShowFlagsInternal::DefaultState.Num());
+	}
+	else
+	{
+		CustomShowFlags = CustomShowFlagsInternal::DefaultState;
+	}
+}
+
+void FEngineShowFlags::UpdateNewCustomShowFlags()
+{
+	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	for (int32 i = CustomShowFlags.Num(); i < CustomShowFlagsInternal::DefaultState.Num(); ++i)
+	{
+		CustomShowFlags.Add(CustomShowFlagsInternal::DefaultState[i]);
+	}
+}
+
+bool FEngineShowFlags::FindCustomShowFlagDisplayName(const FString& Name, FText& OutText)
+{
+	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	if (FEngineShowFlags::ECustomShowFlag* Existing = CustomShowFlagsInternal::NameToIndex.Find(Name))
+	{
+		OutText = CustomShowFlagsInternal::RegisteredCustomShowFlags[(int32)*Existing].DisplayName;
+		return true;
+	}
+	return false;
+}
+
+void FEngineShowFlags::EngineOverrideCustomShowFlagsFromCVars()
+{
+	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	for (int32 i = 0; i < CustomShowFlagsInternal::RegisteredCustomShowFlags.Num(); ++i)
+	{
+		int32 Val = CustomShowFlagsInternal::RegisteredCustomShowFlags[i].CVar->GetInt();
+		if (Val != 2)
+		{
+			CustomShowFlags[i] = !!Val;
+		}
+	}
 }
