@@ -399,7 +399,8 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FRenderVolumetricCloudGlobalParameters, )
 	SHADER_PARAMETER_STRUCT_INCLUDE(FVolumetricCloudCommonShaderParameters, VolumetricCloud)
 	SHADER_PARAMETER_TEXTURE(Texture2D, SceneDepthTexture)
 	SHADER_PARAMETER_TEXTURE(Texture2D, CloudSkyAOTexture)
-	SHADER_PARAMETER_TEXTURE(Texture2D<float3>, CloudShadowTexture)
+	SHADER_PARAMETER_TEXTURE(Texture2D<float3>, CloudShadowTexture0)
+	SHADER_PARAMETER_TEXTURE(Texture2D<float3>, CloudShadowTexture1)
 	SHADER_PARAMETER_SAMPLER(SamplerState, CloudBilinearTextureSampler)
 	SHADER_PARAMETER_STRUCT_INCLUDE(FVolumeShadowingShaderParametersGlobal0, Light0Shadow)
 //	SHADER_PARAMETER_STRUCT(FBlueNoise, BlueNoise)
@@ -435,7 +436,8 @@ void SetupDefaultRenderVolumetricCloudGlobalParameters(FRenderVolumetricCloudGlo
 	VolumetricCloudParams.VolumetricCloud = CloudInfo.GetVolumetricCloudCommonShaderParameters();
 	VolumetricCloudParams.SceneDepthTexture = BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
 	VolumetricCloudParams.CloudSkyAOTexture = BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
-	VolumetricCloudParams.CloudShadowTexture = BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
+	VolumetricCloudParams.CloudShadowTexture0 = BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
+	VolumetricCloudParams.CloudShadowTexture1 = BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
 	VolumetricCloudParams.CloudBilinearTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 	// Light0Shadow
 /*#if RHI_RAYTRACING
@@ -533,7 +535,8 @@ enum EVolumetricCloudRenderViewPsPermutations
 
 BEGIN_SHADER_PARAMETER_STRUCT(FRenderVolumetricCloudRenderViewParametersPS, )
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CloudSkyAOTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CloudShadowTexture)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CloudShadowTexture0)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CloudShadowTexture1)
 	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
 
@@ -1356,8 +1359,9 @@ void FSceneRenderer::RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, F
 {
 	FRenderVolumetricCloudRenderViewParametersPS* RenderViewPassParameters = GraphBuilder.AllocParameters<FRenderVolumetricCloudRenderViewParametersPS>();
 	RenderViewPassParameters->RenderTargets = CloudRC.RenderTargets;
-	RenderViewPassParameters->CloudShadowTexture = CloudRC.VolumetricCloudShadowTexture[0];	// only for experimental path sampling the texture to evaluate shadows
-	RenderViewPassParameters->CloudSkyAOTexture = RenderViewPassParameters->CloudShadowTexture;
+	RenderViewPassParameters->CloudShadowTexture0 = CloudRC.VolumetricCloudShadowTexture[0];
+	RenderViewPassParameters->CloudShadowTexture1 = CloudRC.VolumetricCloudShadowTexture[1];
+	RenderViewPassParameters->CloudSkyAOTexture = CloudRC.VolumetricCloudShadowTexture[0];		// Useless so remove?
 
 	FRDGTexture* RT0 = CloudRC.RenderTargets.Output[0].GetTexture();
 	FVector4 OutputSizeInvSize = FVector4(float(RT0->Desc.Extent.X), float(RT0->Desc.Extent.Y), 1.0f/float(RT0->Desc.Extent.X), 1.0f/float(RT0->Desc.Extent.Y));
@@ -1394,8 +1398,9 @@ void FSceneRenderer::RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, F
 			SetupDefaultRenderVolumetricCloudGlobalParameters(VolumetricCloudParams, CloudInfo, MainView);
 			VolumetricCloudParams.SceneDepthTexture = SceneDepthZ->GetRenderTargetItem().ShaderResourceTexture;
 			VolumetricCloudParams.Light0Shadow = LightShadowShaderParams0;
-			VolumetricCloudParams.CloudSkyAOTexture = RenderViewPassParameters->CloudSkyAOTexture->GetPooledRenderTarget()->GetRenderTargetItem().ShaderResourceTexture;
-			VolumetricCloudParams.CloudShadowTexture = RenderViewPassParameters->CloudShadowTexture->GetPooledRenderTarget()->GetRenderTargetItem().ShaderResourceTexture;
+			VolumetricCloudParams.CloudSkyAOTexture = RenderViewPassParameters->CloudSkyAOTexture->GetPooledRenderTarget()->GetRenderTargetItem().ShaderResourceTexture; // Useless so remove?
+			VolumetricCloudParams.CloudShadowTexture0 = RenderViewPassParameters->CloudShadowTexture0->GetPooledRenderTarget()->GetRenderTargetItem().ShaderResourceTexture;
+			VolumetricCloudParams.CloudShadowTexture1 = RenderViewPassParameters->CloudShadowTexture1->GetPooledRenderTarget()->GetRenderTargetItem().ShaderResourceTexture;
 			VolumetricCloudParams.SubSetCoordToFullResolutionScaleBias = SubSetCoordToFullResolutionScaleBias;
 			VolumetricCloudParams.NoiseFrameIndexModPattern = NoiseFrameIndexModPattern;
 			VolumetricCloudParams.IntersectWithOpaque = CVarVolumetricCloudIntersectWithOpaque.GetValueOnAnyThread();
