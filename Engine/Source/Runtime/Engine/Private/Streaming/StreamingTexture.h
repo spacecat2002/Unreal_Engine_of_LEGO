@@ -51,7 +51,7 @@ struct FStreamingRenderAsset
 	int32 GetSize( int32 InMipCount ) const
 	{
 		check(InMipCount > 0);
-		check(InMipCount <= (IsTexture() ? UE_ARRAY_COUNT(CumulativeLODSizes) : UE_ARRAY_COUNT(CumulativeLODSizes_Mesh)));
+		check((uint32)InMipCount <= (IsTexture() ? UE_ARRAY_COUNT(CumulativeLODSizes) : UE_ARRAY_COUNT(CumulativeLODSizes_Mesh)));
 		return CumulativeLODSizes[InMipCount - 1];
 	}
 
@@ -117,13 +117,13 @@ struct FStreamingRenderAsset
 	float GetNormalizedScreenSize(int32 NumMips) const
 	{
 		check(IsMesh());
-		check(NumMips > 0 && UE_ARRAY_COUNT(LODScreenSizes));
+		check(NumMips > 0 && (uint32)NumMips < UE_ARRAY_COUNT(LODScreenSizes));
 		return LODScreenSizes[NumMips - 1];
 	}
 
 	float GetLODScreenSize(int32 NumMips, float MaxScreenSizeOverAllViews) const
 	{
-		check(NumMips > 0 && UE_ARRAY_COUNT(LODScreenSizes));
+		check(NumMips > 0 && (uint32)NumMips < UE_ARRAY_COUNT(LODScreenSizes));
 		return IsTexture() ?
 			static_cast<float>(1 << (NumMips - 1)) :
 			GetNormalizedScreenSize(NumMips) * MaxScreenSizeOverAllViews;
