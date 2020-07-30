@@ -109,6 +109,11 @@ uint32 FWriteTlsContext::GetThreadId()
 ////////////////////////////////////////////////////////////////////////////////
 thread_local FWriteTlsContext	GTlsContext;
 
+////////////////////////////////////////////////////////////////////////////////
+static uint32 Writer_GetThreadId()
+{
+	return GTlsContext.GetThreadId();
+}
 
 
 
@@ -128,7 +133,7 @@ void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 
 	if (TraceData.GetSize())
 	{
-		uint32 ThreadId = GTlsContext.GetThreadId();
+		uint32 ThreadId = Writer_GetThreadId();
 		Writer_SendData(ThreadId, TraceData.GetData(), TraceData.GetSize());
 	}
 
@@ -148,7 +153,7 @@ void Writer_MemoryFree(void* Address)
 
 	if (TraceData.GetSize())
 	{
-		uint32 ThreadId = GTlsContext.GetThreadId();
+		uint32 ThreadId = Writer_GetThreadId();
 		Writer_SendData(ThreadId, TraceData.GetData(), TraceData.GetSize());
 	}
 }
@@ -336,7 +341,7 @@ static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
 	FWriteBuffer* CurrentBuffer = GTlsWriteBuffer;
 	if (CurrentBuffer == &GNullWriteBuffer)
 	{
-		NextBuffer->ThreadId = uint16(GTlsContext.GetThreadId());
+		NextBuffer->ThreadId = uint16(Writer_GetThreadId());
 		NextBuffer->PrevTimestamp = TimeGetTimestamp();
 
 		GTlsWriteBuffer = NextBuffer;
