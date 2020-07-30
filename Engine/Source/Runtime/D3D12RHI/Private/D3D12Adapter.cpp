@@ -74,7 +74,7 @@ static bool CheckD3DStoredMessages()
 	TRefCountPtr<ID3D12Debug> d3dDebug;
 	if (SUCCEEDED(D3D12GetDebugInterface(__uuidof(ID3D12Debug), (void**)d3dDebug.GetInitReference())))
 	{
-		FD3D12DynamicRHI* D3D12RHI = (FD3D12DynamicRHI*)GDynamicRHI;
+		FD3D12DynamicRHI* D3D12RHI = FD3D12DynamicRHI::GetD3DRHI();
 		TRefCountPtr<ID3D12InfoQueue> d3dInfoQueue;
 		if (SUCCEEDED(D3D12RHI->GetAdapter().GetD3DDevice()->QueryInterface(__uuidof(ID3D12InfoQueue), (void**)d3dInfoQueue.GetInitReference())))
 		{

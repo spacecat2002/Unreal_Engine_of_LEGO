@@ -142,10 +142,8 @@ static void FD3D11DumpLiveObjects()
 {
 	if (D3D11RHI_ShouldCreateWithD3DDebug())
 	{
-		FD3D11DynamicRHI* D3DRHI = (FD3D11DynamicRHI*)GDynamicRHI;
-
 		TRefCountPtr<ID3D11Debug> DebugDevice = nullptr;
-		VERIFYD3D11RESULT_EX(D3DRHI->GetDevice()->QueryInterface(__uuidof(ID3D11Debug), (void**)DebugDevice.GetInitReference()), D3DRHI->GetDevice());
+		VERIFYD3D11RESULT_EX(GD3D11RHI->GetDevice()->QueryInterface(__uuidof(ID3D11Debug), (void**)DebugDevice.GetInitReference()), GD3D11RHI->GetDevice());
 		if (DebugDevice)
 		{
 			HRESULT HR = DebugDevice->ReportLiveDeviceObjects(D3D11_RLDO_SUMMARY|D3D11_RLDO_DETAIL);

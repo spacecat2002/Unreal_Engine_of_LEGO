@@ -1577,4 +1577,4 @@ private:
 	TArray<FRange> Entries;
 };
 
-extern FD3D11DynamicRHI*	GD3D11RHI;
+extern D3D11RHI_API FD3D11DynamicRHI*	GD3D11RHI;
