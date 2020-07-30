@@ -287,6 +287,19 @@ static FWriteBuffer* Writer_AllocateBlockFromPool(uint32 PageSize)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+static void Writer_FreeBlockListToPool(FPoolBlockList BlockList)
+{
+	for (FWriteBuffer* ListNode = BlockList.Tail;; PlatformYield())
+	{
+		ListNode->NextBuffer = AtomicLoadRelaxed(&GPoolFreeList);
+		if (AtomicCompareExchangeRelease(&GPoolFreeList, BlockList.Head, ListNode->NextBuffer))
+		{
+			break;
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 static void Writer_InitializePool()
 {
 	static_assert(GPoolPageSize >= 0x10000, "Page growth must be >= 64KB");
@@ -493,14 +506,7 @@ static void Writer_DrainBuffers()
 	// Put the retirees we found back into the system again.
 	if (RetireList.Head != nullptr)
 	{
-		for (FWriteBuffer* ListNode = RetireList.Tail;; PlatformYield())
-		{
-			ListNode->NextBuffer = AtomicLoadRelaxed(&GPoolFreeList);
-			if (AtomicCompareExchangeRelease(&GPoolFreeList, RetireList.Head, ListNode->NextBuffer))
-			{
-				break;
-			}
-		}
+		Writer_FreeBlockListToPool({ RetireList.Head, RetireList.Tail });
 	}
 }
 
