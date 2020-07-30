@@ -18,11 +18,12 @@ namespace Trace {
 namespace Private {
 
 ////////////////////////////////////////////////////////////////////////////////
-int32		Encode(const void*, int32, void*, int32);
-static void	Writer_EndThreadBuffer();
-void		Writer_UpdateControl();
-void		Writer_InitializeControl();
-void		Writer_ShutdownControl();
+int32			Encode(const void*, int32, void*, int32);
+static uint32	Writer_SendData(uint32, uint8* __restrict, uint32);
+static void		Writer_EndThreadBuffer();
+void			Writer_UpdateControl();
+void			Writer_InitializeControl();
+void			Writer_ShutdownControl();
 
 
 
@@ -110,8 +111,6 @@ thread_local FWriteTlsContext	GTlsContext;
 
 
 
-////////////////////////////////////////////////////////////////////////////////
-static uint32 Writer_SendData(uint32, uint8* __restrict, uint32);
 
 ////////////////////////////////////////////////////////////////////////////////
 void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
