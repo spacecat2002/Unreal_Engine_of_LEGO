@@ -6,6 +6,7 @@
 
 #include "ShowFlags.h"
 #include "SystemSettings.h"
+#include "UnrealEngine.h"
 
 static bool IsValidNameChar(TCHAR c)
 {
