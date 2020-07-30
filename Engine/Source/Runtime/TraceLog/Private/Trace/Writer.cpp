@@ -137,7 +137,7 @@ void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void Writer_MemoryFree(void* Address, SIZE_T Size, uint32 Alignment)
+void Writer_MemoryFree(void* Address)
 {
 	TWriteBufferRedirect<6 << 10> TraceData;
 
@@ -297,7 +297,7 @@ static void Writer_ShutdownPool()
 	for (auto* Page = AtomicLoadRelaxed(&GPoolPageList); Page != nullptr;)
 	{
 		FPoolPage* NextPage = Page->NextPage;
-		Writer_MemoryFree(Page, Page->AllocSize, PLATFORM_CACHE_LINE_SIZE);
+		Writer_MemoryFree(Page);
 		Page = NextPage;
 	}
 }
