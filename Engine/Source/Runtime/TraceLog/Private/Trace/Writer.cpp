@@ -164,35 +164,66 @@ struct FPoolPage
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+struct FPoolBlockList
+{
+	FWriteBuffer*	Head;
+	FWriteBuffer*	Tail;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 #define T_ALIGN alignas(PLATFORM_CACHE_LINE_SIZE)
 static const uint32						GPoolBlockSize		= 4 << 10;
 static const uint32						GPoolPageSize		= GPoolBlockSize << 4;
 static const uint32						GPoolInitPageSize	= GPoolBlockSize << 6;
 T_ALIGN static FWriteBuffer* volatile	GPoolFreeList;		// = nullptr;
 T_ALIGN static UPTRINT volatile			GPoolFutex;			// = 0
-T_ALIGN static FWriteBuffer* volatile	GNewThreadList;		// = nullptr;
 T_ALIGN static FPoolPage* volatile		GPoolPageList;		// = nullptr;
 static uint32							GPoolUsage;			// = 0;
-static FWriteBuffer						GNullWriteBuffer	= { 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
-thread_local FWriteBuffer*				GTlsWriteBuffer		= &GNullWriteBuffer;
-static FWriteBuffer* __restrict			GActiveThreadList;	// = nullptr;
 #undef T_ALIGN
 
 ////////////////////////////////////////////////////////////////////////////////
-#if !IS_MONOLITHIC
-TRACELOG_API FWriteBuffer* Writer_GetBuffer()
+static FPoolBlockList Writer_AddPageToPool(uint32 PageSize)
 {
-	// Thread locals and DLLs don't mix so for modular builds we are forced to
-	// export this function to access thread-local variables.
-	return GTlsWriteBuffer;
+	// The free list is empty so we have to populate it with some new blocks.
+	uint8* PageBase = (uint8*)Writer_MemoryAllocate(PageSize, PLATFORM_CACHE_LINE_SIZE);
+	GPoolUsage += PageSize;
+
+	uint32 BufferSize = GPoolBlockSize;
+	BufferSize -= sizeof(FWriteBuffer);
+	BufferSize -= sizeof(uint32); // to preceed event data with a small header when sending.
+
+	// Link subsequent blocks together
+	uint8* FirstBlock = PageBase + GPoolBlockSize - sizeof(FWriteBuffer);
+	uint8* Block = FirstBlock;
+	for (int i = 1, n = PageSize / GPoolBlockSize; ; ++i)
+	{
+		auto* Buffer = (FWriteBuffer*)Block;
+		Buffer->Size = BufferSize;
+		if (i >= n)
+		{
+			break;
+		}
+
+		Buffer->NextBuffer = (FWriteBuffer*)(Block + GPoolBlockSize);
+		Block += GPoolBlockSize;
+	}
+
+	// Keep track of allocation base so we can free it on shutdown
+	FWriteBuffer* NextBuffer = (FWriteBuffer*)FirstBlock;
+	NextBuffer->Size -= sizeof(FPoolPage);
+	FPoolPage* PageListNode = (FPoolPage*)PageBase;
+	PageListNode->NextPage = GPoolPageList;
+	PageListNode->AllocSize = PageSize;
+	GPoolPageList = PageListNode;
+
+	return { NextBuffer, (FWriteBuffer*)Block };
 }
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////
-static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
+static FWriteBuffer* Writer_AllocateBlockFromPool(uint32 PageSize)
 {
 	// Fetch a new buffer
-	FWriteBuffer* NextBuffer;
+	FWriteBuffer* Ret;
 	while (true)
 	{
 		// First we'll try one from the free list
@@ -209,7 +240,7 @@ static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
 		// If we didn't fetch the sentinal then we've taken a block we can use
 		if (Owned != nullptr)
 		{
-			NextBuffer = (FWriteBuffer*)Owned;
+			Ret = (FWriteBuffer*)Owned;
 			break;
 		}
 
@@ -223,51 +254,20 @@ static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
 			continue;
 		}
 
-		// The free list is empty so we have to populate it with some new blocks.
-		uint8* PageBase = (uint8*)Writer_MemoryAllocate(PageSize, PLATFORM_CACHE_LINE_SIZE);
-		GPoolUsage += PageSize;
-
-		uint32 BufferSize = GPoolBlockSize;
-		BufferSize -= sizeof(FWriteBuffer);
-		BufferSize -= sizeof(uint32); // to preceed event data with a small header when sending.
-
-		// The first block in the page we'll use for the next buffer. Note that the
-		// buffer objects are at the _end_ of their blocks.
-		NextBuffer = (FWriteBuffer*)(PageBase + GPoolBlockSize - sizeof(FWriteBuffer));
-		NextBuffer->Size = BufferSize;
-
-		// Link subsequent blocks together
-		uint8* FirstBlock = (uint8*)NextBuffer + GPoolBlockSize;
-		uint8* Block = FirstBlock;
-		for (int i = 2, n = PageSize / GPoolBlockSize; ; ++i)
-		{
-			auto* Buffer = (FWriteBuffer*)Block;
-			Buffer->Size = BufferSize;
-			if (i >= n)
-			{
-				break;
-			}
-
-			Buffer->NextBuffer = (FWriteBuffer*)(Block + GPoolBlockSize);
-			Block += GPoolBlockSize;
-		}
-
-		// Keep track of allocation base so we can free it on shutdown
-		NextBuffer->Size -= sizeof(FPoolPage);
-		FPoolPage* PageListNode = (FPoolPage*)PageBase;
-		PageListNode->NextPage = GPoolPageList;
-		GPoolPageList = PageListNode;
+		FPoolBlockList BlockList = Writer_AddPageToPool(PageSize);
+		Ret = BlockList.Head;
 
 		// And insert the block list into the freelist. 'Block' is now the last block
-		for (auto* ListNode = (FWriteBuffer*)Block;; PlatformYield())
+		for (auto* ListNode = BlockList.Tail;; PlatformYield())
 		{
 			ListNode->NextBuffer = AtomicLoadRelaxed(&GPoolFreeList);
-			if (AtomicCompareExchangeRelease(&GPoolFreeList, (FWriteBuffer*)FirstBlock, ListNode->NextBuffer))
+			if (AtomicCompareExchangeRelease(&GPoolFreeList, Ret->NextBuffer, ListNode->NextBuffer))
 			{
 				break;
 			}
 		}
 
+		// Let other threads proceed. They should hopefully hit the free list
 		for (;; Private::PlatformYield())
 		{
 			if (AtomicCompareExchangeRelease<UPTRINT>(&GPoolFutex, 0, 1))
@@ -278,6 +278,55 @@ static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
 
 		break;
 	}
+
+	return Ret;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_InitializePool()
+{
+	static_assert(GPoolPageSize >= 0x10000, "Page growth must be >= 64KB");
+	static_assert(GPoolInitPageSize >= 0x10000, "Initial page size must be >= 64KB");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_ShutdownPool()
+{
+	// Claim ownership of the pool page list. There really should be no one
+	// creating so we'll just read it an go instead of a CAS loop.
+	for (auto* Page = AtomicLoadRelaxed(&GPoolPageList); Page != nullptr;)
+	{
+		FPoolPage* NextPage = Page->NextPage;
+		Writer_MemoryFree(Page, Page->AllocSize, PLATFORM_CACHE_LINE_SIZE);
+		Page = NextPage;
+	}
+}
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+#define T_ALIGN alignas(PLATFORM_CACHE_LINE_SIZE)
+static FWriteBuffer						GNullWriteBuffer	= { 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
+thread_local FWriteBuffer*				GTlsWriteBuffer		= &GNullWriteBuffer;
+static FWriteBuffer* __restrict			GActiveThreadList;	// = nullptr;
+T_ALIGN static FWriteBuffer* volatile	GNewThreadList;		// = nullptr;
+#undef T_ALIGN
+
+////////////////////////////////////////////////////////////////////////////////
+#if !IS_MONOLITHIC
+TRACELOG_API FWriteBuffer* Writer_GetBuffer()
+{
+	// Thread locals and DLLs don't mix so for modular builds we are forced to
+	// export this function to access thread-local variables.
+	return GTlsWriteBuffer;
+}
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
+static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
+{
+	FWriteBuffer* NextBuffer = Writer_AllocateBlockFromPool(PageSize);
 
 	NextBuffer->Cursor = (uint8*)NextBuffer - NextBuffer->Size;
 	NextBuffer->Committed = NextBuffer->Cursor;
@@ -461,28 +510,6 @@ static void Writer_EndThreadBuffer()
 
 	UPTRINT EtxOffset = UPTRINT((uint8*)GTlsWriteBuffer - GTlsWriteBuffer->Cursor);
 	AtomicStoreRelaxed(&(GTlsWriteBuffer->EtxOffset), EtxOffset);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-static void Writer_InitializeBuffers()
-{
-	Writer_NextBufferInternal(GPoolInitPageSize);
-
-	static_assert(GPoolPageSize >= 0x10000, "Page growth must be >= 64KB");
-	static_assert(GPoolInitPageSize >= 0x10000, "Initial page size must be >= 64KB");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-static void Writer_ShutdownBuffers()
-{
-	// Claim ownership of the pool page list. There really should be no one
-	// creating so we'll just read it an go instead of a CAS loop.
-	for (auto* Page = AtomicLoadRelaxed(&GPoolPageList); Page != nullptr;)
-	{
-		FPoolPage* NextPage = Page->NextPage;
-		Writer_MemoryFree(Page, Page->AllocSize, PLATFORM_CACHE_LINE_SIZE);
-		Page = NextPage;
-	}
 }
 
 
@@ -734,7 +761,7 @@ static void Writer_InternalInitializeImpl()
 
 	Trace::ThreadRegister(TEXT("GameThread"), 0, -1);
 
-	Writer_InitializeBuffers();
+	Writer_InitializePool();
 	Writer_InitializeControl();
 }
 
@@ -755,7 +782,7 @@ static void Writer_InternalShutdown()
 	}
 
 	Writer_ShutdownControl();
-	Writer_ShutdownBuffers();
+	Writer_ShutdownPool();
 
 	GInitialized = false;
 }
