@@ -343,6 +343,30 @@ namespace
 	{
 		return (Char == 'i') | (Char == 'd') | (Char == 'u') | (Char == 'X') | (Char == 'x');
 	}
+
+	template <typename CharType>
+	void ProcessStringArg(FSafeDestIterator& DestIter, const TCHAR*& Src, int FieldLen, int PrecisionLen, va_list ArgPtr)
+	{
+		Src++;
+		static const CharType* Null = LITERAL(CharType, "(null)");
+		const CharType* Val = va_arg(ArgPtr, CharType*);
+		if (Val == nullptr)
+		{
+			Val = Null;
+		}
+
+		int RetCnt = PrecisionLen < 0 ? FGenericWidePlatformString::Strlen(Val) : FGenericWidePlatformString::Strnlen(Val, PrecisionLen);
+		int Spaces = FPlatformMath::Max(FPlatformMath::Abs(FieldLen) - RetCnt, 0);
+		if (Spaces > 0 && FieldLen > 0)
+		{
+			DestIter.Write(TEXT(' '), Spaces);
+		}
+		DestIter.Write(Val, RetCnt);
+		if (Spaces > 0 && FieldLen < 0)
+		{
+			DestIter.Write(TEXT(' '), Spaces);
+		}
+	}
 }
 
 int32 FGenericWidePlatformString::GetVarArgs( WIDECHAR* Dest, SIZE_T DestSize, const WIDECHAR*& Fmt, va_list ArgPtr )
@@ -444,6 +468,14 @@ int32 FGenericWidePlatformString::GetVarArgs( WIDECHAR* Dest, SIZE_T DestSize, c
 		// Check for 'ls' field, change to 's'
 		if ((Src[0] == 'l' && Src[1] == 's'))
 		{
+			Src++;
+		}
+
+		// Check for 'hs' field, change to 's' and remember
+		bool bIsNarrowString = false;
+		if ((Src[0] == 'h' && Src[1] == 's'))
+		{
+			bIsNarrowString = true;
 			Src++;
 		}
 
@@ -763,24 +795,13 @@ int32 FGenericWidePlatformString::GetVarArgs( WIDECHAR* Dest, SIZE_T DestSize, c
 
 			case 's':
 			{
-				Src++;
-				static const TCHAR* Null = TEXT("(null)");
-				const TCHAR* Val = va_arg(ArgPtr, TCHAR*);
-				if (Val == nullptr)
+				if (bIsNarrowString)
 				{
-					Val = Null;
+					ProcessStringArg<ANSICHAR>(DestIter, Src, FieldLen, PrecisionLen, ArgPtr);
 				}
-
-				int RetCnt = PrecisionLen < 0 ? Strlen(Val) : Strnlen(Val, PrecisionLen);
-				int Spaces = FPlatformMath::Max(FPlatformMath::Abs(FieldLen) - RetCnt, 0);
-				if (Spaces > 0 && FieldLen > 0)
+				else
 				{
-					DestIter.Write(TEXT(' '), Spaces);
-				}
-				DestIter.Write(Val, RetCnt);
-				if (Spaces > 0 && FieldLen < 0)
-				{
-					DestIter.Write(TEXT(' '), Spaces);
+					ProcessStringArg<TCHAR>(DestIter, Src, FieldLen, PrecisionLen, ArgPtr);
 				}
 				if (!DestIter)
 				{
@@ -792,28 +813,9 @@ int32 FGenericWidePlatformString::GetVarArgs( WIDECHAR* Dest, SIZE_T DestSize, c
 			case 'S':
 			{
 				// The %S format represents a string which is the opposite of %s - wide if TCHAR is narrow, or narrow if TCHAR is wide
-
 				using OtherCharType = TChooseClass<TIsSame<TCHAR, ANSICHAR>::Value, WIDECHAR, ANSICHAR>::Result;
 
-				Src++;
-				static const OtherCharType* Null = LITERAL(OtherCharType, "(null)");
-				const OtherCharType* Val = va_arg(ArgPtr, OtherCharType*);
-				if (Val == nullptr)
-				{
-					Val = Null;
-				}
-
-				int RetCnt = PrecisionLen < 0 ? Strlen(Val) : Strnlen(Val, PrecisionLen);
-				int Spaces = FPlatformMath::Max(FPlatformMath::Abs(FieldLen) - RetCnt, 0);
-				if (Spaces > 0 && FieldLen > 0)
-				{
-					DestIter.Write(TEXT(' '), Spaces);
-				}
-				DestIter.Write(Val, RetCnt);
-				if (Spaces > 0 && FieldLen < 0)
-				{
-					DestIter.Write(TEXT(' '), Spaces);
-				}
+				ProcessStringArg<OtherCharType>(DestIter, Src, FieldLen, PrecisionLen, ArgPtr);
 				if (!DestIter)
 				{
 					return -1;
