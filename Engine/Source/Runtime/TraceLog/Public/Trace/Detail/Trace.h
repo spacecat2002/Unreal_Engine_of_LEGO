@@ -66,7 +66,7 @@ namespace Trace
 		static uint32 GetUid() { static uint32 Uid = 0; return (Uid = Uid ? Uid : Initialize()); } \
 		static uint32 FORCENOINLINE Initialize() \
 		{ \
-			static const uint32 OnceOnly = [] () \
+			static const uint32 Uid_ThreadSafeInit = [] () \
 			{ \
 				using namespace Trace; \
 				static F##LoggerName##EventName##Fields Fields; \
@@ -80,7 +80,7 @@ namespace Trace
 				}; \
 				return LoggerName##EventName##Event.Initialize(&Info); \
 			}(); \
-			return OnceOnly; \
+			return Uid_ThreadSafeInit; \
 		} \
 		Trace::TField<0 /*Index*/, 0 /*Offset*/,
 
