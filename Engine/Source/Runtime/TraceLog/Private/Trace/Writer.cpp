@@ -719,9 +719,9 @@ static void Writer_WorkerThread()
 {
 	Trace::ThreadRegister(TEXT("Trace"), 0, INT_MAX);
 
-	// At this point we haven't never collected any trace events. So we'll stall
+	// At this point we haven't ever collected any trace events. So we'll stall
 	// for just a little bit to give the user a chance to set up sending the trace
-	// somewhere and we they'll get all events since boot. Otherwise they'll be
+	// somewhere. This way they get all events since boot, otherwise they'll be
 	// unceremoniously dropped.
 	int32 PrologueMs = 2000;
 	do
