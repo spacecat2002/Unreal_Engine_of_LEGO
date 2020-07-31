@@ -6,8 +6,10 @@
 
 #if UE_TRACE_ENABLED
 
+#include "Atomic.h"
 #include "EventNode.h"
 #include "LogScope.h"
+#include "Protocol.h"
 #include "Writer.inl"
 
 namespace Trace {

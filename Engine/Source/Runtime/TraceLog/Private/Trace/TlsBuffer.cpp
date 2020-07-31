@@ -5,6 +5,7 @@
 #if UE_TRACE_ENABLED
 
 #include "Platform.h"
+#include "Trace/Detail/Atomic.h"
 #include "Trace/Detail/Writer.inl"
 #include "Trace/Trace.inl"
 
