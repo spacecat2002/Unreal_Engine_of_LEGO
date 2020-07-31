@@ -62,6 +62,8 @@ namespace Trace
 			PartialEventFlags	= (0, ##__VA_ARGS__) & ~Important, \
 		}; \
 		enum : bool { bIsImportant = ((0, ##__VA_ARGS__) & Important) != 0, }; \
+		static constexpr uint32 GetSize() { return decltype(EventProps_Private)::Size; } \
+		static uint32 GetUid() { static uint32 Uid = 0; return (Uid = Uid ? Uid : Initialize()); } \
 		static uint32 FORCENOINLINE Initialize() \
 		{ \
 			static const uint32 OnceOnly = [] () \
@@ -102,9 +104,7 @@ namespace Trace
 
 #define TRACE_PRIVATE_LOG_PRELUDE(EnterFunc, LoggerName, EventName, ChannelsExpr, ...) \
 	if (TRACE_PRIVATE_CHANNELEXPR_IS_ENABLED(ChannelsExpr)) \
-		if (auto LogScope = Trace::Private::TLogScope<F##LoggerName##EventName##Fields>::EnterFunc( \
-			LoggerName##EventName##Event.GetUid() ? LoggerName##EventName##Event.GetUid() : F##LoggerName##EventName##Fields::Initialize(), \
-			TRACE_PRIVATE_EVENT_SIZE(LoggerName, EventName) + (0, ##__VA_ARGS__))) \
+		if (auto LogScope = Trace::Private::TLogScope<F##LoggerName##EventName##Fields>::EnterFunc(__VA_ARGS__)) \
 				if (const auto& __restrict EventName = *(F##LoggerName##EventName##Fields*)LogScope.GetPointer()) \
 
 #define TRACE_PRIVATE_LOG_EPILOG() \

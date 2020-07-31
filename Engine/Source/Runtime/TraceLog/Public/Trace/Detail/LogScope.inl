@@ -178,15 +178,18 @@ template <>		struct TLogScopeSelector<true>	{ typedef FImportantLogScope Type; }
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-auto TLogScope<T>::Enter(uint32 Uid, uint32 Size)
+auto TLogScope<T>::Enter(uint32 ExtraSize)
 {
+	uint32 Size = T::GetSize() + ExtraSize;
+	uint32 Uid = T::GetUid();
+
 	using LogScopeType = typename TLogScopeSelector<T::bIsImportant>::Type;
 	return LogScopeType::template Enter<T::EventFlags>(Uid, Size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
+auto TLogScope<T>::ScopedEnter(uint32 ExtraSize)
 {
 	static_assert(!T::bIsImportant, "Important events cannot be logged with scope");
 
@@ -203,12 +206,12 @@ auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 
 	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 
-	return Enter(Uid, Size);
+	return Enter(ExtraSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
+auto TLogScope<T>::ScopedStampedEnter(uint32 ExtraSize)
 {
 	static_assert(!T::bIsImportant, "Important events cannot be logged with scope");
 
@@ -228,7 +231,7 @@ auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
 
 	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 
-	return Enter(Uid, Size);
+	return Enter(ExtraSize);
 }
 
 } // namespace Private
