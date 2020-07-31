@@ -571,7 +571,10 @@ uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 	struct FPacket
 		: public FPacketEncoded
 	{
-		uint8 Data[GPoolBlockSize + 64];
+		// Buffer size is expressed as "A + B" where A is a maximum expected
+		// input size (i.e. at least GPoolBlockSize) and B is LZ4 overhead as
+		// per LZ4_COMPRESSBOUND.
+		uint8 Data[8129 + 64];
 	};
 
 	FPacket Packet;
