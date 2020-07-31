@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ARDependencyHandler.h"
+#include "Features/IModularFeatures.h"
 
 
 UARDependencyHandler* UARDependencyHandler::GetARDependencyHandler()
