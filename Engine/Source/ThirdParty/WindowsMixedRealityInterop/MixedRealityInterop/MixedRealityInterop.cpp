@@ -1691,7 +1691,11 @@ namespace WindowsMixedReality
 
 	bool MixedRealityInterop::IsDisplayOpaque()
 	{
-		return HolographicDisplay::GetDefault().IsOpaque();
+		if (HolographicDisplay::GetDefault())
+		{
+			return HolographicDisplay::GetDefault().IsOpaque();
+		}
+		return false;
 	}
 
 	bool MixedRealityInterop::GetDisplayDimensions(int& width, int& height)
