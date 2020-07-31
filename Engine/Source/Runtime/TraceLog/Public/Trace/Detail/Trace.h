@@ -97,9 +97,6 @@ namespace Trace
 		enum { EventFlags = PartialEventFlags|(decltype(EventProps_Private)::MaybeHasAux ? Trace::Private::FEventInfo::Flag_MaybeHasAux : 0), }; \
 	};
 
-#define TRACE_PRIVATE_EVENT_IS_IMPORTANT(LoggerName, EventName) \
-	(F##LoggerName##EventName##Fields::EventFlags & F##LoggerName##EventName##Fields::Important)
-
 #define TRACE_PRIVATE_EVENT_SIZE(LoggerName, EventName) \
 	decltype(F##LoggerName##EventName##Fields::EventProps_Private)::Size
 
