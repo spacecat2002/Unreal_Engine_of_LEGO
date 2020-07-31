@@ -552,24 +552,25 @@ Done:
 #endif
 		}
 
-		if ((Desc.TargetableFlags & TexCreate_UAV) && !bDeferTextureAllocation)
-		{
-			// The render target desc is invalid if a UAV is requested with an RHI that doesn't support the high-end feature level.
-			check(GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5 || GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1);
-			Found->RenderTargetItem.UAV = RHICreateUnorderedAccessView(Found->RenderTargetItem.TargetableTexture, 0);
-		}
-
 		if (!bDeferTextureAllocation)
 		{
+			if ((Desc.TargetableFlags & TexCreate_UAV))
+			{
+				// The render target desc is invalid if a UAV is requested with an RHI that doesn't support the high-end feature level.
+				check(GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5 || GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1);
+				Found->RenderTargetItem.UAV = RHICreateUnorderedAccessView(Found->RenderTargetItem.TargetableTexture, 0);
+			}
+
 			// Only calculate allocation level if we actually allocated something. If bDeferTextureAllocation is true, the caller should call 
 			// UpdateElementSize once it's set the resources on the created object.
 			AllocationLevelInKB += ComputeSizeInKB(*Found);
 			VerifyAllocationLevel();
+
+			Found->InitPassthroughRDG();
 		}
 
 		FoundIndex = PooledRenderTargets.Num() - 1;
 		Found->Desc.DebugName = InDebugName;
-		Found->InitPassthroughRDG();
 	}
 
 	check(Found->IsFree());

@@ -1819,6 +1819,7 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 				{
 					LocalSceneDepthZ.InitRDG();
 				}
+				LocalSceneDepthZ.InitPassthroughRDG();
 			}
 
 			GRenderTargetPool.UpdateElementSize(SceneDepthZ, OldElementSize);
