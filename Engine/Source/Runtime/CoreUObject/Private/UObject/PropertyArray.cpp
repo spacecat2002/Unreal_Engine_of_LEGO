@@ -743,4 +743,13 @@ FField* FArrayProperty::GetInnerFieldByName(const FName& InName)
 	return nullptr;
 }
 
+void FArrayProperty::GetInnerFields(TArray<FField*>& OutFields)
+{
+	if (Inner)
+	{
+		OutFields.Add(Inner);
+		Inner->GetInnerFields(OutFields);
+	}
+}
+
 #include "UObject/DefineUPropertyMacros.h"
