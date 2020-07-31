@@ -5,6 +5,7 @@
 #include "CoreTypes.h"
 #include "UObject/Object.h"
 #include "Features/IModularFeature.h"
+#include "Engine/LatentActionManager.h"
 
 #include "ARDependencyHandler.generated.h"
 
