@@ -3075,8 +3075,7 @@ LANDSCAPE_API void ALandscapeProxy::Import(const FGuid& InGuid, int32 InMinX, in
 		// Retrigger a caching of the platform data as we wrote again in the textures
 		for (UTexture2D* Texture : LayersTextures)
 		{
-			Texture->ClearAllCachedCookedPlatformData();
-			Texture->BeginCachePlatformData();
+			Texture->UpdateResource();
 		}
 
 		LandscapeActor->RequestLayersContentUpdateForceAll();
