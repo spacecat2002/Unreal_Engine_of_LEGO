@@ -110,7 +110,7 @@ uint32 FWriteTlsContext::GetThreadId()
 thread_local FWriteTlsContext	GTlsContext;
 
 ////////////////////////////////////////////////////////////////////////////////
-static uint32 Writer_GetThreadId()
+uint32 Writer_GetThreadId()
 {
 	return GTlsContext.GetThreadId();
 }
