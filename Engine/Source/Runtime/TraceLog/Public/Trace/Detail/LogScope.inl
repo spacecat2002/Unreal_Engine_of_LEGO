@@ -188,6 +188,8 @@ auto TLogScope<T>::Enter(uint32 Uid, uint32 Size)
 template <class T>
 auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 {
+	static_assert(!T::bIsImportant, "Important events cannot be logged with scope");
+
 	uint8 EnterUid = uint8(EKnownEventUids::EnterScope << EKnownEventUids::_UidShift);
 
 	FWriteBuffer* Buffer = Writer_GetBuffer();
@@ -208,6 +210,8 @@ auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 template <class T>
 auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
 {
+	static_assert(!T::bIsImportant, "Important events cannot be logged with scope");
+
 	uint64 Stamp;
 
 	FWriteBuffer* Buffer = Writer_GetBuffer();
