@@ -180,7 +180,8 @@ template <>		struct TLogScopeSelector<true>	{ typedef FImportantLogScope Type; }
 template <class T>
 auto TLogScope<T>::Enter(uint32 Uid, uint32 Size)
 {
-	return TLogScopeSelector<T::bIsImportant>::Type::template Enter<T::EventFlags>(Uid, Size);
+	using LogScopeType = typename TLogScopeSelector<T::bIsImportant>::Type;
+	return LogScopeType::template Enter<T::EventFlags>(Uid, Size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
