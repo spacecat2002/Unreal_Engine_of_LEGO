@@ -93,6 +93,7 @@ namespace EXRSystemFlags
 		IsAR          = 0x01,
 		IsTablet      = 0x02,
 		IsHeadMounted = 0x04,
+		SupportsHandTracking = 0x08,
 	};
 }
 /**
