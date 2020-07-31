@@ -314,6 +314,17 @@ void FVulkanDevice::CreateDevice()
 
 	FVulkanPlatform::EnablePhysicalDeviceFeatureExtensions(DeviceInfo);
 
+#if VULKAN_SUPPORTS_NV_DEVICE_DIAGNOSTIC_CONFIG
+	VkDeviceDiagnosticsConfigCreateInfoNV DeviceDiagnosticsConfigCreateInfoNV;
+	if (OptionalDeviceExtensions.HasNVDeviceDiagnosticConfig)
+	{
+		ZeroVulkanStruct(DeviceDiagnosticsConfigCreateInfoNV, VK_STRUCTURE_TYPE_DEVICE_DIAGNOSTICS_CONFIG_CREATE_INFO_NV);
+		DeviceDiagnosticsConfigCreateInfoNV.flags = VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_SHADER_DEBUG_INFO_BIT_NV | VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_RESOURCE_TRACKING_BIT_NV | VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_AUTOMATIC_CHECKPOINTS_BIT_NV;
+		DeviceDiagnosticsConfigCreateInfoNV.pNext = const_cast<void*>(DeviceInfo.pNext);
+		DeviceInfo.pNext = &DeviceDiagnosticsConfigCreateInfoNV;
+	}
+#endif
+
 #if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
 	VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
 	if (bHasSeparateDepthStencilLayouts)
