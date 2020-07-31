@@ -14,7 +14,7 @@
 #include "Rendering/MotionVectorSimulation.h"
 #include "Evaluation/IMovieSceneMotionVectorSimulation.h"
 #include "UObject/StrongObjectPtr.h"
-
+#include "SkeletalMeshRestoreState.h"
 
 bool ShouldUsePreviewPlayback(IMovieScenePlayer& Player, UObject& RuntimeObject)
 {
@@ -94,35 +94,7 @@ struct FStopPlayingMontageTokenProducer : IMovieScenePreAnimatedTokenProducer
 		return FToken(TempInstance, TempMontageInstanceId);
 	}
 };
-#if WITH_EDITOR
-struct FChildComponentEditorParams
-{
-	void SaveState(USkeletalMeshComponent* InSkelMeshComp)
-	{
-		if (InSkelMeshComp)
-		{
-			ChildSkelMesh = InSkelMeshComp;
-			bUpdateAnimationInEditor = InSkelMeshComp->GetUpdateAnimationInEditor();
-			bUpdateClothInEditor = InSkelMeshComp->GetUpdateClothInEditor();
-			//parent actually does this in bindskelmeshcomponent
-			InSkelMeshComp->SetUpdateAnimationInEditor(true);
-			InSkelMeshComp->SetUpdateClothInEditor(true);
-		}
-	}
 
-	void RestoreState()
-	{
-		if (ChildSkelMesh.IsValid())
-		{
-			ChildSkelMesh->SetUpdateAnimationInEditor(bUpdateAnimationInEditor);
-			ChildSkelMesh->SetUpdateClothInEditor(bUpdateClothInEditor);
-		}
-	}
-	bool bUpdateAnimationInEditor;
-	bool bUpdateClothInEditor;
-	TWeakObjectPtr<USkeletalMeshComponent> ChildSkelMesh;
-};
-#endif
 
 struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 {
@@ -133,28 +105,9 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 			FToken(USkeletalMeshComponent* InComponent)
 			{
 				// Cache this object's current update flag and animation mode
-				VisibilityBasedAnimTickOption = InComponent->VisibilityBasedAnimTickOption;
 				AnimationMode = InComponent->GetAnimationMode();
 				CachedAnimInstance.Reset(InComponent->AnimScriptInstance);
-
-#if WITH_EDITOR
-				ChildCompEditorParams.SetNum(0);
-				bUpdateAnimationInEditor = InComponent->GetUpdateAnimationInEditor();
-				bUpdateClothInEditor = InComponent->GetUpdateClothInEditor();
-				TArray<USceneComponent*> ChildComponents;
-				InComponent->GetChildrenComponents(true, ChildComponents);
-				for (USceneComponent* ChildComponent : ChildComponents)
-				{
-					USkeletalMeshComponent* SkelMeshComp = Cast<USkeletalMeshComponent>(ChildComponent);
-					if (SkelMeshComp)
-					{
-						FChildComponentEditorParams Params;
-						Params.SaveState(SkelMeshComp);
-						ChildCompEditorParams.Add(Params);
-					}
-				}
-#endif
-				
+				SkeletalMeshRestoreState.SaveState(InComponent);
 			}
 
 			virtual void RestoreState(UObject& ObjectToRestore, IMovieScenePlayer& Player)
@@ -170,8 +123,6 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 
 				FAnimCustomInstanceHelper::UnbindFromSkeletalMeshComponent<UAnimSequencerInstance>(Component);
 
-				// Reset the mesh component update flag and animation mode to what they were before we animated the object
-				Component->VisibilityBasedAnimTickOption = VisibilityBasedAnimTickOption;
 				if (Component->GetAnimationMode() != AnimationMode)
 				{
 					// this SetAnimationMode reinitializes even if the mode is same
@@ -202,16 +153,10 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 				Component->FinalizeBoneTransform();
 				Component->MarkRenderTransformDirty();
 				Component->MarkRenderDynamicDataDirty();
-				
-#if WITH_EDITOR
-				Component->SetUpdateAnimationInEditor(bUpdateAnimationInEditor);
-				Component->SetUpdateClothInEditor(bUpdateClothInEditor);
+						
+				// Reset the mesh component update flag and animation mode to what they were before we animated the object
+				SkeletalMeshRestoreState.RestoreState(Component);
 
-				for (FChildComponentEditorParams& ChildParams : ChildCompEditorParams)
-				{
-					ChildParams.RestoreState();
-				}
-#endif
 				// if not game world, don't clean this up
 				if (Component->GetWorld() != nullptr && Component->GetWorld()->IsGameWorld() == false)
 				{
@@ -219,15 +164,11 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 				}
 			}
 
-			EVisibilityBasedAnimTickOption VisibilityBasedAnimTickOption;
 			EAnimationMode::Type AnimationMode;
 			TStrongObjectPtr<UAnimInstance> CachedAnimInstance;
 
-#if WITH_EDITOR
-			bool bUpdateAnimationInEditor;
-			bool bUpdateClothInEditor;
-			TArray<FChildComponentEditorParams> ChildCompEditorParams;
-#endif
+			FSkeletalMeshRestoreState SkeletalMeshRestoreState;
+
 		};
 
 		return FToken(CastChecked<USkeletalMeshComponent>(&Object));
