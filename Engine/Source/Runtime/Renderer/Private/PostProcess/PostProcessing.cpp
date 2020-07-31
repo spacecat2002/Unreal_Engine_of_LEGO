@@ -169,6 +169,12 @@ IMPLEMENT_GLOBAL_SHADER(FComposeSeparateTranslucencyPS, "/Engine/Private/Compose
 
 FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColor, const FSeparateTranslucencyTextures& SeparateTranslucencyTextures)
 {
+	// if nothing is rendered into the separate translucency, then just return the existing Scenecolor
+	if (!SeparateTranslucencyTextures.IsColorValid() && !SeparateTranslucencyTextures.IsColorModulateValid())
+	{
+		return SceneColor;
+	}
+
 	FRDGTextureDesc SceneColorDesc = SceneColor->Desc;
 	SceneColorDesc.Reset();
 
