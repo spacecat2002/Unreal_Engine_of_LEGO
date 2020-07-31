@@ -186,8 +186,10 @@ static uint32							GPoolUsage;			// = 0;
 #undef T_ALIGN
 
 ////////////////////////////////////////////////////////////////////////////////
-static FPoolBlockList Writer_AddPageToPool(uint32 PageSize)
+static FPoolBlockList Writer_AddPageToPool()
 {
+	uint32 PageSize = GPoolPageSize;
+
 	// The free list is empty so we have to populate it with some new blocks.
 	uint8* PageBase = (uint8*)Writer_MemoryAllocate(PageSize, PLATFORM_CACHE_LINE_SIZE);
 	GPoolUsage += PageSize;
@@ -224,7 +226,7 @@ static FPoolBlockList Writer_AddPageToPool(uint32 PageSize)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static FWriteBuffer* Writer_AllocateBlockFromPool(uint32 PageSize)
+static FWriteBuffer* Writer_AllocateBlockFromPool()
 {
 	// Fetch a new buffer
 	FWriteBuffer* Ret;
@@ -258,7 +260,7 @@ static FWriteBuffer* Writer_AllocateBlockFromPool(uint32 PageSize)
 			continue;
 		}
 
-		FPoolBlockList BlockList = Writer_AddPageToPool(PageSize);
+		FPoolBlockList BlockList = Writer_AddPageToPool();
 		Ret = BlockList.Head;
 
 		// And insert the block list into the freelist. 'Block' is now the last block
@@ -341,9 +343,9 @@ TRACELOG_API FWriteBuffer* Writer_GetBuffer()
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
-static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
+static FWriteBuffer* Writer_NextBufferInternal()
 {
-	FWriteBuffer* NextBuffer = Writer_AllocateBlockFromPool(PageSize);
+	FWriteBuffer* NextBuffer = Writer_AllocateBlockFromPool();
 
 	NextBuffer->Cursor = (uint8*)NextBuffer - NextBuffer->Size;
 	NextBuffer->Committed = NextBuffer->Cursor;
@@ -403,7 +405,7 @@ TRACELOG_API FWriteBuffer* Writer_NextBuffer(int32 Size)
 		CurrentBuffer->Cursor -= Size;
 	}
 
-	FWriteBuffer* NextBuffer = Writer_NextBufferInternal(GPoolPageSize);
+	FWriteBuffer* NextBuffer = Writer_NextBufferInternal();
 
 	NextBuffer->Cursor += Size;
 	return NextBuffer;
