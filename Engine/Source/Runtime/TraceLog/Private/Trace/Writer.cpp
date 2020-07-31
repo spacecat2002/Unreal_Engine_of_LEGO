@@ -393,12 +393,6 @@ static FWriteBuffer* Writer_NextBufferInternal()
 ////////////////////////////////////////////////////////////////////////////////
 TRACELOG_API FWriteBuffer* Writer_NextBuffer(int32 Size)
 {
-	if (Size >= GPoolBlockSize - sizeof(FWriteBuffer))
-	{
-		/* Someone is trying to write an event that is too large */
-		return nullptr;
-	}
-
 	FWriteBuffer* CurrentBuffer = GTlsWriteBuffer;
 	if (CurrentBuffer != &GNullWriteBuffer)
 	{
@@ -406,6 +400,12 @@ TRACELOG_API FWriteBuffer* Writer_NextBuffer(int32 Size)
 	}
 
 	FWriteBuffer* NextBuffer = Writer_NextBufferInternal();
+
+	if (Size >= NextBuffer->Size)
+	{
+		// Someone is trying to write an event that is too large
+		return nullptr;
+	}
 
 	NextBuffer->Cursor += Size;
 	return NextBuffer;
