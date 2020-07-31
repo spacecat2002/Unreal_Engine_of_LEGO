@@ -134,6 +134,11 @@ bool FLuminPlatformMisc::GetOverrideResolution(int32 &ResX, int32& ResY)
 	return true;
 }
 
+const TCHAR* FLuminPlatformMisc::GetPlatformFeaturesModuleName()
+{
+	return TEXT("LuminPlatformFeatures");
+}
+
 bool FLuminPlatformMisc::ShouldUseVulkan()
 {
 	bool bUseVulkan = false;

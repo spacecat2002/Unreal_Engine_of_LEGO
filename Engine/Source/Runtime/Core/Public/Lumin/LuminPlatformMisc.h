@@ -19,6 +19,7 @@ struct CORE_API FLuminPlatformMisc : public FAndroidMisc
 	static bool SupportsMessaging();
 	static void GetValidTargetPlatforms(TArray<FString>& TargetPlatformNames);
 	static bool GetOverrideResolution(int32 &ResX, int32& ResY);
+	static const TCHAR* GetPlatformFeaturesModuleName();
 
 	static bool GetUseVirtualJoysticks()
 	{
