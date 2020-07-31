@@ -1130,10 +1130,10 @@ void GetRenderLightParameters(
 	}
 }
 
-void FDeferredShadingSceneRenderer::RenderLights(
+FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 	FRDGBuilder& GraphBuilder,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	FRDGTextureRef& SceneColorTexture,
+	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef SceneDepthTexture,
 	FSortedLightSetSceneInfo &SortedLightSet,
 	const FHairStrandsRenderingData* HairDatas)
@@ -1970,6 +1970,8 @@ void FDeferredShadingSceneRenderer::RenderLights(
 			}
 		}
 	}
+
+	return SceneColorTexture;
 }
 
 void FDeferredShadingSceneRenderer::RenderLightArrayForOverlapViewmode(FRHICommandList& RHICmdList, const TSparseArray<FLightSceneInfoCompact>& LightArray)

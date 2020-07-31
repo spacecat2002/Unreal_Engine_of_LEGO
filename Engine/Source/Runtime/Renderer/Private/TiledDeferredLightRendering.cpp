@@ -407,8 +407,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(
 		}
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-		GraphBuilder.PreallocateTexture(SceneColorTexture);
-		GraphBuilder.QueueTextureExtraction(SceneColorTexture, &SceneContext.GetSceneColor());
+		ConvertToExternalTexture(GraphBuilder, SceneColorTexture, SceneContext.GetSceneColor());
 	}
 
 	return SceneColorTexture;
