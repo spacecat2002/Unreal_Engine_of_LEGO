@@ -6,7 +6,6 @@
 
 #include "ShowFlags.h"
 #include "SystemSettings.h"
-#include "UnrealEngine.h"
 
 static bool IsValidNameChar(TCHAR c)
 {
@@ -798,7 +797,7 @@ FEngineShowFlags::ECustomShowFlag FEngineShowFlags::RegisterCustomShowFlag(const
 	FString Name;
 	while (*CurrentChar)
 	{
-		if (ensureMsgf(IsValidNameChar(*CurrentChar), TEXT("Custom showflag \"%s\" contains invalid characters"), InName))
+		if (ensureAlwaysMsgf(IsValidNameChar(*CurrentChar), TEXT("Custom showflag \"%s\" contains invalid characters"), InName))
 		{
 			Name += *CurrentChar;
 		}
@@ -807,27 +806,26 @@ FEngineShowFlags::ECustomShowFlag FEngineShowFlags::RegisterCustomShowFlag(const
 
 	FEngineShowFlags::ECustomShowFlag ReturnIndex;
 	{
+		const uint32 CurrentIndex = (uint32)FindIndexByName(*Name, nullptr);
+		// Check if already exists
+		if (CurrentIndex != INDEX_NONE)
+		{
+			if (ensureAlwaysMsgf(CurrentIndex >= SF_FirstCustom, TEXT("Attempted to register a custom showflag with the same name as an engine showflag: %s"), InName))
+			{
+				return (FEngineShowFlags::ECustomShowFlag)(CurrentIndex - SF_FirstCustom);
+			}
+			else
+			{
+				return ECustomShowFlag::None;
+			}
+		}
+
 		FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_Write);
-		FCustomShowFlagData* Data = nullptr;
+		ReturnIndex = (FEngineShowFlags::ECustomShowFlag)CustomShowFlagsInternal::RegisteredCustomShowFlags.AddDefaulted(1);
+		CustomShowFlagsInternal::DefaultState.Add(1);
+		CustomShowFlagsInternal::NameToIndex.Add(Name, ReturnIndex);
 
-		if (FEngineShowFlags::ECustomShowFlag* Existing = CustomShowFlagsInternal::NameToIndex.Find(Name))
-		{
-			ReturnIndex = *Existing;
-		}
-		else
-		{
-			ReturnIndex = (FEngineShowFlags::ECustomShowFlag)CustomShowFlagsInternal::RegisteredCustomShowFlags.AddDefaulted(1);
-			CustomShowFlagsInternal::DefaultState.Add(1);
-			CustomShowFlagsInternal::NameToIndex.Add(Name, ReturnIndex);
-		}
-
-		if (ReturnIndex == ECustomShowFlag::None)
-		{
-			UE_LOG(LogEngine, Error, TEXT("Attempted to register a custom showflag with the same name as an engine showflag: %s"), *Name);
-			return ECustomShowFlag::None;
-		}
-
-		Data = &CustomShowFlagsInternal::RegisteredCustomShowFlags[(int32)ReturnIndex];
+		FCustomShowFlagData* Data = &CustomShowFlagsInternal::RegisteredCustomShowFlags[(int32)ReturnIndex];
 		Data->Name = MoveTemp(Name);
 		Data->DisplayName = DisplayName.IsEmpty() ? FText::FromString(Data->Name) : DisplayName;
 		Data->Group = Group;
