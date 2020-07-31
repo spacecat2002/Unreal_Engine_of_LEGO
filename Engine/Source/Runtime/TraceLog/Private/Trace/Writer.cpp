@@ -287,12 +287,12 @@ static FWriteBuffer* Writer_AllocateBlockFromPool(uint32 PageSize)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static void Writer_FreeBlockListToPool(FPoolBlockList BlockList)
+static void Writer_FreeBlockListToPool(FWriterBuffer* Head, FWriteBuffer* Tail)
 {
-	for (FWriteBuffer* ListNode = BlockList.Tail;; PlatformYield())
+	for (FWriteBuffer* ListNode = Tail;; PlatformYield())
 	{
 		ListNode->NextBuffer = AtomicLoadRelaxed(&GPoolFreeList);
-		if (AtomicCompareExchangeRelease(&GPoolFreeList, BlockList.Head, ListNode->NextBuffer))
+		if (AtomicCompareExchangeRelease(&GPoolFreeList, Head, ListNode->NextBuffer))
 		{
 			break;
 		}
@@ -506,7 +506,7 @@ static void Writer_DrainBuffers()
 	// Put the retirees we found back into the system again.
 	if (RetireList.Head != nullptr)
 	{
-		Writer_FreeBlockListToPool({ RetireList.Head, RetireList.Tail });
+		Writer_FreeBlockListToPool(RetireList.Head, RetireList.Tail);
 	}
 }
 
