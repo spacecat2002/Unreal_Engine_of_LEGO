@@ -717,10 +717,13 @@ FTextureResource* UTexture2D::CreateResource()
 				PlatformData->CanBeLoaded())
 			{
 				bMakeStreamble  = true;
+			}
+#endif
+			if (bMakeStreamble && IStreamingManager::Get().IsRenderAssetStreamingEnabled(EStreamableRenderAssetType::Texture))
+			{
 				NumRequestedMips = NumOfNonStreamingMips;
 			}
 			else
-#endif
 			{
 				const int32 NumMipsInTail = FMath::Max(GMinTextureResidentMipCount, PlatformData->GetNumMipsInTail());
 				// Bias is not allowed to shrink the mip count bellow NumMipsInTail.
