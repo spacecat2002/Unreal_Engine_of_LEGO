@@ -19,7 +19,7 @@ namespace Private {
 
 ////////////////////////////////////////////////////////////////////////////////
 int32			Encode(const void*, int32, void*, int32);
-static uint32	Writer_SendData(uint32, uint8* __restrict, uint32);
+uint32			Writer_SendData(uint32, uint8* __restrict, uint32);
 static void		Writer_EndThreadBuffer();
 void			Writer_UpdateControl();
 void			Writer_InitializeControl();
@@ -529,7 +529,7 @@ static UPTRINT					GDataHandle;		// = 0
 UPTRINT							GPendingDataHandle;	// = 0
 
 ////////////////////////////////////////////////////////////////////////////////
-static uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
+uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 {
 	if (!GDataHandle)
 	{
