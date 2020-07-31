@@ -287,7 +287,7 @@ static FWriteBuffer* Writer_AllocateBlockFromPool(uint32 PageSize)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static void Writer_FreeBlockListToPool(FWriterBuffer* Head, FWriteBuffer* Tail)
+static void Writer_FreeBlockListToPool(FWriteBuffer* Head, FWriteBuffer* Tail)
 {
 	for (FWriteBuffer* ListNode = Tail;; PlatformYield())
 	{
