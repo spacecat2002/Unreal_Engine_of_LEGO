@@ -123,7 +123,6 @@ struct FStreamingRenderAsset
 
 	float GetLODScreenSize(int32 NumMips, float MaxScreenSizeOverAllViews) const
 	{
-		check(NumMips > 0 && (uint32)NumMips < UE_ARRAY_COUNT(LODScreenSizes));
 		return IsTexture() ?
 			static_cast<float>(1 << (NumMips - 1)) :
 			GetNormalizedScreenSize(NumMips) * MaxScreenSizeOverAllViews;
