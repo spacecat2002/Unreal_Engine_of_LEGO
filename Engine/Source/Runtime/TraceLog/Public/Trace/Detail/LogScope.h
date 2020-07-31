@@ -63,11 +63,6 @@ public:
 
 
 ////////////////////////////////////////////////////////////////////////////////
-template <bool>	struct TLogScopeSelector;
-template <>		struct TLogScopeSelector<false>	{ typedef FLogScope Type; };
-template <>		struct TLogScopeSelector<true>	{ typedef FImportantLogScope Type; };
-
-////////////////////////////////////////////////////////////////////////////////
 template <class T>
 struct TLogScope
 {

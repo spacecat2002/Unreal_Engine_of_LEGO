@@ -172,6 +172,11 @@ inline void FScopedStampedLogScope::SetActive()
 
 
 ////////////////////////////////////////////////////////////////////////////////
+template <bool>	struct TLogScopeSelector;
+template <>		struct TLogScopeSelector<false>	{ typedef FLogScope Type; };
+template <>		struct TLogScopeSelector<true>	{ typedef FImportantLogScope Type; };
+
+////////////////////////////////////////////////////////////////////////////////
 template <class T>
 auto TLogScope<T>::Enter(uint32 Uid, uint32 Size)
 {
