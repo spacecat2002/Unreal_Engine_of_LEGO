@@ -2261,6 +2261,16 @@ void FSceneRenderer::PrepareViewRectsForRendering()
 		}
 
 		ComputeFamilySize();
+		
+		// Notify StereoRenderingDevice about new ViewRects
+		if (GEngine->StereoRenderingDevice.IsValid())
+		{
+			for (int32 i = 0; i < Views.Num(); i++)
+			{
+				FViewInfo& View = Views[i];
+				GEngine->StereoRenderingDevice->SetFinalViewRect(View.StereoPass, View.ViewRect);
+			}
+		}
 		return;
 	}
 
