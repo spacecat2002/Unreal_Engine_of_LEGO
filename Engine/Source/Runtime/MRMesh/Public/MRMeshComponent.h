@@ -56,6 +56,7 @@ public:
 };
 
 
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnMRMeshBrickDataUpdatedDelegate, const UMRMeshComponent*, const IMRMesh::FSendBrickDataArgs&);
 
 UCLASS(hideCategories=(Physics), meta = (BlueprintSpawnableComponent, Experimental), ClassGroup = Rendering)
 class MRMESH_API UMRMeshComponent : public UPrimitiveComponent, public IMRMesh, public IInterface_CollisionDataProvider
@@ -115,6 +116,8 @@ public:
 	const FLinearColor& GetWireframeColor() const { return WireframeColor; }
 	
 	UMaterialInterface* GetMaterialToUse() const;
+	
+	FOnMRMeshBrickDataUpdatedDelegate& OnBrickDataUpdated() { return OnBrickDataUpdatedDelegate; }
 
 protected:
 	virtual void OnActorEnableCollisionChanged() override;
@@ -206,4 +209,6 @@ private:
 	/** Temporarily saved data pointers used for constructing the collision mesh */
 	const TArray<FVector>* TempPosition = nullptr;
 	const TArray<MRMESH_INDEX_TYPE>* TempIndices = nullptr;
+	
+	FOnMRMeshBrickDataUpdatedDelegate OnBrickDataUpdatedDelegate;
 };

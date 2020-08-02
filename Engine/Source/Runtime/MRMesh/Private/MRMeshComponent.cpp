@@ -744,6 +744,8 @@ void UMRMeshComponent::SendBrickData_Internal(IMRMesh::FSendBrickDataArgs Args)
 {
 	check(IsInGameThread());
 	const bool bHasBrickData = Args.Indices.Num() > 0 && Args.PositionData.Num() > 0;
+	
+	OnBrickDataUpdatedDelegate.Broadcast(this, Args);
 
 #if SUPPORTS_PHYSICS_COOKING
 	UE_LOG(LogMrMesh, Log, TEXT("SendBrickData_Internal() processing brick %llu with %i triangles"), Args.BrickId, Args.Indices.Num() / 3);
