@@ -630,6 +630,44 @@ bool FDependsNodeTest::RunTest(const FString& Parameters)
 		FDependsNode A;
 		FDependsNode B;
 		FDependsNode C;
+		for (int Order = 0; Order < 2; ++Order)
+		{
+			A.ClearDependencies();
+			B.ClearReferencers();
+			A.SetIsDependencyListSorted(EDependencyCategory::Package, false);
+			B.SetIsReferencersSorted(false);
+			if (Order == 0)
+			{
+				A.AddDependency(&B, EDependencyCategory::Package, EDependencyProperty::None);
+				A.AddDependency(&B, EDependencyCategory::Package, EDependencyProperty::None);
+				A.AddDependency(&C, EDependencyCategory::Package, EDependencyProperty::None);
+				B.AddReferencer(&A);
+				B.AddReferencer(&A);
+				B.AddReferencer(&C);
+			}
+			else
+			{
+				A.AddDependency(&B, EDependencyCategory::Package, EDependencyProperty::None);
+				A.AddDependency(&C, EDependencyCategory::Package, EDependencyProperty::None);
+				A.AddDependency(&C, EDependencyCategory::Package, EDependencyProperty::None);
+				B.AddReferencer(&A);
+				B.AddReferencer(&C);
+				B.AddReferencer(&C);
+			}
+			A.SetIsDependencyListSorted(EDependencyCategory::Package, true);
+			B.SetIsReferencersSorted(true);
+			Dependencies.Reset(0);
+			A.GetDependencies(Dependencies);
+			TestTrue(TEXT("Sorting a list removes duplicates"), CombinationEquals<FDependsNode* const>(Dependencies, TArrayView<FDependsNode* const>({ &B, &C })));
+			Referencers.Reset();
+			B.GetReferencers(Referencers);
+			TestTrue(TEXT("Sorting a list removes duplicates"), CombinationEquals<FDependsNode* const>(Referencers, TArrayView<FDependsNode* const>({ &A, &C })));
+		}
+	}
+	{
+		FDependsNode A;
+		FDependsNode B;
+		FDependsNode C;
 		A.SetIsDependencyListSorted(EDependencyCategory::Package, false);
 		B.SetIsReferencersSorted(false);
 		A.AddDependency(&B, EDependencyCategory::Package, EDependencyProperty::None);

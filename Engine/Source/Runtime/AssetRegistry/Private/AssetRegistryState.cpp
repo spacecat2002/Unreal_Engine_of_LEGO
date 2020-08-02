@@ -1626,6 +1626,8 @@ void FAssetRegistryState::RemoveAssetData(FAssetData* AssetData, bool bRemoveDep
 		// Only remove dependencies and package data if there are no other known assets in the package
 		if (OldPackageAssets->Num() == 0)
 		{
+			CachedAssetsByPackageName.Remove(AssetData->PackageName);
+
 			// We need to update the cached dependencies references cache so that they know we no
 			// longer exist and so don't reference them.
 			if (bRemoveDependencyData)
@@ -1836,7 +1838,7 @@ namespace UE
 {
 namespace AssetRegistry
 {
-	void AppendString(EDependencyProperty Properties, FStringBuilderBase& Builder)
+	void PropertiesToString(EDependencyProperty Properties, FStringBuilderBase& Builder, EDependencyCategory CategoryFilter)
 	{
 		bool bFirst = true;
 		auto AppendPropertyName = [&Properties, &Builder, &bFirst](EDependencyProperty TestProperty, const TCHAR* NameWith, const TCHAR* NameWithout)
@@ -1855,10 +1857,16 @@ namespace AssetRegistry
 			}
 			bFirst = false;
 		};
-		AppendPropertyName(EDependencyProperty::Hard, TEXT("Hard"), TEXT("Soft"));
-		AppendPropertyName(EDependencyProperty::Game, TEXT("Game"), TEXT("EditorOnly"));
-		AppendPropertyName(EDependencyProperty::Build, TEXT("Build"), TEXT("NotBuild"));
-		AppendPropertyName(EDependencyProperty::Direct, TEXT("Direct"), TEXT("Indirect"));
+		if (!!(CategoryFilter & EDependencyCategory::Package))
+		{
+			AppendPropertyName(EDependencyProperty::Hard, TEXT("Hard"), TEXT("Soft"));
+			AppendPropertyName(EDependencyProperty::Game, TEXT("Game"), TEXT("EditorOnly"));
+			AppendPropertyName(EDependencyProperty::Build, TEXT("Build"), TEXT("NotBuild"));
+		}
+		if (!!(CategoryFilter & EDependencyCategory::Manage))
+		{
+			AppendPropertyName(EDependencyProperty::Direct, TEXT("Direct"), TEXT("Indirect"));
+		}
 		static_assert((EDependencyProperty::PackageMask | EDependencyProperty::SearchableNameMask | EDependencyProperty::ManageMask) == EDependencyProperty::AllMask,
 			"Need to handle new flags in this function");
 	}
@@ -2160,8 +2168,9 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 							{
 								PageBuffer.Append(TEXT("			"));
 								AssetDependency.AssetId.AppendString(PageBuffer);
-								PageBuffer.Append(TEXT(" "));
-								AppendString(AssetDependency.Properties, PageBuffer);
+								PageBuffer.Append(TEXT("\t\t{"));
+								PropertiesToString(AssetDependency.Properties, PageBuffer, AssetDependency.Category);
+								PageBuffer.Append(TEXT("}"));
 								AddLine();
 							}
 						}

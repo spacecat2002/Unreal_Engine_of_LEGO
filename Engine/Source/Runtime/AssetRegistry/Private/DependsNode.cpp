@@ -289,7 +289,7 @@ void FDependsNode::AddDependency(FDependsNode* InDependency, UE::AssetRegistry::
 
 void FDependsNode::AddPackageDependencySet(FDependsNode* InDependency, const FPackageFlagSet& PropertyCombinationSet)
 {
-	int32 Index = Algo::LowerBound(PackageDependencies, InDependency);
+	int32 Index = PackageIsSorted ? Algo::LowerBound(PackageDependencies, InDependency) : PackageDependencies.Num();
 	if (PackageDependencies.Num() <= Index || PackageDependencies[Index] != InDependency)
 	{
 		PackageDependencies.Insert(InDependency, Index);
@@ -380,7 +380,6 @@ void FDependsNode::RefreshReferencers()
 	}
 }
 
-
 void FDependsNode::ClearDependencies(UE::AssetRegistry::EDependencyCategory Category)
 {
 	using namespace UE::AssetRegistry;
@@ -398,6 +397,11 @@ void FDependsNode::ClearDependencies(UE::AssetRegistry::EDependencyCategory Cate
 		ManageDependencies.Empty();
 		ManageFlags.Empty();
 	}
+}
+
+void FDependsNode::ClearReferencers()
+{
+	Referencers.Empty();
 }
 
 void FDependsNode::RemoveManageReferencesToNode()
@@ -817,7 +821,7 @@ void SortDependencyList(TArray<FDependsNode*>& Dependencies, TBitArray<>* Flags)
 		if (WriteIndex < Num - 1)
 		{
 			++WriteIndex;
-			for (int32 ReadIndex = WriteIndex + 2; ReadIndex < Num; ++ReadIndex)
+			for (int32 ReadIndex = WriteIndex + 1; ReadIndex < Num; ++ReadIndex)
 			{
 				if (DependencyData[ReadIndex] != DependencyData[WriteIndex-1])
 				{
@@ -848,39 +852,29 @@ void SortDependencyList(TArray<FDependsNode*>& Dependencies, TBitArray<>* Flags)
 		TBitArray<> NewFlags;
 		NewDependencies.Reserve(Num);
 		NewFlags.Reserve(Num*FlagSetWidth);
-		int OrderIndex = 0;
-		int ReadIndex = Order[OrderIndex];
-		while (true)
+
+		int ReadIndex = Order[0];
+		NewDependencies.Add(DependencyData[ReadIndex]);
+		NewFlags.AddRange(*Flags, FlagSetWidth, ReadIndex * FlagSetWidth);
+
+		for (int OrderIndex = 1; OrderIndex < Num; ++OrderIndex)
 		{
-			FDependsNode* DependencyToAdd = DependencyData[ReadIndex];
-			NewDependencies.Add(DependencyToAdd);
-			int32 WriteBitIndex = NewFlags.AddRange(*Flags, FlagSetWidth, ReadIndex * FlagSetWidth);
-			if (++OrderIndex == Num)
-			{
-				break;
-			}
 			ReadIndex = Order[OrderIndex];
-			if (DependencyData[ReadIndex] == DependencyToAdd)
+			FDependsNode* DependencyToAdd = DependencyData[ReadIndex];
+			if (DependencyToAdd != NewDependencies.Last())
 			{
-				FCombinationSet WriteSet;
-				WriteSet.Load(NewFlags, WriteBitIndex);
-				while (OrderIndex < Num)
-				{
-					ReadIndex = Order[OrderIndex];
-					if (DependencyData[ReadIndex] != DependencyToAdd)
-					{
-						break;
-					}
-					FCombinationSet NextFlags;
-					NextFlags.Load(*Flags, ReadIndex * FlagSetWidth);
-					WriteSet.AddRange(NextFlags);
-					++OrderIndex;
-				}
-				WriteSet.Save(NewFlags, WriteBitIndex);
+				NewDependencies.Add(DependencyToAdd);
+				NewFlags.AddRange(*Flags, FlagSetWidth, ReadIndex * FlagSetWidth);
 			}
-			if (OrderIndex == Num)
+			else
 			{
-				break;
+				const int ExistingBitIndex = (NewDependencies.Num() - 1) * FlagSetWidth;
+				FCombinationSet ExistingSet;
+				ExistingSet.Load(NewFlags, ExistingBitIndex);
+				FCombinationSet NewSet;
+				NewSet.Load(*Flags, ReadIndex * FlagSetWidth);
+				ExistingSet.AddRange(NewSet);
+				ExistingSet.Save(NewFlags, ExistingBitIndex);
 			}
 		}
 		Swap(Dependencies, NewDependencies);

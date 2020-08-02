@@ -65,6 +65,7 @@ public:
 	bool ContainsDependency(FDependsNode* InDependency, UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::All) const;
 	/** Clear all dependency records from this node */
 	void ClearDependencies(UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::All);
+	void ClearReferencers();
 	/** Removes Manage dependencies on this node and clean up referencers array. Manage references are the only ones safe to remove at runtime */
 	void RemoveManageReferencesToNode();
 	/** Remove all nodes from referencers and dependencies for which ShouldRemove returns true */
