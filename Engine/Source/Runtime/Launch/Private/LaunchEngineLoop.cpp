@@ -2263,6 +2263,14 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		FPlatformMemory::Init();
 	}
 
+#if !(IS_PROGRAM || WITH_EDITOR)
+	if (FIoDispatcher::IsInitialized())
+	{
+		SCOPED_BOOT_TIMING("InitIoDispatcher");
+		FIoDispatcher::InitializePostSettings();
+	}
+#endif
+
 	// Let LogConsole know what ini file it should use to save its setting on exit.
 	// We can't use GGameIni inside log console because it's destroyed in the global
 	// scoped pointer and at that moment GGameIni may already be gone.
