@@ -17,13 +17,13 @@ struct FWriteBuffer;
 class FLogScope
 {
 public:
-	constexpr explicit		operator bool () const { return true; }
-	uint8*					GetPointer() const;
-	void					Commit() const;
-	const FLogScope&		operator << (bool) const;
-	void					operator += (const FLogScope&) const;
 	template <uint32 Flags>
 	static FLogScope		Enter(uint32 Uid, uint32 Size);
+	uint8*					GetPointer() const;
+	void					Commit() const;
+	void					operator += (const FLogScope&) const;
+	const FLogScope&		operator << (bool) const	{ return *this; }
+	constexpr explicit		operator bool () const		{ return true; }
 
 private:
 	template <class T> void	EnterPrelude(uint32 Size, bool bMaybeHasAux);
