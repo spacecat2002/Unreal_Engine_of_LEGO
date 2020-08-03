@@ -1148,10 +1148,16 @@ void FVirtualTexture2DResource::InitializeEditorResources(IVirtualTexture* InVir
 			check(MipWidth <= MipWidthInTiles * TileSizeInPixels);
 			check(MipHeight <= MipHeightInTiles * TileSizeInPixels);
 
-			FTexture2DRHIRef ResizedTexture2DRHI = RHICreateTexture2D(MipWidth, MipHeight, PixelFormat, 1, 1, TexCreateFlags, CreateInfo);
+			FTexture2DRHIRef ResizedTexture2DRHI = RHICreateTexture2D(MipWidth, MipHeight, PixelFormat, 1, 1, TexCreateFlags, ERHIAccess::CopyDest, CreateInfo);
 			FRHICopyTextureInfo CopyInfo;
 			CopyInfo.Size = FIntVector(MipWidth, MipHeight, 1);
+
+			// Put the source texture in CopySrc mode. The destination texture is already in CopyDest mode because we created it that way.
+			RHICommandList.Transition(FRHITransitionInfo(Texture2DRHI, ERHIAccess::SRVMask, ERHIAccess::CopySrc));
 			RHICommandList.CopyTexture(Texture2DRHI, ResizedTexture2DRHI, CopyInfo);
+			// Make the destination texture SRVMask again. We don't care about the source texture after this, so we won't bother transitioning it.
+			RHICommandList.Transition(FRHITransitionInfo(ResizedTexture2DRHI, ERHIAccess::CopyDest, ERHIAccess::SRVMask));
+
 			Texture2DRHI = MoveTemp(ResizedTexture2DRHI);
 		}
 
