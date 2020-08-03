@@ -2045,7 +2045,7 @@ bool FDynamicSkelMeshObjectDataGPUSkin::UpdateClothSimulationData(USkinnedMeshCo
 		else
 		{
 			ClothBlendWeight = SimMeshComponent->ClothBlendWeight;
-			ClothingSimData = SimMeshComponent->GetCurrentClothingData_GameThread();
+			ClothingSimData = SimMeshComponent->GetCurrentClothingData_AnyThread();
 		}
 
 		return true;
