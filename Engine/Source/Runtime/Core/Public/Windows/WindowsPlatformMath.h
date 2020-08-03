@@ -59,22 +59,11 @@ struct FWindowsPlatformMath : public TUnrealPlatformMathSSE4Base<FGenericPlatfor
 	static FORCEINLINE bool IsFinite(double A) { return _finite(A) != 0; }
 
 	#pragma intrinsic( _BitScanReverse )
-	static FORCEINLINE uint32 FloorLog2(uint32 Value) 
+	static FORCEINLINE uint32 FloorLog2(uint32 Value)
 	{
 		// Use BSR to return the log2 of the integer
 		unsigned long Log2;
 		if(_BitScanReverse(&Log2, Value) != 0)
-		{
-			return Log2;
-		}
-
-		return 0;
-	}
-	static FORCEINLINE uint64 FloorLog2_64(uint64 Value) 
-	{
-		// Use BSR to return the log2 of the integer
-		unsigned long Log2;
-		if (_BitScanReverse64(&Log2, Value) != 0)
 		{
 			return Log2;
 		}
@@ -116,6 +105,17 @@ struct FWindowsPlatformMath : public TUnrealPlatformMathSSE4Base<FGenericPlatfor
 		return uint64(1) << CeilLogTwo64(Arg);
 	}
 #if PLATFORM_64BITS
+	static FORCEINLINE uint64 FloorLog2_64(uint64 Value)
+	{
+		// Use BSR to return the log2 of the integer
+		unsigned long Log2;
+		if (_BitScanReverse64(&Log2, Value) != 0)
+		{
+			return Log2;
+		}
+
+		return 0;
+	}
 	static FORCEINLINE uint64 CeilLogTwo64(uint64 Arg)
 	{
 		int64 Bitmask = ((int64)(CountLeadingZeros64(Arg) << 57)) >> 63;
