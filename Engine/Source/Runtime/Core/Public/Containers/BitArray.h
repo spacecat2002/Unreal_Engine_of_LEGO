@@ -284,6 +284,7 @@ public:
 		return *this;
 	}
 
+
 	template<typename OtherAllocator>
 	FORCEINLINE TBitArray& operator=(const TBitArray< OtherAllocator >& Copy)
 	{
