@@ -126,6 +126,25 @@ bool UARBlueprintLibrary::ToggleARCapture(const bool bOnOff, const EARCaptureTyp
 	return false;
 }
 
+void UARBlueprintLibrary::SetEnabledXRCamera(bool bOnOff)
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->SetEnabledXRCamera(bOnOff);
+	}
+}
+
+FIntPoint UARBlueprintLibrary::ResizeXRCamera(const FIntPoint & InSize)
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->ResizeXRCamera(InSize);
+	}
+	return FIntPoint(0, 0);
+}
+
 
 void UARBlueprintLibrary::SetAlignmentTransform( const FTransform& InAlignmentTransform )
 {

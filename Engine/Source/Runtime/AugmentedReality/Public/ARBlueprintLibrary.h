@@ -91,6 +91,15 @@ public:
 	/** Starts or stops a battery intensive service on device. */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Session", meta = (Keywords = "ar augmentedreality augmented reality capture start stop"))
 	static bool ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType);
+
+	/** Enable or disable Mixed Reality Capture camera. */
+	UFUNCTION(BlueprintCallable, Category = "AR", meta = (Keywords = "ar all"))
+	static void SetEnabledXRCamera(bool bOnOff);
+
+	/** Change screen size of Mixed Reality Capture camera. */
+	UFUNCTION(BlueprintCallable, Category = "AR", meta = (Keywords = "ar all"))
+	static FIntPoint ResizeXRCamera(const FIntPoint& InSize);
+
 	
 	/**
 	 * Set a transform that will be applied to the tracking space. This effectively moves any camera

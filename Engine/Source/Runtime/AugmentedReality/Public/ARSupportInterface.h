@@ -62,6 +62,11 @@ public:
 	/** \see UARBlueprintLibrary::ToggleARCapture() */
 	bool ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType);
 
+	/** \see UARBlueprintLibrary::ToggleARCapture() */
+	void SetEnabledXRCamera(bool bOnOff);
+	/** \see UARBlueprintLibrary::ToggleARCapture() */
+	FIntPoint ResizeXRCamera(const FIntPoint& InSize);
+
 	/**
 	 * \see UARBlueprintLibrary::SetAlignmentTransform()
 	 * \see IARSystemSupport

@@ -144,7 +144,26 @@ bool FARSupportInterface::ToggleARCapture(const bool bOnOff, const EARCaptureTyp
 	return false;
 }
 
-void FARSupportInterface ::SetAlignmentTransform(const FTransform& InAlignmentTransform)
+
+void FARSupportInterface::SetEnabledXRCamera(bool bOnOff)
+{
+	if (ARImplemention)
+	{
+		ARImplemention->OnSetEnabledXRCamera(bOnOff);
+	}
+}
+
+FIntPoint FARSupportInterface::ResizeXRCamera(const FIntPoint& InSize)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnResizeXRCamera(InSize);
+	}
+	return FIntPoint(0, 0);
+}
+
+
+void FARSupportInterface::SetAlignmentTransform(const FTransform& InAlignmentTransform)
 {
 	if (ARImplemention)
 	{

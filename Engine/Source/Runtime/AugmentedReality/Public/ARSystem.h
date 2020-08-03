@@ -136,6 +136,9 @@ public:
 
 	virtual bool OnToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType) { return false; };
 
+	virtual void OnSetEnabledXRCamera(bool bOnOff) {};
+	virtual FIntPoint OnResizeXRCamera(const FIntPoint& InSize) { return FIntPoint(0, 0); }
+
 	/** @return the best available light estimate; nullptr if light estimation is inactive or not available */
 	virtual UARLightEstimate* OnGetCurrentLightEstimate() const = 0;
 
