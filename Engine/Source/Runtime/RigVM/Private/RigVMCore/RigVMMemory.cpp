@@ -487,7 +487,10 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 					{
 						FString PackagePath = Ar.GetArchiveName();
 						FString ScriptStructPath = ScriptStruct->GetPathName();
+#if WITH_EDITOR
+#else
 						UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
+#endif
 						bEncounteredErrorDuringLoad = true;
 						continue;
 					}
