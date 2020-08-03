@@ -70,6 +70,20 @@ static TAutoConsoleVariable<int32> CVarRayTracingShadowsEnableHairVoxel(
 	ECVF_RenderThreadSafe
 );
 
+static TAutoConsoleVariable<int32> CVarRayTracingShadowsLODTransitionStart(
+	TEXT("r.RayTracing.Shadows.LODTransitionStart"),
+	4000.0, // 40 m
+	TEXT("The start of an LOD transition range (default = 4000)"),
+	ECVF_RenderThreadSafe
+);
+
+static TAutoConsoleVariable<int32> CVarRayTracingShadowsLODTransitionEnd(
+	TEXT("r.RayTracing.Shadows.LODTransitionEnd"),
+	5000.0f, // 50 m
+	TEXT("The end of an LOD transition range (default = 5000)"),
+	ECVF_RenderThreadSafe
+);
+
 static TAutoConsoleVariable<float> CVarRayTracingShadowsHairOcclusionThreshold(
 	TEXT("r.RayTracing.Shadows.HairOcclusionThreshold"),
 	1,
@@ -130,6 +144,8 @@ class FOcclusionRGS : public FGlobalShader
 		SHADER_PARAMETER(FIntPoint, PixelOffset)
 		SHADER_PARAMETER(uint32, bUseHairVoxel)
 		SHADER_PARAMETER(float, TraceDistance)
+		SHADER_PARAMETER(float, LODTransitionStart)
+		SHADER_PARAMETER(float, LODTransitionEnd)
 		SHADER_PARAMETER(uint32, bTransmissionSamplingDistanceCulling)
 		SHADER_PARAMETER(uint32, TransmissionSamplingTechnique)
 		SHADER_PARAMETER(uint32, RejectionSamplingTrials)
@@ -251,6 +267,8 @@ void FDeferredShadingSceneRenderer::RenderRayTracingShadows(
 		PassParameters->LightingChannelMask = LightSceneProxy->GetLightingChannelMask();
 		LightSceneProxy->GetLightShaderParameters(PassParameters->Light);
 		PassParameters->TraceDistance = LightSceneProxy->GetTraceDistance();
+		PassParameters->LODTransitionStart = CVarRayTracingShadowsLODTransitionStart.GetValueOnRenderThread();
+		PassParameters->LODTransitionEnd = CVarRayTracingShadowsLODTransitionEnd.GetValueOnRenderThread();
 		PassParameters->TLAS = View.RayTracingScene.RayTracingSceneRHI->GetShaderResourceView();
 		PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 		PassParameters->SceneTextures = SceneTextures;
