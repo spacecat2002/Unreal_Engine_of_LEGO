@@ -640,6 +640,9 @@ protected:
 	uint8 bUpdateClothInEditor : 1;
 #endif
 
+	/** If true, OnSyncComponentToRBPhysics() notify will be called */
+	uint8 bNotifySyncComponentToRBPhysics : 1;
+
 private:
 
 	UPROPERTY(Transient)
@@ -2081,6 +2084,9 @@ protected:
 
 	/** Extract collisions for cloth from this component (given a component we want to apply the data to) */
 	static void ExtractCollisionsForCloth(USkeletalMeshComponent* SourceComponent,  UPhysicsAsset* PhysicsAsset, USkeletalMeshComponent* DestClothComponent, FClothCollisionData& OutCollisions, FClothCollisionSource& ClothCollisionSource);
+
+	/** Notify called just before syncing physics update, called only if bNotifySyncComponentToRBPhysics flag is set */
+	virtual void OnSyncComponentToRBPhysics() { }
 
 	FSkeletalMeshComponentEndPhysicsTickFunction EndPhysicsTickFunction;
 
