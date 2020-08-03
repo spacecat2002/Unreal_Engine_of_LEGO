@@ -66,9 +66,9 @@ public:
 template <class T>
 struct TLogScope
 {
-	static auto Enter(uint32 ExtraSize=0);
-	static auto ScopedEnter(uint32 ExtraSize=0);
-	static auto ScopedStampedEnter(uint32 ExtraSize=0);
+	static auto			Enter(uint32 ExtraSize=0);
+	static FLogScope	ScopedEnter(uint32 ExtraSize=0);
+	static FLogScope	ScopedStampedEnter(uint32 ExtraSize=0);
 };
 
 } // namespace Private

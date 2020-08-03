@@ -183,7 +183,7 @@ auto TLogScope<T>::Enter(uint32 ExtraSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-auto TLogScope<T>::ScopedEnter(uint32 ExtraSize)
+FLogScope TLogScope<T>::ScopedEnter(uint32 ExtraSize)
 {
 	static_assert(!T::bIsImportant, "Important events cannot be logged with scope");
 
@@ -205,7 +205,7 @@ auto TLogScope<T>::ScopedEnter(uint32 ExtraSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-auto TLogScope<T>::ScopedStampedEnter(uint32 ExtraSize)
+FLogScope TLogScope<T>::ScopedStampedEnter(uint32 ExtraSize)
 {
 	static_assert(!T::bIsImportant, "Important events cannot be logged with scope");
 
