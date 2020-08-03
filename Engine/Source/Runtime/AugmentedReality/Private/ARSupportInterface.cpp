@@ -135,6 +135,15 @@ bool FARSupportInterface ::IsSessionTypeSupported(EARSessionType SessionType) co
 	return false;
 }
 
+bool FARSupportInterface::ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnToggleARCapture(bOnOff, CaptureType);
+	}
+	return false;
+}
+
 void FARSupportInterface ::SetAlignmentTransform(const FTransform& InAlignmentTransform)
 {
 	if (ARImplemention)

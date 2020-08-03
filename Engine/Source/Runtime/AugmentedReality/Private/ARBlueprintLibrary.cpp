@@ -116,6 +116,17 @@ UARSessionConfig* UARBlueprintLibrary::GetSessionConfig()
 }
 
 
+bool UARBlueprintLibrary::ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType)
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->ToggleARCapture(bOnOff, CaptureType);
+	}
+	return false;
+}
+
+
 void UARBlueprintLibrary::SetAlignmentTransform( const FTransform& InAlignmentTransform )
 {
 	auto ARSystem = GetARSystem();

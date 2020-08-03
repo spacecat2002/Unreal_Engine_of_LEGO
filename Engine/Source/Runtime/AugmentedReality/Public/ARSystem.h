@@ -134,6 +134,8 @@ public:
 	/** @return whether the specified tracking type is supported by this device */
 	virtual bool OnIsTrackingTypeSupported(EARSessionType SessionType) const = 0;
 
+	virtual bool OnToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType) { return false; };
+
 	/** @return the best available light estimate; nullptr if light estimation is inactive or not available */
 	virtual UARLightEstimate* OnGetCurrentLightEstimate() const = 0;
 

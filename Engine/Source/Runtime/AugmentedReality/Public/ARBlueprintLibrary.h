@@ -87,6 +87,10 @@ public:
 	/** @return the configuration that the current session was started with. */
 	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Session", meta = (DisplayName="Get AR Session Config", Keywords = "ar augmentedreality augmented reality session"))
 	static UARSessionConfig* GetSessionConfig();
+
+	/** Starts or stops a battery intensive service on device. */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Session", meta = (Keywords = "ar augmentedreality augmented reality capture start stop"))
+	static bool ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType);
 	
 	/**
 	 * Set a transform that will be applied to the tracking space. This effectively moves any camera

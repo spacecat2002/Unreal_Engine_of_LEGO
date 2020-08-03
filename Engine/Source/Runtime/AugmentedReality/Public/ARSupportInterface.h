@@ -59,6 +59,9 @@ public:
 	/** \see UARBlueprintLibrary::IsSessionTypeSupported() */
 	bool IsSessionTypeSupported(EARSessionType SessionType) const;
 
+	/** \see UARBlueprintLibrary::ToggleARCapture() */
+	bool ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType);
+
 	/**
 	 * \see UARBlueprintLibrary::SetAlignmentTransform()
 	 * \see IARSystemSupport
