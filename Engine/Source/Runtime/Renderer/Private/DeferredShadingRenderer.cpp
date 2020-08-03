@@ -2400,14 +2400,10 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FRDGTextureMSAA SceneDepthTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
 	FRDGTextureRef VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
 
-	// TODO: Could entirely remove this by using STENCIL_SANDBOX_BIT in ShadowRendering.cpp and DistanceFieldSurfaceCacheLighting.cpp
 	if (!IsForwardShadingEnabled(ShaderPlatform))
 	{
-		// Clear stencil to 0 now that deferred decals are done using what was setup in the base pass
-		// Shadow passes and other users of stencil assume it is cleared to 0 going in
-		auto* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
-		PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SceneDepthTexture.Target, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::EClear, FExclusiveDepthStencil::DepthRead_StencilWrite);
-		GraphBuilder.AddPass(RDG_EVENT_NAME("ClearStencil"), PassParameters, ERDGPassFlags::Raster, [](FRHICommandList&) {});
+		// Clear stencil to 0 now that deferred decals are done using what was setup in the base pass.
+		AddClearStencilPass(GraphBuilder, SceneDepthTexture.Target);
 	}
 
 	// Hair base pass for deferred shading

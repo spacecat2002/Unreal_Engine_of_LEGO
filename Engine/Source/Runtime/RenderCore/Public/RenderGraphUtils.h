@@ -419,6 +419,9 @@ RENDERCORE_API void AddClearDepthStencilPass(
 	bool bClearStencil,
 	uint8 Stencil);
 
+/** Adds a render graph pass to clear the stencil portion of a depth / stencil target to its fast clear value. */
+RENDERCORE_API void AddClearStencilPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture);
+
 /** Adds a pass to readback contents of an RDG texture. */
 RENDERCORE_API void AddEnqueueCopyPass(FRDGBuilder& GraphBuilder, FRHIGPUTextureReadback* Readback, FRDGTextureRef SourceTexture, FResolveRect Rect = FResolveRect());
 
