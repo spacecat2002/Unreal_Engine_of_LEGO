@@ -200,3 +200,10 @@ bool FWindowsPlatformHttp::IsOperatingSystemProxyInformationSupported()
 {
 	return true;
 }
+
+bool FWindowsPlatformHttp::VerifyPeerSslCertificate(bool verify)
+{
+	bool prev = FCurlHttpManager::CurlRequestOptions.bVerifyPeer;
+	FCurlHttpManager::CurlRequestOptions.bVerifyPeer = verify;
+	return prev;
+}
