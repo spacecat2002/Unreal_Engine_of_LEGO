@@ -2431,7 +2431,7 @@ struct FRelevancePacket
 
 		WriteView.MeshDecalBatches.Append(MeshDecalBatches);
 		WriteView.VolumetricMeshBatches.Append(VolumetricMeshBatches);
-		WriteView.SkyMesheBatches.Append(SkyMesheBatches);
+		WriteView.SkyMeshBatches.Append(SkyMeshBatches);
 
 		for (int32 Index = 0; Index < RecachedReflectionCapturePrimitives.NumPrims; ++Index)
 		{
