@@ -250,7 +250,8 @@ FGPUSortManager::FValueBuffer::FValueBuffer(int32 InAllocatedCount, int32 InUsed
 	check(InUsedCount >= 0 && InUsedCount <= InAllocatedCount);
 
 	FRHIResourceCreateInfo CreateInfo;
-	VertexBufferRHI = RHICreateVertexBuffer((uint32)InAllocatedCount * sizeof(uint32), BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, CreateInfo);
+	CreateInfo.DebugName = TEXT("ValueBuffer");
+	VertexBufferRHI = RHICreateVertexBuffer((uint32)InAllocatedCount * sizeof(uint32), BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, ERHIAccess::SRVGraphics, CreateInfo);
 
 	UInt32SRV = RHICreateShaderResourceView(VertexBufferRHI, sizeof(uint32), PF_R32_UINT);
 	UInt32UAV = RHICreateUnorderedAccessView(VertexBufferRHI, PF_R32_UINT);
