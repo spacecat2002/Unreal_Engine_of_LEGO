@@ -146,6 +146,7 @@ class FOcclusionRGS : public FGlobalShader
 		SHADER_PARAMETER(float, TraceDistance)
 		SHADER_PARAMETER(float, LODTransitionStart)
 		SHADER_PARAMETER(float, LODTransitionEnd)
+		SHADER_PARAMETER(float, HairOcclusionThreshold)
 		SHADER_PARAMETER(uint32, bTransmissionSamplingDistanceCulling)
 		SHADER_PARAMETER(uint32, TransmissionSamplingTechnique)
 		SHADER_PARAMETER(uint32, RejectionSamplingTrials)
