@@ -698,7 +698,7 @@ void FD3D12DynamicRHI::Init()
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4_REMOVED] = SP_NumPlatforms;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = SP_PCD3D_SM5;
 
-	GSupportsEfficientAsyncCompute = GRHISupportsParallelRHIExecute&& IsRHIDeviceAMD();
+	GSupportsEfficientAsyncCompute = FParse::Param(FCommandLine::Get(), TEXT("ForceAsyncCompute")) || (GRHISupportsParallelRHIExecute && IsRHIDeviceAMD());
 
 	GSupportsDepthBoundsTest = SupportsDepthBoundsTest(this);
 
