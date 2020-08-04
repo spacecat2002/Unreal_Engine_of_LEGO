@@ -1502,8 +1502,8 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 	VkSubpassDescription SubpassDescriptions[3];
 	VkSubpassDependency SubpassDependencies[3];
 
-	const bool bGBufferDepthReadSubpass = RTLayout.GetSubpassHint() == ESubpassHint::DeferredShadingSubpass;
-	const bool bDepthReadSubpass =  bGBufferDepthReadSubpass || RTLayout.GetSubpassHint() == ESubpassHint::DepthReadSubpass;
+	const bool bDeferredShadingSubpass = RTLayout.GetSubpassHint() == ESubpassHint::DeferredShadingSubpass;
+	const bool bDepthReadSubpass =  RTLayout.GetSubpassHint() == ESubpassHint::DepthReadSubpass;
 		
 	// main sub-pass
 	{
@@ -1517,7 +1517,7 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 		SubpassDesc.pDepthStencilAttachment = RTLayout.GetDepthStencilAttachmentReference();
 	}
 
-	// Color (+ optioanl GBuffer) write and depth read sub-pass
+	// Color write and depth read sub-pass
 	VkAttachmentReference InputAttachments1[MaxSimultaneousRenderTargets + 1];
 	if (bDepthReadSubpass)
 	{
@@ -1527,7 +1527,7 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 		SubpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		SubpassDesc.colorAttachmentCount = RTLayout.GetNumColorAttachments();
 		SubpassDesc.pColorAttachments = RTLayout.GetColorAttachmentReferences();
-		SubpassDesc.pResolveAttachments = bGBufferDepthReadSubpass ? nullptr : RTLayout.GetResolveAttachmentReferences();
+		SubpassDesc.pResolveAttachments = RTLayout.GetResolveAttachmentReferences();
 
 		check(RTLayout.GetDepthStencilAttachmentReference());
 
@@ -1550,53 +1550,82 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 		SubpassDep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 	}
 
-	// Color write and Gbuffer + depth read sub-pass
+	// Two subpasses for deferred shading
 	VkAttachmentReference InputAttachments2[MaxSimultaneousRenderTargets + 1];
-	if (bGBufferDepthReadSubpass)
+	VkAttachmentReference DepthStencilAttachment[1];
+	if (bDeferredShadingSubpass)
 	{
-		VkSubpassDescription& SubpassDesc = SubpassDescriptions[NumSubpasses++];
-		FMemory::Memzero(&SubpassDesc, sizeof(VkSubpassDescription));
+		// both sub-passes only test DepthStencil
+		DepthStencilAttachment[0].attachment = RTLayout.GetDepthStencilAttachmentReference()->attachment;
+		DepthStencilAttachment[0].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
-		SubpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		SubpassDesc.colorAttachmentCount = 1; // SceneColor only
-		SubpassDesc.pColorAttachments = RTLayout.GetColorAttachmentReferences();
-		SubpassDesc.pResolveAttachments = RTLayout.GetResolveAttachmentReferences();
-	
-		check(RTLayout.GetDepthStencilAttachmentReference());
+		const VkAttachmentReference* ColorRef = RTLayout.GetColorAttachmentReferences();
+		uint32 NumColorAttachments = RTLayout.GetNumColorAttachments();
+		check(NumColorAttachments == 5); //current layout is SceneColor, GBufferA/B/C, DepthAux
 
-		// depth as Input0
-		uint32 NumInputAttachments = 1;
-		InputAttachments2[0].attachment = RTLayout.GetDepthStencilAttachmentReference()->attachment;
-		InputAttachments2[0].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-		// GBuffer inputs
-		const VkAttachmentReference* ColorRefs = RTLayout.GetColorAttachmentReferences();
-		int32 NumColorInputs = RTLayout.GetNumColorAttachments();
-		check(NumColorInputs > 0);
-		// not using SceneColor as input
-		InputAttachments2[1].attachment = VK_ATTACHMENT_UNUSED;
-		InputAttachments2[1].layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		// GBuffer as inputs
-		for (int32 i = 1; i < NumColorInputs; ++i)
+		// 1. Write to SceneColor and GBuffer, input DepthAux, readonly DepthStencil
 		{
-			InputAttachments2[i+1].attachment = ColorRefs[i].attachment;
-			InputAttachments2[i+1].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		}
-		NumInputAttachments+= NumColorInputs;
-		
-		SubpassDesc.inputAttachmentCount = NumInputAttachments;
-		SubpassDesc.pInputAttachments = InputAttachments2;
-		// depth attachment is same as input attachment
-		SubpassDesc.pDepthStencilAttachment = InputAttachments2;
+			VkSubpassDescription& SubpassDesc = SubpassDescriptions[NumSubpasses++];
+			FMemory::Memzero(&SubpassDesc, sizeof(VkSubpassDescription));
 
-		VkSubpassDependency& SubpassDep = SubpassDependencies[NumDependencies++];
-		SubpassDep.srcSubpass = 1;
-		SubpassDep.dstSubpass = 2;
-		SubpassDep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		SubpassDep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		SubpassDep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		SubpassDep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-		SubpassDep.dstAccessMask|= VK_ACCESS_SHADER_READ_BIT; // this is not required, but flickers without on Adreno
-		SubpassDep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+			SubpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+			SubpassDesc.colorAttachmentCount = 4;
+			SubpassDesc.pColorAttachments = ColorRef;
+			SubpassDesc.pDepthStencilAttachment = DepthStencilAttachment;
+			// DepthAux as Input5
+			for (int32 i = 0; i < 5; ++i)
+			{
+				InputAttachments1[i].attachment = VK_ATTACHMENT_UNUSED;
+				InputAttachments1[i].attachment = VK_IMAGE_LAYOUT_UNDEFINED;
+			}
+			InputAttachments1[5].attachment = ColorRef[4].attachment;
+			InputAttachments1[5].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			SubpassDesc.inputAttachmentCount = 6;
+			SubpassDesc.pInputAttachments = InputAttachments1;
+						
+			VkSubpassDependency& SubpassDep = SubpassDependencies[NumDependencies++];
+			SubpassDep.srcSubpass = 0;
+			SubpassDep.dstSubpass = 1;
+			SubpassDep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			SubpassDep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			SubpassDep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			SubpassDep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+			SubpassDep.dstAccessMask|= VK_ACCESS_SHADER_READ_BIT; // this is not required, but flickers without on Adreno
+			SubpassDep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		}
+
+		// 2. Write to SceneColor, input GBuffer and DepthAux, readonly DepthStencil
+		{
+			VkSubpassDescription& SubpassDesc = SubpassDescriptions[NumSubpasses++];
+			FMemory::Memzero(&SubpassDesc, sizeof(VkSubpassDescription));
+
+			SubpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+			SubpassDesc.colorAttachmentCount = 1; // SceneColor only
+			SubpassDesc.pColorAttachments = ColorRef;
+			SubpassDesc.pDepthStencilAttachment = DepthStencilAttachment;
+			// GBuffer,DepthAux as Input2/3/4/5
+			InputAttachments2[0].attachment = VK_ATTACHMENT_UNUSED;
+			InputAttachments2[0].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			InputAttachments2[1].attachment = VK_ATTACHMENT_UNUSED;
+			InputAttachments2[1].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			for (int32 i = 2; i < 6; ++i)
+			{
+				InputAttachments2[i].attachment = ColorRef[i-1].attachment;
+				InputAttachments2[i].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			}
+			SubpassDesc.inputAttachmentCount = 6;
+			SubpassDesc.pInputAttachments = InputAttachments2;
+
+			VkSubpassDependency& SubpassDep = SubpassDependencies[NumDependencies++];
+			SubpassDep.srcSubpass = 1;
+			SubpassDep.dstSubpass = 2;
+			SubpassDep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			SubpassDep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			SubpassDep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			SubpassDep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+			SubpassDep.dstAccessMask|= VK_ACCESS_SHADER_READ_BIT; // this is not required, but flickers without on Adreno
+			SubpassDep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		}
 	}
 	
 	CreateInfo.attachmentCount = RTLayout.GetNumAttachmentDescriptions();

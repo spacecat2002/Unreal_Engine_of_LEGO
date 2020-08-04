@@ -501,7 +501,8 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	SceneContext.Allocate(RHICmdList, this);
 	if (bDeferredShading)
 	{
-		SceneContext.AllocGBufferTargets(RHICmdList);
+		ETextureCreateFlags AddFlags = bRequiresMultiPass ? TexCreate_InputAttachmentRead : (TexCreate_InputAttachmentRead | TexCreate_Memoryless);
+		SceneContext.AllocGBufferTargets(RHICmdList, AddFlags);
 	}
 
 	if (bRequriesAmbientOcclusionPass)
@@ -962,18 +963,19 @@ FRHITexture* FMobileSceneRenderer::RenderDeferred(FRHICommandListImmediate& RHIC
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 			
-	FRHITexture* ColorTargets[4] = {
+	FRHITexture* ColorTargets[5] = {
 		SceneContext.GetSceneColorSurface(),
 		SceneContext.GetGBufferATexture().GetReference(),
 		SceneContext.GetGBufferBTexture().GetReference(),
-		SceneContext.GetGBufferCTexture().GetReference()
+		SceneContext.GetGBufferCTexture().GetReference(),
+		SceneContext.SceneDepthAux->GetRenderTargetItem().ShaderResourceTexture.GetReference()
 	};
 
 	// Whether RHI needs to store GBuffer to system memory and do shading in separate render-pass
 	ERenderTargetActions GBufferAction = bRequiresMultiPass ? ERenderTargetActions::Clear_Store : ERenderTargetActions::Clear_DontStore;
 	EDepthStencilTargetActions DepthAction = bKeepDepthContent ? EDepthStencilTargetActions::ClearDepthStencil_StoreDepthStencil : EDepthStencilTargetActions::ClearDepthStencil_DontStoreDepthStencil;
 		
-	ERenderTargetActions ColorTargetsAction[4] = { ERenderTargetActions::Clear_Store, GBufferAction, GBufferAction, GBufferAction };
+	ERenderTargetActions ColorTargetsAction[5] = {ERenderTargetActions::Clear_Store, GBufferAction, GBufferAction, GBufferAction, ERenderTargetActions::Clear_Store};
 	
 	FRHIRenderPassInfo BasePassInfo = FRHIRenderPassInfo();
 	for (int32 Index = 0; Index < UE_ARRAY_COUNT(ColorTargets); ++Index)
@@ -1225,16 +1227,16 @@ bool FMobileSceneRenderer::RequiresMultiPass(FRHICommandListImmediate& RHICmdLis
 		return false;
 	}
 
-	if (IsMobileDeferredShading())
-	{
-		// TODO: add iOS support
-		return true;
-	}
-	
 	// All iOS support frame_buffer_fetch
 	if (IsMetalMobilePlatform(ShaderPlatform))
 	{
 		return false;
+	}
+
+	if (IsMobileDeferredShading())
+	{
+		// TODO: add GL support
+		return true;
 	}
 	
 	// Some Androids support frame_buffer_fetch
@@ -1505,7 +1507,7 @@ class FPreTonemapMSAA_Mobile : public FGlobalShader
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return !IsConsolePlatform(Parameters.Platform);
+		return IsMetalMobilePlatform(Parameters.Platform);
 	}	
 
 	FPreTonemapMSAA_Mobile() {}

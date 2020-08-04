@@ -435,6 +435,7 @@ public:
 	EPixelFormat GetGBufferEFormat() const;
 	EPixelFormat GetGBufferFFormat() const;
 	void AllocGBufferTargets(FRHICommandList& RHICmdList);
+	void AllocGBufferTargets(FRHICommandList& RHICmdList, ETextureCreateFlags AddTargetableFlags);
 
 	void AllocateReflectionTargets(FRHICommandList& RHICmdList, int32 TargetSize);
 
@@ -481,6 +482,9 @@ public:
 	TRefCountPtr<IPooledRenderTarget> GBufferD;
 	TRefCountPtr<IPooledRenderTarget> GBufferE;
 	TRefCountPtr<IPooledRenderTarget> GBufferF;
+
+	// Optional color attachment to store SceneDepth
+	TRefCountPtr<IPooledRenderTarget> SceneDepthAux;
 
 	// DBuffer: For decals before base pass (only temporarily available after early z pass and until base pass)
 	TRefCountPtr<IPooledRenderTarget> DBufferA;

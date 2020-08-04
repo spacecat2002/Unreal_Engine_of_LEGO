@@ -89,10 +89,12 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileSceneTextureUniformParameters, RENDE
 	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferBTexture)
 	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferCTexture)
 	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferDTexture)
+	SHADER_PARAMETER_TEXTURE(Texture2D, SceneDepthAuxTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, GBufferATextureSampler)
 	SHADER_PARAMETER_SAMPLER(SamplerState, GBufferBTextureSampler)
 	SHADER_PARAMETER_SAMPLER(SamplerState, GBufferCTextureSampler)
 	SHADER_PARAMETER_SAMPLER(SamplerState, GBufferDTextureSampler)
+	SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthAuxTextureSampler)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 enum class EMobileSceneTextureSetupMode : uint32
