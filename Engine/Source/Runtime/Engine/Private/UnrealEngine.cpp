@@ -2355,10 +2355,14 @@ void UEngine::UpdateTimecode()
 {
 	FApp::InvalidateCurrentFrameTime();
 
-	const UTimecodeProvider* Provider = GetTimecodeProvider();
-	if (Provider && Provider->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
+	if (UTimecodeProvider* Provider = GetTimecodeProvider())
 	{
-		FApp::SetCurrentFrameTime(Provider->GetDelayedQualifiedFrameTime());
+		Provider->FetchAndUpdate();
+
+		if (Provider->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
+		{
+			FApp::SetCurrentFrameTime(Provider->GetDelayedQualifiedFrameTime());
+		}
 	}
 }
 
