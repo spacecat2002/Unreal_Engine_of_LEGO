@@ -1041,7 +1041,7 @@ class ENGINE_API UEdGraphSchema : public UObject
 	 * @param	InScreenPosition The position inside of the screen
 	 * @return the response to rejection or performing the drop
 	 */
-	virtual FReply RequestVariableDropOnPanel(UEdGraph* InGraph, FProperty* InVariableToDrop, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return FReply::Unhandled(); }
+	virtual bool RequestVariableDropOnPanel(UEdGraph* InGraph, FProperty* InVariableToDrop, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return false; }
 
 	/**
 	 * Request to drop a variable on a node
@@ -1052,7 +1052,7 @@ class ENGINE_API UEdGraphSchema : public UObject
 	 * @param	InScreenPosition The position inside of the screen
 	 * @return the response to rejection or performing the drop
 	 */
-	virtual FReply RequestVariableDropOnNode(UEdGraph* InGraph, FProperty* InVariableToDrop, UEdGraphNode* InNode, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return FReply::Unhandled(); }
+	virtual bool RequestVariableDropOnNode(UEdGraph* InGraph, FProperty* InVariableToDrop, UEdGraphNode* InNode, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return false; }
 
 	/**
 	 * Request to drop a variable on a pin
@@ -1063,7 +1063,7 @@ class ENGINE_API UEdGraphSchema : public UObject
 	 * @param	InScreenPosition The position inside of the screen
 	 * @return the response to rejection or performing the drop
 	 */
-	virtual FReply RequestVariableDropOnPin(UEdGraph* InGraph, FProperty* InVariableToDrop, UEdGraphPin* InPin, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return FReply::Unhandled(); }
+	virtual bool RequestVariableDropOnPin(UEdGraph* InGraph, FProperty* InVariableToDrop, UEdGraphPin* InPin, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return false; }
 
 	/**
 	 * Returns true if the types and directions of two pins are schema compatible. Handles
