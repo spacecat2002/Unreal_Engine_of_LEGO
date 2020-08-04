@@ -115,7 +115,6 @@ void URigVM::Reset()
 	Parameters.Reset();
 	ParametersNameMap.Reset();
 	DeferredVMToCopy = nullptr;
-	ExternalVariables.Reset();
 
 	WorkMemoryPtr = &WorkMemoryStorage;
 	LiteralMemoryPtr = &LiteralMemoryStorage;
@@ -486,14 +485,47 @@ void URigVM::CacheMemoryHandlesIfRequired(FRigVMMemoryContainerPtrArray InMemory
 				CacheSingleMemoryHandle(Op.Source);
 				CacheSingleMemoryHandle(Op.Target);
 
-				const FRigVMRegister& TargetRegister = CachedMemory[Op.Target.GetContainerIndex()]->Registers[Op.Target.GetRegisterIndex()];
-				uint16 NumBytes = TargetRegister.GetNumBytesPerSlice();
+				uint16 NumBytes = 0;
+				ERigVMRegisterType TargetType = ERigVMRegisterType::Invalid;
+				UScriptStruct* ScriptStruct = nullptr;
 
-				ERigVMRegisterType TargetType = TargetRegister.Type;
-				if (Op.Target.GetRegisterOffset() != INDEX_NONE)
+				if (Op.Target.GetMemoryType() == ERigVMMemoryType::External)
 				{
-					TargetType = CachedMemory[Op.Target.GetContainerIndex()]->RegisterOffsets[Op.Target.GetRegisterOffset()].GetType();
-					NumBytes = CachedMemory[Op.Target.GetContainerIndex()]->RegisterOffsets[Op.Target.GetRegisterOffset()].GetElementSize();
+					ensure(ExternalVariables.IsValidIndex(Op.Target.GetRegisterIndex()));
+					const FRigVMExternalVariable& ExternalVariable = ExternalVariables[Op.Target.GetRegisterIndex()];
+
+					NumBytes = ExternalVariable.Size;
+					TargetType = ERigVMRegisterType::Plain;
+					if (UScriptStruct* ExternalScriptStruct = Cast<UScriptStruct>(ExternalVariable.TypeObject))	
+					{
+						TargetType = ERigVMRegisterType::Struct;
+						ScriptStruct = ExternalScriptStruct;
+					}
+					else if (ExternalVariable.TypeName == TEXT("FString"))
+					{
+						TargetType = ERigVMRegisterType::String;
+					}
+					else if (ExternalVariable.TypeName == TEXT("FName"))
+					{
+						TargetType = ERigVMRegisterType::Name;
+					}
+				}
+				else
+				{
+					const FRigVMRegister& TargetRegister = CachedMemory[Op.Target.GetContainerIndex()]->Registers[Op.Target.GetRegisterIndex()];
+					NumBytes = TargetRegister.GetNumBytesPerSlice();
+
+					TargetType = TargetRegister.Type;
+					if (Op.Target.GetRegisterOffset() != INDEX_NONE)
+					{
+						TargetType = CachedMemory[Op.Target.GetContainerIndex()]->RegisterOffsets[Op.Target.GetRegisterOffset()].GetType();
+						NumBytes = CachedMemory[Op.Target.GetContainerIndex()]->RegisterOffsets[Op.Target.GetRegisterOffset()].GetElementSize();
+					}
+
+					if (TargetType == ERigVMRegisterType::Struct)
+					{
+						ScriptStruct = CachedMemory[Op.Target.GetContainerIndex()]->GetScriptStruct(Op.Target.GetRegisterIndex(), Op.Target.GetRegisterOffset());
+					}
 				}
 
 				CachedMemoryHandles.Add(FRigVMMemoryHandle((uint8*)reinterpret_cast<void*>(NumBytes)));
@@ -501,7 +533,6 @@ void URigVM::CacheMemoryHandlesIfRequired(FRigVMMemoryContainerPtrArray InMemory
 
 				if (TargetType == ERigVMRegisterType::Struct)
 				{
-					UScriptStruct* ScriptStruct = CachedMemory[Op.Target.GetContainerIndex()]->GetScriptStruct(Op.Target.GetRegisterIndex(), Op.Target.GetRegisterOffset());
 					CachedMemoryHandles.Add(FRigVMMemoryHandle((uint8*)ScriptStruct));
 				}
 

@@ -425,6 +425,9 @@ public:
 	}
 
 	// Returns the external variables of the VM
+	void ClearExternalVariables() { ExternalVariables.Reset(); }
+
+	// Returns the external variables of the VM
 	const TArray<FRigVMExternalVariable>& GetExternalVariables() const { return ExternalVariables; }
 
 	// Returns an external variable given it's name

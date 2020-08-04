@@ -17,9 +17,73 @@ struct RIGVM_API FRigVMExternalVariable
 		, TypeName(NAME_None)
 		, TypeObject(nullptr)
 		, bIsArray(false)
+		, bIsPublic(false)
+		, bIsReadOnly(false)
 		, Size(0)
 		, Memory(nullptr)
+		
 	{
+	}
+
+	FORCEINLINE static FRigVMExternalVariable Make(FProperty* InProperty, UObject* InContainer)
+	{
+		check(InProperty);
+
+		FProperty* Property = InProperty;
+
+		FRigVMExternalVariable ExternalVariable;
+		ExternalVariable.Name = InProperty->GetFName();
+		ExternalVariable.bIsPublic = !InProperty->HasAllPropertyFlags(CPF_DisableEditOnInstance);
+		ExternalVariable.bIsReadOnly = InProperty->HasAllPropertyFlags(CPF_BlueprintReadOnly);
+
+		if (InContainer)
+		{
+			ExternalVariable.Memory = (uint8*)Property->ContainerPtrToValuePtr<uint8>(InContainer);
+		}
+
+		FString TypePrefix, TypeSuffix;
+		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+		{
+			ExternalVariable.bIsArray = true;
+			TypePrefix = TEXT("TArray<");
+			TypeSuffix = TEXT(">");
+			Property = ArrayProperty->Inner;
+		}
+
+		ExternalVariable.Size = Property->GetSize();
+
+		if (CastField<FBoolProperty>(Property))
+		{
+			ExternalVariable.TypeName = TEXT("bool");
+		}
+		else if (CastField<FIntProperty>(Property))
+		{
+			ExternalVariable.TypeName = TEXT("int32");
+		}
+		else if (CastField<FFloatProperty>(Property))
+		{
+			ExternalVariable.TypeName = TEXT("float");
+		}
+		else if (CastField<FStrProperty>(Property))
+		{
+			ExternalVariable.TypeName = TEXT("FString");
+		}
+		else if (CastField<FNameProperty>(Property))
+		{
+			ExternalVariable.TypeName = TEXT("FName");
+		}
+		else if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+		{
+			ExternalVariable.TypeName = EnumProperty->GetEnum()->GetFName();
+			ExternalVariable.TypeObject = EnumProperty->GetEnum();
+		}
+		else if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		{
+			ExternalVariable.TypeName = StructProperty->Struct->GetFName();
+			ExternalVariable.TypeObject = StructProperty->Struct;
+		}
+
+		return ExternalVariable;
 	}
 
 	FORCEINLINE static FRigVMExternalVariable Make(const FName& InName, bool& InValue)
@@ -262,10 +326,37 @@ struct RIGVM_API FRigVMExternalVariable
 		return Variable;
 	}
 
-
-	FORCEINLINE bool IsValid() const
+	template<typename T>
+	FORCEINLINE T GetValue()
 	{
-		return Name.IsValid() && TypeName.IsValid() && Memory != nullptr;
+		ensure(IsValid() && !bIsArray);
+		return *(T*)Memory;
+	}
+
+	template<typename T>
+	FORCEINLINE void SetValue(const T& InValue)
+	{
+		ensure(IsValid() && !bIsArray);
+		(*(T*)Memory) = InValue;
+	}
+
+	template<typename T>
+	FORCEINLINE TArray<T> GetArray()
+	{
+		ensure(IsValid() && bIsArray);
+		return *(TArray<T>*)Memory;
+	}
+
+	template<typename T>
+	FORCEINLINE void SetArray(const TArray<T>& InValue)
+	{
+		ensure(IsValid() && bIsArray);
+		(*(TArray<T>*)Memory) = InValue;
+	}
+
+	FORCEINLINE bool IsValid(bool bAllowNullPtr = false) const
+	{
+		return Name.IsValid() && TypeName.IsValid() && (bAllowNullPtr || Memory != nullptr);
 	}
 
 	FORCEINLINE FRigVMMemoryHandle GetHandle(int32 InOffset = INDEX_NONE) const
@@ -282,6 +373,8 @@ struct RIGVM_API FRigVMExternalVariable
 	FName TypeName;
 	UObject* TypeObject;
 	bool bIsArray;
+	bool bIsPublic;
+	bool bIsReadOnly;
 	int32 Size;
 	uint8* Memory;
 };
