@@ -1404,6 +1404,15 @@ static FRCPassPostProcessTonemap* AddTonemapper(
 	{
 		TonemapperCombinedLUTOutputRef = AddCombineLUTPass(Context.Graph);
 	}
+	else if (View.GetTonemappingLUT())
+	{
+		TonemapperCombinedLUTOutputRef = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessInput(View.GetTonemappingLUT()));
+	}
+	else
+	{
+		const FViewInfo* PrimaryView = static_cast<const FViewInfo*>(View.Family->Views[0]);
+		TonemapperCombinedLUTOutputRef = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessInput(PrimaryView->GetTonemappingLUT()));
+	}
 
 	const bool bDoEyeAdaptation = IsAutoExposureMethodSupported(View.GetFeatureLevel(), EyeAdapationMethodId) && EyeAdaptation.IsValid();
 	FRCPassPostProcessTonemap* PostProcessTonemap = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemap(bDoGammaOnly, bDoEyeAdaptation, bHDRTonemapperOutput, bMetalMSAAHDRDecode, bIsMobileDof));
