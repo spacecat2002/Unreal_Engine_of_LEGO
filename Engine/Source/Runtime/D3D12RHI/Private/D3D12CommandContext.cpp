@@ -45,6 +45,46 @@ FD3D12CommandContextBase::FD3D12CommandContextBase(class FD3D12Adapter* InParent
 {
 }
 
+static D3D12_RESOURCE_STATES GetValidResourceStates(D3D12_COMMAND_LIST_TYPE CommandListType)
+{
+	// For reasons, we can't just list the allowed states, we have to list the disallowed states.
+	// For reference on allowed/disallowed states, see:
+	//    https://microsoft.github.io/DirectX-Specs/d3d/CPUEfficiency.html#state-support-by-command-list-type
+	
+	const D3D12_RESOURCE_STATES DisallowedDirectStates =
+		static_cast<D3D12_RESOURCE_STATES>(0);
+
+	const D3D12_RESOURCE_STATES DisallowedComputeStates =
+		DisallowedDirectStates |
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER |
+		D3D12_RESOURCE_STATE_INDEX_BUFFER |
+		D3D12_RESOURCE_STATE_RENDER_TARGET |
+		D3D12_RESOURCE_STATE_DEPTH_WRITE |
+		D3D12_RESOURCE_STATE_DEPTH_READ |
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE |
+		D3D12_RESOURCE_STATE_STREAM_OUT |
+		D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT |
+		D3D12_RESOURCE_STATE_RESOLVE_DEST |
+		D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+
+	const D3D12_RESOURCE_STATES DisallowedCopyStates =
+		DisallowedComputeStates |
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS |
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+
+
+	if (CommandListType == D3D12_COMMAND_LIST_TYPE_COPY)
+	{
+		return ~DisallowedCopyStates;
+	}
+
+	if (CommandListType == D3D12_COMMAND_LIST_TYPE_COMPUTE)
+	{
+		return ~DisallowedComputeStates;
+	}
+
+	return ~DisallowedDirectStates;
+}
 
 FD3D12CommandContext::FD3D12CommandContext(FD3D12Device* InParent, bool InIsDefaultContext, bool InIsAsyncComputeContext) :
 	FD3D12CommandContextBase(InParent->GetParentAdapter(), InParent->GetGPUMask(), InIsDefaultContext, InIsAsyncComputeContext),
@@ -68,6 +108,7 @@ FD3D12CommandContext::FD3D12CommandContext(FD3D12Device* InParent, bool InIsDefa
 	VRSShadingRate(D3D12_SHADING_RATE_1X1),
 #endif
 	SkipFastClearEliminateState(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+	ValidResourceStates(GetValidResourceStates(InIsAsyncComputeContext ? D3D12_COMMAND_LIST_TYPE_COMPUTE : D3D12_COMMAND_LIST_TYPE_DIRECT)),
 #if PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
 	bNeedFlushTextureCache(false),
 #endif
