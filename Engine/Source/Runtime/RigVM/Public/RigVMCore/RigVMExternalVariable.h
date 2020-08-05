@@ -356,7 +356,11 @@ struct RIGVM_API FRigVMExternalVariable
 
 	FORCEINLINE bool IsValid(bool bAllowNullPtr = false) const
 	{
-		return Name.IsValid() && TypeName.IsValid() && (bAllowNullPtr || Memory != nullptr);
+		return Name.IsValid() && 
+			!Name.IsNone() &&
+			TypeName.IsValid() &&
+			!TypeName.IsNone() &&
+			(bAllowNullPtr || Memory != nullptr);
 	}
 
 	FORCEINLINE FRigVMMemoryHandle GetHandle(int32 InOffset = INDEX_NONE) const
