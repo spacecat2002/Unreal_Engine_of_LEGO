@@ -1116,7 +1116,7 @@ public:
 	 */
 	FORCEINLINE friend bool operator==(const FString& Lhs, const FString& Rhs)
 	{
-		return FPlatformString::Stricmp(*Lhs, *Rhs) == 0;
+		return Lhs.Equals(Rhs, ESearchCase::IgnoreCase);
 	}
 
 	/**
@@ -1157,7 +1157,7 @@ public:
 	 */
 	FORCEINLINE friend bool operator!=(const FString& Lhs, const FString& Rhs)
 	{
-		return FPlatformString::Stricmp(*Lhs, *Rhs) != 0;
+		return !(Lhs == Rhs);
 	}
 
 	/**
@@ -1416,16 +1416,29 @@ public:
 	 * @param SearchCase 	Whether or not the comparison should ignore case
 	 * @return true if this string is lexicographically equivalent to the other, otherwise false
 	 */
-	FORCEINLINE bool Equals( const FString& Other, ESearchCase::Type SearchCase = ESearchCase::CaseSensitive ) const
+	FORCEINLINE bool Equals(const FString& Other, ESearchCase::Type SearchCase = ESearchCase::CaseSensitive) const
 	{
-		if( SearchCase == ESearchCase::CaseSensitive )
+		int32 Num = Data.Num();
+		int32 OtherNum = Other.Data.Num();
+
+		if (Num != OtherNum)
 		{
-			return FCString::Strcmp( **this, *Other )==0; 
+			// Handle special case where FString() == FString("")
+			return Num + OtherNum == 1;
 		}
-		else
+		else if (Num > 1)
 		{
-			return FCString::Stricmp( **this, *Other )==0;
+			if (SearchCase == ESearchCase::CaseSensitive)
+			{
+				return FCString::Strcmp(Data.GetData(), Other.Data.GetData()) == 0; 
+			}
+			else
+			{
+				return FCString::Stricmp(Data.GetData(), Other.Data.GetData()) == 0;
+			}
 		}
+
+		return true;
 	}
 
 	/**
