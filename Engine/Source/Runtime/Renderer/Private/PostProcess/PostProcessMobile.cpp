@@ -820,17 +820,6 @@ public:
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("SHADER_SUN_MASK"), 1);
-
-		// This post-processor has a 1-Dimensional color attachment for SV_Target0
-		OutEnvironment.SetDefine(TEXT("SUBPASS_COLOR0_ATTACHMENT_DIM"), 1);
-
-		if (IsVulkanMobilePlatform(Parameters.Platform))
-		{
-			// depth fetch only available during base pass rendering
-			// TODO: find better place to enable frame buffer fetch feature only for base pass
-			CA_SUPPRESS(6313);
-			OutEnvironment.SetDefine(TEXT("VULKAN_SUBPASS_DEPTHFETCH"), 0);
-		}
 	}
 
 	static FPermutationDomain RemapPermutationVector(FPermutationDomain PermutationVector)

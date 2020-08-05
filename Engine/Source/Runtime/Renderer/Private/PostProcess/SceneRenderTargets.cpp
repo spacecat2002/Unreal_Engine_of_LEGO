@@ -1197,7 +1197,6 @@ void FSceneRenderTargets::ReleaseGBufferTargets()
 	GBufferE.SafeRelease();
 	GBufferF.SafeRelease();
 	SceneVelocity.SafeRelease();
-	SceneDepthAux.SafeRelease();
 }
 
 void FSceneRenderTargets::PreallocGBufferTargets()
@@ -1332,13 +1331,6 @@ void FSceneRenderTargets::AllocGBufferTargets(FRHICommandList& RHICmdList, EText
 			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferEFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
 			Desc.Flags |= GFastVRamConfig.GBufferE;
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferE, TEXT("GBufferE"));
-		}
-
-		if (IsMobilePlatform(ShaderPlatform))
-		{
-			float FarDepth = (float)ERHIZBuffer::FarPlane;
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R32_FLOAT, FClearValueBinding(FLinearColor(FarDepth,FarDepth,FarDepth,FarDepth)), TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false));
-			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SceneDepthAux, TEXT("SceneDepthAux"));
 		}
 
 		// otherwise we have a severe problem
@@ -1659,6 +1651,13 @@ void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandListImmediate& 
 	AllocateVirtualTextureFeedbackBuffer(RHICmdList);
 
 	AllocateDebugViewModeTargets(RHICmdList);
+
+	if (IsMobileDeferredShading())
+	{
+		float FarDepth = (float)ERHIZBuffer::FarPlane;
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R32_FLOAT, FClearValueBinding(FLinearColor(FarDepth,FarDepth,FarDepth,FarDepth)), TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false));
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SceneDepthAux, TEXT("SceneDepthAux"));
+	}
 }
 
 // This is a helper class. It generates and provides N names with
@@ -2355,6 +2354,8 @@ void FSceneRenderTargets::ReleaseAllTargets()
 	EditorPrimitivesDepth.SafeRelease();
 
 	FoveationTexture.SafeRelease();
+
+	SceneDepthAux.SafeRelease();
 }
 
 void FSceneRenderTargets::ReleaseDynamicRHI()

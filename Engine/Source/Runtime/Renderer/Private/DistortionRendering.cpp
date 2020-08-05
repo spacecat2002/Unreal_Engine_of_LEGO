@@ -209,11 +209,10 @@ public:
 	{
 		FMeshMaterialShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		if (IsVulkanMobilePlatform(Parameters.Platform))
+		if (IsMobilePlatform(Parameters.Platform))
 		{
-			// depth fetch only available during base pass rendering
-			// TODO: find better place to enable frame buffer fetch feature only for base pass
-			OutEnvironment.SetDefine(TEXT("VULKAN_SUBPASS_DEPTHFETCH"), 0);
+			// use same path for scene textures as post-process material
+			OutEnvironment.SetDefine(TEXT("POST_PROCESS_MATERIAL_MOBILE"), 1);
 		}
 	}
 };
