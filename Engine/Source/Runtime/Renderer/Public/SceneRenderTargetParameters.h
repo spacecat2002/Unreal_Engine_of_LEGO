@@ -40,11 +40,17 @@ enum class ESceneTextureSetupMode : uint32
 	SceneColor		= 1 << 0,
 	SceneDepth		= 1 << 1,
 	SceneVelocity	= 1 << 2,
-	GBuffers		= 1 << 3,
-	SSAO			= 1 << 4,
-	CustomDepth		= 1 << 5,
-	EyeAdaptation	= 1 << 6,
-	All = SceneColor | SceneDepth | SceneVelocity | GBuffers | SSAO | CustomDepth | EyeAdaptation
+	GBufferA		= 1 << 3,
+	GBufferB		= 1 << 4,
+	GBufferC		= 1 << 5,
+	GBufferD		= 1 << 6,
+	GBufferE		= 1 << 7,
+	GBufferF		= 1 << 8,
+	SSAO			= 1 << 9,
+	CustomDepth		= 1 << 10,
+	EyeAdaptation	= 1 << 11,
+	GBuffers		= GBufferA | GBufferB | GBufferC | GBufferD | GBufferE | GBufferF,
+	All				= SceneColor | SceneDepth | SceneVelocity | GBuffers | SSAO | CustomDepth | EyeAdaptation
 };
 ENUM_CLASS_FLAGS(ESceneTextureSetupMode);
 

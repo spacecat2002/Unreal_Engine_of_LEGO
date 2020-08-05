@@ -2652,24 +2652,21 @@ void SetupSceneTextureUniformParameters(
 
 	// GBuffer
 	{
-		const bool bSetupGBuffers = EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::GBuffers);
 		const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(FeatureLevel);
-		const bool bUseGBuffer = IsUsingGBuffers(ShaderPlatform);
-		const bool bCanReadGBufferUniforms = bSetupGBuffers && (bUseGBuffer || IsSimpleForwardShadingEnabled(ShaderPlatform));
+		const bool bCanReadGBufferUniforms = IsUsingGBuffers(ShaderPlatform) || IsSimpleForwardShadingEnabled(ShaderPlatform);
 
 		// Allocate the Gbuffer resource uniform buffer.
-		SceneTextureParameters.GBufferATexture = bCanReadGBufferUniforms && SceneContext.GBufferA ? GetRDG(SceneContext.GBufferA) : BlackDefault2D;
-		SceneTextureParameters.GBufferBTexture = bCanReadGBufferUniforms && SceneContext.GBufferB ? GetRDG(SceneContext.GBufferB) : BlackDefault2D;
-		SceneTextureParameters.GBufferCTexture = bCanReadGBufferUniforms && SceneContext.GBufferC ? GetRDG(SceneContext.GBufferC) : BlackDefault2D;
-		SceneTextureParameters.GBufferDTexture = bCanReadGBufferUniforms && SceneContext.GBufferD ? GetRDG(SceneContext.GBufferD) : BlackDefault2D;
-		SceneTextureParameters.GBufferETexture = bCanReadGBufferUniforms && SceneContext.GBufferE ? GetRDG(SceneContext.GBufferE) : BlackDefault2D;
-		SceneTextureParameters.GBufferFTexture = bCanReadGBufferUniforms && SceneContext.GBufferF ? GetRDG(SceneContext.GBufferF) : BlackDefault2D;
+		SceneTextureParameters.GBufferATexture = bCanReadGBufferUniforms && EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::GBufferA) && SceneContext.GBufferA ? GetRDG(SceneContext.GBufferA) : BlackDefault2D;
+		SceneTextureParameters.GBufferBTexture = bCanReadGBufferUniforms && EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::GBufferB) && SceneContext.GBufferB ? GetRDG(SceneContext.GBufferB) : BlackDefault2D;
+		SceneTextureParameters.GBufferCTexture = bCanReadGBufferUniforms && EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::GBufferC) && SceneContext.GBufferC ? GetRDG(SceneContext.GBufferC) : BlackDefault2D;
+		SceneTextureParameters.GBufferDTexture = bCanReadGBufferUniforms && EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::GBufferD) && SceneContext.GBufferD ? GetRDG(SceneContext.GBufferD) : BlackDefault2D;
+		SceneTextureParameters.GBufferETexture = bCanReadGBufferUniforms && EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::GBufferE) && SceneContext.GBufferE ? GetRDG(SceneContext.GBufferE) : BlackDefault2D;
+		SceneTextureParameters.GBufferFTexture = bCanReadGBufferUniforms && EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::GBufferF) && SceneContext.GBufferF ? GetRDG(SceneContext.GBufferF) : BlackDefault2D;
+	}
 
-		SceneTextureParameters.GBufferVelocityTexture = BlackDefault2D;
-		if (SceneContext.SceneVelocity && EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::SceneVelocity))
-		{
-			SceneTextureParameters.GBufferVelocityTexture = GetRDG(SceneContext.SceneVelocity);
-		}
+	// Velocity
+	{
+		SceneTextureParameters.GBufferVelocityTexture = EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::SceneVelocity) && SceneContext.SceneVelocity ? GetRDG(SceneContext.SceneVelocity) : BlackDefault2D;
 	}
 
 	// SSAO

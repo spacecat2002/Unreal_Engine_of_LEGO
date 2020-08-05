@@ -465,10 +465,7 @@ void FCompositionLighting::ProcessBeforeBasePass(FRHICommandListImmediate& RHICm
 		// decals are before AmbientOcclusion so the decal can output a normal that AO is affected by
 		if (bDBuffer) 
 		{
-			FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessDeferredDecals(DRS_BeforeBasePass));
-			Pass->SetInput(ePId_Input0, Context.FinalOutput);
-
-			Context.FinalOutput = FRenderingCompositeOutputRef(Pass);
+			Context.FinalOutput = AddDeferredDecalPass(Context.Graph, Context.FinalOutput, DRS_BeforeBasePass);
 		}
 
 		if (SSAOLevels)
@@ -521,11 +518,7 @@ void FCompositionLighting::ProcessAfterBasePass(FRHICommandListImmediate& RHICmd
 		if( Context.View.Family->EngineShowFlags.Decals &&
 			!Context.View.Family->EngineShowFlags.ShaderComplexity)
 		{
-			// DRS_AfterBasePass is for Volumetric decals which don't support ShaderComplexity yet
-			FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessDeferredDecals(DRS_AfterBasePass));
-			Pass->SetInput(ePId_Input0, Context.FinalOutput);
-
-			Context.FinalOutput = FRenderingCompositeOutputRef(Pass);
+			Context.FinalOutput = AddDeferredDecalPass(Context.Graph, Context.FinalOutput, DRS_AfterBasePass);
 		}
 
 		// decal are distracting when looking at LightCulling.
@@ -534,17 +527,13 @@ void FCompositionLighting::ProcessAfterBasePass(FRHICommandListImmediate& RHICmd
 		if (bDoDecal && IsUsingGBuffers(View.GetShaderPlatform()))
 		{
 			// decals are before AmbientOcclusion so the decal can output a normal that AO is affected by
-			FRenderingCompositePass* BeforeLightingPass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessDeferredDecals(DRS_BeforeLighting));
-			BeforeLightingPass->SetInput(ePId_Input0, Context.FinalOutput);
-			Context.FinalOutput = FRenderingCompositeOutputRef(BeforeLightingPass);
+			Context.FinalOutput = AddDeferredDecalPass(Context.Graph, Context.FinalOutput, DRS_BeforeLighting);
 		}
 
 		if (bDoDecal && !IsSimpleForwardShadingEnabled(View.GetShaderPlatform()))
 		{
 			// DBuffer decals with emissive component
-			FRenderingCompositePass* EmissivePass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessDeferredDecals(DRS_Emissive));
-			EmissivePass->SetInput(ePId_Input0, Context.FinalOutput);
-			Context.FinalOutput = FRenderingCompositeOutputRef(EmissivePass);
+			Context.FinalOutput = AddDeferredDecalPass(Context.Graph, Context.FinalOutput, DRS_Emissive);
 		}
 
 		// Forwared shading SSAO is applied before the basepass using only the depth buffer.
@@ -573,10 +562,7 @@ void FCompositionLighting::ProcessAfterBasePass(FRHICommandListImmediate& RHICmd
 
 					if (bDoDecal)
 					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessDeferredDecals(DRS_AmbientOcclusion));
-						Pass->AddDependency(Context.FinalOutput);
-
-						Context.FinalOutput = FRenderingCompositeOutputRef(Pass);
+						Context.FinalOutput = AddDeferredDecalPass(Context.Graph, Context.FinalOutput, DRS_AmbientOcclusion);
 					}
 				}
 				else
