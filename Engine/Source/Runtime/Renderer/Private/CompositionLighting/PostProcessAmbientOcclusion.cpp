@@ -755,11 +755,11 @@ FScreenPassTexture AddAmbientOcclusionPass(
 {
 	RDG_GPU_STAT_SCOPE(GraphBuilder, SSAO);
 
-	check(SetupTexture.IsValid());
-
 	FScreenPassRenderTarget Output = SuggestedOutput;
 	if (!Output.IsValid())
 	{
+		check(SetupTexture.IsValid());
+
 		const bool bUsingUAVOutput = (AOType == ESSAOType::ECS || AOType == ESSAOType::EAsyncCS);
 
 		FRDGTextureDesc OutputDesc = SetupTexture.Texture->Desc;
@@ -788,7 +788,11 @@ FScreenPassTexture AddAmbientOcclusionPass(
 		Output.LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
 
-	const FScreenPassTextureViewport InputViewport(SetupTexture);
+	// No setup texture falls back to a depth scene texture fetch.
+	const FScreenPassTextureViewport InputViewport = SetupTexture.IsValid()
+		? FScreenPassTextureViewport(SetupTexture)
+		: CommonParameters.SceneTexturesViewport;
+
 	const FScreenPassTextureViewport OutputViewport(Output);
 
 	const bool bDoUpsample = DownsampledAO.IsValid();
@@ -1445,6 +1449,11 @@ class FGTAOUpsamplePS : public FGlobalShader
 public:
 	DECLARE_GLOBAL_SHADER(FGTAOUpsamplePS);
 	SHADER_USE_PARAMETER_STRUCT(FGTAOUpsamplePS, FGlobalShader);
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{

@@ -262,6 +262,7 @@ static FRenderingCompositeOutputRef AddPostProcessingGTAOAllPasses(FRHICommandLi
 	// This can run on async compute if available and we don't use the per pixel normals
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	SceneContext.bScreenSpaceAOIsValid = true;
 
 	FSceneViewState* ViewState = Context.View.ViewState;
 
@@ -374,8 +375,8 @@ static FRenderingCompositeOutputRef AddPostProcessingGTAOAllPasses(FRHICommandLi
 
 	FRenderingCompositePass* HZBInput = Context.Graph.RegisterPass(new (FMemStack::Get()) FRCPassPostProcessInput(const_cast<FViewInfo&>(Context.View).HZB));
 	Pass->SetInput(ePId_Input0, HZBInput);
-
 	Pass->SetInput(ePId_Input1, Context.SceneDepth);
+	Pass->AddDependency(Context.FinalOutput);
 
 	if (bTemporalPass)
 	{
@@ -531,6 +532,7 @@ static FRenderingCompositeOutputRef AddPostProcessingGTAOPostAsync(FRHICommandLi
 		Pass->SetInput(ePId_Input3, SceneVelocity);
 	}
 
+	Pass->AddDependency(Context.FinalOutput);
 	Context.FinalOutput = FRenderingCompositeOutputRef(Pass);
 	return FRenderingCompositeOutputRef(Pass);
 }
@@ -669,6 +671,7 @@ static FRenderingCompositeOutputRef AddPostProcessingAmbientOcclusion(FRHIComman
 		Pass->SetInput(ePId_Input2, GBufferA);
 	}
 
+	Pass->AddDependency(Context.FinalOutput);
 	Context.FinalOutput = FRenderingCompositeOutputRef(Pass);
 
 	SceneContext.bScreenSpaceAOIsValid = true;
