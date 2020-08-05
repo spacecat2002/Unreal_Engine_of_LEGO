@@ -23,8 +23,6 @@ enum class ESSAOType
 	EAsyncCS,
 };
 
-
-
 enum class EGTAOType
 {
 	// Not on (use legacy if at all)
@@ -67,199 +65,120 @@ public:
 	// @return 0:off, 0..3
 	static uint32 ComputeAmbientOcclusionPassCount(const FViewInfo& View);
 
-	static EGTAOType GetGTAOPassType(const FViewInfo& View);
+	static EGTAOType GetGTAOPassType(const FViewInfo& View, uint32 Levels);
 };
 
-// ePId_Input0: SceneDepth
-// ePId_Input1: optional from former downsampling pass
-// derives from TRenderingCompositePassBase<InputCount, OutputCount> 
-class FRCPassPostProcessAmbientOcclusionSetup : public TRenderingCompositePassBase<2, 1>
+// SSAO
+
+struct SSAOCommonParameters
 {
-public:
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = nullptr;
+	FScreenPassTextureViewport SceneTexturesViewport;
 
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-
-private:
-	// otherwise this is a down sampling pass which takes two MRT inputs from the setup pass before
-	bool IsInitialPass() const;
+	int32 ShaderQuality = 4;
+	ESSAOType DownscaleType = ESSAOType::EPS;
+	ESSAOType FullscreenType = ESSAOType::EPS;
+	bool bNeedSmoothingPass = true;
 };
 
-// ePId_Input0: Lower resolution AO result buffer
-class FRCPassPostProcessAmbientOcclusionSmooth : public TRenderingCompositePassBase<1, 1>
+FScreenPassTexture AddAmbientOcclusionSetupPass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const SSAOCommonParameters& CommonParameters,
+	FScreenPassTexture Input);
+
+FScreenPassTexture AddAmbientOcclusionStepPass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const SSAOCommonParameters& CommonParameters,
+	const FScreenPassTexture& Input0,
+	const FScreenPassTexture& Input1,
+	const FScreenPassTexture& Input2,
+	const FScreenPassTexture& HZBInput);
+
+FScreenPassTexture AddAmbientOcclusionFinalPass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const SSAOCommonParameters& CommonParameters,
+	const FScreenPassTexture& Input0,
+	const FScreenPassTexture& Input1,
+	const FScreenPassTexture& Input2,
+	const FScreenPassTexture& HZBInput,
+	FScreenPassRenderTarget FinalOutput);
+
+// GTAO
+
+struct FGTAOCommonParameters
 {
-public:
-	static constexpr int32 ThreadGroupSize1D = 8;
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = nullptr;
+	FScreenPassTextureViewport SceneTexturesViewport;
 
-	FRCPassPostProcessAmbientOcclusionSmooth(ESSAOType InAOType, bool bInDirectOutput = false);
-
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) final override;
-	virtual void Release() final override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const final override;
-
-private:
-	template <typename TRHICmdList>
-	void DispatchCS(
-		TRHICmdList& RHICmdList,
-		const FRenderingCompositePassContext& Context,
-		const FIntRect& OutputRect,
-		FRHIUnorderedAccessView* OutUAV) const;
-
-	const ESSAOType AOType;
-	const bool bDirectOutput;
+	int32 ShaderQuality = 4;
+	uint32 DownscaleFactor = 1;
+	EGTAOType GTAOType = EGTAOType::EOff;
 };
 
-// ePId_Input0: defines the resolution we compute AO and provides the normal (only needed if bInAOSetupAsInput)
-// ePId_Input1: setup in same resolution as ePId_Input1 for depth expect when running in full resolution, then it's half (only needed if bInAOSetupAsInput)
-// ePId_Input2: optional AO result one lower resolution
-// ePId_Input3: optional HZB
-// derives from TRenderingCompositePassBase<InputCount, OutputCount> 
-class FRCPassPostProcessAmbientOcclusion : public TRenderingCompositePassBase<4, 1>
+struct FGTAOHorizonSearchOutputs
 {
-public:
-	// @param bInAOSetupAsInput true:use AO setup as input, false: use GBuffer normal and native z depth
-	FRCPassPostProcessAmbientOcclusion(const FSceneView& View, ESSAOType InAOType, bool bInAOSetupAsInput = true, bool bInForcecIntermediateOutput = false, EPixelFormat InIntermediateFormatOverride = PF_Unknown);
-
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-
-private:
-	
-	void ProcessCS(FRenderingCompositePassContext& Context, const FSceneRenderTargetItem* DestRenderTarget, const FIntRect& ViewRect, const FIntPoint& TexSize, int32 ShaderQuality, bool bDoUpsample);
-	void ProcessPS(FRenderingCompositePassContext& Context, const FSceneRenderTargetItem* DestRenderTarget, const FSceneRenderTargetItem* SceneDepthTexture, const FIntRect& ViewRect, const FIntPoint& TexSize, int32 ShaderQuality, bool bDoUpsample);
-
-	template <uint32 bAOSetupAsInput, uint32 bDoUpsample, uint32 SampleSetQuality>
-	TShaderRef<FShader> SetShaderTemplPS(const FRenderingCompositePassContext& Context, FGraphicsPipelineStateInitializer& GraphicsPSOInit);
-
-	template <uint32 bAOSetupAsInput, uint32 bDoUpsample, uint32 SampleSetQuality, typename TRHICmdList>
-	void DispatchCS(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context, const FIntPoint& TexSize, FRHIUnorderedAccessView* OutTextureUAV);
-	
-	const ESSAOType AOType;
-	const EPixelFormat IntermediateFormatOverride;
-	const bool bAOSetupAsInput;
-	const bool bForceIntermediateOutput;
+	FScreenPassTexture Color;
+	FScreenPassTexture Depth;
 };
 
+FGTAOHorizonSearchOutputs AddGTAOHorizonSearchPass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const FGTAOCommonParameters& CommonParameters,
+	FScreenPassTexture SceneDepth,
+	FScreenPassTexture HZBInput,
+	FScreenPassRenderTarget HorizonOutput,
+	FScreenPassRenderTarget DepthOutput);
 
-class FRCPassPostProcessAmbientOcclusion_HorizonSearch : public TRenderingCompositePassBase<2, 2>
+FScreenPassTexture AddGTAOInnerIntegratePass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const FGTAOCommonParameters& CommonParameters,
+	FScreenPassTexture SceneDepth,
+	FScreenPassTexture HorizonsTexture);
+
+FGTAOHorizonSearchOutputs AddGTAOHorizonSearchIntegratePass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const FGTAOCommonParameters& CommonParameters,
+	FScreenPassTexture SceneDepth,
+	FScreenPassTexture HZBInput,
+	FScreenPassRenderTarget DepthOutput = FScreenPassRenderTarget());
+
+struct FGTAOTemporalOutputs
 {
-public:
+	FScreenPassRenderTarget OutputAO;
 
-	FRCPassPostProcessAmbientOcclusion_HorizonSearch(const FSceneView& View, uint32 DownScaleFactor, const EGTAOType AOType );
-
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-
-	template <uint32 ShaderQuality>
-	void DispatchCS(const FRenderingCompositePassContext& Context, FIntRect ViewRect, FIntPoint DestSize, FIntPoint TexSize);
-
-	template <uint32 ShaderQuality>
-	TShaderRef<FShader> SetShaderPS(const FRenderingCompositePassContext& Context, FGraphicsPipelineStateInitializer& GraphicsPSOInit, FIntPoint DestSize);
-
-private:
-	const EGTAOType AOType;
-	uint32		DownScaleFactor;
+	FIntPoint TargetExtent;
+	FIntRect ViewportRect;
 };
 
+FGTAOTemporalOutputs AddGTAOTemporalPass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const FGTAOCommonParameters& CommonParameters,
+	FScreenPassTexture Input,
+	FScreenPassTexture GTAODepths,
+	FScreenPassTexture SceneVelocity,
+	FScreenPassTexture HistoryColor,
+	FScreenPassTextureViewport HistoryViewport);
 
-class FRCPassPostProcessAmbientOcclusion_GTAOInnerIntegrate : public TRenderingCompositePassBase<2, 1>
-{
-public:
+FScreenPassTexture AddGTAOSpatialFilter(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const FGTAOCommonParameters& CommonParameters,
+	FScreenPassTexture Input,
+	FScreenPassTexture InputDepth,
+	FScreenPassRenderTarget SuggestedOutput = FScreenPassRenderTarget());
 
-	FRCPassPostProcessAmbientOcclusion_GTAOInnerIntegrate(const FSceneView& View, uint32 DownScaleFactor, bool FinalOutput);
-
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-
-private:
-	const bool bFinalOutput;
-	uint32		DownScaleFactor;
-};
-
-class FRCPassPostProcessAmbientOcclusion_GTAOHorizonSearchIntegrate : public TRenderingCompositePassBase<2, 2>
-{
-public:
-
-	FRCPassPostProcessAmbientOcclusion_GTAOHorizonSearchIntegrate(const FSceneView& View, uint32 DownScaleFactor, bool FinalOutput, const EGTAOType AOType);
-
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-
-	template <uint32 ShaderQuality, uint32 UseNormals, typename TRHICmdList>
-	void DispatchCS(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context, FIntRect ViewRect, FIntPoint DestSize, FIntPoint TexSize);
-
-	template <uint32 ShaderQuality, uint32 UseNormals>
-	TShaderRef<FShader> SetShaderPS(const FRenderingCompositePassContext& Context, FGraphicsPipelineStateInitializer& GraphicsPSOInit, FIntPoint DestSize);
-
-private:
-	const EGTAOType AOType;
-	const bool bFinalOutput;
-	uint32		DownScaleFactor;
-};
-
-
-
-
-class FRCPassPostProcessAmbientOcclusion_GTAO_TemporalFilter : public TRenderingCompositePassBase<1, 3>
-{
-public:
-
-	FRCPassPostProcessAmbientOcclusion_GTAO_TemporalFilter(const FSceneView& View, uint32 DownScaleFactor, const FGTAOTAAHistory& InInputHistory, FGTAOTAAHistory* OutOutputHistory, const EGTAOType AOType);
-
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-
-	template <uint32 ShaderQuality>
-	void DispatchCS(const FRenderingCompositePassContext& Context, FIntRect OutputViewRect, FIntPoint OutputTexSize);
-
-private:
-	const EGTAOType AOType;
-	const FGTAOTAAHistory& InputHistory;
-	FGTAOTAAHistory* OutputHistory;
-	uint32		DownScaleFactor;
-};
-
-class FRCPassPostProcessAmbientOcclusion_GTAO_SpatialFilter : public TRenderingCompositePassBase<2, 1>
-{
-public:
-
-	FRCPassPostProcessAmbientOcclusion_GTAO_SpatialFilter(const FSceneView& View, uint32 DownScaleFactor, const EGTAOType AOType);
-
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-
-private:
-	const EGTAOType AOType;
-	uint32		DownScaleFactor;
-};
-
-class FRCPassPostProcessAmbientOcclusion_GTAO_Upsample : public TRenderingCompositePassBase<2, 1>
-{
-public:
-
-	FRCPassPostProcessAmbientOcclusion_GTAO_Upsample(const FSceneView& View, uint32 DownScaleFactor, const EGTAOType AOType);
-
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-
-private:
-	const EGTAOType AOType;
-	uint32			DownScaleFactor;
-};
+FScreenPassTexture AddGTAOUpsamplePass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	const FGTAOCommonParameters& CommonParameters,
+	FScreenPassTexture Input,
+	FScreenPassTexture SceneDepth,
+	FScreenPassTexture GTAODepths,
+	FScreenPassRenderTarget Output);

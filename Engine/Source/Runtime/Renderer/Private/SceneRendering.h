@@ -756,17 +756,12 @@ struct FScreenSpaceDenoiserHistory
 
 
 
-// Structure in charge of storing all information about GTAO history.
+// Structure for storing a frame of GTAO history.
 struct FGTAOTAAHistory
 {
-	// Number of render target in the history.
-	static constexpr uint32 kRenderTargetCount = 2;
-
-	// Render targets holding's pixel history.
+	// Render targets holding a frame's pixel history.
 	//  scene color's RGBA are in RT[0].
-	TRefCountPtr<IPooledRenderTarget> RT[kRenderTargetCount];
-	TRefCountPtr<IPooledRenderTarget> Depth[kRenderTargetCount];
-	TRefCountPtr<IPooledRenderTarget> Velocity[kRenderTargetCount];
+	TRefCountPtr<IPooledRenderTarget> RT;
 
 	// Reference size of RT. Might be different than RT's actual size to handle down res.
 	FIntPoint ReferenceBufferSize;
@@ -776,16 +771,12 @@ struct FGTAOTAAHistory
 
 	void SafeRelease()
 	{
-		for (uint32 i = 0; i < kRenderTargetCount; i++)
-		{
-			RT[i].SafeRelease();
-			Depth[i].SafeRelease();
-		}
+		RT.SafeRelease();
 	}
 
 	bool IsValid() const
 	{
-		return RT[0].IsValid();
+		return RT.IsValid();
 	}
 };
 

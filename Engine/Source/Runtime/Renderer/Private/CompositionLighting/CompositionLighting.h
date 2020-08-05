@@ -22,12 +22,12 @@ public:
 	// only call if LPV is enabled
 	void ProcessLpvIndirect(FRHICommandListImmediate& RHICmdList, FViewInfo& View);
 
-	bool CanProcessAsyncSSAO(TArray<FViewInfo>& Views);
-	void ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList, TArray<FViewInfo>& Views);
+	bool CanProcessAsyncSSAO(const TArray<FViewInfo>& Views);
+	void ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList, const TArray<FViewInfo>& Views);
 	void GfxWaitForAsyncSSAO(FRHICommandListImmediate& RHICmdList);
 
 private:
-	void PrepareAsyncSSAO(FRHICommandListImmediate& RHICmdList, TArray<FViewInfo>& Views);
+	void PrepareAsyncSSAO(FRHICommandListImmediate& RHICmdList);
 	void FinishAsyncSSAO(FRHICommandListImmediate& RHICmdList);
 	const FRHITransition* AsyncSSAOTransition = nullptr;
 };
