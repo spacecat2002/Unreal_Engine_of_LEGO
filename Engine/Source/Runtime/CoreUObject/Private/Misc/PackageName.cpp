@@ -785,6 +785,22 @@ bool FPackageName::IsValidObjectPath(const FString& InObjectPath, FText* OutReas
 	return true;
 }
 
+bool FPackageName::IsValidPath(const FString& InPath)
+{
+	const FLongPackagePathsSingleton& Paths = FLongPackagePathsSingleton::Get();
+	FReadScopeLock ScopeLock(ContentMountPointCriticalSection);
+	for (const FPathPair& Pair : Paths.ContentRootToPath)
+	{
+		if (InPath.StartsWith(Pair.RootPath))
+		{
+			return true;
+		}
+	}
+
+	// The root folder is not handled in the above cases
+	return false;
+}
+
 void FPackageName::RegisterMountPoint(const FString& RootPath, const FString& ContentPath)
 {
 	FLongPackagePathsSingleton::Get().InsertMountPoint(RootPath, ContentPath);
