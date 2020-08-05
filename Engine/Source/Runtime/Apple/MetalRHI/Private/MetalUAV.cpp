@@ -484,15 +484,55 @@ void FMetalDynamicRHI::RHIUpdateShaderResourceView(FRHIShaderResourceView* SRVRH
 	}
 }
 
+#if UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+void FMetalRHICommandContext::ClearUAVStructuredBuffer(FRHIUnorderedAccessView* UnorderedAccessViewRHI, uint32 Pattern)
+{
+	FMetalUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
+	FMetalBuffer Buffer = UnorderedAccessView->SourceView->SourceStructuredBuffer->Buffer;
+	uint32 Size = UnorderedAccessView->SourceView->SourceStructuredBuffer->GetSize();
+	uint32 AlignedSize = Align(Size, BufferOffsetAlignment);
+	FMetalPooledBufferArgs Args(GetMetalDeviceContext().GetDevice(), AlignedSize, BUF_Dynamic, mtlpp::StorageMode::Shared);
+	FMetalBuffer Temp = GetMetalDeviceContext().CreatePooledBuffer(Args);
+	uint32* ContentBytes = (uint32*)Temp.GetContents();
+	for (uint32 Element = 0; Element < (AlignedSize >> 2); ++Element)
+	{
+		ContentBytes[Element] = Pattern;
+	}
+	Context->CopyFromBufferToBuffer(Temp, 0, Buffer, 0, Size);
+	GetMetalDeviceContext().ReleaseBuffer(Temp);
+}
+#endif // UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+
 void FMetalRHICommandContext::RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values)
 {
-	TRHICommandList_RecursiveHazardous<FMetalRHICommandContext> RHICmdList(this);
-	ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, true);
+#if UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+	FMetalUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
+	if (UnorderedAccessView->SourceView->SourceStructuredBuffer)
+	{
+		ClearUAVStructuredBuffer(UnorderedAccessViewRHI, *(uint32*)&Values.X);
+	}
+	else
+#endif // UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+	{
+		TRHICommandList_RecursiveHazardous<FMetalRHICommandContext> RHICmdList(this);
+		ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, true);
+	}
 }
+
 void FMetalRHICommandContext::RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values)
 {
-	TRHICommandList_RecursiveHazardous<FMetalRHICommandContext> RHICmdList(this);
-	ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, false);
+#if UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+	FMetalUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
+	if (UnorderedAccessView->SourceView->SourceStructuredBuffer)
+	{
+		ClearUAVStructuredBuffer(UnorderedAccessViewRHI, *(uint32*)&Values.X);
+	}
+	else
+#endif // UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+	{
+		TRHICommandList_RecursiveHazardous<FMetalRHICommandContext> RHICmdList(this);
+		ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, false);
+	}
 }
 
 void ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICmdList, FMetalUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat)
