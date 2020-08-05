@@ -1182,6 +1182,21 @@ void FVulkanLayoutManager::BeginRenderPass(FVulkanCommandListContext& Context, F
 		}
 	}
 
+	FRHITexture* FoveationTexture = RPInfo.FoveationTexture;
+	if (FoveationTexture)
+	{
+		FVulkanSurface& Surface = FVulkanTextureBase::Cast(FoveationTexture)->Surface;
+		VkImageLayout& DSLayout = FindOrAddLayoutRW(Surface, VK_IMAGE_LAYOUT_UNDEFINED);
+		VkImageLayout ExpectedLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT;
+
+		// transition foveation textures to the foveation layout for rendering
+		if (DSLayout != ExpectedLayout)
+		{
+			Barrier.AddImageLayoutTransition(Surface.Image, DSLayout, ExpectedLayout, FVulkanPipelineBarrier::MakeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT));
+			DSLayout = ExpectedLayout;
+		}
+	}
+
 	ensure(ClearValueIndex <= RenderPass->GetNumUsedClearValues());
 
 	Barrier.Execute(CmdBuffer->GetHandle());
