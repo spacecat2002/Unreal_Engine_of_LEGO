@@ -3977,6 +3977,10 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 					{
 						SearchModeFlags |= EReferenceChainSearchMode::Direct;
 					}
+					else if (FCString::Stricmp(*Tok, TEXT("full")) == 0)
+					{
+						SearchModeFlags |= EReferenceChainSearchMode::FullChain;
+					}
 				}
 				
 				FReferenceChainSearch RefChainSearch(Object, SearchModeFlags);
