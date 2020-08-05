@@ -879,20 +879,9 @@ public:
 
 		if (BaseIndex + NumBitsToRemove != NumBits)
 		{
-			// Until otherwise necessary, this is an obviously correct implementation rather than an efficient implementation.
-			FIterator WriteIt(*this);
-			for(FConstIterator ReadIt(*this);ReadIt;++ReadIt)
-			{
-				// If this bit isn't being removed, write it back to the array at its potentially new index.
-				if(ReadIt.GetIndex() < BaseIndex || ReadIt.GetIndex() >= BaseIndex + NumBitsToRemove)
-				{
-					if(WriteIt.GetIndex() != ReadIt.GetIndex())
-					{
-						WriteIt.GetValue() = (bool)ReadIt.GetValue();
-					}
-					++WriteIt;
-				}
-			}
+			// MemmoveBitsWordOrder handles overlapping source and dest
+			uint32 NumToShift = NumBits - (BaseIndex + NumBitsToRemove);
+			FBitArrayMemory::MemmoveBitsWordOrder(GetData(), BaseIndex, GetData(), BaseIndex + NumBitsToRemove, NumToShift);
 		}
 
 		NumBits -= NumBitsToRemove;
