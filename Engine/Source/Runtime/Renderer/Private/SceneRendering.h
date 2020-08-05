@@ -43,6 +43,7 @@ struct FILCUpdatePrimTaskData;
 class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
 struct FCloudRenderContext;
+struct FSceneWithoutWaterTextures;
 struct FHairStrandsVisibilityViews;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
@@ -1865,7 +1866,7 @@ protected:
 	/** Initialise volumetric cloud resources.*/
 	void InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList);
 	/** Render volumetric cloud. */
-	void RenderVolumetricCloud(FRDGBuilder& GraphBuilder, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture);
+	void RenderVolumetricCloud(FRDGBuilder& GraphBuilder, bool bSkipVolumetricRenderTarget, bool bSkipPerPixelTracing, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture);
 
 	/** Render notification to artist when a sky material is used but it might comtains the camera (and then the sky/background would look black).*/
 	void RenderSkyAtmosphereEditorNotifications(FRHICommandListImmediate& RHICmdList);
@@ -1875,9 +1876,11 @@ protected:
 	/** Initialise volumetric render target.*/
 	void InitVolumetricRenderTargetForViews(FRHICommandListImmediate& RHICmdList);
 	/** Process the volumetric render target, generating the high resolution version.*/
-	void ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture);
+	void ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder);
 	/** Compose the volumetric render target over the scene.*/
 	void ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture);
+	/** Compose the volumetric render target over the scene from a view under water, in the water render target.*/
+	void ComposeVolumetricRenderTargetOverSceneUnderWater(FRDGBuilder& GraphBuilder, const FSceneWithoutWaterTextures& WaterPassData);
 
 	void ResolveSceneColor(FRHICommandListImmediate& RHICmdList);
 	void ResolveSceneDepth(FRHICommandListImmediate& RHICmdList);

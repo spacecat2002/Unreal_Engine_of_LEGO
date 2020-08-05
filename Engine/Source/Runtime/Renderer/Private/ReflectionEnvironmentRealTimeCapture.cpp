@@ -533,7 +533,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 						// Setup the depth buffer
 						if (bUseDepthBuffer)
 						{
-							FRDGTextureDesc CubeDepthTextureDesc = FRDGTextureDesc::Create2DDesc(FIntPoint(CubeWidth, CubeWidth), PF_D24, SceneContext.GetDefaultDepthClear(), TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false);
+							FRDGTextureDesc CubeDepthTextureDesc = FRDGTextureDesc::Create2D(FIntPoint(CubeWidth, CubeWidth), PF_D24, SceneContext.GetDefaultDepthClear(), TexCreate_DepthStencilTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead);
 							CubeDepthTexture = GraphBuilder.CreateTexture(CubeDepthTextureDesc, TEXT("CubeDepthTexture"));
 							RenderTargetPassParameter->RenderTargets.DepthStencil = FDepthStencilBinding(CubeDepthTexture, ERenderTargetLoadAction::EClear, FExclusiveDepthStencil::DepthWrite_StencilNop);
 						}

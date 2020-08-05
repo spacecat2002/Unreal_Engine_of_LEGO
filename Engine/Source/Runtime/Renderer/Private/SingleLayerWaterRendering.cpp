@@ -330,6 +330,7 @@ static FSceneWithoutWaterTextures AddCopySceneWithoutWaterPass(
 	FRDGTextureRef SceneDepthWithoutSingleLayerWaterTexture = GraphBuilder.CreateTexture(DepthDesc, TEXT("SceneDepthWithoutSingleLayerWater"));
 
 	FSceneWithoutWaterTextures Textures;
+	Textures.RefractionDownsampleFactor = float(RefractionDownsampleFactor);
 	Textures.Views.SetNum(Views.Num());
 
 	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::ENoAction;
@@ -682,7 +683,8 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWater(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureMSAA SceneColorTexture,
 	FRDGTextureMSAA SceneDepthTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthOnlySceneTextures)
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthOnlySceneTextures,
+	bool bShouldRenderVolumetricCloud)
 {
 	RDG_EVENT_SCOPE(GraphBuilder, "SingleLayerWater");
 	RDG_GPU_STAT_SCOPE(GraphBuilder, SingleLayerWater);
@@ -694,6 +696,11 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWater(
 	if (SceneWithoutWaterTextures.ColorTexture && ShouldRenderFog(ViewFamily))
 	{
 		RenderUnderWaterFog(GraphBuilder, SceneWithoutWaterTextures, DepthOnlySceneTextures);
+	}
+	if (SceneWithoutWaterTextures.ColorTexture && bShouldRenderVolumetricCloud)
+	{
+		// This path is only taken when rendering the clouds in a render target that can be composited
+		ComposeVolumetricRenderTargetOverSceneUnderWater(GraphBuilder, SceneWithoutWaterTextures);
 	}
 
 	RenderSingleLayerWaterInner(GraphBuilder, SceneColorTexture, SceneDepthTexture, SceneWithoutWaterTextures);

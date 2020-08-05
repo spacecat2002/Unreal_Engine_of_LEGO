@@ -181,10 +181,10 @@ bool ShouldRenderVolumetricCloud(const FScene* Scene, const FEngineShowFlags& En
 		const FVolumetricCloudRenderSceneInfo* VolumetricCloud = Scene->GetVolumetricCloudSceneInfo();
 		check(VolumetricCloud);
 
-		const bool ShadersCompiled = ShouldPipelineCompileVolumetricCloudShader(Scene->GetShaderPlatform());
+		const bool bShadersCompiled = ShouldPipelineCompileVolumetricCloudShader(Scene->GetShaderPlatform());
 
 		FLightSceneInfo* AtmosphericLight0 = Scene->AtmosphereLights[0];
-		return ShadersCompiled && CVarVolumetricCloud.GetValueOnRenderThread() > 0 && AtmosphericLight0!=nullptr;
+		return bShadersCompiled && CVarVolumetricCloud.GetValueOnRenderThread() > 0 && AtmosphericLight0!=nullptr;
 	}
 	return false;
 }
@@ -1451,7 +1451,7 @@ void FSceneRenderer::RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, F
 		});
 }
 
-void FSceneRenderer::RenderVolumetricCloud(FRDGBuilder& GraphBuilder, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture)
+void FSceneRenderer::RenderVolumetricCloud(FRDGBuilder& GraphBuilder, bool bSkipVolumetricRenderTarget, bool bSkipPerPixelTracing, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture)
 {
 	check(ShouldRenderVolumetricCloud(Scene, ViewFamily.EngineShowFlags)); // This should not be called if we should not render SkyAtmosphere
 
@@ -1490,6 +1490,10 @@ void FSceneRenderer::RenderVolumetricCloud(FRDGBuilder& GraphBuilder, FRDGTextur
 				CloudRC.MainView = &ViewInfo;
 
 				bool bShouldViewRenderVolumetricCloudRenderTarget = ShouldViewRenderVolumetricCloudRenderTarget(ViewInfo); // not used by reflection captures for instance
+				if ((bShouldViewRenderVolumetricCloudRenderTarget && bSkipVolumetricRenderTarget) || (!bShouldViewRenderVolumetricCloudRenderTarget && bSkipPerPixelTracing))
+				{
+					continue;
+				}
 				CloudRC.bShouldViewRenderVolumetricRenderTarget = bShouldViewRenderVolumetricCloudRenderTarget;
 				CloudRC.ViewUniformBuffer = bShouldViewRenderVolumetricCloudRenderTarget ? ViewInfo.VolumetricRenderTargetViewUniformBuffer : ViewInfo.ViewUniformBuffer;
 

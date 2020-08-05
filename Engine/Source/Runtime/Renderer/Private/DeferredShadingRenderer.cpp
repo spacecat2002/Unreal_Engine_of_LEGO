@@ -2533,6 +2533,16 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesDepth = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth);
 
+	if (bShouldRenderVolumetricCloud)
+	{
+		// Generate the volumetric cloud render target
+		bool bSkipVolumetricRenderTarget = false;
+		bool bSkipPerPixelTracing = true;
+		RenderVolumetricCloud(GraphBuilder, bSkipVolumetricRenderTarget, bSkipPerPixelTracing, SceneColorTexture, SceneDepthTexture);
+		// Reconstruct the volumetric cloud render target to be ready to compose it over the scene
+		ReconstructVolumetricRenderTarget(GraphBuilder);
+	}
+
 	// The full scene textures uniform buffers need to be recreated after new targets are added.
 	TArray<TRDGUniformBufferRef<FSceneTextureUniformParameters>, TInlineAllocator<1, SceneRenderingAllocator>> SceneTexturesPerView;
 	SceneTexturesPerView.SetNumZeroed(Views.Num());
@@ -2564,7 +2574,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_WaterPass));
-		RenderSingleLayerWater(GraphBuilder, SceneColorTexture, SceneDepthTexture, SceneTexturesDepth);
+		RenderSingleLayerWater(GraphBuilder, SceneColorTexture, SceneDepthTexture, SceneTexturesDepth, bShouldRenderVolumetricCloud);
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
 
@@ -2591,10 +2601,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderSkyAtmosphere(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target);
 	}
 
-	// Draw volumetric clouds
+	// Draw volumetric clouds when using per pixel tracing
 	if (bShouldRenderVolumetricCloud)
 	{
-		RenderVolumetricCloud(GraphBuilder, SceneColorTexture, SceneDepthTexture);
+		bool bSkipVolumetricRenderTarget = true;
+		bool bSkipPerPixelTracing = false;
+		RenderVolumetricCloud(GraphBuilder, bSkipVolumetricRenderTarget, bSkipPerPixelTracing, SceneColorTexture, SceneDepthTexture);
 	}
 
 	// Draw fog.
@@ -2638,8 +2650,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bVolumetricRenderTargetRequired)
 	{
-		ReconstructVolumetricRenderTarget(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Resolve);
+		ComposeVolumetricRenderTargetOverScene(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target);
 	}
+
 	if (bShouldRenderSkyAtmosphere)
 	{
 		// Debug the sky atmosphere. Critically rendered before translucency to avoid emissive leaking over visualization by writing depth. 
