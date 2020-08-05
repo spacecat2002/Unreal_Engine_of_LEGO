@@ -542,14 +542,16 @@ void FAssetRegistryState::PruneAssetData(const TSet<FName>& RequiredPackages, co
 		if (bRemoveAssetData)
 		{
 			bool bRemovedAssetData, bRemovedPackageData;
+			FName AssetPackageName = AssetData->PackageName;
+			// AssetData might be deleted after this call
 			RemoveAssetData(AssetData, false /* bRemoveDependencyData */, bRemovedAssetData, bRemovedPackageData);
 			if (!bRemoveDependencyData)
 			{
-				RequiredDependNodePackages.Add(AssetData->PackageName);
+				RequiredDependNodePackages.Add(AssetPackageName);
 			}
 			else if (bRemovedPackageData)
 			{
-				FDependsNode** RemovedNode = CachedDependsNodes.Find(AssetData->PackageName);
+				FDependsNode** RemovedNode = CachedDependsNodes.Find(AssetPackageName);
 				if (RemovedNode)
 				{
 					RemoveDependsNodes.Add(*RemovedNode);
