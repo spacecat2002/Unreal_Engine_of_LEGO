@@ -860,6 +860,12 @@ struct FPreviousViewInfo
 
 	// History for denoising all lights penumbra at once.
 	FScreenSpaceDenoiserHistory PolychromaticPenumbraHarmonicsHistory;
+
+	// Mobile bloom setup eye adaptation surface.
+	TRefCountPtr<IPooledRenderTarget> MobileBloomSetup_EyeAdaptation;
+	// Mobile temporal AA surface.
+	TRefCountPtr<IPooledRenderTarget> MobileAaBloomSunVignette;
+	TRefCountPtr<IPooledRenderTarget> MobileAaColor;
 };
 
 class FViewCommands
@@ -1315,19 +1321,6 @@ public:
 	using FSceneView::GetEyeAdaptationBuffer;
 	const FExposureBufferData* GetEyeAdaptationBuffer(FRHICommandListImmediate& RHICmdList) const;
 	const FExposureBufferData* GetLastEyeAdaptationBuffer(FRHICommandListImmediate& RHICmdList) const;
-
-
-	/** Get the last frame bloom setup output for eye adaptation mobile platform. */
-	const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const;
-
-	/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
-	void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT) const;
-
-	/** Swap the bloom setup output for eye adaptation mobile platform. */
-	void SwapBloomSetupEyeAdaptationRT() const;
-
-	/** Release the cached bloom setup output for eye adaptation mobile platform. */
-	void SafeReleaseBloomSetupEyeAdaptationRT() const;
 
 #if WITH_MGPU
 	void BroadcastEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
@@ -1937,9 +1930,6 @@ protected:
 	/** Renders the base pass for translucency. */
 	void RenderTranslucency(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> PassViews);
 
-	/** Perform upscaling when post process is not used. */
-	void BasicPostProcess(FRHICommandListImmediate& RHICmdList, FViewInfo &View, bool bDoUpscale, bool bDoEditorPrimitives);
-
 	/** Creates uniform buffers with the mobile directional light parameters, for each lighting channel. Called by InitViews */
 	void CreateDirectionalLightUniformBuffers(FViewInfo& View);
 
@@ -1962,11 +1952,13 @@ protected:
 	
 	void InitAmbientOcclusionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
 	void RenderAmbientOcclusion(FRHICommandListImmediate& RHICmdList, const FSceneRenderTargets& SceneContext);
-	void RenderAmbientOcclusionUpSample(FRHICommandListImmediate& RHICmdList);
+	void RenderAmbientOcclusion(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneDepthTexture, FRDGTextureRef AmbientOcclusionTexture);
+	void RenderAmbientOcclusionUpSample(FRHICommandListImmediate& RHICmdList, const FIntPoint& SceneBufferSize);
 	void ReleaseAmbientOcclusionOutputs();
 
 	void InitPixelProjectedReflectionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
 	void RenderPixelProjectedReflection(FRHICommandListImmediate& RHICmdList, const FSceneRenderTargets& SceneContext, const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy);
+	void RenderPixelProjectedReflection(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture, FRDGTextureRef PixelProjectedReflectionTexture, const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy);
 	void ReleasePixelProjectedReflectionOutputs();
 
 	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/

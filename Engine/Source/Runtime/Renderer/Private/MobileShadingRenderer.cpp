@@ -26,7 +26,6 @@
 #include "ScenePrivate.h"
 #include "PostProcess/SceneFilterRendering.h"
 #include "FXSystem.h"
-#include "PostProcess/RenderingCompositionGraph.h"
 #include "PostProcess/PostProcessing.h"
 #include "PostProcess/PostProcessMobile.h"
 #include "PostProcess/PostProcessUpscale.h"
@@ -374,10 +373,6 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 		UpdateOpaqueBasePassUniformBuffer(RHICmdList, View);
 		UpdateTranslucentBasePassUniformBuffer(RHICmdList, View);
 		UpdateDirectionalLightUniformBuffers(RHICmdList, View);
-
-		FMobileDistortionPassUniformParameters DistortionPassParameters;
-		SetupMobileDistortionPassUniformBuffer(RHICmdList, View, DistortionPassParameters);
-		Scene->UniformBuffers.MobileDistortionPassUniformBuffer.UpdateUniformBufferImmediate(DistortionPassParameters);
 	}
 	UpdateSkyReflectionUniformBuffer();
 
@@ -672,10 +667,38 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		SubmitVirtualTextureFeedbackBuffer(RHICmdList, SceneContext.VirtualTextureFeedback, Desc);
 	}
+
+	FMemMark Mark(FMemStack::Get());
+	FRDGBuilder GraphBuilder(RHICmdList);
+
+	FRDGTextureRef ViewFamilyTexture = TryCreateViewFamilyTexture(GraphBuilder, ViewFamily);
 	
 	if (ViewFamily.bResolveScene)
 	{
-		if (!bGammaSpace)
+		// Note that we should move this uniform buffer set up process right after the InitView to avoid any uniform buffer creation during the rendering after we porting all the passes to the RDG.
+		// We couldn't do it right now because the ResolveSceneDepth has another GraphicBuilder and it will re-register SceneDepthZ and that will cause crash.
+		TArray<TRDGUniformBufferRef<FMobileSceneTextureUniformParameters>, TInlineAllocator<1, SceneRenderingAllocator>> MobileSceneTexturesPerView;
+		MobileSceneTexturesPerView.SetNumZeroed(Views.Num());
+
+		const auto SetupMobileSceneTexturesPerView = [&]()
+		{
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+			{
+				EMobileSceneTextureSetupMode SetupMode = EMobileSceneTextureSetupMode::SceneColor;
+				if (Views[ViewIndex].bCustomDepthStencilValid)
+				{
+					SetupMode |= EMobileSceneTextureSetupMode::CustomDepth;
+				}
+				MobileSceneTexturesPerView[ViewIndex] = CreateMobileSceneTextureUniformBuffer(GraphBuilder, Views[ViewIndex], SetupMode);
+			}
+		};
+
+		SetupMobileSceneTexturesPerView();
+
+		FMobilePostProcessingInputs PostProcessingInputs;
+		PostProcessingInputs.ViewFamilyTexture = ViewFamilyTexture;
+
+		if (!bGammaSpace || bRenderToSceneColor)
 		{
 			// Finish rendering for each view, or the full stereo buffer if enabled
 			{
@@ -684,23 +707,15 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 				{
 					SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
-					GPostProcessing.ProcessMobile(RHICmdList, Scene, Views[ViewIndex]);
+					PostProcessingInputs.SceneTextures = MobileSceneTexturesPerView[ViewIndex];
+					AddMobilePostProcessingPasses(GraphBuilder, Views[ViewIndex], PostProcessingInputs);
 				}
-			}
-		}
-		else if (bRenderToSceneColor)
-		{
-			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-			{
-				BasicPostProcess(RHICmdList, Views[ViewIndex], bRequiresUpscale, FSceneRenderer::ShouldCompositeEditorPrimitives(Views[ViewIndex]));
 			}
 		}
 	}
 
 	RHICmdList.SetCurrentStat(GET_STATID(STAT_CLMM_SceneEnd));
-
-	FRDGBuilder GraphBuilder(RHICmdList);
-	FRDGTextureRef ViewFamilyTexture = TryCreateViewFamilyTexture(GraphBuilder, ViewFamily);
+	
 	RenderFinish(GraphBuilder, ViewFamilyTexture);
 	GraphBuilder.Execute();
 
@@ -904,7 +919,7 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 
 		if (bRequriesAmbientOcclusionPass)
 		{
-			RenderAmbientOcclusionUpSample(RHICmdList);
+			RenderAmbientOcclusionUpSample(RHICmdList, SceneContext.GetBufferSizeXY());
 		}
 	}
 
@@ -1108,57 +1123,6 @@ FRHITexture* FMobileSceneRenderer::RenderDeferred(FRHICommandListImmediate& RHIC
 	}
 
 	return ColorTargets[0];
-}
-
-// Perform simple upscale and/or editor primitive composite if the fully-featured post process is not in use.
-void FMobileSceneRenderer::BasicPostProcess(FRHICommandListImmediate& RHICmdList, FViewInfo &View, bool bDoUpscale, bool bDoEditorPrimitives)
-{
-	FRenderingCompositePassContext CompositeContext(RHICmdList, View);
-	FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
-
-	const bool bBlitRequired = !bDoUpscale && !bDoEditorPrimitives;
-
-	if (bDoUpscale || bBlitRequired)
-	{
-		const EUpscaleMethod UpscaleMethod = bDoUpscale ? EUpscaleMethod::Bilinear : EUpscaleMethod::Nearest;
-
-		Context.FinalOutput = AddUpscalePass(Context.Graph, Context.FinalOutput, UpscaleMethod, EUpscaleStage::PrimaryToOutput);
-	}
-
-#if WITH_EDITOR
-	// Composite editor primitives if we had any to draw and compositing is enabled
-	if (bDoEditorPrimitives)
-	{
-		Context.FinalOutput = AddEditorPrimitivePass(Context.Graph, Context.FinalOutput, FEditorPrimitiveInputs::EBasePassType::Mobile);
-	}
-#endif
-
-	bool bStereoRenderingAndHMD = View.Family->EngineShowFlags.StereoRendering && View.Family->EngineShowFlags.HMDDistortion;
-	if (bStereoRenderingAndHMD)
-	{
-		Context.FinalOutput = AddHMDDistortionPass(Context.Graph, Context.FinalOutput);
-	}
-
-	// currently created on the heap each frame but View.Family->RenderTarget could keep this object and all would be cleaner
-	TRefCountPtr<IPooledRenderTarget> Temp;
-	FSceneRenderTargetItem Item;
-	Item.TargetableTexture = (FTextureRHIRef&)View.Family->RenderTarget->GetRenderTargetTexture();
-	Item.ShaderResourceTexture = (FTextureRHIRef&)View.Family->RenderTarget->GetRenderTargetTexture();
-
-	FPooledRenderTargetDesc Desc;
-
-	Desc.Extent = View.Family->RenderTarget->GetSizeXY();
-	// todo: this should come from View.Family->RenderTarget
-	Desc.Format = PF_B8G8R8A8;
-	Desc.NumMips = 1;
-	Desc.TargetableFlags |= TexCreate_RenderTargetable | TexCreate_ShaderResource;
-
-	GRenderTargetPool.CreateUntrackedElement(Desc, Temp, Item);
-
-	Context.FinalOutput.GetOutput()->PooledRenderTarget = Temp;
-	Context.FinalOutput.GetOutput()->RenderTargetDesc = Desc;
-
-	CompositeContext.Process(Context.FinalOutput.GetPass(), TEXT("MobileBasicPostProcess"));
 }
 
 void FMobileSceneRenderer::RenderMobileDebugView(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> PassViews)

@@ -211,6 +211,15 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 
 	FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, TEXT("SceneDepthTexture"));
 
+	FRDGTextureRef PixelProjectedReflectionTexture = GraphBuilder.RegisterExternalTexture(GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture, TEXT("PixelProjectedReflectionTexture"));
+
+	RenderPixelProjectedReflection(GraphBuilder, SceneColorTexture, SceneDepthTexture, PixelProjectedReflectionTexture, PlanarReflectionSceneProxy);
+
+	GraphBuilder.Execute();
+}
+
+void FMobileSceneRenderer::RenderPixelProjectedReflection(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture, FRDGTextureRef PixelProjectedReflectionTexture, const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy)
+{
 	const FIntPoint BufferSize = PlanarReflectionSceneProxy->RenderTarget->GetSizeXY();
 
 #if PROJECTION_OUTPUT_TYPE == PROJECTION_OUTPUT_TYPE_TEXTURE
@@ -228,8 +237,6 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 	// Projection pass
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
-		SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
-
 		const FViewInfo& View = Views[ViewIndex];
 
 		const FIntRect& ViewRect = PlanarReflectionSceneProxy->ViewRect[ViewIndex];
@@ -265,13 +272,9 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 	//Reflection pass
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
-		SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
-
 		const FViewInfo& View = Views[ViewIndex];
 
-		FIntRect ViewRect = PlanarReflectionSceneProxy->ViewRect[ViewIndex];
-
-		FScreenPassRenderTarget PixelProjectedReflectionTexture(GraphBuilder.RegisterExternalTexture(GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture, TEXT("PixelProjectedReflectionTexture")), ViewRect, ERenderTargetLoadAction::EClear);
+		const FIntRect& ViewRect = PlanarReflectionSceneProxy->ViewRect[ViewIndex];
 
 		TShaderMapRef<FPixelProjectedReflectionMobile_ReflectionPassVS> VertexShader(View.ShaderMap);
 
@@ -289,7 +292,7 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 
 		FPixelProjectedReflectionMobile_ReflectionPassPS::FParameters* PSShaderParameters = GraphBuilder.AllocParameters<FPixelProjectedReflectionMobile_ReflectionPassPS::FParameters>();
 
-		PSShaderParameters->RenderTargets[0] = PixelProjectedReflectionTexture.GetRenderTargetBinding();
+		PSShaderParameters->RenderTargets[0] = FRenderTargetBinding(PixelProjectedReflectionTexture, ERenderTargetLoadAction::EClear);
 
 		PSShaderParameters->View = View.ViewUniformBuffer;
 		PSShaderParameters->SceneColorTexture = SceneColorTexture;
@@ -316,7 +319,7 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 			RDG_EVENT_NAME("PixelProjectedReflection_Reflection %dx%d (PS)", ViewRect.Width(), ViewRect.Height()),
 			PSShaderParameters,
 			ERDGPassFlags::Raster,
-			[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, ViewRect](FRHICommandList& RHICmdList)
+			[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &ViewRect](FRHICommandList& RHICmdList)
 		{
 			RHICmdList.SetViewport(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, ViewRect.Max.X, ViewRect.Max.Y, 1.0f);
 
@@ -341,8 +344,4 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRHICommandListImmedia
 			RHICmdList.DrawPrimitive(0, 2, 1);
 		});
 	}
-
-	GraphBuilder.Execute();
-
-	RHICmdList.Transition(FRHITransitionInfo(GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture->GetRenderTargetItem().TargetableTexture, ERHIAccess::RTV, ERHIAccess::SRVMask));
 }

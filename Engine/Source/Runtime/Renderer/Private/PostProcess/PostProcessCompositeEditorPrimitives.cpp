@@ -411,45 +411,4 @@ FScreenPassTexture AddEditorPrimitivePass(
 	return MoveTemp(Output);
 }
 
-FRenderingCompositeOutputRef AddEditorPrimitivePass(
-	FRenderingCompositionGraph& Graph,
-	FRenderingCompositeOutputRef Input,
-	FEditorPrimitiveInputs::EBasePassType BasePassType)
-{
-	FRenderingCompositePass* Pass = Graph.RegisterPass(
-		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-			[BasePassType](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-
-		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
-		const FIntRect SceneColorViewRect = InContext.GetSceneColorDestRect(InPass);
-
-		const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-		FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, TEXT("SceneDepthZ"));
-
-		FEditorPrimitiveInputs Inputs;
-		Inputs.SceneColor.Texture = SceneColorTexture;
-		Inputs.SceneColor.ViewRect = SceneColorViewRect;
-		Inputs.SceneDepth.Texture = SceneDepthTexture;
-		Inputs.SceneDepth.ViewRect = InContext.View.ViewRect;
-		Inputs.BasePassType = BasePassType;
-
-		if (FRDGTextureRef OutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("BackBuffer")))
-		{
-			Inputs.OverrideOutput.Texture = OutputTexture;
-			Inputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass->GetOutput(ePId_Output0)->PooledRenderTarget->GetRenderTargetItem());
-			Inputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
-		}
-
-		FScreenPassTexture Outputs = AddEditorPrimitivePass(GraphBuilder, InContext.View, Inputs);
-
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
-
-		GraphBuilder.Execute();
-	}));
-	Pass->SetInput(ePId_Input0, Input);
-	return Pass;
-}
-
 #endif

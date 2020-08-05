@@ -114,6 +114,12 @@ extern RENDERER_API void SetupMobileSceneTextureUniformParameters(
 	EMobileSceneTextureSetupMode SetupMode,
 	FMobileSceneTextureUniformParameters& SceneTextureParameters);
 
+extern RENDERER_API void SetupMobileSceneTextureUniformParameters(
+	FRDGBuilder& GraphBuilder,
+	const FSceneView& View,
+	EMobileSceneTextureSetupMode SetupMode,
+	FMobileSceneTextureUniformParameters& SceneTextureParameters);
+
 /** Creates the RHI mobile scene texture uniform buffer with passthrough RDG resources. */
 extern RENDERER_API TUniformBufferRef<FMobileSceneTextureUniformParameters> CreateMobileSceneTextureUniformBuffer(
 	FRHIComputeCommandList& RHICmdList,

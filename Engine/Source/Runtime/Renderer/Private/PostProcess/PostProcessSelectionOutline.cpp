@@ -8,6 +8,8 @@
 #include "CanvasTypes.h"
 #include "RenderTargetTemp.h"
 #include "ClearQuad.h"
+#include "ScenePrivate.h"
+#include "SceneRenderTargets.h"
 
 namespace
 {
@@ -170,44 +172,6 @@ FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FVie
 	}
 
 	return MoveTemp(Output);
-}
-
-FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input)
-{
-	FRenderingCompositePass* Pass = Graph.RegisterPass(
-		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-
-		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
-		const FIntRect SceneColorViewRect = InContext.GetSceneColorDestRect(InPass);
-
-		const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-		FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, TEXT("SceneDepthZ"));
-
-		FSelectionOutlineInputs Inputs;
-		Inputs.SceneColor.Texture = SceneColorTexture;
-		Inputs.SceneColor.ViewRect = SceneColorViewRect;
-		Inputs.SceneDepth.Texture = SceneDepthTexture;
-		Inputs.SceneDepth.ViewRect = InContext.View.ViewRect;
-		Inputs.SceneTextures.MobileSceneTextures = CreateMobileSceneTextureUniformBuffer(GraphBuilder, InContext.View, EMobileSceneTextureSetupMode::All);
-
-		if (FRDGTextureRef OutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("BackBuffer")))
-		{
-			Inputs.OverrideOutput.Texture = OutputTexture;
-			Inputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass->GetOutput(ePId_Output0)->PooledRenderTarget->GetRenderTargetItem());
-			Inputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
-		}
-
-		FScreenPassTexture Outputs = AddSelectionOutlinePass(GraphBuilder, InContext.View, Inputs);
-
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
-
-		GraphBuilder.Execute();
-	}));
-	Pass->SetInput(ePId_Input0, Input);
-	return Pass;
 }
 
 #endif

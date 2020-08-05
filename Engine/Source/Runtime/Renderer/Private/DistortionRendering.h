@@ -73,8 +73,6 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 extern void SetupDistortionParams(FVector4& DistortionParams, const FViewInfo& View);
 
-extern void SetupMobileDistortionPassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMobileDistortionPassUniformParameters& DistortionPassParameters);
-
 class FDistortionMeshProcessor : public FMeshPassProcessor
 {
 public:

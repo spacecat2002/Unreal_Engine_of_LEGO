@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "PostProcess/RenderingCompositionGraph.h"
 #include "ScreenPass.h"
 #include "OverridePassSequence.h"
 
@@ -142,23 +141,3 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	const FHighResolutionScreenshotMaskInputs& Inputs);
-
-//////////////////////////////////////////////////////////////////////////
-//! Legacy Composition Graph Methods
-
-FRenderingCompositePass* AddPostProcessMaterialPass(
-	const FPostprocessContext& Context,
-	const UMaterialInterface* MaterialInterface,
-	const bool bMetalMSAAHDRDecode,
-	EPixelFormat OutputFormat = PF_Unknown);
-
-FRenderingCompositeOutputRef AddPostProcessMaterialChain(
-	FPostprocessContext& Context,
-	EBlendableLocation InLocation,
-	bool& bMetalMSAAHDRDecode,
-	FRenderingCompositeOutputRef SeparateTranslucency = FRenderingCompositeOutputRef(),
-	FRenderingCompositeOutputRef PreTonemapHDRColor = FRenderingCompositeOutputRef(),
-	FRenderingCompositeOutputRef PostTonemapHDRColor = FRenderingCompositeOutputRef(),
-	FRenderingCompositeOutputRef PreFlattenVelocity = FRenderingCompositeOutputRef());
-
-void AddHighResScreenshotMask(FPostprocessContext& Context);

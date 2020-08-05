@@ -833,37 +833,6 @@ private:
 
 		void SwapBuffers(FRDGBuilder& GraphBuilder, bool bUpdateLastExposure);
 
-		/** Get the last frame bloom setup output for eye adaptation mobile platform. */
-		const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const
-		{
-			checkSlow(BloomSetup_EyeAdaptation[1].IsValid());
-			return BloomSetup_EyeAdaptation[1]->GetRenderTargetItem();
-		}
-
-		/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
-		void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT)
-		{
-			BloomSetup_EyeAdaptation[0] = BloomSetupEyeAdaptationRT;
-			if (!BloomSetup_EyeAdaptation[1].IsValid())
-			{
-				BloomSetup_EyeAdaptation[1] = BloomSetupEyeAdaptationRT;
-			}
-		}
-
-		/** Swap the bloom setup output for eye adaptation mobile platform. */
-		void SwapBloomSetupEyeAdaptationRT()
-		{
-			BloomSetup_EyeAdaptation[1] = BloomSetup_EyeAdaptation[0];
-			BloomSetup_EyeAdaptation[0].SafeRelease();
-		}
-
-		/** Release the cached bloom setup output for eye adaptation mobile platform. */
-		void SafeReleaseBloomSetupEyeAdaptationRT()
-		{
-			checkSlow(!BloomSetup_EyeAdaptation[0].IsValid());
-			BloomSetup_EyeAdaptation[1].SafeRelease();
-		}
-
 	private:
 		const TRefCountPtr<IPooledRenderTarget>& GetTexture(uint32 TextureIndex) const;
 		const TRefCountPtr<IPooledRenderTarget>& GetOrCreateTexture(FRHICommandList& RHICmdList, uint32 TextureIndex);
@@ -881,9 +850,6 @@ private:
 
 		FExposureBufferData ExposureBufferData[2];
 		TUniquePtr<FRHIGPUBufferReadback> ExposureBufferReadback;
-
-		TRefCountPtr<IPooledRenderTarget> BloomSetup_EyeAdaptation[2];
-
 	} EyeAdaptationManager;
 
 	// The LUT used by tonemapping.  In stereo this is only computed and stored by the Left Eye.
@@ -940,11 +906,6 @@ public:
 	FIntRect DistanceFieldAOHistoryViewRect;
 	TRefCountPtr<IPooledRenderTarget> DistanceFieldAOHistoryRT;
 	TRefCountPtr<IPooledRenderTarget> DistanceFieldIrradianceHistoryRT;
-	// Mobile temporal AA surfaces.
-	TRefCountPtr<IPooledRenderTarget> MobileAaBloomSunVignette0;
-	TRefCountPtr<IPooledRenderTarget> MobileAaBloomSunVignette1;
-	TRefCountPtr<IPooledRenderTarget> MobileAaColor0;
-	TRefCountPtr<IPooledRenderTarget> MobileAaColor1;
 
 	// Burley Subsurface scattering variance texture from the last frame.
 	TRefCountPtr<IPooledRenderTarget> SubsurfaceScatteringQualityHistoryRT;
@@ -1254,30 +1215,6 @@ public:
 	void SwapEyeAdaptationBuffers(FRDGBuilder& GraphBuilder)
 	{
 		EyeAdaptationManager.SwapBuffers(GraphBuilder, bUpdateLastExposure && bValidEyeAdaptationBuffer);
-	}
-
-	/** Get the last frame bloom setup output for eye adaptation mobile platform. */
-	const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const
-	{
-		return EyeAdaptationManager.GetLastBloomSetupEyeAdaptationSurface();
-	}
-
-	/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
-	void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT)
-	{
-		EyeAdaptationManager.CacheBloomSetupEyeAdaptationRT(BloomSetupEyeAdaptationRT);
-	}
-
-	/** Swap the bloom setup output for eye adaptation mobile platform. */
-	void SwapBloomSetupEyeAdaptationRT()
-	{
-		EyeAdaptationManager.SwapBloomSetupEyeAdaptationRT();
-	}
-
-	/** Release the cached bloom setup output for eye adaptation mobile platform. */
-	void SafeReleaseBloomSetupEyeAdaptationRT()
-	{
-		EyeAdaptationManager.SafeReleaseBloomSetupEyeAdaptationRT();
 	}
 
 #if WITH_MGPU
@@ -2446,7 +2383,6 @@ public:
 	TUniformBufferRef<FMobileBasePassUniformParameters> MobileCSMOpaqueBasePassUniformBuffer;
 	TUniformBufferRef<FMobileBasePassUniformParameters> MobileTranslucentBasePassUniformBuffer;
 	TUniformBufferRef<FMobileShadowDepthPassUniformParameters> MobileCSMShadowDepthPassUniformBuffer;
-	TUniformBufferRef<FMobileDistortionPassUniformParameters> MobileDistortionPassUniformBuffer;
 	/** Mobile Directional Lighting uniform buffers, one for each lighting channel 
 	  * The first is used for primitives with no lighting channels set.
 	  */

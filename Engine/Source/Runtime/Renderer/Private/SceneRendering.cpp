@@ -1860,47 +1860,6 @@ void FViewInfo::SwapEyeAdaptationBuffers(FRDGBuilder& GraphBuilder) const
 	}
 }
 
-const FSceneRenderTargetItem& FViewInfo::GetLastBloomSetupEyeAdaptationSurface() const
-{
-	FSceneViewState* EffectiveViewState = GetEyeAdaptationViewState();
-	if (EffectiveViewState)
-	{
-		return EffectiveViewState->GetLastBloomSetupEyeAdaptationSurface();
-	}
-	else
-	{
-		static FSceneRenderTargetItem SceneRenderTargetItem;
-		return SceneRenderTargetItem;
-	}
-}
-
-void FViewInfo::CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT) const
-{
-	FSceneViewState* EffectiveViewState = GetEyeAdaptationViewState();
-	if (EffectiveViewState)
-	{
-		EffectiveViewState->CacheBloomSetupEyeAdaptationRT(BloomSetupEyeAdaptationRT);
-	}
-}
-
-void FViewInfo::SwapBloomSetupEyeAdaptationRT() const
-{
-	FSceneViewState* EffectiveViewState = GetEyeAdaptationViewState();
-	if (EffectiveViewState)
-	{
-		EffectiveViewState->SwapBloomSetupEyeAdaptationRT();
-	}
-}
-
-void FViewInfo::SafeReleaseBloomSetupEyeAdaptationRT() const
-{
-	FSceneViewState* EffectiveViewState = GetEyeAdaptationViewState();
-	if (EffectiveViewState)
-	{
-		EffectiveViewState->SafeReleaseBloomSetupEyeAdaptationRT();
-	}
-}
-
 #if WITH_MGPU
 void FViewInfo::WaitForEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList)
 {

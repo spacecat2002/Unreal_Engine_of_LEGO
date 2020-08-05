@@ -898,7 +898,6 @@ void FPersistentUniformBuffers::Clear()
 	MobileOpaqueBasePassUniformBuffer.SafeRelease();
 	MobileTranslucentBasePassUniformBuffer.SafeRelease();
 	MobileCSMShadowDepthPassUniformBuffer.SafeRelease();
-	MobileDistortionPassUniformBuffer.SafeRelease();
 
 
 	for (auto& UniformBuffer : MobileDirectionalLightUniformBuffers)
@@ -942,10 +941,7 @@ void FPersistentUniformBuffers::Initialize()
 	MobileOpaqueBasePassUniformBuffer = TUniformBufferRef<FMobileBasePassUniformParameters>::CreateUniformBufferImmediate(MobileBasePassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 	MobileCSMOpaqueBasePassUniformBuffer = TUniformBufferRef<FMobileBasePassUniformParameters>::CreateUniformBufferImmediate(MobileBasePassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 	MobileTranslucentBasePassUniformBuffer = TUniformBufferRef<FMobileBasePassUniformParameters>::CreateUniformBufferImmediate(MobileBasePassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-	
-	FMobileDistortionPassUniformParameters MobileDistortionPassUniformParameters;
-	MobileDistortionPassUniformBuffer = TUniformBufferRef<FMobileDistortionPassUniformParameters>::CreateUniformBufferImmediate(MobileDistortionPassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-	
+		
 	FMobileDirectionalLightShaderParameters MobileDirectionalLightShaderParameters = {};
 	for (int32 Index = 0; Index < UE_ARRAY_COUNT(MobileDirectionalLightUniformBuffers); ++Index)
 	{
