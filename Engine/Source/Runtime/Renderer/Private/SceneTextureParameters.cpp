@@ -2,6 +2,7 @@
 
 #include "SceneTextureParameters.h"
 #include "SceneRendering.h"
+#include "ScenePrivate.h"
 #include "SceneRenderTargets.h"
 #include "SystemTextures.h"
 
@@ -76,5 +77,17 @@ FRDGTextureRef GetEyeAdaptationTexture(FRDGBuilder& GraphBuilder, const FSceneVi
 	else
 	{
 		return GraphBuilder.RegisterExternalTexture(GSystemTextures.WhiteDummy);
+	}
+}
+
+FRHIShaderResourceView* GetEyeAdaptationBuffer(const FSceneView& View)
+{
+	if (View.HasValidEyeAdaptationBuffer())
+	{
+		return View.GetEyeAdaptationBuffer()->SRV;
+	}
+	else
+	{
+		return GWhiteVertexBufferWithSRV->ShaderResourceViewRHI;
 	}
 }

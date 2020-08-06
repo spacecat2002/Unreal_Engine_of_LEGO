@@ -2693,18 +2693,6 @@ void SetupSceneTextureUniformParameters(
 		SceneTextureParameters.CustomStencilTexture = CustomStencilSRV;
 	}
 
-	// Eye Adaptation
-	{
-		SceneTextureParameters.EyeAdaptationTexture = BlackDefault2D;
-
-		// Setup by passes that support it
-		if (EnumHasAnyFlags(SetupMode, ESceneTextureSetupMode::EyeAdaptation) && View && View->HasValidEyeAdaptationTexture())
-		{
-			SceneTextureParameters.EyeAdaptationTexture = GetRDG(View->GetEyeAdaptationTexture(), ERDGTextureFlags::MultiFrame);
-		}
-	}
-
-	SceneTextureParameters.SceneColorCopyTexture = BlackDefault2D;
 	SceneTextureParameters.PointClampSampler = TStaticSamplerState<SF_Point>::GetRHI();
 }
 
@@ -2759,10 +2747,6 @@ EMobileSceneTextureSetupMode Translate(ESceneTextureSetupMode InSetupMode)
 	if (EnumHasAnyFlags(InSetupMode, ESceneTextureSetupMode::CustomDepth))
 	{
 		OutSetupMode |= EMobileSceneTextureSetupMode::CustomDepth;
-	}
-	if (EnumHasAnyFlags(InSetupMode, ESceneTextureSetupMode::EyeAdaptation))
-	{
-		OutSetupMode |= EMobileSceneTextureSetupMode::EyeAdaptation;
 	}
 	return OutSetupMode;
 }
@@ -2823,13 +2807,6 @@ static void SetupMobileSceneTextureUniformParameters(
 	SceneTextureParameters.MobileCustomStencilTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	SceneTextureParameters.VirtualTextureFeedbackUAV = SceneContext.GetVirtualTextureFeedbackUAV();
-
-	SceneTextureParameters.EyeAdaptationBuffer = GWhiteVertexBufferWithSRV->ShaderResourceViewRHI;
-
-	if (EnumHasAnyFlags(SetupMode, EMobileSceneTextureSetupMode::EyeAdaptation) && View && View->HasValidEyeAdaptationBuffer())
-	{
-		SceneTextureParameters.EyeAdaptationBuffer = View->GetEyeAdaptationBuffer()->SRV;
-	}
 
 	// Mobile GBuffer
 	{
@@ -2949,7 +2926,7 @@ void SetupMobileSceneTextureUniformParameters(
 	EMobileSceneTextureSetupMode SetupMode = EMobileSceneTextureSetupMode::None;
 	if (bSceneTexturesValid)
 	{
-		SetupMode |= EMobileSceneTextureSetupMode::SceneColor | EMobileSceneTextureSetupMode::EyeAdaptation;
+		SetupMode |= EMobileSceneTextureSetupMode::SceneColor;
 	}
 	if (bCustomDepthIsValid)
 	{

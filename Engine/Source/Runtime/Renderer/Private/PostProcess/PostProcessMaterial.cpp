@@ -19,6 +19,7 @@
 #include "PostProcessing.h"
 #include "PostProcessMobile.h"
 #include "BufferVisualizationData.h"
+#include "SceneTextureParameters.h"
 
 namespace
 {
@@ -463,10 +464,20 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	const uint32 MaterialStencilRef = Material->GetStencilRefValue();
 
+	const bool bMobilePlatform = IsMobilePlatform(View.GetShaderPlatform());
+
 	FPostProcessMaterialParameters* PostProcessMaterialParameters = GraphBuilder.AllocParameters<FPostProcessMaterialParameters>();
 
 	PostProcessMaterialParameters->SceneTextures = CreateSceneTextureShaderParameters(GraphBuilder, View, ESceneTextureSetupMode::All);
 	PostProcessMaterialParameters->View = View.ViewUniformBuffer;
+	if (bMobilePlatform)
+	{
+		PostProcessMaterialParameters->EyeAdaptationBuffer = GetEyeAdaptationBuffer(View);
+	}
+	else
+	{
+		PostProcessMaterialParameters->EyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
+	}
 	PostProcessMaterialParameters->PostProcessOutput = GetScreenPassTextureViewportParameters(OutputViewport);
 	PostProcessMaterialParameters->MobileCustomStencilTexture = DepthStencilTexture;
 	PostProcessMaterialParameters->MobileCustomStencilTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -475,8 +486,6 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	// The target color will be decoded if bForceIntermediateTarget is true in any case, but we might still need to decode the input color
 	PostProcessMaterialParameters->bMetalMSAAHDRDecode = Inputs.bMetalMSAAHDRDecode ? 1 : 0;
-
-	const bool bMobilePlatform = IsMobilePlatform(View.GetShaderPlatform());
 
 	if (DepthStencilTexture && !bMobilePlatform)
 	{

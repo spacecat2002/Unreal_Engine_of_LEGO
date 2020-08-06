@@ -29,8 +29,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FSceneTextureUniformParameters, RENDERER_AP
 	SHADER_PARAMETER_SRV(Texture2D<uint2>, CustomStencilTexture)
 
 	// Misc
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorCopyTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
@@ -48,9 +46,8 @@ enum class ESceneTextureSetupMode : uint32
 	GBufferF		= 1 << 8,
 	SSAO			= 1 << 9,
 	CustomDepth		= 1 << 10,
-	EyeAdaptation	= 1 << 11,
 	GBuffers		= GBufferA | GBufferB | GBufferC | GBufferD | GBufferE | GBufferF,
-	All				= SceneColor | SceneDepth | SceneVelocity | GBuffers | SSAO | CustomDepth | EyeAdaptation
+	All				= SceneColor | SceneDepth | SceneVelocity | GBuffers | SSAO | CustomDepth
 };
 ENUM_CLASS_FLAGS(ESceneTextureSetupMode);
 
@@ -89,7 +86,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileSceneTextureUniformParameters, RENDE
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MobileCustomStencilTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, MobileCustomStencilTextureSampler)
 	SHADER_PARAMETER_UAV(RWBuffer<uint>, VirtualTextureFeedbackUAV)
-	SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
 	// GBuffer
 	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferATexture)
 	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferBTexture)
@@ -106,8 +102,7 @@ enum class EMobileSceneTextureSetupMode : uint32
 	None			= 0,
 	SceneColor		= 1 << 0,
 	CustomDepth		= 1 << 1,
-	EyeAdaptation	= 1 << 2,
-	All = SceneColor | CustomDepth | EyeAdaptation
+	All = SceneColor | CustomDepth
 };
 ENUM_CLASS_FLAGS(EMobileSceneTextureSetupMode);
 

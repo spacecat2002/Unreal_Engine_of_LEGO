@@ -7,6 +7,7 @@
 #include "MobileBasePassRendering.h"
 #include "DynamicPrimitiveDrawing.h"
 #include "ScenePrivate.h"
+#include "SceneTextureParameters.h"
 #include "ShaderPlatformQualitySettings.h"
 #include "MaterialShaderQualitySettings.h"
 #include "PrimitiveSceneInfo.h"
@@ -183,6 +184,8 @@ void SetupMobileBasePassUniformParameters(
 	{
 		BasePassParameters.PlanarReflection.ReflectionPlane.Set(0.0f, 0.0f, 0.0f, 0.0f);
 	}
+
+	BasePassParameters.EyeAdaptationBuffer = GetEyeAdaptationBuffer(View);
 
 	BasePassParameters.DynamicSpotLightShadowSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	BasePassParameters.DynamicSpotLightShadowBufferSize = View.MobileMovableSpotLightsShadowInfo.ShadowBufferSize;

@@ -6,6 +6,7 @@
 #include "DynamicPrimitiveDrawing.h"
 #include "RendererModule.h"
 #include "ScenePrivate.h"
+#include "SceneTextureParameters.h"
 #include "ScreenRendering.h"
 #include "ScreenPass.h"
 #include "MeshPassProcessor.inl"
@@ -618,9 +619,9 @@ void SetupTranslucentBasePassUniformParameters(
 	const int32 ViewIndex,
 	FTranslucentBasePassUniformParameters& BasePassParameters)
 {
-	const auto GetRDG = [&](const TRefCountPtr<IPooledRenderTarget>& PooledRenderTarget)
+	const auto GetRDG = [&](const TRefCountPtr<IPooledRenderTarget>& PooledRenderTarget, ERDGTextureFlags Flags = ERDGTextureFlags::None)
 	{
-		return RegisterExternalOrPassthroughTexture(GraphBuilder, PooledRenderTarget);
+		return RegisterExternalOrPassthroughTexture(GraphBuilder, PooledRenderTarget, Flags);
 	};
 
 	SetupSharedBasePassParameters(RHICmdList, View, BasePassParameters.Shared);
@@ -724,16 +725,24 @@ void SetupTranslucentBasePassUniformParameters(
 		BasePassParameters.TranslucencyLightingVolumeDirectionalOuterSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	}
 
-	BasePassParameters.SceneTextures.SceneColorCopyTexture = BlackDummyTexture;
+	BasePassParameters.SceneColorCopyTexture = BlackDummyTexture;
+	BasePassParameters.SceneColorCopySampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	if (SceneColorCopyTexture)
 	{
-		BasePassParameters.SceneTextures.SceneColorCopyTexture = SceneColorCopyTexture;
+		BasePassParameters.SceneColorCopyTexture = SceneColorCopyTexture;
+	}
+
+	BasePassParameters.EyeAdaptationTexture = BlackDummyTexture;
+
+	// Setup by passes that support it
+	if (View.HasValidEyeAdaptationTexture())
+	{
+		BasePassParameters.EyeAdaptationTexture = GetRDG(View.GetEyeAdaptationTexture(), ERDGTextureFlags::MultiFrame);
 	}
 
 	BasePassParameters.PreIntegratedGFTexture = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
 	BasePassParameters.PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-
 }
 
 TRDGUniformBufferRef<FTranslucentBasePassUniformParameters> CreateTranslucentBasePassUniformBuffer(
