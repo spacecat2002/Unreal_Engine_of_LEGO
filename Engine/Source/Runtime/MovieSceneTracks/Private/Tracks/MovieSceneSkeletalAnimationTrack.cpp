@@ -416,6 +416,7 @@ void UMovieSceneSkeletalAnimationTrack::SetUpRootMotions(bool bForce)
 		RootMotionParams.bRootMotionsDirty = false;
 		if (AnimationSections.Num() == 0)
 		{
+			RootMotionParams.RootTransforms.SetNum(0);
 			return;
 		}
 		SortSections();

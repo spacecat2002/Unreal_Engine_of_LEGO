@@ -456,7 +456,7 @@ void UMovieSceneSkeletalAnimationSection::MatchSectionByBoneTransform(USkeletalM
 		FQuat DiffRotate;
 		Track->MatchSectionByBoneTransform(bMatchWithPrevious,SkelMeshComp, this, CurrentFrame, FrameRate, BoneName, DiffTransform,DiffTranslate,DiffRotate);
 
-		/* use for testing later*
+		/*
 		StartLocationOffset = bMatchTranslation ? DiffTranslate : FVector::ZeroVector;
 		if (!bMatchIncludeZHeight)
 		{
@@ -470,17 +470,20 @@ void UMovieSceneSkeletalAnimationSection::MatchSectionByBoneTransform(USkeletalM
 		}
 		*/
 		
-		MatchedLocationOffset = bMatchTranslation ? DiffTransform.GetLocation() : FVector::ZeroVector;
+		
+		
+		MatchedLocationOffset = bMatchTranslation ? DiffTranslate : FVector::ZeroVector;
 		if (!bMatchIncludeZHeight)
 		{
 			MatchedLocationOffset.Z = 0.0f;
 		}
 
-		MatchedRotationOffset = bMatchRotation ? DiffTransform.GetRotation().Rotator() : FRotator::ZeroRotator;
+		MatchedRotationOffset = bMatchRotation ? DiffRotate.Rotator() : FRotator::ZeroRotator;
 		if (!bMatchIncludePitchRotation)
 		{
 			MatchedRotationOffset.Pitch = 0.0f;
 		}
+		
 		//if we previous we need to multiply the inverses of these out so they stay at their current locations
 		if (bMatchWithPrevious == false)
 		{
