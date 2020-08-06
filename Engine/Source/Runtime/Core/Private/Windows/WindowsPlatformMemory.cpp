@@ -8,6 +8,7 @@
 #include "Containers/UnrealString.h"
 #include "CoreGlobals.h"
 #include "Misc/OutputDeviceRedirector.h"
+#include "Misc/Guid.h"
 #include "Stats/Stats.h"
 #include "GenericPlatform/GenericPlatformMemoryPoolStats.h"
 
