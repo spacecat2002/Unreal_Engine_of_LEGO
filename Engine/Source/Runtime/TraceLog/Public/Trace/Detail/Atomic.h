@@ -24,9 +24,6 @@ template <typename Type> Type	AtomicAddRelease(Type volatile* Target, Type Value
 template <typename Type> Type	AtomicAddAcquire(Type volatile* Target, Type Value);
 void							PlatformYield();
 
-} // namespace Private
-} // namespace Trace
-
 ////////////////////////////////////////////////////////////////////////////////
 #define IS_MSVC					0
 #define IS_GCC_COMPATIBLE		0
@@ -37,9 +34,6 @@ void							PlatformYield();
 #	undef  IS_GCC_COMPATIBLE
 #	define IS_GCC_COMPATIBLE	1
 #endif
-
-namespace Trace {
-namespace Private {
 
 ////////////////////////////////////////////////////////////////////////////////
 inline void PlatformYield()
