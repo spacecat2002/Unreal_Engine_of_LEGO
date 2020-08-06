@@ -2125,11 +2125,6 @@ bool UMaterial::GetScalarParameterValue_New(const FHashedMaterialParameterInfo& 
 #if WITH_EDITOR
 bool UMaterial::GetScalarParameterValue_Legacy(const FHashedMaterialParameterInfo& ParameterInfo, float& OutValue, bool bOveriddenOnly) const
 {
-	if (bOveriddenOnly && !AreExperimentalMaterialLayersEnabled())
-	{
-		return false;
-	}
-
 	// In the case of duplicate parameters with different values, this will return the
 	// first matching expression found, not necessarily the one that's used for rendering
 	UMaterialExpressionScalarParameter* Parameter = nullptr;
@@ -2268,11 +2263,6 @@ bool UMaterial::GetVectorParameterValue_New(const FHashedMaterialParameterInfo& 
 #if WITH_EDITOR
 bool UMaterial::GetVectorParameterValue_Legacy(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor& OutValue, bool bOveriddenOnly) const
 {
-	if (bOveriddenOnly && !AreExperimentalMaterialLayersEnabled())
-	{
-		return false;
-	}
-
 	// In the case of duplicate parameters with different values, this will return the
 	// first matching expression found, not necessarily the one that's used for rendering
 	UMaterialExpressionVectorParameter* Parameter = nullptr;
@@ -2398,11 +2388,6 @@ bool UMaterial::GetTextureParameterValue_New(const FHashedMaterialParameterInfo&
 #if WITH_EDITOR
 bool UMaterial::GetTextureParameterValue_Legacy(const FHashedMaterialParameterInfo& ParameterInfo, UTexture*& OutValue, bool bOveriddenOnly) const
 {
-	if (bOveriddenOnly && !AreExperimentalMaterialLayersEnabled())
-	{
-		return false;
-	}
-
 	// In the case of duplicate parameters with different values, this will return the
 	// first matching expression found, not necessarily the one that's used for rendering
 	UMaterialExpressionTextureSampleParameter* Parameter = nullptr;
@@ -2500,11 +2485,6 @@ bool UMaterial::GetRuntimeVirtualTextureParameterValue_New(const FHashedMaterial
 #if WITH_EDITOR
 bool UMaterial::GetRuntimeVirtualTextureParameterValue_Legacy(const FHashedMaterialParameterInfo& ParameterInfo, URuntimeVirtualTexture*& OutValue, bool bOveriddenOnly) const
 {
-	if (bOveriddenOnly && !AreExperimentalMaterialLayersEnabled())
-	{
-		return false;
-	}
-
 	// In the case of duplicate parameters with different values, this will return the
 	// first matching expression found, not necessarily the one that's used for rendering
 	UMaterialExpressionRuntimeVirtualTextureSampleParameter* Parameter = nullptr;
@@ -4406,7 +4386,6 @@ void UMaterial::RebuildShadingModelField()
 	UsedShadingModels = GetShadingModelFieldString(ShadingModels, FShadingModelToStringDelegate::CreateLambda(ShadingModelToStringLambda), " | ");
 #endif
 }
-#endif // WITH_EDITOR
 
 bool UMaterial::GetExpressionParameterName(const UMaterialExpression* Expression, FName& OutName)
 {
@@ -4448,6 +4427,8 @@ bool UMaterial::CopyExpressionParameters(UMaterialExpression* Source, UMaterialE
 
 		DestTex->Modify();
 		DestTex->Texture = SourceTex->Texture;
+		DestTex->Group = SourceTex->Group;
+		DestTex->SortPriority = SourceTex->SortPriority;
 	}
 	else if(Source->IsA(UMaterialExpressionVectorParameter::StaticClass()))
 	{
@@ -4456,6 +4437,8 @@ bool UMaterial::CopyExpressionParameters(UMaterialExpression* Source, UMaterialE
 
 		DestVec->Modify();
 		DestVec->DefaultValue = SourceVec->DefaultValue;
+		DestVec->Group = SourceVec->Group;
+		DestVec->SortPriority = SourceVec->SortPriority;
 	}
 	else if(Source->IsA(UMaterialExpressionStaticBoolParameter::StaticClass()))
 	{
@@ -4464,6 +4447,8 @@ bool UMaterial::CopyExpressionParameters(UMaterialExpression* Source, UMaterialE
 
 		DestVec->Modify();
 		DestVec->DefaultValue = SourceVec->DefaultValue;
+		DestVec->Group = SourceVec->Group;
+		DestVec->SortPriority = SourceVec->SortPriority;
 	}
 	else if(Source->IsA(UMaterialExpressionStaticComponentMaskParameter::StaticClass()))
 	{
@@ -4475,6 +4460,8 @@ bool UMaterial::CopyExpressionParameters(UMaterialExpression* Source, UMaterialE
 		DestVec->DefaultG = SourceVec->DefaultG;
 		DestVec->DefaultB = SourceVec->DefaultB;
 		DestVec->DefaultA = SourceVec->DefaultA;
+		DestVec->Group = SourceVec->Group;
+		DestVec->SortPriority = SourceVec->SortPriority;
 	}
 	else if(Source->IsA(UMaterialExpressionScalarParameter::StaticClass()))
 	{
@@ -4483,6 +4470,8 @@ bool UMaterial::CopyExpressionParameters(UMaterialExpression* Source, UMaterialE
 
 		DestVec->Modify();
 		DestVec->DefaultValue = SourceVec->DefaultValue;
+		DestVec->Group = SourceVec->Group;
+		DestVec->SortPriority = SourceVec->SortPriority;
 	}
 	else if(Source->IsA(UMaterialExpressionFontSampleParameter::StaticClass()))
 	{
@@ -4492,14 +4481,23 @@ bool UMaterial::CopyExpressionParameters(UMaterialExpression* Source, UMaterialE
 		DestFont->Modify();
 		DestFont->Font = SourceFont->Font;
 		DestFont->FontTexturePage = SourceFont->FontTexturePage;
+		DestFont->Group = SourceFont->Group;
+		DestFont->SortPriority = SourceFont->SortPriority;
 	}
 	else
 	{
 		bRet = false;
 	}
 
+	if (bRet)
+	{
+		Destination->Desc = Source->Desc;
+		Destination->GraphNode->OnUpdateCommentText(Destination->Desc);
+	}
+
 	return bRet;
 }
+#endif // WITH_EDITOR
 
 void UMaterial::BeginDestroy()
 {

@@ -63,7 +63,7 @@ static FRDGTextureRef AddHairLUTPass(
 	OutputDesc.Depth = OutputResolution.Z;
 	OutputDesc.Format = PF_FloatRGBA;
 	OutputDesc.NumMips = 1;
-	OutputDesc.Flags = TexCreate_ShaderResource | TexCreate_UAV | TexCreate_ShaderResource;
+	OutputDesc.Flags = TexCreate_ShaderResource | TexCreate_UAV;
 	FRDGTextureRef HairLUTTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("HairLUT"));
 
 	FHairLUTCS::FParameters* Parameters = GraphBuilder.AllocParameters<FHairLUTCS::FParameters>();

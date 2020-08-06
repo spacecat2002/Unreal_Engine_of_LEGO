@@ -340,6 +340,8 @@ public:
 
 	virtual void RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions) override final
 	{
+		checkf(!State.bInsideBeginRenderPass, TEXT("Beginning a transition within a renderpass is not supported!"));
+
 		for (const FRHITransition* Transition : Transitions)
 		{
 			Tracker->AddOps(Transition->PendingOperationsBegin);
@@ -350,6 +352,8 @@ public:
 
 	virtual void RHIEndTransitions(TArrayView<const FRHITransition*> Transitions) override final
 	{
+		checkf(!State.bInsideBeginRenderPass, TEXT("Ending a transition within a renderpass is not supported!"));
+
 		for (const FRHITransition* Transition : Transitions)
 		{
 			Tracker->AddOps(Transition->PendingOperationsEnd);
@@ -495,7 +499,7 @@ public:
 		RHIContext->RHISetScissorRect(bEnable, MinX, MinY, MaxX, MaxY);
 	}
 
-	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState) override final
+	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState, bool bApplyAdditionalState) override final
 	{
 		checkf(State.bInsideBeginRenderPass, TEXT("Graphics PSOs can only be set inside a RenderPass!"));
 		State.bGfxPSOSet = true;
@@ -520,7 +524,7 @@ public:
 		// Setting a new PSO unbinds all previous bound resources
 		Tracker->ResetUAVState(RHIValidation::EUAVMode::Graphics);
 
-		RHIContext->RHISetGraphicsPipelineState(GraphicsState);
+		RHIContext->RHISetGraphicsPipelineState(GraphicsState, bApplyAdditionalState);
 	}
 
 	/** Set the shader resource view of a surface.  This is used for binding TextureMS parameter types that need a multi sampled view. */

@@ -71,6 +71,7 @@ struct RENDERCORE_API FPooledRenderTarget : public IPooledRenderTarget
 	}
 
 	void InitRDG();
+	void InitPassthroughRDG();
 
 	// interface IPooledRenderTarget --------------
 
@@ -102,7 +103,6 @@ struct RENDERCORE_API FPooledRenderTarget : public IPooledRenderTarget
 	FVRamAllocation VRamAllocation;
 
 private:
-	void InitPassthroughRDG();
 
 	/** Pointer back to the pool for render targets which are actually pooled, otherwise NULL. */
 	FRenderTargetPool* RenderTargetPool;

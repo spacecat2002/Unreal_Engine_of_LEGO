@@ -3821,12 +3821,12 @@ void USkinnedMeshComponent::SetVertexOffsetUsage(int32 LODIndex, int32 Usage)
 
 		VertexOffsetUsage[LODIndex].Usage = Usage;
 
-		if ((Usage & int32(EVertexOffsetUsage::PreSkinningOffset)) == 0)
+		if ((Usage & int32(EVertexOffsetUsageType::PreSkinningOffset)) == 0)
 		{
 			LODInfo[LODIndex].PreSkinningOffsets.Empty();
 		}
 
-		if ((Usage & int32(EVertexOffsetUsage::PostSkinningOffset)) == 0)
+		if ((Usage & int32(EVertexOffsetUsageType::PostSkinningOffset)) == 0)
 		{
 			LODInfo[LODIndex].PostSkinningOffsets.Empty();
 		}

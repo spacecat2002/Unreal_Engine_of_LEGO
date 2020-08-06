@@ -181,7 +181,9 @@ void FSkeletalMeshObjectGPUSkin::InitResources(USkinnedMeshComponent* InMeshComp
 				CompLODInfo = &InMeshComponent->LODInfo[LODIndex];
 			}
 
+			PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			SkelLOD.InitResources(InMeshComponent->GetVertexOffsetUsage(LODIndex), MeshLODInfo, CompLODInfo, FeatureLevel);
+			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 	}
 
@@ -1758,9 +1760,10 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(uint32 Ve
 	// vertex buffer for each lod has already been created when skelmesh was loaded
 	FSkeletalMeshLODRenderData& LODData = SkelMeshRenderData->LODRenderData[LODIndex];
 	
+	check(CompLODInfo);
+
 	// If we have a skin weight override buffer (and it's the right size) use it
-	if (CompLODInfo &&
-		CompLODInfo->OverrideSkinWeights &&
+	if (CompLODInfo->OverrideSkinWeights &&
 		CompLODInfo->OverrideSkinWeights->GetNumVertices() == LODData.StaticVertexBuffers.PositionVertexBuffer.GetNumVertices())
 	{
 		check(LODData.SkinWeightVertexBuffer.GetMaxBoneInfluences() == CompLODInfo->OverrideSkinWeights->GetMaxBoneInfluences());
@@ -1778,8 +1781,7 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(uint32 Ve
 	}
 
 	// If we have a vertex color override buffer (and it's the right size) use it
-	if (CompLODInfo &&
-		CompLODInfo->OverrideVertexColors &&
+	if (CompLODInfo->OverrideVertexColors &&
 		CompLODInfo->OverrideVertexColors->GetNumVertices() == LODData.StaticVertexBuffers.PositionVertexBuffer.GetNumVertices())
 	{
 		MeshObjectColorBuffer = CompLODInfo->OverrideVertexColors;
@@ -1789,12 +1791,12 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(uint32 Ve
 		MeshObjectColorBuffer = &LODData.StaticVertexBuffers.ColorVertexBuffer;
 	}
 
-	if ((VertexOffsetUsage & uint32(EVertexOffsetUsage::PreSkinningOffset)) && CompLODInfo->PreSkinningOffsets.Num() == 0)
+	if ((VertexOffsetUsage & uint32(EVertexOffsetUsageType::PreSkinningOffset)) && CompLODInfo->PreSkinningOffsets.Num() == 0)
 	{
 		CompLODInfo->PreSkinningOffsets.SetNumZeroed(LODData.GetNumVertices());
 	}
 
-	if ((VertexOffsetUsage & uint32(EVertexOffsetUsage::PostSkinningOffset)) && CompLODInfo->PostSkinningOffsets.Num() == 0)
+	if ((VertexOffsetUsage & uint32(EVertexOffsetUsageType::PostSkinningOffset)) && CompLODInfo->PostSkinningOffsets.Num() == 0)
 	{
 		CompLODInfo->PostSkinningOffsets.SetNumZeroed(LODData.GetNumVertices());
 	}

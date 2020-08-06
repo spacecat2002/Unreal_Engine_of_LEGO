@@ -693,7 +693,13 @@ void FCompositionLighting::ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList
 			if (FSSAOHelper::IsAmbientOcclusionAsyncCompute(View, Levels))
 			{
 				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-				SCOPED_GPU_MASK(FRHICommandListExecutor::GetImmediateAsyncComputeCommandList(), View.GPUMask);
+
+				FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
+				SCOPED_GPU_MASK(RHICmdListComputeImmediate, View.GPUMask);
+
+				FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View, ESceneTextureSetupMode::All);
+				FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdListComputeImmediate, GlobalUniformBuffers);
 
 				FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
 

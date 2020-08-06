@@ -197,7 +197,7 @@ class FD3D12DynamicRHI : public FDynamicRHI
 
 public:
 
-	static FD3D12DynamicRHI* GetD3DRHI() { return SingleD3DRHI; }
+	static D3D12RHI_API FD3D12DynamicRHI* GetD3DRHI() { return SingleD3DRHI; }
 
 private:
 

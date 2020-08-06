@@ -1512,7 +1512,11 @@ void FDeferredShadingSceneRenderer::RenderCapsuleShadowsForMovableSkylight(
 					RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 					RDG_EVENT_SCOPE(GraphBuilder, "IndirectCapsuleShadows");
 					RDG_GPU_STAT_SCOPE(GraphBuilder, CapsuleShadows);
-		
+
+					FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(GraphBuilder.RHICmdList, View, ESceneTextureSetupMode::All);
+					FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+					SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(GraphBuilder.RHICmdList, GlobalUniformBuffers);
+
 					int32 NumCapsuleShapes = 0;
 					int32 NumMeshesWithCapsules = 0;
 					int32 NumMeshDistanceFieldCasters = 0;

@@ -768,7 +768,7 @@ namespace VulkanRHI
 		{
 			if (GValidationCvar.GetValueOnRenderThread() == 0)
 			{
-				UE_LOG(LogVulkanRHI, Fatal, TEXT("Failed with Validation error. Try running with r.Vulkan.EnableValidation=1 to get information from the driver"));
+				UE_LOG(LogVulkanRHI, Fatal, TEXT("Failed with Validation error. Try running with r.Vulkan.EnableValidation=1 or -vulkandebug to get information from the validation layers."));
 			}
 		}
 #endif

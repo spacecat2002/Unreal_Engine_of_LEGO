@@ -1422,10 +1422,9 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(const FGraphicsPipelineStat
 	SubpassHint = Initializer.SubpassHint;
 	CompatibleHashInfo.SubpassHint = (uint8)Initializer.SubpassHint;
 
-	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
-	FVulkanCommandListContext& ImmediateContext = RHI->GetDevice()->GetImmediateContext();
+	FVulkanCommandListContext& ImmediateContext = GVulkanRHI->GetDevice()->GetImmediateContext();
 
-	if (RHI->GetDevice()->GetOptionalExtensions().HasQcomRenderPassTransform)
+	if (GVulkanRHI->GetDevice()->GetOptionalExtensions().HasQcomRenderPassTransform)
 	{
 		VkFormat SwapchainImageFormat = ImmediateContext.GetSwapchainImageFormat();
 		if (Desc[0].format == SwapchainImageFormat)

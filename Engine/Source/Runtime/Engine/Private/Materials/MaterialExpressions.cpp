@@ -2676,7 +2676,6 @@ UMaterialExpressionTextureSampleParameter::UMaterialExpressionTextureSampleParam
 
 	MenuCategories.Empty();
 	MenuCategories.Add( ConstructorStatics.NAME_Obsolete);
-	SortPriority = 0;
 	ApplyChannelNames();
 #endif
 }
@@ -7314,7 +7313,6 @@ UMaterialExpressionParameter::UMaterialExpressionParameter(const FObjectInitiali
 
 #if WITH_EDITORONLY_DATA
 	MenuCategories.Add(ConstructorStatics.NAME_Parameters);
-	SortPriority = 0;
 
 	bCollapsed = false;
 #endif
@@ -17251,6 +17249,7 @@ void UMaterialExpressionSkyAtmosphereDistantLightScatteredLuminance::GetCaption(
 ///////////////////////////////////////////////////////////////////////////////
 // UMaterialExpressionSkinningVertexOffsets
 ///////////////////////////////////////////////////////////////////////////////
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 UMaterialExpressionSkinningVertexOffsets::UMaterialExpressionSkinningVertexOffsets(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -17275,6 +17274,7 @@ UMaterialExpressionSkinningVertexOffsets::UMaterialExpressionSkinningVertexOffse
 	bShowOutputNameOnPin = true;
 #endif
 }
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 #if WITH_EDITOR
 int32 UMaterialExpressionSkinningVertexOffsets::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)

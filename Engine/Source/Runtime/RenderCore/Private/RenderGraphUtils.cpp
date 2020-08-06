@@ -474,7 +474,7 @@ void AddClearRenderTargetPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture)
 
 void AddClearRenderTargetPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture, const FLinearColor& ClearColor)
 {
-	if (Texture->Desc.ClearValue.GetClearColor() == ClearColor)
+	if (Texture->Desc.ClearValue.ColorBinding == EClearBinding::EColorBound && Texture->Desc.ClearValue.GetClearColor() == ClearColor)
 	{
 		AddClearRenderTargetPass(GraphBuilder, Texture);
 	}

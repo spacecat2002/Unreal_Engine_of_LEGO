@@ -82,7 +82,7 @@ const int32 GRDGExtendResourceLifetimes = 0;
 
 inline bool IsResourceLifetimeExtended()
 {
-	return GRDGImmediateMode || GRDGExtendResourceLifetimes;
+	return (GRDGImmediateMode != 0) || (GRDGExtendResourceLifetimes != 0);
 }
 
 extern int32 GRDGAsyncCompute;

@@ -827,7 +827,7 @@ extern bool GRenderDocFound;
 
 const int GMaxCrashBufferEntries = 2048;
 
-extern class FVulkanDynamicRHI*	GVulkanRHI;
+extern VULKANRHI_API class FVulkanDynamicRHI* GVulkanRHI;
 
 extern TAtomic<uint64> GVulkanBufferHandleIdCounter;
 extern TAtomic<uint64> GVulkanBufferViewHandleIdCounter;

@@ -104,11 +104,14 @@ bool FMobileSceneRenderer::RenderInverseOpacity(FRHICommandListImmediate& RHICmd
 	// make sure targets are writable
 	FRHITransitionInfo TransitionsBefore[3];
 	int32 NumTransitionsBefore = 0;
-	TransitionsBefore[NumTransitionsBefore++] = FRHITransitionInfo(SceneContext.GetSceneColorSurface(), ERHIAccess::Unknown, ERHIAccess::RTV);
-	TransitionsBefore[NumTransitionsBefore++] = FRHITransitionInfo(SceneContext.GetSceneDepthSurface(), ERHIAccess::Unknown, ERHIAccess::DSVWrite);
+	TransitionsBefore[NumTransitionsBefore] = FRHITransitionInfo(SceneContext.GetSceneColorSurface(), ERHIAccess::Unknown, ERHIAccess::RTV);
+	++NumTransitionsBefore;
+	TransitionsBefore[NumTransitionsBefore] = FRHITransitionInfo(SceneContext.GetSceneDepthSurface(), ERHIAccess::Unknown, ERHIAccess::DSVWrite);
+	++NumTransitionsBefore;
 	if (SceneColorResolve)
 	{
-		TransitionsBefore[NumTransitionsBefore++] = FRHITransitionInfo(SceneColorResolve, ERHIAccess::Unknown, ERHIAccess::RTV | ERHIAccess::ResolveDst);
+		TransitionsBefore[NumTransitionsBefore] = FRHITransitionInfo(SceneColorResolve, ERHIAccess::Unknown, ERHIAccess::RTV | ERHIAccess::ResolveDst);
+		++NumTransitionsBefore;
 	}
 	RHICmdList.Transition(MakeArrayView(TransitionsBefore, NumTransitionsBefore));
 

@@ -69,7 +69,6 @@ URendererSettings::URendererSettings(const FObjectInitializer& ObjectInitializer
 	bSupportAtmosphericFog = true;
 	bSupportSkyAtmosphere = true;
 	bSupportSkinCacheShaders = false;
-	bSupportMaterialLayers = false;
 	GPUSimulationTextureSizeX = 1024;
 	GPUSimulationTextureSizeY = 1024;
 	bEnableRayTracing = 0;

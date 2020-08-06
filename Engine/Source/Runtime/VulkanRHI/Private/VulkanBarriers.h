@@ -134,6 +134,11 @@ public:
 		Layouts.Remove(Image);
 	}
 
+	FVulkanImageLayout* GetFullLayout(VkImage Image)
+	{
+		return Layouts.Find(Image);
+	}
+
 	FVulkanImageLayout& GetFullLayoutChecked(VkImage Image)
 	{
 		return Layouts.FindChecked(Image);

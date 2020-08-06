@@ -1839,6 +1839,7 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 				{
 					LocalSceneDepthZ.InitRDG();
 				}
+				LocalSceneDepthZ.InitPassthroughRDG();
 			}
 
 			GRenderTargetPool.UpdateElementSize(SceneDepthZ, OldElementSize);
@@ -2963,6 +2964,13 @@ TUniformBufferRef<FSceneTextureUniformParameters> CreateSceneTextureUniformBuffe
 	SetupSceneTextureUniformParameters(nullptr, nullptr, FeatureLevel, SceneContext, SetupMode, SceneTextures);
 	return TUniformBufferRef<FSceneTextureUniformParameters>::CreateUniformBufferImmediate(SceneTextures, EUniformBufferUsage::UniformBuffer_SingleFrame);
 }
+
+bool IsSceneTexturesValid(FRHICommandListImmediate& RHICmdList)
+{
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	return SceneContext.IsShadingPathValid();
+}
+
 
 void SetupMobileSceneTextureUniformParameters(
 	FSceneRenderTargets& SceneContext,

@@ -267,7 +267,7 @@ static void LogBreadcrumbData(ID3D12Device* Device)
 	bool bValidData = true;
 
 	// Check all the devices
-	FD3D12DynamicRHI* D3D12RHI = (FD3D12DynamicRHI*)GDynamicRHI;
+	FD3D12DynamicRHI* D3D12RHI = FD3D12DynamicRHI::GetD3DRHI();
 	D3D12RHI->ForEachDevice(Device, [&](FD3D12Device* Device)
 	{
 		bValidData = bValidData && LogBreadcrumbData(Device->GetGPUProfiler(), Device->GetCommandListManager());
@@ -563,7 +563,7 @@ namespace D3D12RHI
 		// Log RHI independent breadcrumbing data
 		LogBreadcrumbData(InDevice);
 
-		FD3D12DynamicRHI* D3D12RHI = (FD3D12DynamicRHI*)GDynamicRHI;
+		FD3D12DynamicRHI* D3D12RHI = FD3D12DynamicRHI::GetD3DRHI();
 #if PLATFORM_WINDOWS
 		// If no device provided then try and log the DRED status of each device
 		D3D12RHI->ForEachDevice(InDevice, [&](FD3D12Device* IterationDevice)

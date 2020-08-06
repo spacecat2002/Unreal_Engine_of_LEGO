@@ -103,6 +103,7 @@ void FD3D11DynamicRHI::ResolveTextureUsingShader(
 		//hack this to  pass validation in SetDepthStencil state since we are directly changing targets with a call to OMSetRenderTargets later.
 		CurrentDSVAccessType = FExclusiveDepthStencil::DepthWrite_StencilWrite;
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<true, CF_Always>::GetRHI();
+		check(DestTexture);
 		GraphicsPSOInit.DepthStencilTargetFormat = DestTexture->GetFormat();
 
 		RHICmdList.BeginRenderPass(FRHIRenderPassInfo(DestTexture, EDepthStencilTargetActions::LoadDepthStencil_StoreDepthStencil), TEXT(""));
