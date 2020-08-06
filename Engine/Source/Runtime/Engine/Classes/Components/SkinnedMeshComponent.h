@@ -1465,7 +1465,7 @@ public:
 
 	/**
 	 *	Hides the specified bone with name.  Currently this just enforces a scale of 0 for the hidden bones.
-	 *	Compoared to HideBone By Index - This keeps track of list of bones and update when LOD changes
+	 *	Compared to HideBone By Index - This keeps track of list of bones and update when LOD changes
 	 *
 	 *	@param  BoneName            Name of bone to hide
 	 *	@param	PhysBodyOption		Option for physics bodies that attach to the bones to be hidden
@@ -1475,7 +1475,7 @@ public:
 
 	/**
 	 *	UnHide the specified bone with name.  Currently this just enforces a scale of 0 for the hidden bones.
-	 *	Compoared to HideBone By Index - This keeps track of list of bones and update when LOD changes
+	 *	Compared to HideBone By Index - This keeps track of list of bones and update when LOD changes
 	 *	@param  BoneName            Name of bone to unhide
 	 */
 	UFUNCTION(BlueprintCallable, Category="Components|SkinnedMesh")
