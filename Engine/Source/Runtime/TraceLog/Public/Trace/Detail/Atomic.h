@@ -2,6 +2,12 @@
 
 #pragma once
 
+#include <atomic>
+
+#if PLATFORM_CPU_X86_FAMILY
+#	include <immintrin.h>
+#endif
+
 namespace Trace {
 namespace Private {
 
@@ -22,12 +28,6 @@ void							PlatformYield();
 } // namespace Trace
 
 ////////////////////////////////////////////////////////////////////////////////
-#if PLATFORM_CPU_X86_FAMILY
-#include <emmintrin.h>
-#endif
-#include <atomic>
-
-////////////////////////////////////////////////////////////////////////////////
 #define IS_MSVC					0
 #define IS_GCC_COMPATIBLE		0
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -36,18 +36,6 @@ void							PlatformYield();
 #elif defined(__clang__) || defined(__GNUC__)
 #	undef  IS_GCC_COMPATIBLE
 #	define IS_GCC_COMPATIBLE	1
-#endif
-
-////////////////////////////////////////////////////////////////////////////////
-#if IS_MSVC
-#	include <intrin.h>
-#	if defined(_M_ARM) || defined(_M_ARM64)
-#		if defined(_M_ARM)
-#			include <armintr.h>
-#		else
-#			include <arm64intr.h>
-#		endif
-#	endif
 #endif
 
 namespace Trace {
