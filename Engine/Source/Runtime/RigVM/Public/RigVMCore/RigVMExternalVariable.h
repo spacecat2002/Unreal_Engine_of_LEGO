@@ -79,7 +79,7 @@ struct RIGVM_API FRigVMExternalVariable
 		}
 		else if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
 		{
-			ExternalVariable.TypeName = StructProperty->Struct->GetFName();
+			ExternalVariable.TypeName = *StructProperty->Struct->GetStructCPPName();
 			ExternalVariable.TypeObject = StructProperty->Struct;
 		}
 
