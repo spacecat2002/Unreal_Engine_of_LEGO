@@ -809,14 +809,11 @@ FScreenPassTexture AddAmbientOcclusionPass(
 	if (DownsampledAO.IsValid())
 	{
 		SharedParameters.SSAO_DownsampledAO = DownsampledAO.Texture;
-
-		const FVector2D Input2Size = FVector2D(DownsampledAO.Texture->Desc.Extent);
-		const FVector2D Input2SizeInverse = FVector2D(1.0f) / Input2Size;
-
-		SharedParameters.SSAO_DownsampledAOInverseSize = FVector2D(Input2SizeInverse.X, Input2SizeInverse.Y);
+		SharedParameters.SSAO_DownsampledAOInverseSize = FVector2D(1.0f) / FVector2D(DownsampledAO.Texture->Desc.Extent);
 	}
 	else
 	{
+		SharedParameters.SSAO_DownsampledAO = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy, TEXT("BlackDummy"));
 		SharedParameters.SSAO_DownsampledAOInverseSize = FVector2D(1.0f, 1.0f);
 	}
 
