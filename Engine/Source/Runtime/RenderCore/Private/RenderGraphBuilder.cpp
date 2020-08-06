@@ -13,6 +13,15 @@ inline bool IsSubresourceTrackingRequired(ERHIAccess Access, EResourceTransition
 	return !IsValidAccess(Access) || Flags != EResourceTransitionFlags::None;
 }
 
+inline ERHIAccess MakeValidAccess(ERHIAccess Access)
+{
+	// If we find any write states in the access mask, remove all read-only states. This mainly exists
+	// to allow RDG uniform buffers to contain read-only parameters which are also bound for write on the
+	// pass. Often times these uniform buffers are created and only relevant things are accessed. If an
+	// invalid access does occur, the RHI validation layer will catch it.
+	return IsWritableAccess(Access) ? (Access & ~ERHIAccess::ReadOnlyExclusiveMask) : Access;
+}
+
 inline void GetPassAccess(ERDGPassFlags PassFlags, ERHIAccess& SRVAccess, ERHIAccess& UAVAccess)
 {
 	SRVAccess = ERHIAccess::Unknown;
@@ -1420,7 +1429,7 @@ void FRDGBuilder::CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle&
 			Texture->StatePending.InitAsWholeResource(FRDGSubresourceState(
 				PassHandle,
 				PassPipeline,
-				AccessInfo.AccessUnion,
+				MakeValidAccess(AccessInfo.AccessUnion),
 				AccessInfo.FlagsUnion,
 				AccessInfo.NoUAVBarrierFilter.GetUniqueHandle()));
 
@@ -1451,7 +1460,7 @@ void FRDGBuilder::CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle&
 				StatePending.InitAsWholeResource(FRDGSubresourceState(
 					PassHandle,
 					PassPipeline,
-					AccessInfo.AccessUnion,
+					MakeValidAccess(AccessInfo.AccessUnion),
 					AccessInfo.FlagsUnion,
 					AccessInfo.NoUAVBarrierFilter.GetUniqueHandle()));
 			}
@@ -1465,7 +1474,7 @@ void FRDGBuilder::CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle&
 					FRDGSubresourceState& State = StatePending.GetSubresourceState(MipIndex, ArraySlice, PlaneSlice);
 					State.PassHandle = PassHandle;
 					State.Pipeline = PassPipeline;
-					State.Access |= Access;
+					State.Access = MakeValidAccess(State.Access | Access);
 					State.Flags |= TransitionFlags;
 					State.NoUAVBarrierFilter.AddHandle(NoUAVBarrierHandle);
 				});
@@ -1487,7 +1496,7 @@ void FRDGBuilder::CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle&
 		AddTransition(PassHandle, Buffer, FRDGSubresourceState(
 			PassHandle,
 			PassPipeline,
-			AccessInfo.AccessUnion,
+			MakeValidAccess(AccessInfo.AccessUnion),
 			AccessInfo.FlagsUnion,
 			AccessInfo.NoUAVBarrierFilter.GetUniqueHandle()),
 			LastUntrackedPassHandle);

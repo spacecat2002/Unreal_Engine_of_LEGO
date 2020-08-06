@@ -2533,6 +2533,23 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesDepth = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth);
 
+	// The full scene textures uniform buffers need to be recreated after new targets are added.
+	TArray<TRDGUniformBufferRef<FSceneTextureUniformParameters>, TInlineAllocator<1, SceneRenderingAllocator>> SceneTexturesPerView;
+	SceneTexturesPerView.SetNumZeroed(Views.Num());
+
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = nullptr;
+
+	const auto SetupSceneTexturesPerView = [&]()
+	{
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+		{
+			SceneTexturesPerView[ViewIndex] = CreateSceneTextureUniformBuffer(GraphBuilder, Views[ViewIndex], ESceneTextureSetupMode::All);
+		}
+		SceneTextures = SceneTexturesPerView[0];
+	};
+
+	SetupSceneTexturesPerView();
+
 	if (bShouldRenderVolumetricCloud)
 	{
 		// Generate the volumetric cloud render target
@@ -2542,20 +2559,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// Reconstruct the volumetric cloud render target to be ready to compose it over the scene
 		ReconstructVolumetricRenderTarget(GraphBuilder);
 	}
-
-	// The full scene textures uniform buffers need to be recreated after new targets are added.
-	TArray<TRDGUniformBufferRef<FSceneTextureUniformParameters>, TInlineAllocator<1, SceneRenderingAllocator>> SceneTexturesPerView;
-	SceneTexturesPerView.SetNumZeroed(Views.Num());
-
-	const auto SetupSceneTexturesPerView = [&]()
-	{
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
-		{
-			SceneTexturesPerView[ViewIndex] = CreateSceneTextureUniformBuffer(GraphBuilder, Views[ViewIndex], ESceneTextureSetupMode::All);
-		}
-	};
-
-	SetupSceneTexturesPerView();
 
 	const bool bShouldRenderTranslucency = ShouldRenderTranslucency();
 
@@ -2756,7 +2759,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			if (Views[ViewIndex].RayTracingRenderMode == ERayTracingRenderMode::PathTracing)
 			{
-				RenderPathTracing(GraphBuilder, Views[ViewIndex], SceneColorTexture.Target);
+				RenderPathTracing(GraphBuilder, Views[ViewIndex], SceneTextures, SceneColorTexture.Target);
 			}
 			else if (Views[ViewIndex].RayTracingRenderMode == ERayTracingRenderMode::RayTracingDebug)
 			{
@@ -2775,7 +2778,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// Use the skylight's max distance if there is one, to be consistent with DFAO shadowing on the skylight
 		const float OcclusionMaxDistance = Scene->SkyLight && !Scene->SkyLight->bWantsStaticShadowing ? Scene->SkyLight->OcclusionMaxDistance : Scene->DefaultMaxDistanceFieldOcclusionDistance;
 		FRDGTextureRef DummyOutput = nullptr;
-		RenderDistanceFieldLighting(GraphBuilder, SceneTexturesPerView[0], FDistanceFieldAOParameters(OcclusionMaxDistance), SceneColorTexture.Target, VelocityTexture, DummyOutput, false, ViewFamily.EngineShowFlags.VisualizeDistanceFieldAO);
+		RenderDistanceFieldLighting(GraphBuilder, SceneTextures, FDistanceFieldAOParameters(OcclusionMaxDistance), SceneColorTexture.Target, VelocityTexture, DummyOutput, false, ViewFamily.EngineShowFlags.VisualizeDistanceFieldAO);
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
 
@@ -2788,7 +2791,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (ViewFamily.EngineShowFlags.StationaryLightOverlap)
 	{
-		RenderStationaryLightOverlap(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target, SceneTexturesPerView[0]);
+		RenderStationaryLightOverlap(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target, SceneTextures);
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
 
@@ -2908,12 +2911,10 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		if (ShouldKeepBleedFreeSceneColor(View))
 		{
-			const TRDGUniformBuffer<FSceneTextureUniformParameters>& SceneTextures = *SceneTexturesPerView[ViewIndex];
-
 			// Keep scene color and depth for next frame screen space ray tracing.
 			FSceneViewState* ViewState = View.ViewState;
-			GraphBuilder.QueueTextureExtraction(SceneTextures->SceneDepthTexture, &ViewState->PrevFrameViewInfo.DepthBuffer);
-			GraphBuilder.QueueTextureExtraction(SceneTextures->SceneColorTexture, &ViewState->PrevFrameViewInfo.ScreenSpaceRayTracingInput);
+			GraphBuilder.QueueTextureExtraction((*SceneTextures)->SceneDepthTexture, &ViewState->PrevFrameViewInfo.DepthBuffer);
+			GraphBuilder.QueueTextureExtraction((*SceneTextures)->SceneColorTexture, &ViewState->PrevFrameViewInfo.ScreenSpaceRayTracingInput);
 		}
 	}
 

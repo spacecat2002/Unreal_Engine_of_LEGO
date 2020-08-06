@@ -23,10 +23,7 @@ inline bool IsWritingToDepth(FDecalRenderingCommon::ERenderTargetMode RenderTarg
 
 struct FDeferredDecalPassTextures
 {
-	// Scene textures of various configurations used by decal passes.
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthUniformBuffer = nullptr;
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> GBufferAUniformBuffer = nullptr;
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthAndGBufferAUniformBuffer = nullptr;
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = nullptr;
 
 	// Potential render targets for the decal pass.
 	FRDGTextureMSAA Depth;

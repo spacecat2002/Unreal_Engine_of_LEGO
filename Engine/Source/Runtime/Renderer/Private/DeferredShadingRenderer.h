@@ -755,7 +755,11 @@ private:
 	void SetupRayTracingLightingMissShader(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 
 	/** Path tracing functions. */
-	void RenderPathTracing(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColorOutputTexture);
+	void RenderPathTracing(
+		FRDGBuilder& GraphBuilder,
+		const FViewInfo& View,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef SceneColorOutputTexture);
 
 	void BuildVarianceMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FTextureRHIRef MeanAndDeviationTexture,
 		FRWBuffer& VarianceMipTree, FIntVector& VarianceMipTreeDimensions);

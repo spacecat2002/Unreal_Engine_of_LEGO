@@ -443,13 +443,10 @@ END_SHADER_PARAMETER_STRUCT()
 void FDeferredShadingSceneRenderer::RenderPathTracing(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureRef SceneColorOutputTexture)
 {
 	RDG_GPU_STAT_SCOPE(GraphBuilder, Stat_GPU_PathTracing);
-
-	ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All;
-	EnumRemoveFlags(SetupMode, ESceneTextureSetupMode::SceneColor);
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, View, SetupMode);
 
 	FPathTracingPassParameters* PassParameters = GraphBuilder.AllocParameters<FPathTracingPassParameters>();
 	PassParameters->SceneTextures = SceneTexturesUniformBuffer;

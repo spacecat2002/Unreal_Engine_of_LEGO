@@ -135,7 +135,9 @@ void FRDGTextureState::MergeFrom(const FRDGTextureState& Other)
 	{
 		if (Other.WholeResourceState.Access != ERHIAccess::Unknown)
 		{
-			InitAsWholeResource(Other.WholeResourceState);
+			FRDGSubresourceState State;
+			State.MergeFrom(Other.WholeResourceState);
+			InitAsWholeResource(State);
 		}
 	}
 	else

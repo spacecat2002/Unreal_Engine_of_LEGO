@@ -23,9 +23,7 @@ FDeferredDecalPassTextures GetDeferredDecalPassTextures(FRDGBuilder& GraphBuilde
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
 	FDeferredDecalPassTextures PassTextures;
-	PassTextures.DepthUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::SceneDepth);
-	PassTextures.GBufferAUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::GBufferA);
-	PassTextures.DepthAndGBufferAUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBufferA);
+	PassTextures.SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBufferA);
 	PassTextures.Depth = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
 	PassTextures.Color = TryRegisterExternalTexture(GraphBuilder, SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable);
 	PassTextures.ScreenSpaceAO = TryRegisterExternalTexture(GraphBuilder, SceneContext.ScreenSpaceAO);
@@ -46,18 +44,7 @@ void GetDeferredDecalPassParameters(
 	const bool bWritingToGBufferA = IsWritingToGBufferA(RenderTargetMode);
 	const bool bWritingToDepth = IsWritingToDepth(RenderTargetMode);
 
-	if (!bWritingToGBufferA && !bWritingToDepth)
-	{
-		PassParameters.SceneTextures = Textures.DepthAndGBufferAUniformBuffer;
-	}
-	else if (!bWritingToGBufferA)
-	{
-		PassParameters.SceneTextures = Textures.GBufferAUniformBuffer;
-	}
-	else if (!bWritingToDepth)
-	{
-		PassParameters.SceneTextures = Textures.DepthUniformBuffer;
-	}
+	PassParameters.SceneTextures = Textures.SceneTexturesUniformBuffer;
 
 	FRDGTextureRef DepthTexture = Textures.Depth.Target;
 
