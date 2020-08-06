@@ -3,6 +3,7 @@
 #include "PostProcess/PostProcessVisualizeHDR.h"
 #include "PostProcess/PostProcessTonemap.h"
 #include "Curves/CurveFloat.h"
+#include "UnrealEngine.h"
 
 extern bool IsExtendLuminanceRangeEnabled();
 
