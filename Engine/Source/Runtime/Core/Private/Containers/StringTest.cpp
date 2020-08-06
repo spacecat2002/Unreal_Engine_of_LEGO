@@ -451,7 +451,6 @@ bool FStringEqualityTest::RunTest(const FString& Parameters)
 {
 	auto TestSelfEquality = [this](const TCHAR* A)
 	{
-		TestTrue(TEXT("Self Equality"), FString(A) == FString(A));
 		TestTrue(TEXT("Self Equality C string"), FString(A) == A);
 		TestTrue(TEXT("Self Equality C string"), A == FString(A));
 		TestTrue(TEXT("Self Equality CaseSensitive"), FString(A).Equals(FString(A), ESearchCase::CaseSensitive));
