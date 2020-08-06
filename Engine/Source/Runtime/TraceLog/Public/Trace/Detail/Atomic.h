@@ -13,8 +13,7 @@ template <typename Type> void	AtomicStoreRelease(Type volatile* Target, Type Val
 template <typename Type> bool	AtomicCompareExchangeRelaxed(Type volatile* Target, Type New, Type Expected);
 template <typename Type> bool	AtomicCompareExchangeAcquire(Type volatile* Target, Type New, Type Expected);
 template <typename Type> bool	AtomicCompareExchangeRelease(Type volatile* Target, Type New, Type Expected);
-uint32							AtomicAddRelaxed(uint32 volatile* Target, uint32 Val);
-int32							AtomicAddRelaxed(int32 volatile* Target, int32 Val);
+template <typename Type> Type	AtomicAddRelaxed(Type volatile* Target, Type Value);
 void							PlatformYield();
 
 } // namespace Private
@@ -222,23 +221,11 @@ inline bool AtomicCompareExchangeRelease(Type volatile* Target, Type New, Type E
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-inline uint32 AtomicAddRelaxed(uint32 volatile* Target, uint32 Value)
+template <typename Type>
+inline Type AtomicAddRelaxed(Type volatile* Target, Type Value)
 {
 #if WITH_STD_ATOMIC
-	std::atomic<uint32>* T = (std::atomic<uint32>*) Target;
-	return T->fetch_add(Value, std::memory_order_relaxed);
-#elif IS_MSVC
-	return INTERLOCKED_API(_InterlockedExchangeAdd, _nf, (long volatile*) Target, (long) Value);
-#elif IS_GCC_COMPATIBLE
-	return __atomic_fetch_add(Target, Value, __ATOMIC_RELAXED);
-#endif
-}
-
-////////////////////////////////////////////////////////////////////////////////
-inline int32 AtomicAddRelaxed(int32 volatile* Target, int32 Value)
-{
-#if WITH_STD_ATOMIC
-	std::atomic<int32>* T = (std::atomic<int32>*) Target;
+	std::atomic<Type>* T = (std::atomic<Type>*) Target;
 	return T->fetch_add(Value, std::memory_order_relaxed);
 #elif IS_MSVC
 	return INTERLOCKED_API(_InterlockedExchangeAdd, _nf, (long volatile*) Target, (long) Value);
