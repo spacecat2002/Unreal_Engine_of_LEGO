@@ -25,23 +25,12 @@ template <typename Type> Type	AtomicAddAcquire(Type volatile* Target, Type Value
 void							PlatformYield();
 
 ////////////////////////////////////////////////////////////////////////////////
-#define IS_MSVC					0
-#define IS_GCC_COMPATIBLE		0
-#if defined(_MSC_VER) && !defined(__clang__)
-#	undef  IS_MSVC
-#	define IS_MSVC				1
-#elif defined(__clang__) || defined(__GNUC__)
-#	undef  IS_GCC_COMPATIBLE
-#	define IS_GCC_COMPATIBLE	1
-#endif
-
-////////////////////////////////////////////////////////////////////////////////
 inline void PlatformYield()
 {
 #if PLATFORM_CPU_X86_FAMILY
 	_mm_pause();
 #elif PLATFORM_CPU_ARM_FAMILY
-#	if IS_MSVC
+#	if defined(_MSC_VER) && !defined(__clang__) // MSVC
 		__yield();
 #	else
 		__builtin_arm_yield();
@@ -130,9 +119,6 @@ inline Type AtomicAddRelease(Type volatile* Target, Type Value)
 	std::atomic<Type>* T = (std::atomic<Type>*) Target;
 	return T->fetch_add(Value, std::memory_order_release);
 }
-
-#undef IS_GCC_COMPATIBLE
-#undef IS_MSVC
 
 } // namespace Private
 } // namespace Trace
