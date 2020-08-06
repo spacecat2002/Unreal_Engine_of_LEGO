@@ -7,7 +7,6 @@
 #include "Math/Quat.isph"
 #include "Math/Transform.isph"
 #include "Math/WideVector.isph"
-#include "Animation/AnimationCurves.isph"
 
 #define INDEX_NONE -1
 
@@ -115,11 +114,6 @@ export void AccumulateWithAdditiveScale(uniform FTransform BasePose[],
 }
 
 static inline uniform bool IsRelevant(const uniform float InWeight)
-{
-	return (InWeight > ZERO_ANIMWEIGHT_THRESH);
-}
-
-static inline varying bool IsRelevant(const varying float InWeight)
 {
 	return (InWeight > ZERO_ANIMWEIGHT_THRESH);
 }
@@ -254,60 +248,59 @@ export void BlendPosesPerBoneFilterScaleRotation(uniform FTransform OutPose[],
 	}
 }
 
-export void BlendCurves(const struct TArrayBlendedCurves* uniform SourceCurves, const float* uniform SourceWeights, struct FBlendedCurve* uniform OutCurve)
+export void BlendCurves(const uniform float SourceCurveWeights[],
+						const uniform uint32 SourceValidCurveWeights[],
+						uniform float OutCurveWeights[],
+						uniform uint32 OutValidCurveWeights[],
+						const uniform int CurveLength,
+						const uniform int CurveIndex,
+						uniform float SourceWeight)
 {
 	// Note: Run OutCurve.InitFrom(SourceCurves) before this function runs
 
-	uniform float InitWeight = SourceWeights[0];
-	if (IsNearlyEqual(InitWeight, 1.0f))
+	if(CurveIndex == 0 && IsNearlyEqual(SourceWeight, 1.0f))
 	{
-		InitWeight = 1.0f;
+		SourceWeight = 1.0f;
 	}
 
-	uniform int32 CurveLength = OutCurve->CurveWeights.ArrayNum;
+	uniform int CurveValidityArrayIndex = 0;
 
-	//////////////////
-	// Merge Curves //
-	//////////////////
-	for (uniform int32 CurveIndex = 0; CurveIndex < SourceCurves->ArrayNum; ++CurveIndex)
+	foreach (CurveID = 0 ... CurveLength)
 	{
-		foreach (CurveID = 0 ... CurveLength)
+		// Skip if the source curve is not valid
+		const uniform int ValidityArrayIndex = CurveValidityArrayIndex >> 5; // floor(CurveID / 32.0f)
+		const varying int ValidityBitPosition = CurveID & 0x1F; // % 32;
+		const varying int ValidityBitMask = 0x1 << ValidityBitPosition;
+
+		if ((SourceValidCurveWeights[ValidityArrayIndex] & ValidityBitMask) == 0)
 		{
-			// Skip if the source curve is not valid
-			const varying int ValidityArrayIndex = floor(CurveID / 32.0f);
-			const varying int ValidityBitPosition = CurveID & 0x1F; // % 32;
-			const varying int ValidityBitMask = 0x1 << ValidityBitPosition;
-
-			#pragma ignore warning(perf)
-			if ((SourceCurves->DataPtr[CurveIndex].ValidCurveWeights.Data[ValidityArrayIndex] & ValidityBitMask) == 0)
-			{
-				continue;
-			}
-
-			varying float CurveWeight = OutCurve->CurveWeights.DataPtr[CurveID];
-
-			if (CurveIndex == 0)
-			{
-				CurveWeight = SourceCurves->DataPtr[0].CurveWeights.DataPtr[CurveID] * InitWeight;
-			}
-			else if (IsRelevant(SourceWeights[CurveIndex]))
-			{
-				CurveWeight += SourceCurves->DataPtr[CurveIndex].CurveWeights.DataPtr[CurveID] * SourceWeights[CurveIndex];
-			}
-
-			OutCurve->CurveWeights.DataPtr[CurveID] = CurveWeight;
+			continue;
 		}
 
-		foreach (CurveID = 0 ... ceil(CurveLength / 32.0))
+		varying float CurveWeight = OutCurveWeights[CurveID];
+
+		if (CurveIndex == 0)
 		{
-			if (CurveIndex == 0)
-			{
-				OutCurve->ValidCurveWeights.Data[CurveID] = SourceCurves->DataPtr[0].ValidCurveWeights.Data[CurveID];
-			}
-			else
-			{
-				OutCurve->ValidCurveWeights.Data[CurveID] |= SourceCurves->DataPtr[CurveIndex].ValidCurveWeights.Data[CurveID];
-			}
+			CurveWeight = SourceCurveWeights[CurveID] * SourceWeight;
+		}
+		else if (IsRelevant(SourceWeight))
+		{
+			CurveWeight += SourceCurveWeights[CurveID] * SourceWeight;
+		}
+
+		OutCurveWeights[CurveID] = CurveWeight;
+		CurveValidityArrayIndex += programCount;
+	}
+
+	foreach (CurveID = 0 ... ceil(CurveLength / 32.0))
+	{
+		if (CurveIndex == 0)
+		{
+			OutValidCurveWeights[CurveID] = SourceValidCurveWeights[CurveID];
+		}
+		else
+		{
+			OutValidCurveWeights[CurveID] |= SourceValidCurveWeights[CurveID];
 		}
 	}
 }

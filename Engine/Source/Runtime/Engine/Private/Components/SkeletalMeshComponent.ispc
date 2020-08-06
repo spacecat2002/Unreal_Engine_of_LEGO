@@ -7,7 +7,6 @@
 #include "Math/Matrix.isph"
 #include "Math/Quat.isph"
 #include "Math/Transform.isph"
-#include "Animation/AnimationCurves.isph"
 
 export void FillComponentSpaceTransforms(uniform FTransform ComponentSpaceData[],
 										const uniform FTransform LocalTransformsData[],
@@ -41,15 +40,20 @@ static inline float Lerp(float A, float B, float Alpha)
 	return (1.0f-Alpha)*A + Alpha*B;
 }
 
-export void LerpCurves(const struct FBlendedCurve* uniform Curve1, const struct FBlendedCurve* uniform Curve2, uniform const float Alpha)
+export void LerpCurves(uniform float CurveWeights[],
+						uniform uint32 ValidCurveWeights[],
+						const uniform float CachedCurveWeights[],
+						const uniform uint32 CachedValidCurveWeights[],
+						const uniform int CurveLength,
+						const uniform float Alpha)
 {
-	foreach (CurveId = 0 ... Curve1->CurveWeights.ArrayNum)
+	foreach (CurveId = 0 ... CurveLength)
 	{
-		Curve1->CurveWeights.DataPtr[CurveId] = Lerp(Curve1->CurveWeights.DataPtr[CurveId], Curve2->CurveWeights.DataPtr[CurveId], Alpha);
+		CurveWeights[CurveId] = Lerp(CurveWeights[CurveId], CachedCurveWeights[CurveId], Alpha);
 	}
 
-	foreach (CurveSet = 0 ... Curve1->CurveWeights.ArrayNum / 32)
+	foreach (CurveSet = 0 ... CurveLength / 32)
 	{
-		Curve1->ValidCurveWeights.Data[CurveSet] |= Curve2->ValidCurveWeights.Data[CurveSet];
+		ValidCurveWeights[CurveSet] |= CachedValidCurveWeights[CurveSet];
 	}
 }

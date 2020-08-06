@@ -25,15 +25,6 @@ DECLARE_CYCLE_STAT(TEXT("BlendPosesPerBoneFilter"), STAT_BlendPosesPerBoneFilter
 
 #if INTEL_ISPC
 static_assert(sizeof(ispc::FTransform) == sizeof(FTransform), "sizeof(ispc::FTransform) != sizeof(FTransform)");
-// static_assert(sizeof(ispc::FBlendedCurve) == sizeof(FBlendedCurve), "sizeof(ispc::FBlendedCurve) != sizeof(FBlendedCurve)");
-// static_assert(offsetof(ispc::FBlendedCurve, CurveWeights) == offsetof(FBlendedCurve, CurveWeights), "offsetof(ispc::FBlendedCurve, CurveWeights) != offsetof(FBlendedCurve, CurveWeights)");
-// static_assert(offsetof(ispc::FBlendedCurve, ValidCurveWeights) == offsetof(FBlendedCurve, ValidCurveWeights), "offsetof(ispc::FBlendedCurve, ValidCurveWeights) != offsetof(FBlendedCurve, ValidCurveWeights)");
-// static_assert(offsetof(ispc::FBlendedCurve, UIDToArrayIndexLUT) == offsetof(FBlendedCurve, UIDToArrayIndexLUT), "offsetof(ispc::FBlendedCurve, UIDToArrayIndexLUT) != offsetof(FBlendedCurve, UIDToArrayIndexLUT)");
-// static_assert(offsetof(ispc::FBlendedCurve, NumValidCurveCount) == offsetof(FBlendedCurve, NumValidCurveCount), "offsetof(ispc::FBlendedCurve, NumValidCurveCount) != offsetof(FBlendedCurve, NumValidCurveCount)");
-// static_assert(offsetof(ispc::FBlendedCurve, bInitialized) == offsetof(FBlendedCurve, bInitialized), "offsetof(ispc::FBlendedCurve, bInitialized) != offsetof(FBlendedCurve, bInitialized)");
-// static_assert(sizeof(ispc::FPerBoneBlendWeight) == sizeof(FPerBoneBlendWeight), "sizeof(ispc::FPerBoneBlendWeight) != sizeof(FPerBoneBlendWeight)");
-// static_assert(offsetof(ispc::FPerBoneBlendWeight, SourceIndex) == offsetof(FPerBoneBlendWeight, SourceIndex), "offsetof(ispc::FPerBoneBlendWeight, SourceIndex) != offsetof(FPerBoneBlendWeight, SourceIndex)");
-// static_assert(offsetof(ispc::FPerBoneBlendWeight, BlendWeight) == offsetof(FPerBoneBlendWeight, BlendWeight), "offsetof(ispc::FPerBoneBlendWeight, BlendWeight) != offsetof(FPerBoneBlendWeight, BlendWeight)");
 #endif
 
 void FAnimationRuntime::NormalizeRotations(const FBoneContainer& RequiredBones, /*inout*/ FTransformArrayA2& Atoms)
@@ -159,10 +150,31 @@ FORCEINLINE void BlendCurves(const TArrayView<const FBlendedCurve> SourceCurves,
 {
 	if (SourceCurves.Num() > 0)
 	{
-		OutCurve.Override(SourceCurves[0], SourceWeights[0]);
-		for (int32 CurveIndex = 1; CurveIndex < SourceCurves.Num(); ++CurveIndex)
+		if (INTEL_ISPC)
 		{
-			OutCurve.Accumulate(SourceCurves[CurveIndex], SourceWeights[CurveIndex]);
+#if INTEL_ISPC
+			OutCurve.InitFrom(SourceCurves[0]);
+			for (int32 CurveIndex = 0; CurveIndex < SourceCurves.Num(); ++CurveIndex)
+			{
+				ispc::BlendCurves(
+					SourceCurves[CurveIndex].CurveWeights.GetData(),
+					SourceCurves[CurveIndex].ValidCurveWeights.GetData(),
+					OutCurve.CurveWeights.GetData(),
+					OutCurve.ValidCurveWeights.GetData(),
+					OutCurve.CurveWeights.Num(),
+					CurveIndex,
+					SourceWeights[CurveIndex]
+				);
+			}
+#endif
+		}
+		else
+		{
+			OutCurve.Override(SourceCurves[0], SourceWeights[0]);
+			for (int32 CurveIndex = 1; CurveIndex < SourceCurves.Num(); ++CurveIndex)
+			{
+				OutCurve.Accumulate(SourceCurves[CurveIndex], SourceWeights[CurveIndex]);
+			}
 		}
 	}
 }
