@@ -531,7 +531,7 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRDGBuilder& GraphBuilder, FRD
 				RDG_EVENT_NAME("AmbientOcclusion_HorizonSearchIntegral %dx%d (PS)", ViewRect.Width(), ViewRect.Height()),
 				HorizonSearchIntegralParameters,
 				ERDGPassFlags::Raster,
-				[VertexShader, HorizonSearchIntegralShader, HorizonSearchIntegralParameters, &ViewRect, &BufferSize](FRHICommandList& RHICmdList)
+				[VertexShader, HorizonSearchIntegralShader, HorizonSearchIntegralParameters, ViewRect, BufferSize](FRHICommandList& RHICmdList)
 			{
 				RHICmdList.SetViewport(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, ViewRect.Max.X, ViewRect.Max.Y, 1.0f);
 

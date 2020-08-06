@@ -342,7 +342,7 @@ FMobileBloomSetupOutputs AddMobileBloomSetupPass(FRDGBuilder& GraphBuilder, cons
 		RDG_EVENT_NAME("BloomSetup %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &InputViewport, &OutputViewport, &BloomSetupOutputType, &View](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, InputViewport, OutputViewport, BloomSetupOutputType, &View](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -476,7 +476,7 @@ FScreenPassTexture AddMobileBloomDownPass(FRDGBuilder& GraphBuilder, const FView
 		RDG_EVENT_NAME("BloomDown %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &InputViewport, &OutputViewport](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, InputViewport, OutputViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -604,7 +604,7 @@ FScreenPassTexture AddMobileBloomUpPass(FRDGBuilder& GraphBuilder, const FViewIn
 		RDG_EVENT_NAME("BloomUp %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &InputViewport, &OutputViewport](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, InputViewport, OutputViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -859,7 +859,7 @@ FScreenPassTexture AddMobileSunAlphaPass(FRDGBuilder& GraphBuilder, const FViewI
 		RDG_EVENT_NAME("SunAlpha %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &OutputViewport](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, OutputViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -968,7 +968,7 @@ FScreenPassTexture AddMobileSunBlurPass(FRDGBuilder& GraphBuilder, const FViewIn
 		RDG_EVENT_NAME("SunBlur %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &OutputViewport](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, OutputViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -1146,7 +1146,7 @@ FScreenPassTexture AddMobileSunMergePass(FRDGBuilder& GraphBuilder, const FViewI
 		RDG_EVENT_NAME("SunMerge %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &OutputViewport, &View, bUseAa](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, OutputViewport, &View, bUseAa](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -1279,7 +1279,7 @@ FMobileDofDownOutputs AddMobileDofDownPass(FRDGBuilder& GraphBuilder, const FVie
 		RDG_EVENT_NAME("DofDown %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &InputViewport, &OutputViewport](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, InputViewport, OutputViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -1405,7 +1405,7 @@ FMobileDofNearOutputs AddMobileDofNearPass(FRDGBuilder& GraphBuilder, const FVie
 		RDG_EVENT_NAME("DofNear %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &OutputViewport](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, OutputViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -1523,7 +1523,7 @@ FMobileDofBlurOutputs AddMobileDofBlurPass(FRDGBuilder& GraphBuilder, const FVie
 		RDG_EVENT_NAME("DofBlur %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &OutputViewport](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, OutputViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -1642,7 +1642,7 @@ FScreenPassTexture AddMobileIntegrateDofPass(FRDGBuilder& GraphBuilder, const FV
 		RDG_EVENT_NAME("IntegrateDof %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &OutputViewport](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, OutputViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
@@ -1873,7 +1873,7 @@ FScreenPassTexture AddMobileTAAPass(FRDGBuilder& GraphBuilder, const FViewInfo& 
 		RDG_EVENT_NAME("TAA %dx%d (PS)", OutputViewport.Extent.X, OutputViewport.Extent.Y),
 		PSShaderParameters,
 		ERDGPassFlags::Raster,
-		[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &InputViewport, &OutputViewport, &View](FRHICommandList& RHICmdList)
+		[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, InputViewport, OutputViewport, &View](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 

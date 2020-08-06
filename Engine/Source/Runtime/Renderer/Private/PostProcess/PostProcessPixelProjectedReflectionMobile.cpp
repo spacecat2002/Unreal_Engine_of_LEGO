@@ -278,13 +278,13 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRDGBuilder& GraphBuil
 
 		TShaderMapRef<FPixelProjectedReflectionMobile_ReflectionPassVS> VertexShader(View.ShaderMap);
 
-		FPixelProjectedReflectionMobile_ReflectionPassVS::FParameters VSShaderParameters;
+		FPixelProjectedReflectionMobile_ReflectionPassVS::FParameters* VSShaderParameters = GraphBuilder.AllocParameters<FPixelProjectedReflectionMobile_ReflectionPassVS::FParameters>();
 
-		VSShaderParameters.View = View.ViewUniformBuffer;
+		VSShaderParameters->View = View.ViewUniformBuffer;
 
 		FVector PlanarReflectionPlaneExtent = PlanarReflectionSceneProxy->WorldBounds.GetExtent();
 
-		VSShaderParameters.LocalToWorld = FScaleMatrix::Make(FVector(PlanarReflectionPlaneExtent.X, PlanarReflectionPlaneExtent.Y, 1.0f)) * FRotationMatrix::MakeFromXY(PlanarReflectionSceneProxy->PlanarReflectionXAxis, PlanarReflectionSceneProxy->PlanarReflectionYAxis) * FTranslationMatrix::Make(PlanarReflectionSceneProxy->PlanarReflectionOrigin);
+		VSShaderParameters->LocalToWorld = FScaleMatrix::Make(FVector(PlanarReflectionPlaneExtent.X, PlanarReflectionPlaneExtent.Y, 1.0f)) * FRotationMatrix::MakeFromXY(PlanarReflectionSceneProxy->PlanarReflectionXAxis, PlanarReflectionSceneProxy->PlanarReflectionYAxis) * FTranslationMatrix::Make(PlanarReflectionSceneProxy->PlanarReflectionOrigin);
 
 		auto ShaderPermutationVector = FPixelProjectedReflectionMobile_ReflectionPassPS::BuildPermutationVector(GetMobilePixelProjectedReflectionQuality() - 1);
 
@@ -319,7 +319,7 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRDGBuilder& GraphBuil
 			RDG_EVENT_NAME("PixelProjectedReflection_Reflection %dx%d (PS)", ViewRect.Width(), ViewRect.Height()),
 			PSShaderParameters,
 			ERDGPassFlags::Raster,
-			[VertexShader, &VSShaderParameters, PixelShader, PSShaderParameters, &ViewRect](FRHICommandList& RHICmdList)
+			[VertexShader, VSShaderParameters, PixelShader, PSShaderParameters, ViewRect](FRHICommandList& RHICmdList)
 		{
 			RHICmdList.SetViewport(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, ViewRect.Max.X, ViewRect.Max.Y, 1.0f);
 
@@ -337,7 +337,7 @@ void FMobileSceneRenderer::RenderPixelProjectedReflection(FRDGBuilder& GraphBuil
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
-			SetShaderParameters(RHICmdList, VertexShader, VertexShader.GetVertexShader(), VSShaderParameters);
+			SetShaderParameters(RHICmdList, VertexShader, VertexShader.GetVertexShader(), *VSShaderParameters);
 			SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PSShaderParameters);
 
 			RHICmdList.SetStreamSource(0, GScreenSpaceVertexBuffer.VertexBufferRHI, 0);

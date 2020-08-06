@@ -71,7 +71,7 @@ FMobileDistortionAccumulateOutputs AddMobileDistortionAccumulatePass(FRDGBuilder
 		RDG_EVENT_NAME("DistortionAccumulate %dx%d", SceneColorViewport.Rect.Width(), SceneColorViewport.Rect.Height()),
 		PassParameters,
 		ERDGPassFlags::Raster,
-		[&View, &SceneColorViewport](FRHICommandList& RHICmdList)
+		[&View, SceneColorViewport](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.SetViewport(SceneColorViewport.Rect.Min.X, SceneColorViewport.Rect.Min.Y, 0.0f, SceneColorViewport.Rect.Max.X, SceneColorViewport.Rect.Max.Y, 1.0f);
 
@@ -115,7 +115,6 @@ FScreenPassTexture AddMobileDistortionMergePass(FRDGBuilder& GraphBuilder, const
 	FScreenPassRenderTarget DistortionMergeOutput = FScreenPassRenderTarget(GraphBuilder.CreateTexture(DistortionMergeDesc, TEXT("DistortionMergePass")), Inputs.DistortionAccumulate.ViewRect, ERenderTargetLoadAction::EClear);
 
 	TShaderMapRef<FMobileDistortionMergePS> PixelShader(View.ShaderMap);
-
 
 	FMobileDistortionMergePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FMobileDistortionMergePS::FParameters>();
 	PassParameters->RenderTargets[0] = DistortionMergeOutput.GetRenderTargetBinding();
