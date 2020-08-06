@@ -14,6 +14,8 @@ template <typename Type> bool	AtomicCompareExchangeRelaxed(Type volatile* Target
 template <typename Type> bool	AtomicCompareExchangeAcquire(Type volatile* Target, Type New, Type Expected);
 template <typename Type> bool	AtomicCompareExchangeRelease(Type volatile* Target, Type New, Type Expected);
 template <typename Type> Type	AtomicAddRelaxed(Type volatile* Target, Type Value);
+template <typename Type> Type	AtomicAddRelease(Type volatile* Target, Type Value);
+template <typename Type> Type	AtomicAddAcquire(Type volatile* Target, Type Value);
 void							PlatformYield();
 
 } // namespace Private
@@ -129,6 +131,22 @@ inline Type AtomicAddRelaxed(Type volatile* Target, Type Value)
 {
 	std::atomic<Type>* T = (std::atomic<Type>*) Target;
 	return T->fetch_add(Value, std::memory_order_relaxed);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+template <typename Type>
+inline Type AtomicAddAcquire(Type volatile* Target, Type Value)
+{
+	std::atomic<Type>* T = (std::atomic<Type>*) Target;
+	return T->fetch_add(Value, std::memory_order_acquire);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+template <typename Type>
+inline Type AtomicAddRelease(Type volatile* Target, Type Value)
+{
+	std::atomic<Type>* T = (std::atomic<Type>*) Target;
+	return T->fetch_add(Value, std::memory_order_release);
 }
 
 #undef IS_GCC_COMPATIBLE
