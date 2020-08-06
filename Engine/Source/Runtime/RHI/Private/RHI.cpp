@@ -441,13 +441,18 @@ void FBlendStateInitializerRHI::FromString(const FString& InSrc)
 
 void FBlendStateInitializerRHI::FromString(const FStringView& InSrc)
 {
-	constexpr int32 PartCount = MaxSimultaneousRenderTargets * FRenderTarget::NUM_STRING_FIELDS + 2;
+	// files written before bUseAlphaToCoverage change (added in CL 13846572) have one less part
+	constexpr int32 BackwardCompatiblePartCount = MaxSimultaneousRenderTargets * FRenderTarget::NUM_STRING_FIELDS + 1;
+	constexpr int32 PartCount = BackwardCompatiblePartCount + 1;
 
 	TArray<FStringView, TInlineAllocator<PartCount>> Parts;
 	UE::String::ParseTokensMultiple(InSrc.TrimStartAndEnd(), {TEXT('\r'), TEXT('\n'), TEXT('\t'), TEXT('<'), TEXT('>'), TEXT(' ')},
 		[&Parts](FStringView Part) { if (!Part.IsEmpty()) { Parts.Add(Part); } });
 
-	check(Parts.Num() == PartCount && sizeof(bool) == 1); //not a very robust parser
+	checkf((Parts.Num() == PartCount || Parts.Num() == BackwardCompatiblePartCount) && sizeof(bool) == 1, 
+		TEXT("Expecting %d (or %d, for an older format) parts in the blendstate string, got %d"), PartCount, BackwardCompatiblePartCount, Parts.Num()); //not a very robust parser
+	bool bHasAlphaToCoverageField = Parts.Num() == PartCount;
+
 	const FStringView* PartIt = Parts.GetData();
 	for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; Index++)
 	{
@@ -455,8 +460,16 @@ void FBlendStateInitializerRHI::FromString(const FStringView& InSrc)
 		PartIt += FRenderTarget::NUM_STRING_FIELDS;
 	}
 	LexFromString((int8&)bUseIndependentRenderTargetBlendStates, *PartIt++);
-	LexFromString((int8&)bUseAlphaToCoverage, *PartIt++);
-	check(Parts.GetData() + PartCount == PartIt);
+	if (bHasAlphaToCoverageField)
+	{
+		LexFromString((int8&)bUseAlphaToCoverage, *PartIt++);
+		check(Parts.GetData() + PartCount == PartIt);
+	}
+	else
+	{
+		bUseAlphaToCoverage = false;
+		check(Parts.GetData() + BackwardCompatiblePartCount == PartIt);
+	}
 }
 
 uint32 GetTypeHash(const FBlendStateInitializerRHI& Initializer)
