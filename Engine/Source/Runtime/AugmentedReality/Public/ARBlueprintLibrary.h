@@ -149,6 +149,10 @@ public:
 	/** @return a list of all the real-world geometry as currently seen by the Augmented Reality system */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Geometries", Keywords = "ar augmentedreality augmented reality tracking geometry anchor"))
 	static TArray<UARTrackedGeometry*> GetAllGeometries();
+	
+	/** @return a list of all the real-world geometry of the specified class as currently seen by the Augmented Reality system */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Geometries By Class", Keywords = "ar augmentedreality augmented reality tracking geometry anchor", DeterminesOutputType = "GeometryClass"))
+	static TArray<UARTrackedGeometry*> GetAllGeometriesByClass(TSubclassOf<UARTrackedGeometry> GeometryClass);
 
 	/** @return the current camera image from the Augmented Reality system */
 	UE_DEPRECATED(4.26, "GetCameraImage is deprecated, use GetARTexture.")
@@ -291,19 +295,23 @@ public:
 	static void RemoveAllARPinsFromLocalStore();
 	
 	/** @return a list of all the tracked planes as currently seen by the Augmented Reality system */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Planes", Keywords = "ar augmentedreality augmented reality tracking geometry anchor"))
+	UE_DEPRECATED(4.26, "GetAllTrackedPlanes is deprecated, use GetAllGeometriesByClass.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Planes", Keywords = "ar augmentedreality augmented reality tracking geometry anchor", DeprecatedFunction, DeprecationMessage="GetAllTrackedPlanes is deprecated, use GetAllGeometriesByClass."))
 	static TArray<UARPlaneGeometry*> GetAllTrackedPlanes();
 	
 	/** @return a list of all the tracked points as currently seen by the Augmented Reality system */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (KDisplayName="Get All AR Tracked Points", eywords = "ar augmentedreality augmented reality tracking geometry anchor"))
+	UE_DEPRECATED(4.26, "GetAllTrackedPoints is deprecated, use GetAllGeometriesByClass.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (KDisplayName="Get All AR Tracked Points", eywords = "ar augmentedreality augmented reality tracking geometry anchor", DeprecatedFunction, DeprecationMessage="GetAllTrackedPoints is deprecated, use GetAllGeometriesByClass."))
 	static TArray<UARTrackedPoint*> GetAllTrackedPoints();
 	
 	/** @return a list of all the tracked images as currently seen by the Augmented Reality system */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Images", Keywords = "ar augmentedreality augmented reality tracking images anchor"))
+	UE_DEPRECATED(4.26, "GetAllTrackedImages is deprecated, use GetAllGeometriesByClass.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Images", Keywords = "ar augmentedreality augmented reality tracking images anchor", DeprecatedFunction, DeprecationMessage="GetAllTrackedImages is deprecated, use GetAllGeometriesByClass."))
 	static TArray<UARTrackedImage*> GetAllTrackedImages();
 	
 	/** @return a list of all the tracked environment capture probes as currently seen by the Augmented Reality system */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Environment Probes", Keywords = "ar augmentedreality augmented reality tracking anchor"))
+	UE_DEPRECATED(4.26, "GetAllTrackedEnvironmentCaptureProbes is deprecated, use GetAllGeometriesByClass.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Environment Probes", Keywords = "ar augmentedreality augmented reality tracking anchor", DeprecatedFunction, DeprecationMessage="GetAllTrackedEnvironmentCaptureProbes is deprecated, use GetAllGeometriesByClass."))
 	static TArray<UAREnvironmentCaptureProbe*> GetAllTrackedEnvironmentCaptureProbes();
 
 	/** Adds an environment capture probe to the ar world */
@@ -353,7 +361,8 @@ public:
 	static TArray<FARPose2D> GetAllTracked2DPoses();
 	
 	/** @return all the 3D poses tracked by the AR system */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pose Tracking", meta = (DisplayName="Get All AR Tracked 3D Poses", Keywords = "ar augmentedreality augmented reality pose tracking"))
+	UE_DEPRECATED(4.26, "GetAllTrackedPoses is deprecated, use GetAllGeometriesByClass.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pose Tracking", meta = (DisplayName="Get All AR Tracked 3D Poses", Keywords = "ar augmentedreality augmented reality pose tracking", DeprecatedFunction, DeprecationMessage="GetAllTrackedPoses is deprecated, use GetARTexture."))
 	static TArray<UARTrackedPose*> GetAllTrackedPoses();
 	
 	/** @return the segmentation image if the person segmentation session feature is used */
@@ -438,6 +447,21 @@ public:
 	/** @return the intrinsics of the AR camera. */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Geo Tracking")
 	static bool GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics);
+	
+	/** @return a list of all the real-world geometry of the specified class as currently seen by the Augmented Reality system */
+	template<class T>
+	static TArray<T*> GetAllGeometriesByClass()
+	{
+		TArray<T*> Geometries;
+		for (auto Geometry : GetAllGeometries())
+		{
+			if (auto CastedGeometry = Cast<T>(Geometry))
+			{
+				Geometries.Add(CastedGeometry);
+			}
+		}
+		return MoveTemp(Geometries);
+	}
 	
 public:
 	static void RegisterAsARSystem(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& NewArSystem);

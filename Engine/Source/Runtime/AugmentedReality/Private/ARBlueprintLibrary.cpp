@@ -206,6 +206,24 @@ TArray<UARTrackedGeometry*> UARBlueprintLibrary::GetAllGeometries()
 	return Geometries;
 }
 
+TArray<UARTrackedGeometry*> UARBlueprintLibrary::GetAllGeometriesByClass(TSubclassOf<UARTrackedGeometry> GeometryClass)
+{
+	if (!GeometryClass)
+	{
+		return {};
+	}
+	
+	TArray<UARTrackedGeometry*> Geometries;
+	for (auto Geometry : GetAllGeometries())
+	{
+		if (Geometry && Geometry->GetClass()->IsChildOf(GeometryClass))
+		{
+			Geometries.Add(Geometry);
+		}
+	}
+	return MoveTemp(Geometries);
+}
+
 TArray<UARPin*> UARBlueprintLibrary::GetAllPins()
 {
 	TArray<UARPin*> Pins;
@@ -918,7 +936,7 @@ TArray<UARTrackedPoint*> UARBlueprintLibrary::FindTrackedPointsByName(const FStr
 {
 	TArray<UARTrackedPoint*> Points;
 	
-	for (auto Point : GetAllTrackedPoints())
+	for (auto Point : GetAllGeometriesByClass<UARTrackedPoint>())
 	{
 		if (Point && Point->GetName() == PointName)
 		{
