@@ -1499,8 +1499,8 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 	uint32 NumSubpasses = 0;
 	uint32 NumDependencies = 0;
 
-	VkSubpassDescription SubpassDescriptions[3];
-	VkSubpassDependency SubpassDependencies[3];
+	VkSubpassDescription SubpassDescriptions[8];
+	VkSubpassDependency SubpassDependencies[8];
 
 	const bool bDeferredShadingSubpass = RTLayout.GetSubpassHint() == ESubpassHint::DeferredShadingSubpass;
 	const bool bDepthReadSubpass =  RTLayout.GetSubpassHint() == ESubpassHint::DepthReadSubpass;
