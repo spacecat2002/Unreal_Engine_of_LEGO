@@ -63,7 +63,8 @@ namespace EHMDTrackingOrigin
 	{
 		Floor UMETA(DisplayName = "Floor Level"),
 		Eye UMETA(DisplayName = "Eye Level"),
-		Stage UMETA(DisplayName = "Stage (Centered Around Play Area)")
+		Stage UMETA(DisplayName = "Stage (Centered Around Play Area)"),
+		Unbounded UMETA(DisplayName = "Unbounded (Centered Around Viewer)")
 	};
 }
 
