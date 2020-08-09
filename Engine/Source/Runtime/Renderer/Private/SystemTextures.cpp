@@ -757,6 +757,7 @@ void FSystemTextures::ReleaseDynamicRHI()
 	MidGreyDummy.SafeRelease();
 	StencilDummy.SafeRelease();
 	StencilDummySRV.SafeRelease();
+	GTAOPreIntegrated.SafeRelease();
 
 	GRenderTargetPool.FreeUnusedResources();
 
