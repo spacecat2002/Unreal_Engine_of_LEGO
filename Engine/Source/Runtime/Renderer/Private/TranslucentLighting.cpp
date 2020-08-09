@@ -874,8 +874,8 @@ public:
 		{
 			FVolumetricCloudRenderSceneInfo* CloudInfo = LightSceneInfo->Scene->GetVolumetricCloudSceneInfo();
 
-			const bool bLight0CloudPerPixelTransmittance = CloudInfo && View.VolumetricCloudShadowMap[0].IsValid() && AtmosphereLight0Proxy == LightSceneInfo->Proxy;
-			const bool bLight1CloudPerPixelTransmittance = CloudInfo && View.VolumetricCloudShadowMap[1].IsValid() && AtmosphereLight1Proxy == LightSceneInfo->Proxy;
+			const bool bLight0CloudPerPixelTransmittance = CloudInfo && View.ViewState && View.ViewState->VolumetricCloudShadowRenderTarget[0].CurrentIsValid() && AtmosphereLight0Proxy == LightSceneInfo->Proxy;
+			const bool bLight1CloudPerPixelTransmittance = CloudInfo && View.ViewState && View.ViewState->VolumetricCloudShadowRenderTarget[1].CurrentIsValid() && AtmosphereLight1Proxy == LightSceneInfo->Proxy;
 
 			if (bLight0CloudPerPixelTransmittance || bLight1CloudPerPixelTransmittance)
 			{
@@ -889,7 +889,7 @@ public:
 					VolumetricCloudShadowmapTexture,
 					VolumetricCloudShadowmapTextureSampler,
 					TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
-					View.VolumetricCloudShadowMap[LightIndex]->GetRenderTargetItem().ShaderResourceTexture);
+					View.ViewState->VolumetricCloudShadowRenderTarget[LightIndex].CurrentRenderTarget()->GetRenderTargetItem().ShaderResourceTexture);
 			}
 			else
 			{
