@@ -353,18 +353,27 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 			FMemMark Mark(FMemStack::Get());
 
 			TArray<FRHITransitionInfo, TMemStackAllocator<>> TransitionsBefore, TransitionsAfter;
+			TArray<FRHIUnorderedAccessView*, TMemStackAllocator<>> OverlapUAVs;
 			TransitionsBefore.Reserve(DispatchCommands.Num());
 			TransitionsAfter.Reserve(DispatchCommands.Num());
+			OverlapUAVs.Reserve(DispatchCommands.Num());
 			const FRWBuffer* LastBuffer = nullptr;
 			for (FMeshComputeDispatchCommand& Cmd : DispatchCommands)
 			{
+				FRHIUnorderedAccessView* UAV = Cmd.TargetBuffer->UAV.GetReference();
+
+				// The list is sorted by TargetBuffer, so we can remove duplicates by simply looking at the previous value we've processed.
 				if (LastBuffer == Cmd.TargetBuffer)
 				{
-					// The list is sorted by TargetBuffer, so we can remove duplicates by simply looking at the previous value we've processed.
+					// This UAV is used by more than one dispatch, so tell the RHI it's OK to overlap the dispatches, because
+					// we're updating disjoint regions.
+					if (OverlapUAVs.Num() == 0 || OverlapUAVs.Last() != UAV)
+					{
+						OverlapUAVs.Add(UAV);
+					}
 					continue;
 				}
 
-				FRHIUnorderedAccessView* UAV = Cmd.TargetBuffer->UAV.GetReference();
 				LastBuffer = Cmd.TargetBuffer;
 
 				// Looks like the resource can get here in either UAVCompute or SRVMask mode, so we'll have to use Unknown until we can have better tracking.
@@ -401,7 +410,7 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 
 				// Transition to writeable for each cmd list and enable UAV overlap, because several dispatches can update non-overlapping portions of the same buffer.
 				RHICmdList.Transition(TransitionsBefore);
-				RHICmdList.BeginUAVOverlap();
+				RHICmdList.BeginUAVOverlap(OverlapUAVs);
 
 				// Cache the bound uniform buffers because a lot are the same between dispatches
 				FShaderBindingState ShaderBindingState;
@@ -432,8 +441,8 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 				}
 
 				// Make sure buffers are readable again and disable UAV overlap.
+				RHICmdList.EndUAVOverlap(OverlapUAVs);
 				RHICmdList.Transition(TransitionsAfter);
-				RHICmdList.EndUAVOverlap();
 			}
 
 			{

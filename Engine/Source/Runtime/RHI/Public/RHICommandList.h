@@ -1295,28 +1295,28 @@ struct FRHICommandDispatchIndirectComputeShader final : public FRHICommand<FRHIC
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-struct FRHICommandBeginUAVOverlapString
+FRHICOMMAND_MACRO(FRHICommandBeginUAVOverlap)
 {
-	static const TCHAR* TStr() { return TEXT("FRHICommandBeginUAVOverlap"); }
-};
-struct FRHICommandBeginUAVOverlap final : public FRHICommand<FRHICommandBeginUAVOverlap, FRHICommandBeginUAVOverlapString>
-{
-	FORCEINLINE_DEBUGGABLE FRHICommandBeginUAVOverlap()
-	{}
-
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-struct FRHICommandEndUAVOverlapString
+FRHICOMMAND_MACRO(FRHICommandEndUAVOverlap)
 {
-	static const TCHAR* TStr() { return TEXT("FRHICommandEndUAVOverlap"); }
-};
-struct FRHICommandEndUAVOverlap final : public FRHICommand<FRHICommandEndUAVOverlap, FRHICommandEndUAVOverlapString>
-{
-	FORCEINLINE_DEBUGGABLE FRHICommandEndUAVOverlap()
-	{}
-
 	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
+FRHICOMMAND_MACRO(FRHICommandBeginSpecificUAVOverlap)
+{
+	TArrayView<FRHIUnorderedAccessView*> UAVs;
+	FORCEINLINE_DEBUGGABLE FRHICommandBeginSpecificUAVOverlap(TArrayView<FRHIUnorderedAccessView*> InUAVs) : UAVs(InUAVs) {}
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
+FRHICOMMAND_MACRO(FRHICommandEndSpecificUAVOverlap)
+{
+	TArrayView<FRHIUnorderedAccessView*> UAVs;
+	FORCEINLINE_DEBUGGABLE FRHICommandEndSpecificUAVOverlap(TArrayView<FRHIUnorderedAccessView*> InUAVs) : UAVs(InUAVs) {}
+	RHI_API void Execute(FRHICommandListBase & CmdList);
 };
 
 FRHICOMMAND_MACRO(FRHICommandAutomaticCacheFlushAfterComputeShader)
@@ -2596,8 +2596,7 @@ public:
 		WaitFence->Transition = nullptr;
 	}
 
-	/* LEGACY API */
-
+	UE_DEPRECATED(4.26, "BeginUAVOverlap() with no arguments is deprecated. Use the overload which takes a UAV or array of UAVs to explicitly mark as safe for overlapped access.")
 	FORCEINLINE_DEBUGGABLE void BeginUAVOverlap()
 	{
 		if (Bypass())
@@ -2608,7 +2607,8 @@ public:
 		ALLOC_COMMAND(FRHICommandBeginUAVOverlap)();
 	}
 
-	FORCEINLINE_DEBUGGABLE void EndUAVOverlap()
+	UE_DEPRECATED(4.26, "EndUAVOverlap() with no arguments is deprecated. Use the overload which takes a UAV or array of UAVs to explicitly mark as safe for overlapped access.")
+		FORCEINLINE_DEBUGGABLE void EndUAVOverlap()
 	{
 		if (Bypass())
 		{
@@ -2616,6 +2616,46 @@ public:
 			return;
 		}
 		ALLOC_COMMAND(FRHICommandEndUAVOverlap)();
+	}
+
+	FORCEINLINE_DEBUGGABLE void BeginUAVOverlap(FRHIUnorderedAccessView* UAV)
+	{
+		FRHIUnorderedAccessView* UAVs[1] = { UAV };
+		BeginUAVOverlap(MakeArrayView(UAVs, 1));
+	}
+
+	FORCEINLINE_DEBUGGABLE void EndUAVOverlap(FRHIUnorderedAccessView* UAV)
+	{
+		FRHIUnorderedAccessView* UAVs[1] = { UAV };
+		EndUAVOverlap(MakeArrayView(UAVs, 1));
+	}
+
+	FORCEINLINE_DEBUGGABLE void BeginUAVOverlap(TArrayView<FRHIUnorderedAccessView*> UAVs)
+	{
+		if (Bypass())
+		{
+			GetContext().RHIBeginUAVOverlap(UAVs);
+			return;
+		}
+
+		const uint32 AllocSize = UAVs.Num() * sizeof(FRHIUnorderedAccessView*);
+		FRHIUnorderedAccessView** InlineUAVs = (FRHIUnorderedAccessView**)Alloc(AllocSize, alignof(FRHIUnorderedAccessView*));
+		FMemory::Memcpy(InlineUAVs, UAVs.GetData(), AllocSize);
+		ALLOC_COMMAND(FRHICommandBeginSpecificUAVOverlap)(MakeArrayView(InlineUAVs, UAVs.Num()));
+	}
+
+	FORCEINLINE_DEBUGGABLE void EndUAVOverlap(TArrayView<FRHIUnorderedAccessView*> UAVs)
+	{
+		if (Bypass())
+		{
+			GetContext().RHIEndUAVOverlap(UAVs);
+			return;
+		}
+
+		const uint32 AllocSize = UAVs.Num() * sizeof(FRHIUnorderedAccessView*);
+		FRHIUnorderedAccessView** InlineUAVs = (FRHIUnorderedAccessView**)Alloc(AllocSize, alignof(FRHIUnorderedAccessView*));
+		FMemory::Memcpy(InlineUAVs, UAVs.GetData(), AllocSize);
+		ALLOC_COMMAND(FRHICommandEndSpecificUAVOverlap)(MakeArrayView(InlineUAVs, UAVs.Num()));
 	}
 
 	FORCEINLINE_DEBUGGABLE void PushEvent(const TCHAR* Name, FColor Color)
@@ -3164,26 +3204,6 @@ public:
 			return;
 		}
 		ALLOC_COMMAND(FRHICommandSetGraphicsPipelineState)(GraphicsPipelineState);
-	}
-
-	FORCEINLINE_DEBUGGABLE void BeginUAVOverlap()
-	{
-		if (Bypass())
-		{
-			GetContext().RHIBeginUAVOverlap();
-			return;
-		}
-		ALLOC_COMMAND(FRHICommandBeginUAVOverlap)();
-	}
-
-	FORCEINLINE_DEBUGGABLE void EndUAVOverlap()
-	{
-		if (Bypass())
-		{
-			GetContext().RHIEndUAVOverlap();
-			return;
-		}
-		ALLOC_COMMAND(FRHICommandEndUAVOverlap)();
 	}
 
 	UE_DEPRECATED(4.25, "AutomaticCacheFlushAfterComputeShader is deprecated. Use RHICmdList.BeginUAVOverlap() and RHICmdList.EndUAVOverlap() to mark up sections of RHI commands where multiple draws/dispatches using UAVs are allowed to overlap without interleaved resource transitions. Call BeginUAVOverlap() where previously AutomaticCacheFlushAfterComputeShader(false) was called, and EndUAVOverlap() where previously AutomaticCacheFlushAfterComputeShader(true) was called.")

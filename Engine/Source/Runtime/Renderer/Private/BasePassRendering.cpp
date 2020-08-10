@@ -681,8 +681,6 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 
 	bool bDirty = false;
 
-	RHICmdList.BeginUAVOverlap();
-
 	if (bRenderLightmapDensity)
 	{
 		// Override the base pass with the lightmap density pass if the viewmode is enabled.
@@ -779,8 +777,6 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 			}
 		}	
 	}
-
-	RHICmdList.EndUAVOverlap();
 
 	return bDirty;
 }

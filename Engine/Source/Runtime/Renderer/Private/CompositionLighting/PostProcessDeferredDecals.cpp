@@ -583,9 +583,6 @@ void AddDeferredDecalPass(
 		{
 			RDG_EVENT_SCOPE(GraphBuilder, "Decals (Visible %d, Total: %d)", SortedDecalCount, DecalCount);
 
-			// Disable UAV cache flushing so we have optimal VT feedback performance.
-			AddBeginUAVOverlapPass(GraphBuilder);
-
 			uint32 SortedDecalIndex = 1;
 			uint32 LastSortedDecalIndex = 0;
 			FDecalRenderingCommon::ERenderTargetMode LastRenderTargetMode = GetRenderTargetMode((*SortedDecals)[0]);
@@ -606,8 +603,6 @@ void AddDeferredDecalPass(
 			{
 				RenderDecals(LastSortedDecalIndex, SortedDecalIndex, LastRenderTargetMode);
 			}
-
-			AddEndUAVOverlapPass(GraphBuilder);
 		}
 	}
 

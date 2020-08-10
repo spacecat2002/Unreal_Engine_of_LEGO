@@ -740,8 +740,6 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 
 	FRDGTextureRef WhiteForwardScreenSpaceShadowMask = GraphBuilder.RegisterExternalTexture(GSystemTextures.WhiteDummy);
 
-	AddBeginUAVOverlapPass(GraphBuilder);
-
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 	{
 		const FViewInfo& View = Views[ViewIndex];
@@ -785,8 +783,6 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 			});
 		}
 	}
-
-	AddEndUAVOverlapPass(GraphBuilder);
 
 	AddResolveSceneDepthPass(GraphBuilder, Views, SceneDepthTexture);
 }

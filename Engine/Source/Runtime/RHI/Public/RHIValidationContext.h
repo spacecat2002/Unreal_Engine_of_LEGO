@@ -295,14 +295,32 @@ public:
 
 	virtual void RHIBeginUAVOverlap() final override
 	{
-		Tracker->UAVOverlap(true);
+		Tracker->AllUAVsOverlap(true);
 		RHIContext->RHIBeginUAVOverlap();
 	}
 
 	virtual void RHIEndUAVOverlap() final override
 	{
-		Tracker->UAVOverlap(false);
+		Tracker->AllUAVsOverlap(false);
 		RHIContext->RHIEndUAVOverlap();
+	}
+
+	virtual void RHIBeginUAVOverlap(TArrayView<FRHIUnorderedAccessView*> UAVs) final override
+	{
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			Tracker->SpecificUAVOverlap(UAV->ViewIdentity, true);
+		}
+		RHIContext->RHIBeginUAVOverlap(UAVs);
+	}
+
+	virtual void RHIEndUAVOverlap(TArrayView<FRHIUnorderedAccessView*> UAVs) final override
+	{
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			Tracker->SpecificUAVOverlap(UAV->ViewIdentity, false);
+		}
+		RHIContext->RHIEndUAVOverlap(UAVs);
 	}
 
 	/**

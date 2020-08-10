@@ -1166,8 +1166,6 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(
 		SceneColorCopyTexture = AddCopySceneColorPass(GraphBuilder, Views, SceneColorTexture);
 	}
 
-	AddBeginUAVOverlapPass(GraphBuilder);
-
 	if (ViewFamily.AllowTranslucencyAfterDOF())
 	{
 		RenderTranslucencyInner(GraphBuilder, SceneColorTexture, SceneDepthTexture, OutSeparateTranslucencyTextures, ViewsToRender, SceneColorCopyTexture, ETranslucencyPass::TPT_StandardTranslucency);
@@ -1178,6 +1176,4 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(
 	{
 		RenderTranslucencyInner(GraphBuilder, SceneColorTexture, SceneDepthTexture, OutSeparateTranslucencyTextures, ViewsToRender, SceneColorCopyTexture, ETranslucencyPass::TPT_AllTranslucency);
 	}
-
-	AddEndUAVOverlapPass(GraphBuilder);
 }

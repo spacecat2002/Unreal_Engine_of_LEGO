@@ -147,7 +147,10 @@ namespace RHIValidation
 		bool bTransitioning = false;
 
 		// True when the resource has been used within a Begin/EndUAVOverlap region.
-		bool bUAVOverlap = false;
+		bool bUsedWithAllUAVsOverlap = false;
+		
+		// True if the calling code explicitly enabled overlapping on this UAV.
+		bool bExplicitAllowUAVOverlap = false;
 
 		// Pointer to the previous create/begin transition backtraces if logging is enabled for this resource.
 		void* CreateTransitionBacktrace = nullptr;
@@ -165,7 +168,7 @@ namespace RHIValidation
 
 		void BeginTransition(FResource* Resource, FSubresourceIndex const& SubresourceIndex, const FState& CurrentStateFromRHI, const FState& TargetState, EResourceTransitionFlags NewFlags, void* CreateTrace);
 		void EndTransition  (FResource* Resource, FSubresourceIndex const& SubresourceIndex, void* CreateTrace);
-		void Assert         (FResource* Resource, FSubresourceIndex const& SubresourceIndex, const FState& RequiredState, bool bAllowUAVOverlap);
+		void Assert         (FResource* Resource, FSubresourceIndex const& SubresourceIndex, const FState& RequiredState, bool bAllowAllUAVsOverlap);
 		void* Log           (FResource* Resource, FSubresourceIndex const& SubresourceIndex, void* CreateTrace, const TCHAR* Type, const TCHAR* LogStr);
 	};
 
@@ -488,7 +491,8 @@ namespace RHIValidation
 		Rename,
 		Signal,
 		Wait,
-		UAVOverlap
+		AllUAVsOverlap,
+		SpecificUAVOverlap
 	};
 
 	struct FUniformBufferResource
@@ -549,10 +553,16 @@ namespace RHIValidation
 			struct
 			{
 				bool bAllow;
-			} Data_UAVOverlap;
+			} Data_AllUAVsOverlap;
+
+			struct
+			{
+				FResourceIdentity Identity;
+				bool bAllow;
+			} Data_SpecificUAVOverlap;
 		};
 
-		RHI_API EReplayStatus Replay(bool& bAllowUAVOverlap) const;
+		RHI_API EReplayStatus Replay(bool& bAllowAllUAVsOverlap) const;
 
 		static inline FOperation BeginTransitionResource(FResourceIdentity Identity, FState PreviousState, FState NextState, EResourceTransitionFlags Flags, void* CreateBacktrace)
 		{
@@ -623,11 +633,22 @@ namespace RHIValidation
 			return MoveTemp(Op);
 		}
 
-		static inline FOperation UAVOverlap(bool bAllow)
+		static inline FOperation AllUAVsOverlap(bool bAllow)
 		{
 			FOperation Op;
-			Op.Type = EOpType::UAVOverlap;
-			Op.Data_UAVOverlap.bAllow = bAllow;
+			Op.Type = EOpType::AllUAVsOverlap;
+			Op.Data_AllUAVsOverlap.bAllow = bAllow;
+			return MoveTemp(Op);
+		}
+
+		static inline FOperation SpecificUAVOverlap(FResourceIdentity Identity, bool bAllow)
+		{
+			Identity.Resource->AddOpRef();
+
+			FOperation Op;
+			Op.Type = EOpType::SpecificUAVOverlap;
+			Op.Data_SpecificUAVOverlap.Identity = Identity;
+			Op.Data_SpecificUAVOverlap.bAllow = bAllow;
 			return MoveTemp(Op);
 		}
 	};
@@ -637,12 +658,12 @@ namespace RHIValidation
 		TArray<FOperation> Operations;
 		int32 OperationPos = 0;
 
-		inline EReplayStatus Replay(bool& bAllowUAVOverlap)
+		inline EReplayStatus Replay(bool& bAllowAllUAVsOverlap)
 		{
 			EReplayStatus Status = EReplayStatus::Normal;
 			for (; OperationPos < Operations.Num(); ++OperationPos)
 			{
-				Status |= Operations[OperationPos].Replay(bAllowUAVOverlap);
+				Status |= Operations[OperationPos].Replay(bAllowAllUAVsOverlap);
 				if (EnumHasAllFlags(Status, EReplayStatus::Waiting))
 				{
 					break;
@@ -778,9 +799,14 @@ namespace RHIValidation
 			AddOp(FOperation::EndTransitionResource(Identity, nullptr));
 		}
 
-		inline void UAVOverlap(bool bAllow)
+		inline void AllUAVsOverlap(bool bAllow)
 		{
-			AddOp(FOperation::UAVOverlap(bAllow));
+			AddOp(FOperation::AllUAVsOverlap(bAllow));
+		}
+
+		inline void SpecificUAVOverlap(FResourceIdentity Identity, bool bAllow)
+		{
+			AddOp(FOperation::SpecificUAVOverlap(Identity, bAllow));
 		}
 
 		inline void Dispatch()
@@ -832,7 +858,7 @@ namespace RHIValidation
 		struct FOpQueueState
 		{
 			bool bWaiting = false;
-			bool bAllowUAVOverlap = false;
+			bool bAllowAllUAVsOverlap = false;
 
 			FOperationsList Ops;
 		} static RHI_API OpQueues[int32(ERHIPipeline::Num)];

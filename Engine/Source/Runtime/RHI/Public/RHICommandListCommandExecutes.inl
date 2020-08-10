@@ -298,6 +298,18 @@ void FRHICommandEndUAVOverlap::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHIEndUAVOverlap)();
 }
 
+void FRHICommandBeginSpecificUAVOverlap::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(BeginSpecificUAVOverlap);
+	INTERNAL_DECORATOR(RHIBeginUAVOverlap)(UAVs);
+}
+
+void FRHICommandEndSpecificUAVOverlap::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(EndSpecificUAVOverlap);
+	INTERNAL_DECORATOR(RHIEndUAVOverlap)(UAVs);
+}
+
 void FRHICommandAutomaticCacheFlushAfterComputeShader::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(AutomaticCacheFlushAfterComputeShader);
