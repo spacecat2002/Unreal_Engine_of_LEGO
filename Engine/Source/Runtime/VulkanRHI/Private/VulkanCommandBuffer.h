@@ -315,7 +315,17 @@ public:
 
 	VULKANRHI_API void SubmitUploadCmdBuffer(uint32 NumSignalSemaphores = 0, VkSemaphore* SignalSemaphores = nullptr);
 
-	void SubmitActiveCmdBuffer(VulkanRHI::FSemaphore* SignalSemaphore = nullptr);
+	void SubmitActiveCmdBuffer(TArrayView<VulkanRHI::FSemaphore*> SignalSemaphores);
+
+	void SubmitActiveCmdBuffer()
+	{
+		SubmitActiveCmdBuffer(MakeArrayView<VulkanRHI::FSemaphore*>(nullptr, 0));
+	}
+
+	void SubmitActiveCmdBuffer(VulkanRHI::FSemaphore* SignalSemaphore)
+	{
+		SubmitActiveCmdBuffer(MakeArrayView<VulkanRHI::FSemaphore*>(&SignalSemaphore, 1));
+	}
 
 	/** Regular SACB() expects not-ended and would rotate the command buffer immediately, but Present has a special logic */
 	void SubmitActiveCmdBufferFromPresent(VulkanRHI::FSemaphore* SignalSemaphore = nullptr);

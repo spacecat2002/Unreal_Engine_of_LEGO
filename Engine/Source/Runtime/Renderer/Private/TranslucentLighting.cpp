@@ -1049,8 +1049,8 @@ void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLightingAsyncCompute(F
 	TArray<FRHITransitionInfo, SceneRenderingAllocator> SRVTransitions;
 	for (FRHIUnorderedAccessView* UAV : VolumeUAVs)
 	{
-		UAVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
-		SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+		UAVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+		SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
 	}
 
 	// Transition should have already been ended before

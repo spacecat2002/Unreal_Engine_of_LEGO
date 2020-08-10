@@ -9,14 +9,17 @@ class FVulkanSurface;
 
 struct FVulkanPipelineBarrier
 {
-	FVulkanPipelineBarrier() : SrcStageMask(0), DstStageMask(0)
+	FVulkanPipelineBarrier() : SrcStageMask(0), DstStageMask(0), Semaphore(nullptr)
 	{
 		ZeroVulkanStruct(MemoryBarrier, VK_STRUCTURE_TYPE_MEMORY_BARRIER);
 	}
 
+	ERHIPipeline SrcPipelines, DstPipelines;
 	VkPipelineStageFlags SrcStageMask, DstStageMask;
 	VkMemoryBarrier MemoryBarrier;
 	TArray<VkImageMemoryBarrier, TInlineAllocator<8>> ImageBarriers;
+	TArray<VkBufferMemoryBarrier, TInlineAllocator<8>> BufferBarriers;
+	VulkanRHI::FSemaphore* Semaphore;
 
 	// We need to keep the texture pointers around, because we need to call OnTransitionResource on them, and we need mip and layer counts for the tracking code.
 	TArray<FVulkanTextureBase*, TInlineAllocator<8>> Textures;

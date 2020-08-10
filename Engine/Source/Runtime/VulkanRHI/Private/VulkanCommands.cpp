@@ -962,33 +962,13 @@ void FVulkanCommandListContext::PrepareForCPURead()
 
 void FVulkanCommandListContext::RHISubmitCommandsHint()
 {
-	if (Device->IsRealAsyncComputeContext(this))
+	RequestSubmitCurrentCommands();
+	FVulkanCmdBuffer* CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
+	if (CmdBuffer && CmdBuffer->HasBegun() && CmdBuffer->IsOutsideRenderPass())
 	{
-		// Split the Immediate command buffer, so we can insert the semaphore
-		FVulkanCommandListContext* ImmediateContext = &Device->GetImmediateContext();
-		ensure(this != ImmediateContext);
-		ImmediateContext->RHISubmitCommandsHint();
-
-		// Now submit this compute context with a semaphore to the active cmd context
-		VulkanRHI::FSemaphore* Semaphore = new VulkanRHI::FSemaphore(*Device);
-		if (CommandBufferManager->HasPendingUploadCmdBuffer())
-		{
-			CommandBufferManager->SubmitUploadCmdBuffer();
-		}
-		CommandBufferManager->SubmitActiveCmdBuffer(Semaphore);
-
-		ImmediateContext->GetCommandBufferManager()->GetActiveCmdBuffer()->AddWaitSemaphore(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, Semaphore);
+		SafePointSubmit();
 	}
-	else
-	{
-		RequestSubmitCurrentCommands();
-		FVulkanCmdBuffer* CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-		if (CmdBuffer && CmdBuffer->HasBegun() && CmdBuffer->IsOutsideRenderPass())
-		{
-			SafePointSubmit();
-		}
-		CommandBufferManager->RefreshFenceStatus();
-	}
+	CommandBufferManager->RefreshFenceStatus();
 }
 
 void FVulkanCommandListContext::PrepareParallelFromBase(const FVulkanCommandListContext& BaseContext)

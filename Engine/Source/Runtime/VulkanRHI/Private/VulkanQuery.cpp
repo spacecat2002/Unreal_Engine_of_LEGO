@@ -49,6 +49,7 @@ FVulkanQueryPool::FVulkanQueryPool(FVulkanDevice* InDevice, uint32 InMaxQueries,
 
 	VERIFYVULKANRESULT(VulkanRHI::vkCreateQueryPool(Device->GetInstanceHandle(), &PoolCreateInfo, VULKAN_CPU_ALLOCATOR, &QueryPool));
 
+	// FIXME: this needs to use the command buffer manager for the queue which owns the query pool.
 	GVulkanCommandBufferManager->AddQueryPoolForReset(QueryPool, InMaxQueries);
 	
 	VkEventCreateInfo EventCreateInfo;

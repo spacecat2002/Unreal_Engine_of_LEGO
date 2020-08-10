@@ -32,7 +32,7 @@ TAtomic<uint64> GVulkanImageViewHandleIdCounter{ 0 };
 TAtomic<uint64> GVulkanSamplerHandleIdCounter{ 0 };
 TAtomic<uint64> GVulkanDSetLayoutHandleIdCounter{ 0 };
 
-
+// FIXME: get rid of this
 FVulkanCommandBufferManager* GVulkanCommandBufferManager = nullptr;
 
 #if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
@@ -129,7 +129,11 @@ FVulkanCommandListContext::FVulkanCommandListContext(FVulkanDynamicRHI* InRHI, F
 
 	// Create CommandBufferManager, contain all active buffers
 	CommandBufferManager = new FVulkanCommandBufferManager(InDevice, this);
-	GVulkanCommandBufferManager = CommandBufferManager;
+	// FIXME: get rid of this
+	if (!GVulkanCommandBufferManager)
+	{
+		GVulkanCommandBufferManager = CommandBufferManager;
+	}
 	FrameTiming->Initialize();
 	if (IsImmediate())
 	{
@@ -702,7 +706,7 @@ void FVulkanDynamicRHI::InitInstance()
 		GSupportsParallelRenderingTasksWithSeparateRHIThread = GRHISupportsRHIThread ? FVulkanPlatform::SupportParallelRenderingTasks() : false;
 
 		//#todo-rco: Add newer Nvidia also
-		GSupportsEfficientAsyncCompute = (Device->GetVendorId() == EGpuVendorId::Amd) && (GRHIAllowAsyncComputeCvar.GetValueOnAnyThread() > 0) && (Device->ComputeContext != Device->ImmediateContext);
+		GSupportsEfficientAsyncCompute = (Device->ComputeContext != Device->ImmediateContext) && ((Device->GetVendorId() == EGpuVendorId::Amd) || FParse::Param(FCommandLine::Get(), TEXT("ForceAsyncCompute")));
 
 		GSupportsVolumeTextureRendering = FVulkanPlatform::SupportsVolumeTextureRendering();
 
