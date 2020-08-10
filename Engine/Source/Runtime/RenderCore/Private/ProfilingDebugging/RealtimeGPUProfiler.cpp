@@ -537,7 +537,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		// Sanitize event start/end times
 		TArray<TStaticArray<uint64, MAX_NUM_GPUS>> lastEndTimes;
-		lastEndTimes.AddDefaulted(GpuProfilerEvents.Num());
+		lastEndTimes.AddZeroed(GpuProfilerEvents.Num());
 		for (int32 EventIdx = 1; EventIdx < GpuProfilerEventParentIndices.Num(); ++EventIdx)
 		{
 			const int32 ParentIdx = GpuProfilerEventParentIndices[EventIdx];
