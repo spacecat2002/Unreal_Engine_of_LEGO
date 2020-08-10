@@ -389,7 +389,7 @@ public:
 	uint32 GetNum() const { return Primitives.Num(); }
 
 	uint32 AddBounds( const FVector& BoundsOrigin, const FVector& BoundsExtent );
-	void Submit(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+	void Submit(FRDGBuilder& GraphBuilder, const FViewInfo& View);
 
 	void MapResults(FRHICommandListImmediate& RHICmdList);
 	void UnmapResults(FRHICommandListImmediate& RHICmdList);
@@ -1626,15 +1626,12 @@ public:
 	void DoCrossGPUTransfers(FRDGBuilder& GraphBuilder, FRHIGPUMask RenderTargetGPUMask, FRDGTextureRef ViewFamilyTexture);
 
 	bool DoOcclusionQueries(ERHIFeatureLevel::Type InFeatureLevel) const;
-	/** Issues occlusion queries. */
-	void BeginOcclusionTests(FRHICommandListImmediate& RHICmdList, bool bRenderQueries);
+
+	void FenceOcclusionTests(FRDGBuilder& GraphBuilder);
+	void WaitOcclusionTests(FRHICommandListImmediate& GraphBuilder);
 
 	// fences to make sure the rhi thread has digested the occlusion query renders before we attempt to read them back async
 	static FGraphEventRef OcclusionSubmittedFence[FOcclusionQueryHelpers::MaxBufferedOcclusionFrames];
-	/** Fences occlusion queries. */
-	void FenceOcclusionTests(FRHICommandListImmediate& RHICmdList);
-	/** Waits for the occlusion fence. */
-	void WaitOcclusionTests(FRHICommandListImmediate& RHICmdList);
 
 	bool ShouldDumpMeshDrawCommandInstancingStats() const { return bDumpMeshDrawCommandInstancingStats; }
 

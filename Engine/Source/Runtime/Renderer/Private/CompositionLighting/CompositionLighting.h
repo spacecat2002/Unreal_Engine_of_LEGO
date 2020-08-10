@@ -29,12 +29,17 @@ public:
 	void ProcessLpvIndirect(FRHICommandListImmediate& RHICmdList, FViewInfo& View);
 
 	bool CanProcessAsyncSSAO(const TArray<FViewInfo>& Views);
-	void ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList, const TArray<FViewInfo>& Views);
+
+	void ProcessAsyncSSAO(
+		FRDGBuilder& GraphBuilder,
+		const TArray<FViewInfo>& Views,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
+
 	void GfxWaitForAsyncSSAO(FRDGBuilder& GraphBuilder);
 
 private:
-	void PrepareAsyncSSAO(FRHICommandListImmediate& RHICmdList);
-	void FinishAsyncSSAO(FRHICommandListImmediate& RHICmdList);
+	void PrepareAsyncSSAO();
+	void FinishAsyncSSAO(FRDGBuilder& GraphBuilder);
 	const FRHITransition* AsyncSSAOTransition = nullptr;
 };
 

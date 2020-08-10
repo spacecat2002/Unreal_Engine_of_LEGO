@@ -8,9 +8,34 @@
 #include "ShadowRendering.h"
 #include "Engine/Engine.h"
 
+class FProjectedShadowInfo;
+class FPlanarReflectionSceneProxy;
+class FRHIRenderQuery;
+
+DECLARE_GPU_STAT_NAMED_EXTERN(HZB, TEXT("HZB"));
+
 /*=============================================================================
 	SceneOcclusion.h
 =============================================================================*/
+
+struct FViewOcclusionQueries
+{
+	using FProjectedShadowArray = TArray<FProjectedShadowInfo const*, SceneRenderingAllocator>;
+	using FPlanarReflectionArray = TArray<FPlanarReflectionSceneProxy const*, SceneRenderingAllocator>;
+	using FRenderQueryArray = TArray<FRHIRenderQuery*, SceneRenderingAllocator>;
+
+	FProjectedShadowArray PointLightQueryInfos;
+	FProjectedShadowArray CSMQueryInfos;
+	FProjectedShadowArray ShadowQuerieInfos;
+	FPlanarReflectionArray ReflectionQuerieInfos;
+
+	FRenderQueryArray PointLightQueries;
+	FRenderQueryArray CSMQueries;
+	FRenderQueryArray ShadowQueries;
+	FRenderQueryArray ReflectionQueries;
+};
+
+using FViewOcclusionQueriesPerView = TArray<FViewOcclusionQueries, TInlineAllocator<1, SceneRenderingAllocator>>;
 
 /**
 * A vertex shader for rendering a texture on a simple element.

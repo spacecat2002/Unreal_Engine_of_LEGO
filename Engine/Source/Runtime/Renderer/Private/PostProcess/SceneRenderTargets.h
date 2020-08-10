@@ -175,7 +175,6 @@ protected:
 		BufferSize(0, 0),
 		LastStereoSize(0, 0),
 		SmallColorDepthDownsampleFactor(2),
-		bUseDownsizedOcclusionQueries(true),
 		CurrentGBufferFormat(0),
 		CurrentSceneColorFormat(0),
 		CurrentMobileSceneColorFormat(EPixelFormat::PF_Unknown),
@@ -353,11 +352,6 @@ public:
 
 	// ---
 
-	/** */
-	bool UseDownsizedOcclusionQueries() const { return bUseDownsizedOcclusionQueries; }
-
-	// ---
-
 	template<int32 NumRenderTargets>
 	static void ClearVolumeTextures(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FRHITexture** RenderTargets, const FLinearColor* ClearColors);
 
@@ -470,7 +464,6 @@ public:
 	// Scene velocity.
 	TRefCountPtr<IPooledRenderTarget> SceneVelocity;
 
-	TRefCountPtr<IPooledRenderTarget> LightingChannels;
 	// Quarter-sized version of the scene depths
 	TRefCountPtr<IPooledRenderTarget> SmallDepthZ;
 
@@ -663,8 +656,6 @@ private:
 	FIntPoint LastStereoSize;
 	/** e.g. 2 */
 	uint32 SmallColorDepthDownsampleFactor;
-	/** Whether to use SmallDepthZ for occlusion queries. */
-	bool bUseDownsizedOcclusionQueries;
 	/** To detect a change of the CVar r.GBufferFormat */
 	int32 CurrentGBufferFormat;
 	/** To detect a change of the CVar r.SceneColorFormat */

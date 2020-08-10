@@ -237,43 +237,38 @@ class FRenderRealTimeReflectionHeightFogPS : public FGlobalShader
 IMPLEMENT_GLOBAL_SHADER(FRenderRealTimeReflectionHeightFogPS, "/Engine/Private/ReflectionEnvironmentShaders.usf", "RenderRealTimeReflectionHeightFogPS", SF_Pixel);
 
 
-void FScene::ValidateSkyLightRealTimeCapture(FRHICommandListImmediate& RHICmdList, FSceneRenderer& SceneRenderer, FViewInfo& MainView)
+void FScene::ValidateSkyLightRealTimeCapture(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	FRDGTextureRef SceneColorTexture)
 {
 #if WITH_EDITOR
-	auto GetMaterialDebugName = [&](const FMaterialRenderProxy* MaterialRenderProxy)
-	{
-		return MaterialRenderProxy ? MaterialRenderProxy->GetMaterial(MainView.GetFeatureLevel())->GetFriendlyName() : FString(TEXT("Could not find name"));
-	};
-
 	bool bSkyMeshInMainPassExist = false;
 	bool bSkyMeshInRealTimeSkyCaptureExtist = false;
 
-	const int32 SkyRealTimeReflectionOnlyMeshBatcheCount = MainView.SkyMeshBatches.Num();
+	const int32 SkyRealTimeReflectionOnlyMeshBatcheCount = View.SkyMeshBatches.Num();
 	for (int32 MeshBatchIndex = 0; MeshBatchIndex < SkyRealTimeReflectionOnlyMeshBatcheCount; ++MeshBatchIndex)
 	{
-		FSkyMeshBatch& SkyMeshBatch = MainView.SkyMeshBatches[MeshBatchIndex];
+		const FSkyMeshBatch& SkyMeshBatch = View.SkyMeshBatches[MeshBatchIndex];
 		bSkyMeshInMainPassExist |= SkyMeshBatch.bVisibleInMainPass;
 		bSkyMeshInRealTimeSkyCaptureExtist |= SkyMeshBatch.bVisibleInRealTimeSkyCapture;
 	}
 
 	if (!bSkyMeshInMainPassExist || !bSkyMeshInRealTimeSkyCaptureExtist)
 	{
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		const float ViewPortWidth = float(MainView.ViewRect.Width());
-		const float ViewPortHeight = float(MainView.ViewRect.Height());
-		FRenderTargetTemp TempRenderTarget(MainView, (const FTexture2DRHIRef&)SceneContext.GetSceneColor()->GetRenderTargetItem().TargetableTexture);
-		FCanvas Canvas(&TempRenderTarget, NULL, MainView.Family->CurrentRealTime, SceneRenderer.ViewFamily.CurrentWorldTime, SceneRenderer.ViewFamily.DeltaWorldTime, MainView.GetFeatureLevel());
-		FLinearColor TextColor(1.0f, 0.5f, 0.0f);
+		AddDrawCanvasPass(GraphBuilder, {}, View, FScreenPassRenderTarget(SceneColorTexture, View.ViewRect, ERenderTargetLoadAction::ELoad), [this, &View, bSkyMeshInMainPassExist, bSkyMeshInRealTimeSkyCaptureExtist](FCanvas& Canvas)
+		{
+			FLinearColor TextColor(1.0f, 0.5f, 0.0f);
 
-		if (MainView.bSceneHasSkyMaterial && !bSkyMeshInMainPassExist)
-		{
-			Canvas.DrawShadowedString(100.0f, 100.0f, TEXT("At least one mesh with a sky material is in the scene but none are rendered in main view."), GetStatsFont(), TextColor);
-		}
-		if (MainView.bSceneHasSkyMaterial && !bSkyMeshInRealTimeSkyCaptureExtist && SkyLight && SkyLight->bRealTimeCaptureEnabled)
-		{
-			Canvas.DrawShadowedString(100.0f, 110.0f, TEXT("At least one mesh with a sky material is in the scene but none are rendered in the real-time sky light reflection."), GetStatsFont(), TextColor);
-		}
-		Canvas.Flush_RenderThread(RHICmdList);
+			if (View.bSceneHasSkyMaterial && !bSkyMeshInMainPassExist)
+			{
+				Canvas.DrawShadowedString(100.0f, 100.0f, TEXT("At least one mesh with a sky material is in the scene but none are rendered in main view."), GetStatsFont(), TextColor);
+			}
+			if (View.bSceneHasSkyMaterial && !bSkyMeshInRealTimeSkyCaptureExtist && SkyLight && SkyLight->bRealTimeCaptureEnabled)
+			{
+				Canvas.DrawShadowedString(100.0f, 110.0f, TEXT("At least one mesh with a sky material is in the scene but none are rendered in the real-time sky light reflection."), GetStatsFont(), TextColor);
+			}
+		});
 	}
 #endif
 }

@@ -115,7 +115,7 @@ public:
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureMSAA SceneColorTexture,
 		FRDGTextureMSAA SceneDepthTexture,
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthOnlySceneTextures,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		bool bShouldRenderVolumetricCloud);
 	
 	void RenderSingleLayerWaterInner(
@@ -129,11 +129,16 @@ public:
 		FRDGTextureRef SceneColorTexture,
 		const FSceneWithoutWaterTextures& SceneWithoutWaterTextures);
 
-	bool RenderHzb(FRHICommandListImmediate& RHICmdList);
+	void RenderOcclusion(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef SmallDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		bool bIsOcclusionTesting);
 
-	void RenderOcclusion(FRHICommandListImmediate& RHICmdList);
-
-	void FinishOcclusion(FRHICommandListImmediate& RHICmdList);
+	bool RenderHzb(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 
 	/** Renders the view family. */
 	virtual void Render(FRHICommandListImmediate& RHICmdList) override;
@@ -334,12 +339,14 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureRef& SceneColorTexture,
 		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef LightingChannelsTexture,
 		FSortedLightSetSceneInfo& SortedLightSet,
 		const FHairStrandsRenderingData* HairDatas);
 
 	/** Renders an array of lights for the stationary light overlap viewmode. */
 	void RenderLightArrayForOverlapViewmode(
 		FRHICommandList& RHICmdList,
+		FRHITexture* LightingChannelsTexture,
 		const TSparseArray<FLightSceneInfoCompact>& LightArray);
 
 	/** Render stationary light overlap as complexity to scene color. */
@@ -347,6 +354,7 @@ private:
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SceneColorTexture,
 		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef LightingChannelsTexture,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 	
 	/** Renders the scene's translucency passes. */
@@ -398,7 +406,7 @@ private:
 	/** Renders one of the EDebugViewShaderMode instead of the normal color. */
 	bool RenderDebugViewMode(FRHICommandListImmediate& RHICmdList);
 
-	void CopyStencilToLightingChannelTexture(FRDGBuilder& GraphBuilder, FRDGTextureSRVRef SceneStencilTexture);
+	FRDGTextureRef CopyStencilToLightingChannelTexture(FRDGBuilder& GraphBuilder, FRDGTextureSRVRef SceneStencilTexture);
 
 	/** Injects reflective shadowmaps into LPVs */
 	bool InjectReflectiveShadowMaps(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo);
@@ -507,6 +515,7 @@ private:
 		FRHICommandList& RHICmdList,
 		const FLightSceneInfo* LightSceneInfo,
 		FRHITexture* ScreenShadowMaskTexture,
+		FRHITexture* LightingChannelTexture,
 		const struct FHairStrandsVisibilityViews* InHairVisibilityViews,
 		bool bRenderOverlap,
 		bool bIssueDrawEvent);
@@ -518,6 +527,7 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FLightSceneInfo* LightSceneInfo,
 		FRDGTextureRef ScreenShadowMaskTexture,
+		FRDGTextureRef LightingChannelsTexture,
 		const FHairStrandsVisibilityViews* InHairVisibilityViews,
 		bool bRenderOverlap);
 
@@ -526,7 +536,8 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FSortedLightSetSceneInfo& SortedLightSet,
 		const FHairStrandsRenderingData* HairDatas,
-		FRDGTextureRef InScreenShadowMaskSubPixelTexture);
+		FRDGTextureRef InScreenShadowMaskSubPixelTexture,
+		FRDGTextureRef LightingChannelsTexture);
 
 	/** Specialized version of RenderLight for hair (run lighting evaluation on at sub-pixel rate, without depth bound) */
 	void RenderLightForHair(
@@ -534,6 +545,7 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FLightSceneInfo* LightSceneInfo,
 		FRDGTextureRef ScreenShadowMaskSubPixelTexture,
+		FRDGTextureRef LightingChannelsTexture,
 		const FHairStrandsTransmittanceMaskData& InTransmittanceMaskData,
 		const struct FHairStrandsVisibilityViews* InHairVisibilityViews);
 
@@ -604,9 +616,13 @@ private:
 		FVector GridZParams,
 		float VolumetricFogDistance);
 
+	void ComputeVolumetricFog(FRDGBuilder& GraphBuilder);
 	void ComputeVolumetricFog(FRHICommandListImmediate& RHICmdList);
 
-	void VisualizeVolumetricLightmap(FRHICommandListImmediate& RHICmdList);
+	void VisualizeVolumetricLightmap(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture);
 
 	/** Render image based reflections (SSR, Env, SkyLight) without compute shaders */
 	void RenderStandardDeferredImageBasedReflections(FRHICommandListImmediate& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, bool bReflectionEnv, const TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO, TRefCountPtr<IPooledRenderTarget>& VelocityRT);
@@ -666,6 +682,7 @@ private:
 		const IScreenSpaceDenoiser::FShadowRayTracingConfig& RayTracingConfig,
 		const IScreenSpaceDenoiser::EShadowRequirements DenoiserRequirements,
 		const struct FHairStrandsOcclusionResources* HairResources,
+		FRDGTextureRef LightingChannelsTexture,
 		FRDGTextureUAV* OutShadowMaskUAV,
 		FRDGTextureUAV* OutRayHitDistanceUAV,
 		FRDGTextureUAV* SubPixelRayTracingShadowMaskUAV);

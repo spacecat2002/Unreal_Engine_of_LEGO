@@ -1188,17 +1188,6 @@ void FMobileSceneRenderer::RenderMobileDebugView(FRHICommandListImmediate& RHICm
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void FMobileSceneRenderer::RenderOcclusion(FRHICommandListImmediate& RHICmdList)
-{
-	if (!DoOcclusionQueries(FeatureLevel))
-	{
-		return;
-	}
-
-	BeginOcclusionTests(RHICmdList, true);
-	FenceOcclusionTests(RHICmdList);
-}
-
 int32 FMobileSceneRenderer::ComputeNumOcclusionQueriesToBatch() const
 {
 	int32 NumQueriesForBatch = 0;

@@ -246,7 +246,6 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, DirectionalOcclusion(GRenderTargetPool.MakeSnapshot(SnapshotSource.DirectionalOcclusion))
 	, SceneDepthZ(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneDepthZ))	
 	, SceneVelocity(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneVelocity))
-	, LightingChannels(GRenderTargetPool.MakeSnapshot(SnapshotSource.LightingChannels))
 	, SmallDepthZ(GRenderTargetPool.MakeSnapshot(SnapshotSource.SmallDepthZ))
 	, GBufferA(GRenderTargetPool.MakeSnapshot(SnapshotSource.GBufferA))
 	, GBufferB(GRenderTargetPool.MakeSnapshot(SnapshotSource.GBufferB))
@@ -279,7 +278,6 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, BufferSize(SnapshotSource.BufferSize)
 	, LastStereoSize(SnapshotSource.LastStereoSize)
 	, SmallColorDepthDownsampleFactor(SnapshotSource.SmallColorDepthDownsampleFactor)
-	, bUseDownsizedOcclusionQueries(SnapshotSource.bUseDownsizedOcclusionQueries)
 	, CurrentGBufferFormat(SnapshotSource.CurrentGBufferFormat)
 	, CurrentSceneColorFormat(SnapshotSource.CurrentSceneColorFormat)
 	, CurrentMobileSceneColorFormat(SnapshotSource.CurrentMobileSceneColorFormat)
@@ -711,7 +709,6 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 		(CurrentSceneColorFormat != SceneColorFormat) ||
 		(CurrentMobileSceneColorFormat != MobileSceneColorFormat) ||
 		(bAllowStaticLighting != bNewAllowStaticLighting) ||
-		(bUseDownsizedOcclusionQueries != bDownsampledOcclusionQueries) ||
 		(CurrentMaxShadowResolution != MaxShadowResolution) ||
  		(CurrentRSMResolution != RSMResolution) ||
 		(CurrentTranslucencyLightingVolumeDim != TranslucencyLightingVolumeDim) ||
@@ -723,7 +720,6 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 		CurrentSceneColorFormat = SceneColorFormat;
 		CurrentMobileSceneColorFormat = MobileSceneColorFormat;
 		bAllowStaticLighting = bNewAllowStaticLighting;
-		bUseDownsizedOcclusionQueries = bDownsampledOcclusionQueries;
 		CurrentMaxShadowResolution = MaxShadowResolution;
 		CurrentRSMResolution = RSMResolution;
 		CurrentTranslucencyLightingVolumeDim = TranslucencyLightingVolumeDim;
@@ -2194,7 +2190,6 @@ void FSceneRenderTargets::ReleaseAllTargets()
 
 	SceneDepthZ.SafeRelease();
 	SceneStencilSRV.SafeRelease();
-	LightingChannels.SafeRelease();
 	SmallDepthZ.SafeRelease();
 	DBufferA.SafeRelease();
 	DBufferB.SafeRelease();

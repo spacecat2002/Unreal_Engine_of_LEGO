@@ -583,7 +583,7 @@ void FCompositionLighting::ProcessAfterBasePass(
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
-	if (!CanOverlayRayTracingOutput(View))
+	if (CanOverlayRayTracingOutput(View))
 	{
 		const FSceneViewFamily& ViewFamily = *View.Family;
 
@@ -725,7 +725,7 @@ bool FCompositionLighting::CanProcessAsyncSSAO(const TArray<FViewInfo>& Views)
 	return bAnyAsyncSSAO;
 }
 
-void FCompositionLighting::PrepareAsyncSSAO(FRHICommandListImmediate& RHICmdList)
+void FCompositionLighting::PrepareAsyncSSAO()
 {
 	//clear out last frame's fence.
 	ensureMsgf(AsyncSSAOTransition == nullptr, TEXT("Old AsyncCompute SSAO transition has not been cleared."));
@@ -739,76 +739,71 @@ void FCompositionLighting::PrepareAsyncSSAO(FRHICommandListImmediate& RHICmdList
 	RHICmdListComputeImmediate.SetAsyncComputeBudget(FSSAOHelper::GetAmbientOcclusionAsyncComputeBudget());
 }
 
-void FCompositionLighting::ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList, const TArray<FViewInfo>& Views)
+void FCompositionLighting::ProcessAsyncSSAO(
+	FRDGBuilder& GraphBuilder,
+	const TArray<FViewInfo>& Views,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer)
 {
-	check(IsInRenderingThread());
+	PrepareAsyncSSAO();
+
+	for (const FViewInfo& View : Views)
 	{
-		PrepareAsyncSSAO(RHICmdList);
+		const uint32 Levels = FSSAOHelper::ComputeAmbientOcclusionPassCount(View);
+		const EGTAOType GTAOType = FSSAOHelper::GetGTAOPassType(View, Levels);
 
-		// so that the passes can register themselves to the graph
-		for (int32 i = 0; i < Views.Num(); ++i)
+		if (GTAOType == EGTAOType::EAsyncCombinedSpatial || GTAOType == EGTAOType::EAsyncHorizonSearch)
 		{
-			const FViewInfo& View = Views[i];
+			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
-			const uint32 Levels = FSSAOHelper::ComputeAmbientOcclusionPassCount(View);
-			const EGTAOType GTAOType = FSSAOHelper::GetGTAOPassType(View, Levels);
+			FGTAOCommonParameters CommonParameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, GTAOType);
 
-			if (GTAOType == EGTAOType::EAsyncCombinedSpatial || GTAOType == EGTAOType::EAsyncHorizonSearch)
+			FRDGTextureRef GTAOHorizonsTexture = nullptr;
+			FRDGTextureRef GTAODepthsTexture = nullptr;
+
 			{
-				FMemMark Mark(FMemStack::Get());
-				FRDGBuilder GraphBuilder(RHICmdList);
+				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+				FIntPoint BufferSize = SceneContext.GetBufferSizeXY();
+				FIntPoint HorizonBufferSize = FIntPoint::DivideAndRoundUp(BufferSize, CommonParameters.DownscaleFactor);
 
-				RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
-
-				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-
-				TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer =
-					CreateSceneTextureUniformBuffer(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneVelocity);
-
-				FGTAOCommonParameters CommonParameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, GTAOType);
-
+				FRDGTextureDesc Desc(FRDGTextureDesc::Create2D(HorizonBufferSize, PF_R32_FLOAT, FClearValueBinding::White, TexCreate_RenderTargetable));
+				if (SceneContext.GetCurrentFeatureLevel() >= ERHIFeatureLevel::SM5)
 				{
-					FIntPoint BufferSize = SceneContext.GetBufferSizeXY();
-					FIntPoint HorizonBufferSize = FIntPoint::DivideAndRoundUp(BufferSize, CommonParameters.DownscaleFactor);
-
-					FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(HorizonBufferSize, PF_R32_FLOAT, FClearValueBinding::White, TexCreate_None, TexCreate_RenderTargetable, false));
-					if (SceneContext.GetCurrentFeatureLevel() >= ERHIFeatureLevel::SM5)
-					{
-						Desc.TargetableFlags |= TexCreate_UAV;
-					}
-					GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SceneContext.ScreenSpaceGTAODepths, TEXT("ScreenSpaceGTAODepths"));
-
-					Desc.Format = PF_R8G8;
-					GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SceneContext.ScreenSpaceGTAOHorizons, TEXT("ScreenSpaceGTAOHorizons"));
+					Desc.Flags |= TexCreate_UAV;
 				}
+				GTAODepthsTexture = GraphBuilder.CreateTexture(Desc, TEXT("ScreenSpaceGTAODepths"));
+				ConvertToExternalTexture(GraphBuilder, GTAODepthsTexture, SceneContext.ScreenSpaceGTAODepths);
 
-				FScreenPassRenderTarget GTAOHorizons(GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceGTAOHorizons, TEXT("HorizonsOutput")), CommonParameters.DownsampledViewRect, ERenderTargetLoadAction::ENoAction);
-				FScreenPassRenderTarget GTAODepths(GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceGTAODepths, TEXT("DepthOutTexture")), CommonParameters.DownsampledViewRect, ERenderTargetLoadAction::ENoAction);
-
-				AddPostProcessingGTAOAsyncPasses(
-					GraphBuilder,
-					View,
-					CommonParameters,
-					GTAOHorizons,
-					GTAODepths);
-
-				GraphBuilder.Execute();
+				Desc.Format = PF_R8G8;
+				GTAOHorizonsTexture = GraphBuilder.CreateTexture(Desc, TEXT("ScreenSpaceGTAOHorizons"));
+				ConvertToExternalTexture(GraphBuilder, GTAOHorizonsTexture, SceneContext.ScreenSpaceGTAOHorizons);
 			}
+
+			FScreenPassRenderTarget GTAOHorizons(GTAOHorizonsTexture, CommonParameters.DownsampledViewRect, ERenderTargetLoadAction::ENoAction);
+			FScreenPassRenderTarget GTAODepths(GTAODepthsTexture, CommonParameters.DownsampledViewRect, ERenderTargetLoadAction::ENoAction);
+
+			AddPostProcessingGTAOAsyncPasses(
+				GraphBuilder,
+				View,
+				CommonParameters,
+				GTAOHorizons,
+				GTAODepths);
 		}
-		FinishAsyncSSAO(RHICmdList);
 	}
+	FinishAsyncSSAO(GraphBuilder);
 }
 
-void FCompositionLighting::FinishAsyncSSAO(FRHICommandListImmediate& RHICmdList)
+void FCompositionLighting::FinishAsyncSSAO(FRDGBuilder& GraphBuilder)
 {
 	if (AsyncSSAOTransition)
 	{
-		//Grab the async compute commandlist.
-		FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
+		AddPass(GraphBuilder, [this](FRHICommandList&)
+		{
+			FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
 
-		RHICmdListComputeImmediate.SetAsyncComputeBudget(EAsyncComputeBudget::EAll_4);
-		RHICmdListComputeImmediate.BeginTransition(AsyncSSAOTransition);
-		FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHICmdListComputeImmediate);		
+			RHICmdListComputeImmediate.SetAsyncComputeBudget(EAsyncComputeBudget::EAll_4);
+			RHICmdListComputeImmediate.BeginTransition(AsyncSSAOTransition);
+			FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHICmdListComputeImmediate);
+		});
 	}
 }
 

@@ -11,6 +11,12 @@
 
 class FGlobalShaderMap;
 
+/** Fetches the RHI texture from an RDG texture or null if the RDG texture is null. */
+inline FRHITexture* TryGetRHI(FRDGTextureRef Texture)
+{
+	return Texture ? Texture->GetRHI() : nullptr;
+}
+
 /**
  * Clears all render graph tracked resources that are not bound by a shader.
  * Excludes any resources on the ExcludeList from being cleared regardless of whether the 
