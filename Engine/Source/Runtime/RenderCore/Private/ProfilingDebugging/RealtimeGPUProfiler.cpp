@@ -340,6 +340,8 @@ public:
 
 		EventAggregates.Empty(GPredictedMaxNumEvents);
 		EventAggregates.AddUninitialized();
+
+		CPUFrameStartTimestamp = FPlatformTime::Cycles64();
 	}
 
 	~FRealtimeGPUProfilerFrame()
