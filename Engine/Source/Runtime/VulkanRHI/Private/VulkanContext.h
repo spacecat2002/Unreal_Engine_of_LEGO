@@ -192,7 +192,7 @@ protected:
 
 	FVulkanCommandBufferManager* CommandBufferManager;
 
-	static FVulkanLayoutManager LayoutManager;
+	static VULKANRHI_API FVulkanLayoutManager LayoutManager;
 
 	FVulkanOcclusionQueryPool* CurrentOcclusionQueryPool = nullptr;
 
