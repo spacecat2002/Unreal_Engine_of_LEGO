@@ -1743,6 +1743,7 @@ void FVulkanPipelineStateCacheManager::NotifyDeletedGraphicsPSO(FRHIGraphicsPipe
 		{
 			check(0);
 		}
+		VkPSO->DeleteVkPipeline(true);
 	}
 }
 
