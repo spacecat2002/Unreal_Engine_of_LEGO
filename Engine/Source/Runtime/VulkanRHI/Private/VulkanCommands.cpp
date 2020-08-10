@@ -908,16 +908,6 @@ uint32 FVulkanDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 	return GGPUFrameTime;
 }
 
-void FVulkanCommandListContext::RHIAutomaticCacheFlushAfterComputeShader(bool bEnable)
-{
-	// no longer used
-}
-
-void FVulkanCommandListContext::RHIFlushComputeShaderCache()
-{
-	// no longer used
-}
-
 void FVulkanDynamicRHI::RHIExecuteCommandList(FRHICommandList* CmdList)
 {
 	VULKAN_SIGNAL_UNIMPLEMENTED();

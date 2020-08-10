@@ -109,16 +109,6 @@ public:
 	{
 	}
 
-	virtual void RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) final override
-	{
-
-	}
-
-	virtual void RHIFlushComputeShaderCache() final override
-	{
-
-	}
-
 	virtual void RHISetMultipleViewports(uint32 Count, const FViewportBounds* Data) final override
 	{
 

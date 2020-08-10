@@ -138,7 +138,7 @@ void FD3D12StateCacheBase::ClearSRVs()
 
 void FD3D12StateCacheBase::FlushComputeShaderCache(bool bForce)
 {
-	if (bAutoFlushComputeShaderCache || bForce)
+	if (bForce)
 	{
 		FD3D12CommandListHandle& CommandList = CmdContext->CommandListHandle;
 		CommandList.AddUAVBarrier();
@@ -198,8 +198,6 @@ void FD3D12StateCacheBase::ClearState()
 
 	PipelineState.Graphics.MinDepth = 0.0f;
 	PipelineState.Graphics.MaxDepth = 1.0f;
-
-	bAutoFlushComputeShaderCache = false;
 }
 
 void FD3D12StateCacheBase::DirtyStateForNewCommandList()

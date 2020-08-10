@@ -274,16 +274,6 @@ void FD3D12CommandContext::RHIPopEvent()
 #endif
 }
 
-void FD3D12CommandContext::RHIAutomaticCacheFlushAfterComputeShader(bool bEnable)
-{
-	StateCache.AutoFlushComputeShaderCache(bEnable);
-}
-
-void FD3D12CommandContext::RHIFlushComputeShaderCache()
-{
-	StateCache.FlushComputeShaderCache(true);
-}
-
 FD3D12CommandListManager& FD3D12CommandContext::GetCommandListManager()
 {
 	return bIsAsyncComputeContext ? GetParentDevice()->GetAsyncCommandListManager() : GetParentDevice()->GetCommandListManager();

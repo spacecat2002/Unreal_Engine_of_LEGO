@@ -261,16 +261,6 @@ public:
 		RHIContext->RHISetAsyncComputeBudget(Budget);
 	}
 
-	virtual void RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) override final
-	{
-		RHIContext->RHIAutomaticCacheFlushAfterComputeShader(bEnable);
-	}
-
-	virtual void RHIFlushComputeShaderCache() override final
-	{
-		RHIContext->RHIFlushComputeShaderCache();
-	}
-
 	// Useful when used with geometry shader (emit polygons to different viewports), otherwise SetViewPort() is simpler
 	// @param Count >0
 	// @param Data must not be 0

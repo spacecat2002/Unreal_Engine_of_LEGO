@@ -2111,16 +2111,6 @@ void FD3D11DynamicRHI::RHIEndUAVOverlap()
 	// Same as above.
 }
 
-void FD3D11DynamicRHI::RHIAutomaticCacheFlushAfterComputeShader(bool bEnable)
-{
-}
-
-void FD3D11DynamicRHI::RHIFlushComputeShaderCache()
-{
-	// This is deprecated and shouldn't be called anymore, but we'll honor it just in case.
-	DisableUAVOverlap();
-}
-
 //*********************** StagingBuffer Implementation ***********************//
 
 FStagingBufferRHIRef FD3D11DynamicRHI::RHICreateStagingBuffer()

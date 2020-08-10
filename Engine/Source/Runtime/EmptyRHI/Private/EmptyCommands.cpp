@@ -328,16 +328,6 @@ uint32 FEmptyDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 	return GGPUFrameTime;
 }
 
-void FEmptyDynamicRHI::RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) 
-{
-
-}
-
-void FEmptyDynamicRHI::RHIFlushComputeShaderCache()
-{
-
-}
-
 void* FEmptyDynamicRHI::RHIGetNativeDevice()
 {
 	return nullptr;

@@ -1319,21 +1319,6 @@ FRHICOMMAND_MACRO(FRHICommandEndSpecificUAVOverlap)
 	RHI_API void Execute(FRHICommandListBase & CmdList);
 };
 
-FRHICOMMAND_MACRO(FRHICommandAutomaticCacheFlushAfterComputeShader)
-{
-	bool bEnable;
-	FORCEINLINE_DEBUGGABLE FRHICommandAutomaticCacheFlushAfterComputeShader(bool InbEnable)
-		: bEnable(InbEnable)
-	{
-	}
-	RHI_API void Execute(FRHICommandListBase& CmdList);
-};
-
-FRHICOMMAND_MACRO(FRHICommandFlushComputeShaderCache)
-{
-	RHI_API void Execute(FRHICommandListBase& CmdList);
-};
-
 FRHICOMMAND_MACRO(FRHICommandDrawPrimitiveIndirect)
 {
 	FRHIVertexBuffer* ArgumentBuffer;
@@ -3204,28 +3189,6 @@ public:
 			return;
 		}
 		ALLOC_COMMAND(FRHICommandSetGraphicsPipelineState)(GraphicsPipelineState);
-	}
-
-	UE_DEPRECATED(4.25, "AutomaticCacheFlushAfterComputeShader is deprecated. Use RHICmdList.BeginUAVOverlap() and RHICmdList.EndUAVOverlap() to mark up sections of RHI commands where multiple draws/dispatches using UAVs are allowed to overlap without interleaved resource transitions. Call BeginUAVOverlap() where previously AutomaticCacheFlushAfterComputeShader(false) was called, and EndUAVOverlap() where previously AutomaticCacheFlushAfterComputeShader(true) was called.")
-	FORCEINLINE_DEBUGGABLE void AutomaticCacheFlushAfterComputeShader(bool bEnable)
-	{
-		if (Bypass())
-		{
-			GetContext().RHIAutomaticCacheFlushAfterComputeShader(bEnable);
-			return;
-		}
-		ALLOC_COMMAND(FRHICommandAutomaticCacheFlushAfterComputeShader)(bEnable);
-	}
-
-	UE_DEPRECATED(4.25, "FlushComputeShaderCache is deprecated. Use RHICmdList.BeginUAVOverlap() and RHICmdList.EndUAVOverlap() to mark up sections of RHI commands where multiple draws/dispatches using UAVs are allowed to overlap without interleaved resource transitions. Use of FlushComputeShaderCache() should be replaced with an appropriate call to RHICmdList.TransitionResources(), if one is not already being made.")
-	FORCEINLINE_DEBUGGABLE void FlushComputeShaderCache()
-	{
-		if (Bypass())
-		{
-			GetContext().RHIFlushComputeShaderCache();
-			return;
-		}
-		ALLOC_COMMAND(FRHICommandFlushComputeShaderCache)();
 	}
 
 	FORCEINLINE_DEBUGGABLE void DrawPrimitiveIndirect(FRHIVertexBuffer* ArgumentBuffer, uint32 ArgumentOffset)

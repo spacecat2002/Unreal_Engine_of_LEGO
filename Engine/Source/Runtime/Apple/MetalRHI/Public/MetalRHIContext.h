@@ -36,10 +36,6 @@ public:
 	
 	virtual void RHIDispatchIndirectComputeShader(FRHIVertexBuffer* ArgumentBuffer, uint32 ArgumentOffset) final override;
 	
-	virtual void RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) final override;
-	
-	virtual void RHIFlushComputeShaderCache() final override;
-	
 	// Useful when used with geometry shader (emit polygons to different viewports), otherwise SetViewPort() is simpler
 	// @param Count >0
 	// @param Data must not be 0
