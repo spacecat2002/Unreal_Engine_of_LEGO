@@ -378,6 +378,42 @@ bool FRigVMByteCode::Serialize(FArchive& Ar)
 		}
 	}
 
+	if (Ar.IsLoading())
+	{
+		Entries.Reset();
+		if (Ar.CustomVer(FAnimObjectVersion::GUID) >= FAnimObjectVersion::SerializeRigVMEntries)
+		{
+			UScriptStruct* ScriptStruct = FRigVMByteCodeEntry::StaticStruct();
+
+			TArray<FString> View;
+			Ar << View;
+
+			for (int32 EntryIndex = 0; EntryIndex < View.Num(); EntryIndex++)
+			{
+				FRigVMByteCodeEntry Entry;
+				ScriptStruct->ImportText(*View[EntryIndex], &Entry, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+				Entries.Add(Entry);
+			}
+		}
+	}
+	else if(Ar.IsSaving())
+	{
+		UScriptStruct* ScriptStruct = FRigVMByteCodeEntry::StaticStruct();
+		TArray<uint8, TAlignedHeapAllocator<16>> DefaultStructData;
+		DefaultStructData.AddZeroed(ScriptStruct->GetStructureSize());
+		ScriptStruct->InitializeDefaultValue(DefaultStructData.GetData());
+
+		TArray<FString> View;
+		for (uint16 EntryIndex = 0; EntryIndex < Entries.Num(); EntryIndex++)
+		{
+			FString Value;
+			ScriptStruct->ExportText(Value, &Entries[EntryIndex], DefaultStructData.GetData(), nullptr, PPF_None, nullptr);
+			View.Add(Value);
+		}
+
+		Ar << View;
+	}
+
 	return true;
 }
 

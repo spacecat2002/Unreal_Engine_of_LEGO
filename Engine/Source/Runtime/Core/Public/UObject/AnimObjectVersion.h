@@ -35,6 +35,9 @@ struct CORE_API FAnimObjectVersion
 		// Serialized register dynamic state for RigVM
 		SerializeRigVMRegisterDynamicState,
 
+		// Serialized rigvm entry names
+		SerializeRigVMEntries,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1

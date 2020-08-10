@@ -438,6 +438,11 @@ struct RIGVM_API FRigVMByteCodeEntry
 {
 	GENERATED_USTRUCT_BODY()
 
+	FRigVMByteCodeEntry()
+		: Name(NAME_None)
+		, InstructionIndex(0)
+	{}
+
 	UPROPERTY()
 	FName Name;
 

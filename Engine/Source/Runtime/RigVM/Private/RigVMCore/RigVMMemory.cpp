@@ -471,31 +471,48 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 		uint64 TotalBytes = 0;
 		Ar << TotalBytes;
 		
-		Data.SetNumZeroed(TotalBytes);
+		Data.Empty();
 
 		if (!bEncounteredErrorDuringLoad)
 		{
+			// during load we'll recreate the memory for all registers.
+			// the size for structs might have changed, so we need to reallocate.
 			for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
 			{
-				const FRigVMRegister& Register = Registers[RegisterIndex];
+				FRigVMRegister& Register = Registers[RegisterIndex];
 
 				UScriptStruct* ScriptStruct = GetScriptStruct(Register);
 				if (ScriptStruct)
 				{
-					int32 StructureSize = ScriptStruct->GetStructureSize();
-					if (StructureSize != Register.ElementSize)
-					{
-						FString PackagePath = Ar.GetArchiveName();
-						FString ScriptStructPath = ScriptStruct->GetPathName();
-#if WITH_EDITOR
-#else
-						UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
-#endif
-						bEncounteredErrorDuringLoad = true;
-						continue;
-					}
+					Register.ElementSize = ScriptStruct->GetStructureSize();
+				}
+				else if (Register.Type == ERigVMRegisterType::Name)
+				{
+					Register.ElementSize = sizeof(FName);
+				}
+				else if (Register.Type == ERigVMRegisterType::String)
+				{
+					Register.ElementSize = sizeof(FString);
 				}
 
+				Register.AlignmentBytes = 0;
+				Register.TrailingBytes = 0;
+
+				if (Registers[RegisterIndex].IsDynamic())
+				{
+					Register.ByteIndex = Data.AddZeroed(sizeof(FRigVMByteArray));
+				}
+				else
+				{
+					Register.ByteIndex = Data.AddZeroed(Register.GetNumBytesAllSlices());
+				}
+			}
+			UpdateRegisters();
+
+			// once the register memory is allocated we can construt its contents.
+			for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
+			{
+				const FRigVMRegister& Register = Registers[RegisterIndex];
 				if (!Registers[RegisterIndex].IsDynamic())
 				{
 					Construct(RegisterIndex);
