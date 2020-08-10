@@ -588,7 +588,9 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// bShouldRenderCustomDepth has been initialized in InitViews on mobile platform
 	if (bShouldRenderCustomDepth)
 	{
-		RenderCustomDepthPass(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderCustomDepthPass(GraphBuilder);
+		GraphBuilder.Execute();
 	}
 	
 	FRHITexture* SceneColor = nullptr;

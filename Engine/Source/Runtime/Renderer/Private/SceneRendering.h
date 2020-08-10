@@ -1842,8 +1842,8 @@ protected:
 	/** Updates state for the end of the frame. */
 	void RenderFinish(FRDGBuilder& GraphBuilder, FRDGTextureRef ViewFamilyTexture);
 
-	void RenderCustomDepthPassAtLocation(FRHICommandListImmediate& RHICmdList, int32 Location);
-	void RenderCustomDepthPass(FRHICommandListImmediate& RHICmdList);
+	void RenderCustomDepthPassAtLocation(FRDGBuilder& GraphBuilder, int32 Location);
+	void RenderCustomDepthPass(FRDGBuilder& GraphBuilder);
 
 	void OnStartRender(FRHICommandListImmediate& RHICmdList);
 

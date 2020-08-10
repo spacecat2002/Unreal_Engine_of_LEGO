@@ -1944,7 +1944,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if(GetCustomDepthPassLocation() == 0)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_CustomDepthPass0);
-		RenderCustomDepthPassAtLocation(RHICmdList, 0);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderCustomDepthPassAtLocation(GraphBuilder, 0);
+		GraphBuilder.Execute();
 	}
 
 	if (bOcclusionBeforeBasePass)
@@ -2292,7 +2294,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(CustomDepthPass);
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_CustomDepthPass1);
-		RenderCustomDepthPassAtLocation(RHICmdList, 1);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderCustomDepthPassAtLocation(GraphBuilder, 1);
+		GraphBuilder.Execute();
 	}
 
 	ServiceLocalQueue();

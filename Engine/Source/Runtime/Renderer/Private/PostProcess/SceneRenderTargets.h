@@ -133,6 +133,13 @@ enum class ESceneColorFormatType
 	Num,
 };
 
+struct FCustomDepthTextures
+{
+	FRDGTextureRef CustomDepth{};
+	FRDGTextureRef MobileCustomDepth{};
+	FRDGTextureRef MobileCustomStencil{};
+};
+
 /**
  * Encapsulates the render targets used for scene rendering.
  */
@@ -235,11 +242,6 @@ public:
 	 */
 	void BeginRenderingSceneColor(FRHICommandList& FRHICommandListImmediate, ESimpleRenderTargetMode RenderTargetMode = ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil DepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite, bool bTransitionWritable = true);
 	void FinishRenderingSceneColor(FRHICommandList& RHICmdList);
-
-	// @return true: call FinishRenderingCustomDepth after rendering, false: don't render it, feature is disabled
-	bool BeginRenderingCustomDepth(FRHICommandListImmediate& RHICmdList, bool bPrimitives);
-	// only call if BeginRenderingCustomDepth() returned true
-	void FinishRenderingCustomDepth(FRHICommandListImmediate& RHICmdList, const FResolveRect& ResolveRect = FResolveRect());
 
 	/** Binds the appropriate shadow depth cube map for rendering. */
 	void BeginRenderingCubeShadowDepth(FRHICommandList& RHICmdList, int32 ShadowResolution);
@@ -344,8 +346,8 @@ public:
 		return (const FTexture2DRHIRef&)DirectionalOcclusion->GetRenderTargetItem().TargetableTexture; 
 	}
 
-	// @return can be 0 if the feature is disabled
-	IPooledRenderTarget* RequestCustomDepth(FRHICommandListImmediate& RHICmdList, bool bPrimitives);
+	// @return can be empty if the feature is disabled
+	FCustomDepthTextures RequestCustomDepth(FRDGBuilder& GraphBuilder, bool bPrimitives);
 
 	static bool IsCustomDepthPassWritingStencil(ERHIFeatureLevel::Type InFeatureLevel);
 
