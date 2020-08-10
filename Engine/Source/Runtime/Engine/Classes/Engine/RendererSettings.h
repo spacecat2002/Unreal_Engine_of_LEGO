@@ -805,6 +805,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		uint32 bLPV : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
+		ConsoleVariable = "r.Mobile.AmbientOcclusion", DisplayName = "Mobile Ambient Occlusion",
+		ToolTip = "Mobile Ambient Occlusion. Causion: An extra sampler will be occupied in mobile base pass pixel shader after enable the mobile ambient occlusion. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired = true))
+		uint32 bMobileAmbientOcclusion : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
 		ConsoleVariable = "r.Mobile.PlanarReflectionMode", DisplayName = "Planar Reflection Mode",
 		ToolTip = "The PlanarReflection will work differently on different mode on mobile platform, choose the proper mode as expect. Changing this setting requires restarting the editor.",
 		ConfigRestartRequired = true))

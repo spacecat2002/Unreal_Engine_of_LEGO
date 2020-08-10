@@ -640,21 +640,21 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 		FPooledRenderTargetDesc Desc;
 		if (bGTAOPreIngegratedUsingVolumeLUT)
 		{
-			Desc = FPooledRenderTargetDesc(FPooledRenderTargetDesc::CreateVolumeDesc(Extent, Extent, Extent, PF_G8, FClearValueBinding::None, TexCreate_HideInVisualizeTexture | TexCreate_NoTiling | TexCreate_ShaderResource, TexCreate_ShaderResource, false));
+			Desc = FPooledRenderTargetDesc(FPooledRenderTargetDesc::CreateVolumeDesc(Extent, Extent, Extent, PF_R16F, FClearValueBinding::None, TexCreate_HideInVisualizeTexture | TexCreate_NoTiling | TexCreate_ShaderResource, TexCreate_ShaderResource, false));
 		}
 		else
 		{
-			Desc = FPooledRenderTargetDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(Square, Extent), PF_G8, FClearValueBinding::None, TexCreate_HideInVisualizeTexture | TexCreate_NoTiling | TexCreate_ShaderResource, TexCreate_ShaderResource, false));
+			Desc = FPooledRenderTargetDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(Square, Extent), PF_R16F, FClearValueBinding::None, TexCreate_HideInVisualizeTexture | TexCreate_NoTiling | TexCreate_ShaderResource, TexCreate_ShaderResource, false));
 		}
 		
 		Desc.AutoWritable = false;
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GTAOPreIntegrated, TEXT("GTAOPreIntegrated"), ERenderTargetTransience::NonTransient);
 
 		// Write the contents of the texture.
-		TArray<uint8> TempBuffer;
+		TArray<FFloat16> TempBuffer;
 		TempBuffer.AddZeroed(Extent * Extent * Extent);
 
-		uint8* DestBuffer = nullptr;
+		FFloat16* DestBuffer = nullptr;
 
 		if (bGTAOPreIngegratedUsingVolumeLUT)
 		{
@@ -663,7 +663,7 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 		else
 		{
 			uint32 DestStride;
-			DestBuffer = (uint8*)RHICmdList.LockTexture2D((FTexture2DRHIRef&)GTAOPreIntegrated->GetRenderTargetItem().ShaderResourceTexture, 0, RLM_WriteOnly, DestStride, false);
+			DestBuffer = (FFloat16*)RHICmdList.LockTexture2D((FTexture2DRHIRef&)GTAOPreIntegrated->GetRenderTargetItem().ShaderResourceTexture, 0, RLM_WriteOnly, DestStride, false);
 		}
 
 		for (uint32 z = 0; z < Extent; ++z)
@@ -682,7 +682,7 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 					{
 						DestBufferIndex = (x + z * Extent) + y * Square;
 					}
-					uint8& Value = DestBuffer[DestBufferIndex];
+					FFloat16& Value = DestBuffer[DestBufferIndex];
 
 					float cosAngle1 = ((x + 0.5f) / (Extent) - 0.5f) * 2;
 					float cosAngle2 = ((y + 0.5f) / (Extent) - 0.5f) * 2;
@@ -698,14 +698,11 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 					Angle1 = Gamma + FMath::Max(-Angle1 - Gamma, -(HALF_PI));
 					Angle2 = Gamma + FMath::Min(Angle2 - Gamma, (HALF_PI));
 
-
 					float AO = (0.25f *
 						((Angle1 * SinGamma + CosGamma - cos((2.0 * Angle1) - Gamma)) +
 						(Angle2 * SinGamma + CosGamma - cos((2.0 * Angle2) - Gamma))));
 
-					AO = FMath::Clamp(AO / HALF_PI, 0.0f, 1.0f);
-
-					Value = uint8(AO * 255);
+					Value = AO;
 				}
 			}
 		}
@@ -718,8 +715,8 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 				(FTexture3DRHIRef&)GTAOPreIntegrated->GetRenderTargetItem().ShaderResourceTexture,
 				0,
 				Region,
-				Desc.Extent.X * sizeof(uint8),
-				Desc.Extent.X * Desc.Extent.Y * sizeof(uint8),
+				Desc.Extent.X * sizeof(FFloat16),
+				Desc.Extent.X * Desc.Extent.Y * sizeof(FFloat16),
 				(const uint8*)DestBuffer);
 		}
 		else

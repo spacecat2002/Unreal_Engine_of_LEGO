@@ -502,7 +502,11 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bRequriesAmbientOcclusionPass)
 	{
-		InitAmbientOcclusionOutputs(RHICmdList, SceneContext.GetSceneColor()->GetDesc().Extent);
+		InitAmbientOcclusionOutputs(RHICmdList, SceneContext.SceneDepthZ);
+	}
+	else
+	{
+		ReleaseAmbientOcclusionOutputs();
 	}
 	
 	const bool bUseVirtualTexturing = UseVirtualTexturing(ViewFeatureLevel);
@@ -586,6 +590,11 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		RenderCustomDepthPass(RHICmdList);
 	}
+
+	if (bRequriesAmbientOcclusionPass)
+	{
+		RenderAmbientOcclusion(RHICmdList, GAmbientOcclusionMobileOutputs.SceneDepthZ);
+	}
 	
 	FRHITexture* SceneColor = nullptr;
 	if (bDeferredShading)
@@ -630,11 +639,6 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (bRequiresPixelProjectedPlanarRelfectionPass)
 	{
 		ReleasePixelProjectedReflectionOutputs();
-	}
-
-	if (bRequriesAmbientOcclusionPass)
-	{
-		ReleaseAmbientOcclusionOutputs();
 	}
 
 	if (bDeferredShading)
@@ -769,7 +773,7 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 
 		SceneDepth = SceneContext.GetSceneDepthSurface();
 				
-		if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
+		if (bRequiresMultiPass)
 		{	
 			// store targets after opaque so translucency render pass can be restarted
 			ColorTargetAction = ERenderTargetActions::Clear_Store;
@@ -855,7 +859,7 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 		
 	// Split if we need to render translucency in a separate render pass
 	// Split if we need to render pixel projected reflection
-	if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
+	if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass)
 	{
 		RHICmdList.EndRenderPass();
 	}
@@ -864,7 +868,7 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 
 		
 	// Restart translucency render pass if needed
-	if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
+	if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass)
 	{
 		check(RHICmdList.IsOutsideRenderPass());
 
@@ -875,11 +879,6 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 		{
 			const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy = Scene ? Scene->GetForwardPassGlobalPlanarReflection() : nullptr;
 			RenderPixelProjectedReflection(RHICmdList, SceneContext, PlanarReflectionSceneProxy);
-		}
-
-		if (bRequriesAmbientOcclusionPass)
-		{
-			RenderAmbientOcclusion(RHICmdList, SceneContext);
 		}
 
 		DepthTargetAction = EDepthStencilTargetActions::LoadDepthStencil_DontStoreDepthStencil;
@@ -916,11 +915,6 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 		TranslucentRenderPassInfo.bOcclusionQueries = false;
 		TranslucentRenderPassInfo.SubpassHint = ESubpassHint::DepthReadSubpass;
 		RHICmdList.BeginRenderPass(TranslucentRenderPassInfo, TEXT("SceneColorTranslucencyRendering"));
-
-		if (bRequriesAmbientOcclusionPass)
-		{
-			RenderAmbientOcclusionUpSample(RHICmdList, SceneContext.GetBufferSizeXY());
-		}
 	}
 
 	// scene depth is read only and can be fetched
@@ -1250,7 +1244,7 @@ void FMobileSceneRenderer::ConditionalResolveSceneDepth(FRHICommandListImmediate
 		bool bDecals = ViewFamily.EngineShowFlags.Decals && Scene->Decals.Num();
 		bool bModulatedShadows = ViewFamily.EngineShowFlags.DynamicShadows && bModulatedShadowsInUse;
 
-		if (bDecals || bModulatedShadows || bAlwaysResolveDepth || View.bUsesSceneDepth || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
+		if (bDecals || bModulatedShadows || bAlwaysResolveDepth || View.bUsesSceneDepth || bRequiresPixelProjectedPlanarRelfectionPass)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, ConditionalResolveSceneDepth);
 

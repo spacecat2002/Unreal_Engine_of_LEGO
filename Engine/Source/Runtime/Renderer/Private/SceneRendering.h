@@ -1950,10 +1950,9 @@ protected:
 	FRHITexture* RenderForward(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
 	FRHITexture* RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
 	
-	void InitAmbientOcclusionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
-	void RenderAmbientOcclusion(FRHICommandListImmediate& RHICmdList, const FSceneRenderTargets& SceneContext);
+	void InitAmbientOcclusionOutputs(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& SceneDepthZ);
+	void RenderAmbientOcclusion(FRHICommandListImmediate& RHICmdList, const TRefCountPtr<IPooledRenderTarget>& SceneDepthZ);
 	void RenderAmbientOcclusion(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneDepthTexture, FRDGTextureRef AmbientOcclusionTexture);
-	void RenderAmbientOcclusionUpSample(FRHICommandListImmediate& RHICmdList, const FIntPoint& SceneBufferSize);
 	void ReleaseAmbientOcclusionOutputs();
 
 	void InitPixelProjectedReflectionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
@@ -1975,8 +1974,6 @@ private:
 	static FGlobalDynamicIndexBuffer DynamicIndexBuffer;
 	static FGlobalDynamicVertexBuffer DynamicVertexBuffer;
 	static TGlobalResource<FGlobalDynamicReadBuffer> DynamicReadBuffer;
-
-	FAmbientOcclusionMobileOutputs AmbientOcclusionMobileOutputs;
 };
 
 // The noise textures need to be set in Slate too.

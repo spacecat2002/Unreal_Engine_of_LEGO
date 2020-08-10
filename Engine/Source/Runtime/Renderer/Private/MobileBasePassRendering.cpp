@@ -184,6 +184,17 @@ void SetupMobileBasePassUniformParameters(
 		BasePassParameters.PlanarReflection.ReflectionPlane.Set(0.0f, 0.0f, 0.0f, 0.0f);
 	}
 
+	if (!bTranslucentPass && GAmbientOcclusionMobileOutputs.IsValid())
+	{
+		BasePassParameters.AmbientOcclusionTexture = GAmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetRenderTargetItem().ShaderResourceTexture;
+	}
+	else
+	{
+		BasePassParameters.AmbientOcclusionTexture = GSystemTextures.WhiteDummy->GetRenderTargetItem().ShaderResourceTexture;
+	}
+	BasePassParameters.AmbientOcclusionSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	BasePassParameters.AmbientOcclusionStaticFraction = FMath::Clamp(View.FinalPostProcessSettings.AmbientOcclusionStaticFraction, 0.0f, 1.0f);
+
 	BasePassParameters.DynamicSpotLightShadowSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	BasePassParameters.DynamicSpotLightShadowBufferSize = View.MobileMovableSpotLightsShadowInfo.ShadowBufferSize;
 	BasePassParameters.DynamicSpotLightShadowTexture = View.MobileMovableSpotLightsShadowInfo.ShadowDepthTexture != nullptr ? View.MobileMovableSpotLightsShadowInfo.ShadowDepthTexture : (FRHITexture*)GSystemTextures.DepthDummy->GetRenderTargetItem().ShaderResourceTexture;
