@@ -3063,6 +3063,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			ShaderDrawDebug::EndView(Views[ViewIndex]);
 		}
 
+		GEngine->GetPostRenderDelegate().Broadcast();
+
 #if WITH_MGPU
 		DoCrossGPUTransfers(RHICmdList, RenderTargetGPUMask);
 #endif
