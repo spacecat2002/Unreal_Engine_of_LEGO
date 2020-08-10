@@ -778,12 +778,29 @@ struct FCustomShowFlagData
 
 namespace CustomShowFlagsInternal
 {
-	TMap<FString, FEngineShowFlags::ECustomShowFlag> NameToIndex;;
-	TArray<FCustomShowFlagData> RegisteredCustomShowFlags;
+	TMap<FString, FEngineShowFlags::ECustomShowFlag>& GetNameToIndex()
+	{
+		static TMap<FString, FEngineShowFlags::ECustomShowFlag> NameToIndex;
+		return NameToIndex;
+	}
 
-	FRWLock Lock; 
-	TBitArray<> DefaultState;
+	TArray<FCustomShowFlagData>& GetRegisteredCustomShowFlags()
+	{
+		static TArray<FCustomShowFlagData> RegisteredCustomShowFlags;
+		return RegisteredCustomShowFlags;
+	}
 
+	FRWLock& GetLock()
+	{
+		static FRWLock Lock;
+		return Lock;
+	}
+
+	TBitArray<>& GetDefaultState()
+	{
+		static TBitArray<> DefaultState;
+		return DefaultState;
+	}
 }
 
 
@@ -820,12 +837,12 @@ FEngineShowFlags::ECustomShowFlag FEngineShowFlags::RegisterCustomShowFlag(const
 			}
 		}
 
-		FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_Write);
-		ReturnIndex = (FEngineShowFlags::ECustomShowFlag)CustomShowFlagsInternal::RegisteredCustomShowFlags.AddDefaulted(1);
-		CustomShowFlagsInternal::DefaultState.Add(1);
-		CustomShowFlagsInternal::NameToIndex.Add(Name, ReturnIndex);
+		FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_Write);
+		ReturnIndex = (FEngineShowFlags::ECustomShowFlag)CustomShowFlagsInternal::GetRegisteredCustomShowFlags().AddDefaulted(1);
+		CustomShowFlagsInternal::GetDefaultState().Add(1);
+		CustomShowFlagsInternal::GetNameToIndex().Add(Name, ReturnIndex);
 
-		FCustomShowFlagData* Data = &CustomShowFlagsInternal::RegisteredCustomShowFlags[(int32)ReturnIndex];
+		FCustomShowFlagData* Data = &CustomShowFlagsInternal::GetRegisteredCustomShowFlags()[(int32)ReturnIndex];
 		Data->Name = MoveTemp(Name);
 		Data->DisplayName = DisplayName.IsEmpty() ? FText::FromString(Data->Name) : DisplayName;
 		Data->Group = Group;
@@ -841,7 +858,7 @@ FEngineShowFlags::ECustomShowFlag FEngineShowFlags::RegisterCustomShowFlag(const
 			);
 		}
 
-		CustomShowFlagsInternal::DefaultState[(int32)ReturnIndex] = DefaultEnabled;
+		CustomShowFlagsInternal::GetDefaultState()[(int32)ReturnIndex] = DefaultEnabled;
 	}
 
 	FEngineShowFlags::OnCustomShowFlagRegistered.Broadcast();
@@ -853,9 +870,9 @@ void FEngineShowFlags::IterateCustomFlags(TFunctionRef<bool(uint32, const FStrin
 {
 	check(IsInGameThread());
 
-	for (int32 Idx = 0; Idx < CustomShowFlagsInternal::RegisteredCustomShowFlags.Num(); ++Idx)
+	for (int32 Idx = 0; Idx < CustomShowFlagsInternal::GetRegisteredCustomShowFlags().Num(); ++Idx)
 	{
-		if (!Functor(Idx + SF_FirstCustom, CustomShowFlagsInternal::RegisteredCustomShowFlags[Idx].Name))
+		if (!Functor(Idx + SF_FirstCustom, CustomShowFlagsInternal::GetRegisteredCustomShowFlags()[Idx].Name))
 		{
 			return;
 		}
@@ -867,9 +884,9 @@ FSimpleMulticastDelegate FEngineShowFlags::OnCustomShowFlagRegistered;
 // Private custom show flags functions
 FEngineShowFlags::ECustomShowFlag FEngineShowFlags::FindCustomShowFlagByName(const FString& Name)
 {
-	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_ReadOnly);
 
-	if (FEngineShowFlags::ECustomShowFlag* Existing = CustomShowFlagsInternal::NameToIndex.Find(Name))
+	if (FEngineShowFlags::ECustomShowFlag* Existing = CustomShowFlagsInternal::GetNameToIndex().Find(Name))
 	{
 		return *Existing;
 	}
@@ -878,62 +895,62 @@ FEngineShowFlags::ECustomShowFlag FEngineShowFlags::FindCustomShowFlagByName(con
 
 FString FEngineShowFlags::GetCustomShowFlagName(ECustomShowFlag Index)
 {
-	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
-	if (CustomShowFlagsInternal::RegisteredCustomShowFlags.IsValidIndex((uint32)Index))
+	FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_ReadOnly);
+	if (CustomShowFlagsInternal::GetRegisteredCustomShowFlags().IsValidIndex((uint32)Index))
 	{
-		return  CustomShowFlagsInternal::RegisteredCustomShowFlags[(uint32)Index].Name;
+		return  CustomShowFlagsInternal::GetRegisteredCustomShowFlags()[(uint32)Index].Name;
 	}
 	return FString();
 }
 
 FText FEngineShowFlags::GetCustomShowFlagDisplayName(ECustomShowFlag Index)
 {
-	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
-	if (CustomShowFlagsInternal::RegisteredCustomShowFlags.IsValidIndex((uint32)Index))
+	FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_ReadOnly);
+	if (CustomShowFlagsInternal::GetRegisteredCustomShowFlags().IsValidIndex((uint32)Index))
 	{
-		return CustomShowFlagsInternal::RegisteredCustomShowFlags[(uint32)Index].DisplayName;
+		return CustomShowFlagsInternal::GetRegisteredCustomShowFlags()[(uint32)Index].DisplayName;
 	}
 	return FText();
 }
 
 EShowFlagGroup FEngineShowFlags::GetCustomShowFlagGroup(ECustomShowFlag Index)
 {
-	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
-	if (CustomShowFlagsInternal::RegisteredCustomShowFlags.IsValidIndex((uint32)Index))
+	FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_ReadOnly);
+	if (CustomShowFlagsInternal::GetRegisteredCustomShowFlags().IsValidIndex((uint32)Index))
 	{
-		return CustomShowFlagsInternal::RegisteredCustomShowFlags[(uint32)Index].Group;
+		return CustomShowFlagsInternal::GetRegisteredCustomShowFlags()[(uint32)Index].Group;
 	}
 	return SFG_Normal;
 }
 
 void FEngineShowFlags::InitCustomShowFlags(EShowFlagInitMode InitMode)
 {
-	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
+	FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_ReadOnly);
 	if (InitMode == ESFIM_All0)
 	{
-		CustomShowFlags.Init(false, CustomShowFlagsInternal::DefaultState.Num());
+		CustomShowFlags.Init(false, CustomShowFlagsInternal::GetDefaultState().Num());
 	}
 	else
 	{
-		CustomShowFlags = CustomShowFlagsInternal::DefaultState;
+		CustomShowFlags = CustomShowFlagsInternal::GetDefaultState();
 	}
 }
 
 void FEngineShowFlags::UpdateNewCustomShowFlags()
 {
-	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
-	for (int32 i = CustomShowFlags.Num(); i < CustomShowFlagsInternal::DefaultState.Num(); ++i)
+	FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_ReadOnly);
+	for (int32 i = CustomShowFlags.Num(); i < CustomShowFlagsInternal::GetDefaultState().Num(); ++i)
 	{
-		CustomShowFlags.Add(CustomShowFlagsInternal::DefaultState[i]);
+		CustomShowFlags.Add(CustomShowFlagsInternal::GetDefaultState()[i]);
 	}
 }
 
 bool FEngineShowFlags::FindCustomShowFlagDisplayName(const FString& Name, FText& OutText)
 {
-	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
-	if (FEngineShowFlags::ECustomShowFlag* Existing = CustomShowFlagsInternal::NameToIndex.Find(Name))
+	FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_ReadOnly);
+	if (FEngineShowFlags::ECustomShowFlag* Existing = CustomShowFlagsInternal::GetNameToIndex().Find(Name))
 	{
-		OutText = CustomShowFlagsInternal::RegisteredCustomShowFlags[(int32)*Existing].DisplayName;
+		OutText = CustomShowFlagsInternal::GetRegisteredCustomShowFlags()[(int32)*Existing].DisplayName;
 		return true;
 	}
 	return false;
@@ -941,10 +958,10 @@ bool FEngineShowFlags::FindCustomShowFlagDisplayName(const FString& Name, FText&
 
 void FEngineShowFlags::EngineOverrideCustomShowFlagsFromCVars()
 {
-	FRWScopeLock Lock(CustomShowFlagsInternal::Lock, SLT_ReadOnly);
-	for (int32 i = 0; i < CustomShowFlagsInternal::RegisteredCustomShowFlags.Num(); ++i)
+	FRWScopeLock Lock(CustomShowFlagsInternal::GetLock(), SLT_ReadOnly);
+	for (int32 i = 0; i < CustomShowFlagsInternal::GetRegisteredCustomShowFlags().Num(); ++i)
 	{
-		int32 Val = CustomShowFlagsInternal::RegisteredCustomShowFlags[i].CVar->GetInt();
+		int32 Val = CustomShowFlagsInternal::GetRegisteredCustomShowFlags()[i].CVar->GetInt();
 		if (Val != 2)
 		{
 			CustomShowFlags[i] = !!Val;
