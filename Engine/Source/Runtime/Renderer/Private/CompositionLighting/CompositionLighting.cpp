@@ -546,7 +546,7 @@ void FCompositionLighting::ProcessBeforeBasePass(FRHICommandListImmediate& RHICm
 			RDG_GPU_STAT_SCOPE(GraphBuilder, CompositionBeforeBasePass);
 
 			TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer =
-				CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
+				CreateSceneTextureUniformBuffer(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
 
 			// decals are before AmbientOcclusion so the decal can output a normal that AO is affected by
 			if (bDBuffer)
@@ -608,7 +608,7 @@ void FCompositionLighting::ProcessAfterBasePass(FRHICommandListImmediate& RHICmd
 			const bool bDoDecal = View.Family->EngineShowFlags.Decals && !View.Family->EngineShowFlags.VisualizeLightCulling;
 
 			TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer =
-				CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneVelocity);
+				CreateSceneTextureUniformBuffer(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneVelocity);
 
 			FDeferredDecalPassTextures DecalPassTextures = GetDeferredDecalPassTextures(GraphBuilder, View, SceneTexturesUniformBuffer);
 
@@ -777,7 +777,7 @@ void FCompositionLighting::ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList
 				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 				TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer =
-					CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneVelocity);
+					CreateSceneTextureUniformBuffer(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneVelocity);
 
 				FGTAOCommonParameters CommonParameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, GTAOType);
 
