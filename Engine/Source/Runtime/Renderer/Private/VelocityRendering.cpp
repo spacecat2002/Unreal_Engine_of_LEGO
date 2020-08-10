@@ -259,7 +259,6 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 	FRDGTextureRef DepthTexture,
 	FRDGTextureRef& VelocityTexture,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	ERenderTargetLoadAction VelocityLoadAction,
 	EVelocityPass VelocityPass)
 {
 	check(FeatureLevel >= ERHIFeatureLevel::SM5);
@@ -273,15 +272,15 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderVelocities, FColor::Emerald);
 	SCOPE_CYCLE_COUNTER(STAT_RenderVelocities);
 
+	ERenderTargetLoadAction VelocityLoadAction = ERenderTargetLoadAction::ELoad;
+
 	if (!VelocityTexture)
 	{
 		VelocityTexture = GraphBuilder.CreateTexture(FVelocityRendering::GetRenderTargetDesc(ShaderPlatform), TEXT("Velocity"));
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 		ConvertToExternalTexture(GraphBuilder, VelocityTexture, SceneContext.SceneVelocity);
-	}
-	else
-	{
+
 		VelocityLoadAction = ERenderTargetLoadAction::EClear;
 	}
 
@@ -298,13 +297,17 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 		{
 			const FParallelMeshDrawCommandPass& ParallelMeshPass = View.ParallelMeshDrawCommandPasses[MeshPass];
 
+			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+
+			if (View.DecayLoadAction(VelocityLoadAction) == ERenderTargetLoadAction::EClear)
+			{
+				AddClearRenderTargetPass(GraphBuilder, VelocityTexture);
+			}
+
 			if (!ParallelMeshPass.HasAnyDraw())
 			{
 				continue;
 			}
-
-			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
-			VelocityLoadAction = View.DecayLoadAction(VelocityLoadAction);
 
 			FVelocityPassParameters* PassParameters = GraphBuilder.AllocParameters<FVelocityPassParameters>();
 			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
@@ -320,11 +323,6 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 			{
 				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, ERenderTargetLoadAction::ELoad);
 
-				if (VelocityLoadAction == ERenderTargetLoadAction::EClear)
-				{
-					AddClearRenderTargetPass(GraphBuilder, VelocityTexture);
-				}
-				
 				GraphBuilder.AddPass(
 					RDG_EVENT_NAME("VelocityParallel"),
 					PassParameters,
@@ -339,7 +337,7 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 			}
 			else
 			{
-				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, VelocityLoadAction);
+				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, ERenderTargetLoadAction::ELoad);
 
 				GraphBuilder.AddPass(
 					RDG_EVENT_NAME("Velocity"),

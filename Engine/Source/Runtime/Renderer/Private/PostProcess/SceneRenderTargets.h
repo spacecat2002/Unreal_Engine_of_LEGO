@@ -438,8 +438,6 @@ public:
 
 	void AllocateReflectionTargets(FRHICommandList& RHICmdList, int32 TargetSize);
 
-	void AllocateLightingChannelTexture(FRHICommandList& RHICmdList);
-
 	void AllocateVirtualTextureFeedbackBuffer(FRHICommandList& RHICmdList);
 
 	void AllocateDebugViewModeTargets(FRHICommandList& RHICmdList);

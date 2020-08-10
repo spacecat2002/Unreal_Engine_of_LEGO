@@ -387,7 +387,6 @@ private:
 		FRDGTextureRef SceneDepthTexture,
 		FRDGTextureRef& VelocityTexture,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-		ERenderTargetLoadAction VelocityLoadAction,
 		EVelocityPass VelocityPass);
 
 	bool ShouldRenderDistortion() const;
@@ -399,7 +398,7 @@ private:
 	/** Renders one of the EDebugViewShaderMode instead of the normal color. */
 	bool RenderDebugViewMode(FRHICommandListImmediate& RHICmdList);
 
-	void CopyStencilToLightingChannelTexture(FRHICommandList& RHICmdList);
+	void CopyStencilToLightingChannelTexture(FRDGBuilder& GraphBuilder, FRDGTextureSRVRef SceneStencilTexture);
 
 	/** Injects reflective shadowmaps into LPVs */
 	bool InjectReflectiveShadowMaps(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo);
@@ -738,7 +737,13 @@ private:
 
 	void GenerateSkyLightVisibilityRays(FRDGBuilder& GraphBuilder, FRDGBufferRef& SkyLightVisibilityRays, FIntVector& Dimensions);
 	void VisualizeSkyLightMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRWBuffer& SkyLightMipTreePosX, FRWBuffer& SkyLightMipTreePosY, FRWBuffer& SkyLightMipTreePosZ, FRWBuffer& SkyLightMipTreeNegX, FRWBuffer& SkyLightMipTreeNegY, FRWBuffer& SkyLightMipTreeNegZ, const FIntVector& SkyLightMipDimensions);
-	void RenderRayTracingSkyLight(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& SkyLightRT, TRefCountPtr<IPooledRenderTarget>& HitDistanceRT, const struct FHairStrandsRenderingData* HairDatas);
+
+	void RenderRayTracingSkyLight(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef& OutSkyLightTexture,
+		FRDGTextureRef& OutHitDistanceTexture,
+		const FHairStrandsRenderingData* HairDatas);
 
 	void RenderRayTracingPrimaryRaysView(
 		FRDGBuilder& GraphBuilder,
@@ -781,7 +786,7 @@ private:
 
 	void ComputeRayCount(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRHITexture* RayCountPerPixelTexture);
 
-	void WaitForRayTracingScene(FRHICommandListImmediate& RHICmdList);
+	void WaitForRayTracingScene(FRDGBuilder& GraphBuilder);
 
 	/** Debug ray tracing functions. */
 	void RenderRayTracingDebug(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColorOutputTexture);

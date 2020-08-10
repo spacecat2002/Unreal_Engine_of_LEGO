@@ -1260,13 +1260,8 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 }
 
 
-void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmediate& RHICmdList)
+void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRDGBuilder& GraphBuilder)
 {
-	if (!IsRayTracingEnabled() || Views.Num() == 0)
-	{
-		return;
-	}
-
 	bool bAnyRayTracingPassEnabled = false;
 	bool bPathTracingOrDebugViewEnabled = false;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -1287,85 +1282,88 @@ void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmedi
 
 	TRACE_CPUPROFILER_EVENT_SCOPE(FDeferredShadingSceneRenderer::WaitForRayTracingScene);
 
-	SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::All());
+	RDG_GPU_MASK_SCOPE(GraphBuilder, FRHIGPUMask::All());
 
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+	AddPass(GraphBuilder, [this](FRHICommandListImmediate& RHICmdList)
 	{
-		FViewInfo& View = Views[ViewIndex];
-		if (!View.RayTracingMaterialPipeline)
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
-			check(View.RayTracingMaterialBindings.Num() == 0);
-			continue;
-		}
-
-		if (View.RayTracingMaterialBindings.Num())
-		{
-			FTaskGraphInterface::Get().WaitUntilTaskCompletes(View.RayTracingMaterialBindingsTask, ENamedThreads::GetRenderThread_Local());
-
-			// Gather bindings from all chunks and submit them all as a single batch to allow RHI to bind all shader parameters in parallel.
-
-			uint32 NumTotalBindings = 0;
-
-			for (FRayTracingLocalShaderBindingWriter* BindingWriter : View.RayTracingMaterialBindings)
+			FViewInfo& View = Views[ViewIndex];
+			if (!View.RayTracingMaterialPipeline)
 			{
-				const FRayTracingLocalShaderBindingWriter::FChunk* Chunk = BindingWriter->GetFirstChunk();
-				while (Chunk)
-				{
-					NumTotalBindings += Chunk->Num;
-					Chunk = Chunk->Next;
-				}
+				check(View.RayTracingMaterialBindings.Num() == 0);
+				continue;
 			}
 
-			const uint32 MergedBindingsSize = sizeof(FRayTracingLocalShaderBindings) * NumTotalBindings;
-			FRayTracingLocalShaderBindings* MergedBindings = (FRayTracingLocalShaderBindings*) (RHICmdList.Bypass() 
-				? FMemStack::Get().Alloc(MergedBindingsSize, alignof(FRayTracingLocalShaderBindings))
-				: RHICmdList.Alloc(MergedBindingsSize, alignof(FRayTracingLocalShaderBindings)));
-
-			uint32 MergedBindingIndex = 0;
-			for (FRayTracingLocalShaderBindingWriter* BindingWriter : View.RayTracingMaterialBindings)
+			if (View.RayTracingMaterialBindings.Num())
 			{
-				const FRayTracingLocalShaderBindingWriter::FChunk* Chunk = BindingWriter->GetFirstChunk();
-				while (Chunk)
+				FTaskGraphInterface::Get().WaitUntilTaskCompletes(View.RayTracingMaterialBindingsTask, ENamedThreads::GetRenderThread_Local());
+
+				// Gather bindings from all chunks and submit them all as a single batch to allow RHI to bind all shader parameters in parallel.
+
+				uint32 NumTotalBindings = 0;
+
+				for (FRayTracingLocalShaderBindingWriter* BindingWriter : View.RayTracingMaterialBindings)
 				{
-					const uint32 Num = Chunk->Num;
-					for (uint32_t i = 0; i < Num; ++i)
+					const FRayTracingLocalShaderBindingWriter::FChunk* Chunk = BindingWriter->GetFirstChunk();
+					while (Chunk)
 					{
-						MergedBindings[MergedBindingIndex] = Chunk->Bindings[i];
-						MergedBindingIndex++;
+						NumTotalBindings += Chunk->Num;
+						Chunk = Chunk->Next;
 					}
-					Chunk = Chunk->Next;
 				}
+
+				const uint32 MergedBindingsSize = sizeof(FRayTracingLocalShaderBindings) * NumTotalBindings;
+				FRayTracingLocalShaderBindings* MergedBindings = (FRayTracingLocalShaderBindings*)(RHICmdList.Bypass()
+					? FMemStack::Get().Alloc(MergedBindingsSize, alignof(FRayTracingLocalShaderBindings))
+					: RHICmdList.Alloc(MergedBindingsSize, alignof(FRayTracingLocalShaderBindings)));
+
+				uint32 MergedBindingIndex = 0;
+				for (FRayTracingLocalShaderBindingWriter* BindingWriter : View.RayTracingMaterialBindings)
+				{
+					const FRayTracingLocalShaderBindingWriter::FChunk* Chunk = BindingWriter->GetFirstChunk();
+					while (Chunk)
+					{
+						const uint32 Num = Chunk->Num;
+						for (uint32_t i = 0; i < Num; ++i)
+						{
+							MergedBindings[MergedBindingIndex] = Chunk->Bindings[i];
+							MergedBindingIndex++;
+						}
+						Chunk = Chunk->Next;
+					}
+				}
+
+				const bool bCopyDataToInlineStorage = false; // Storage is already allocated from RHICmdList, no extra copy necessary
+				RHICmdList.SetRayTracingHitGroups(
+					View.RayTracingScene.RayTracingSceneRHI,
+					View.RayTracingMaterialPipeline,
+					NumTotalBindings, MergedBindings,
+					bCopyDataToInlineStorage);
+
+				// Move the ray tracing binding container ownership to the command list, so that memory will be
+				// released on the RHI thread timeline, after the commands that reference it are processed.
+				RHICmdList.EnqueueLambda([Ptrs = MoveTemp(View.RayTracingMaterialBindings)](FRHICommandListImmediate&)
+				{
+					for (auto Ptr : Ptrs)
+					{
+						delete Ptr;
+					}
+				});
 			}
 
-			const bool bCopyDataToInlineStorage = false; // Storage is already allocated from RHICmdList, no extra copy necessary
-			RHICmdList.SetRayTracingHitGroups(
-				View.RayTracingScene.RayTracingSceneRHI, 
-				View.RayTracingMaterialPipeline,
-				NumTotalBindings, MergedBindings,
-				bCopyDataToInlineStorage);
-
-			// Move the ray tracing binding container ownership to the command list, so that memory will be
-			// released on the RHI thread timeline, after the commands that reference it are processed.
-			RHICmdList.EnqueueLambda([Ptrs = MoveTemp(View.RayTracingMaterialBindings)](FRHICommandListImmediate&)
+			if (CanUseRayTracingLightingMissShader(View.GetShaderPlatform()))
 			{
-				for (auto Ptr : Ptrs)
-				{
-					delete Ptr;
-				}
-			});
+				SetupRayTracingLightingMissShader(RHICmdList, View);
+			}
 		}
 
-		if (CanUseRayTracingLightingMissShader(View.GetShaderPlatform()))
+		if (RayTracingDynamicGeometryUpdateEndTransition)
 		{
-			SetupRayTracingLightingMissShader(RHICmdList, View);
+			RHICmdList.EndTransition(RayTracingDynamicGeometryUpdateEndTransition);
+			RayTracingDynamicGeometryUpdateEndTransition = nullptr;
 		}
-	}
-
-	if (RayTracingDynamicGeometryUpdateEndTransition)
-	{
-		RHICmdList.EndTransition(RayTracingDynamicGeometryUpdateEndTransition);
-		RayTracingDynamicGeometryUpdateEndTransition = nullptr;
-	}
+	});
 }
 
 #endif // RHI_RAYTRACING
@@ -2142,7 +2140,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Wait for Async SSAO before rendering base pass with forward rendering
 	if (IsForwardShadingEnabled(ShaderPlatform))
 	{
-		GCompositionLighting.GfxWaitForAsyncSSAO(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		GCompositionLighting.GfxWaitForAsyncSSAO(GraphBuilder);
+		GraphBuilder.Execute();
 	}
 
 	GRenderTargetPool.AddPhaseEvent(TEXT("BasePass"));
@@ -2297,79 +2297,73 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	ServiceLocalQueue();
 
+	FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("DeferredShadingRenderer_Render(ViewFamily=%s)", ViewFamily.bResolveScene ? TEXT("Primary") : TEXT("Auxiliary")));
+
+	const FIntPoint SceneTextureExtent = SceneContext.GetBufferSizeXY();
+
+	FRDGTextureMSAA SceneColorTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.GetSceneColor());
+	FRDGTextureMSAA SceneDepthTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
+	FRDGTextureSRVRef SceneStencilTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(SceneDepthTexture.Target, PF_X24_G8));
+	FRDGTextureRef VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
+
+#if RHI_RAYTRACING
+	const bool bRayTracingEnabled = IsRayTracingEnabled();
+	FRDGTextureRef SkyLightTexture = nullptr;
+	FRDGTextureRef SkyLightHitDistanceTexture = nullptr;
+#endif
+
 	// If bBasePassCanOutputVelocity is set, basepass fully writes the velocity buffer unless bUseSelectiveBasePassOutputs is enabled.
 	if (bShouldRenderVelocities && (!bBasePassCanOutputVelocity || bUseSelectiveBasePassOutputs))
 	{
-		// We only need to clear if the base pass didn't already render velocities.
-		const ERenderTargetLoadAction LoadAction = bBasePassCanOutputVelocity ? ERenderTargetLoadAction::ELoad : ERenderTargetLoadAction::EClear;
-
 		// Render the velocities of movable objects
-		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_Velocity));
-
-		FRDGBuilder GraphBuilder(RHICmdList);
-		FRDGTextureRef VelocityTexture = nullptr;
-		FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::ShaderResource);
-		RenderVelocities(GraphBuilder, SceneDepthTexture, VelocityTexture, nullptr, LoadAction, EVelocityPass::Opaque);
-		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_AfterVelocity));
-		GraphBuilder.Execute();
-
-		ServiceLocalQueue();
+		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_Velocity));
+		RenderVelocities(GraphBuilder, SceneDepthTexture.Target, VelocityTexture, nullptr, EVelocityPass::Opaque);
+		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_AfterVelocity));
+		AddServiceLocalQueuePass(GraphBuilder);
 	}
+
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
 
 	// Hair base pass for deferred shading
 	if (bHairEnable && !IsForwardShadingEnabled(ShaderPlatform))
 	{
-		FRDGBuilder GraphBuilder(RHICmdList);
 		RenderHairPrePass(GraphBuilder, Scene, Views, HairClusterData, HairDatasStorage);
-		GraphBuilder.Execute();
 		HairDatas = &HairDatasStorage;
 	}
 
-#if !UE_BUILD_SHIPPING
-	if (CVarForceBlackVelocityBuffer.GetValueOnRenderThread())
-	{
-		SceneContext.SceneVelocity = GSystemTextures.BlackDummy;
-	}
-#endif
-	checkSlow(RHICmdList.IsOutsideRenderPass());
 #if RHI_RAYTRACING
-	WaitForRayTracingScene(RHICmdList);
-	TRefCountPtr<IPooledRenderTarget> SkyLightRT;
-	TRefCountPtr<IPooledRenderTarget> SkyLightHitDistanceRT;
-
-	const bool bRayTracingEnabled = IsRayTracingEnabled();
-	if (bRayTracingEnabled && bCanOverlayRayTracingOutput && !IsForwardShadingEnabled(ShaderPlatform))
+	if (bRayTracingEnabled)
 	{
-		RenderRayTracingSkyLight(RHICmdList, SkyLightRT, SkyLightHitDistanceRT, HairDatas);
+		WaitForRayTracingScene(GraphBuilder);
+
+		if (bCanOverlayRayTracingOutput && !IsForwardShadingEnabled(ShaderPlatform))
+		{
+			RenderRayTracingSkyLight(GraphBuilder, SceneColorTexture.Target, SkyLightTexture, SkyLightHitDistanceTexture, HairDatas);
+		}
 	}
 #endif // RHI_RAYTRACING
-	checkSlow(RHICmdList.IsOutsideRenderPass());
 
 	// Copy lighting channels out of stencil before deferred decals which overwrite those values
-	CopyStencilToLightingChannelTexture(RHICmdList);
+	CopyStencilToLightingChannelTexture(GraphBuilder, SceneStencilTexture);
 
-	checkSlow(RHICmdList.IsOutsideRenderPass());
-
-	if(!IsForwardShadingEnabled(ShaderPlatform))
+	if (!IsForwardShadingEnabled(ShaderPlatform))
 	{
-		GCompositionLighting.GfxWaitForAsyncSSAO(RHICmdList);
+		GCompositionLighting.GfxWaitForAsyncSSAO(GraphBuilder);
 	}
 	else
 	{
-		// Release SSAO texture and HZB texture earlier to free resources, such as FastVRAM.
-		SceneContext.ScreenSpaceAO.SafeRelease();
-		SceneContext.bScreenSpaceAOIsValid = false;
-
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+		AddPass(GraphBuilder, [this, &SceneContext](FRHICommandList&)
 		{
-			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
-			FViewInfo& View = Views[ViewIndex];
+			for (FViewInfo& View : Views)
+			{
+				View.HZB = nullptr;
+			}
 
-			View.HZB.SafeRelease();
-		}
+			// Release SSAO texture and HZB texture earlier to free resources, such as FastVRAM.
+			SceneContext.ScreenSpaceAO.SafeRelease();
+			SceneContext.bScreenSpaceAOIsValid = false;
+		});
 	}
-
-	checkSlow(RHICmdList.IsOutsideRenderPass());
 
 	// Pre-lighting composition lighting stage
 	// e.g. deferred decals, SSAO
@@ -2378,36 +2372,19 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(AfterBasePass);
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_AfterBasePass);
 
-		GRenderTargetPool.AddPhaseEvent(TEXT("AfterBasePass"));
 		if (!IsForwardShadingEnabled(ShaderPlatform))
 		{
-			ResolveSceneDepth(RHICmdList);
+			AddResolveSceneDepthPass(GraphBuilder, Views, SceneDepthTexture);
 		}
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
-			FViewInfo& View = Views[ViewIndex];
-
-			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
-
-			Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-
-			GCompositionLighting.ProcessAfterBasePass(RHICmdList, View);
+			const FViewInfo& View = Views[ViewIndex];
+			RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
+			GCompositionLighting.ProcessAfterBasePass(GraphBuilder, Scene->UniformBuffers, View, SceneTextures);
 		}
-		ServiceLocalQueue();
+		AddServiceLocalQueuePass(GraphBuilder);
 	}
-
-	FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("DeferredShadingRenderer_Render(ViewFamily=%s)", ViewFamily.bResolveScene ? TEXT("Primary") : TEXT("Auxiliary")));
-
-	const FIntPoint SceneTextureExtent = SceneContext.GetBufferSizeXY();
-
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesDepth = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth);
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesGBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
-
-	FRDGTextureMSAA SceneColorTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.GetSceneColor());
-	FRDGTextureMSAA SceneDepthTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
-	FRDGTextureRef VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
 
 	if (!IsForwardShadingEnabled(ShaderPlatform))
 	{
@@ -2429,21 +2406,21 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_Lighting);
 
 		FRDGTextureRef DynamicBentNormalAOTexture = nullptr;
-		RenderDiffuseIndirectAndAmbientOcclusion(GraphBuilder, SceneTexturesGBuffer, SceneColorTexture.Target);
+		RenderDiffuseIndirectAndAmbientOcclusion(GraphBuilder, SceneTextures, SceneColorTexture.Target);
 
 		// These modulate the scenecolor output from the basepass, which is assumed to be indirect lighting
 		if (SceneContext.IsStaticLightingAllowed())
 		{
 			RenderIndirectCapsuleShadows(
 				GraphBuilder,
-				SceneTexturesGBuffer,
+				SceneTextures,
 				SceneColorTexture.Target,
 				GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceAO),
 				SceneContext.bScreenSpaceAOIsValid);
 		}
 
 		// These modulate the scenecolor output from the basepass, which is assumed to be indirect lighting
-		RenderDFAOAsIndirectShadowing(GraphBuilder, SceneTexturesGBuffer, SceneColorTexture.Target, VelocityTexture, DynamicBentNormalAOTexture);
+		RenderDFAOAsIndirectShadowing(GraphBuilder, SceneTextures, SceneColorTexture.Target, VelocityTexture, DynamicBentNormalAOTexture);
 
 		// Clear the translucent lighting volumes before we accumulate
 		if ((GbEnableAsyncComputeTranslucencyLightingVolumeClear && GSupportsEfficientAsyncCompute) == false)
@@ -2457,14 +2434,14 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 
 #if RHI_RAYTRACING
-		if (IsRayTracingEnabled())
+		if (bRayTracingEnabled)
 		{
 			RenderDitheredLODFadingOutMask(GraphBuilder, Views[0], SceneDepthTexture.Target);
 		}
 #endif
 
 		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_Lighting));
-		RenderLights(GraphBuilder, SceneTexturesGBuffer, SceneColorTexture.Target, SceneDepthTexture.Target, SortedLightSet, HairDatas);
+		RenderLights(GraphBuilder, SceneTextures, SceneColorTexture.Target, SceneDepthTexture.Target, SortedLightSet, HairDatas);
 		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_AfterLighting));
 		AddServiceLocalQueuePass(GraphBuilder);
 
@@ -2505,25 +2482,25 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 
 		// Render diffuse sky lighting and reflections that only operate on opaque pixels
-		RenderDeferredReflectionsAndSkyLighting(GraphBuilder, SceneTexturesGBuffer, SceneColorTexture, DynamicBentNormalAOTexture, VelocityTexture, HairDatas);
+		RenderDeferredReflectionsAndSkyLighting(GraphBuilder, SceneTextures, SceneColorTexture, DynamicBentNormalAOTexture, VelocityTexture, HairDatas);
 
-		AddSubsurfacePass(GraphBuilder, SceneTexturesGBuffer, Views, SceneColorTexture.Target);
+		AddSubsurfacePass(GraphBuilder, SceneTextures, Views, SceneColorTexture.Target);
 
 		if (HairDatas)
 		{
 			RenderHairStrandsSceneColorScattering(GraphBuilder, SceneColorTexture.Target, Views, HairDatas);
 		}
 #if RHI_RAYTRACING
-		if (SkyLightRT)
+		if (SkyLightTexture)
 		{
-			CompositeRayTracingSkyLight(GraphBuilder, SceneColorTexture.Target, SceneTextureExtent, GraphBuilder.RegisterExternalTexture(SkyLightRT), GraphBuilder.RegisterExternalTexture(SkyLightHitDistanceRT));
+			CompositeRayTracingSkyLight(GraphBuilder, SceneColorTexture.Target, SceneTextureExtent, SkyLightTexture, SkyLightHitDistanceTexture);
 		}
 #endif // RHI_RAYTRACING
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
 	else if (HairDatas)
 	{
-		RenderLightsForHair(GraphBuilder, SceneTexturesGBuffer, SortedLightSet, HairDatas, TryRegisterExternalTexture(GraphBuilder, ForwardScreenSpaceShadowMask_Hair));
+		RenderLightsForHair(GraphBuilder, SceneTextures, SortedLightSet, HairDatas, TryRegisterExternalTexture(GraphBuilder, ForwardScreenSpaceShadowMask_Hair));
 		RenderDeferredReflectionsAndSkyLightingHair(GraphBuilder, HairDatas);
 	}
 	
@@ -2534,7 +2511,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
 	}
 
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::All);
+	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
 
 	if (bShouldRenderVolumetricCloud)
 	{
@@ -2580,7 +2557,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (bCanOverlayRayTracingOutput && ShouldRenderAtmosphere(ViewFamily))
 	{
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_RenderAtmosphere);
-		RenderAtmosphere(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target, LightShaftOcclusionTexture, SceneTexturesDepth);
+		RenderAtmosphere(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target, LightShaftOcclusionTexture, SceneTextures);
 	}
 
 	// Draw the sky atmosphere
@@ -2603,7 +2580,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderFog);
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_RenderFog);
-		RenderFog(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target, LightShaftOcclusionTexture, SceneTexturesDepth);
+		RenderFog(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target, LightShaftOcclusionTexture, SceneTextures);
 	}
 
 	FRendererModule& RendererModule = static_cast<FRendererModule&>(GetRendererModule());
@@ -2686,7 +2663,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			const bool bRecreateSceneTextures = !VelocityTexture;
 
 			AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_TranslucentVelocity));
-			RenderVelocities(GraphBuilder, SceneDepthTexture.Resolve, VelocityTexture, SceneTextures, ERenderTargetLoadAction::ELoad, EVelocityPass::Translucent);
+			RenderVelocities(GraphBuilder, SceneDepthTexture.Resolve, VelocityTexture, SceneTextures, EVelocityPass::Translucent);
 			AddServiceLocalQueuePass(GraphBuilder);
 
 			if (bRecreateSceneTextures)
@@ -2697,6 +2674,14 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_AfterTranslucency));
 	}
+
+#if !UE_BUILD_SHIPPING
+	if (CVarForceBlackVelocityBuffer.GetValueOnRenderThread())
+	{
+		SceneContext.SceneVelocity = GSystemTextures.BlackDummy;
+		VelocityTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneVelocity);
+	}
+#endif
 
 	{
 		RDG_GPU_STAT_SCOPE(GraphBuilder, HairRendering);
@@ -2924,11 +2909,17 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	ServiceLocalQueue();
 }
 
-/** */
 class FCopyStencilToLightingChannelsPS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FCopyStencilToLightingChannelsPS,Global);
 public:
+	DECLARE_GLOBAL_SHADER(FCopyStencilToLightingChannelsPS);
+	SHADER_USE_PARAMETER_STRUCT(FCopyStencilToLightingChannelsPS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float>, SceneStencilTexture)
+		RENDER_TARGET_BINDING_SLOTS()
+	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{ 
@@ -2937,100 +2928,58 @@ public:
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters,OutEnvironment);
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("STENCIL_LIGHTING_CHANNELS_SHIFT"), STENCIL_LIGHTING_CHANNELS_BIT_ID);
 		OutEnvironment.SetRenderTargetOutputFormat(0, PF_R16_UINT);
 	}
-
-	FCopyStencilToLightingChannelsPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
-		FGlobalShader(Initializer)
-	{
-		SceneStencilTexture.Bind(Initializer.ParameterMap,TEXT("SceneStencilTexture"));
-	}
-	FCopyStencilToLightingChannelsPS() {}
-
-	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View)
-	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-
-		SetSRVParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), SceneStencilTexture, SceneContext.SceneStencilSRV);
-	}
-
-	LAYOUT_FIELD(FShaderResourceParameter, SceneStencilTexture);
 };
 
-IMPLEMENT_SHADER_TYPE(,FCopyStencilToLightingChannelsPS,TEXT("/Engine/Private/DownsampleDepthPixelShader.usf"),TEXT("CopyStencilToLightingChannelsPS"),SF_Pixel);
+IMPLEMENT_GLOBAL_SHADER(FCopyStencilToLightingChannelsPS, "/Engine/Private/DownsampleDepthPixelShader.usf", "CopyStencilToLightingChannelsPS", SF_Pixel);
 
-void FDeferredShadingSceneRenderer::CopyStencilToLightingChannelTexture(FRHICommandList& RHICmdList)
+void FDeferredShadingSceneRenderer::CopyStencilToLightingChannelTexture(FRDGBuilder& GraphBuilder, FRDGTextureSRVRef SceneStencilTexture)
 {
 	bool bAnyViewUsesLightingChannels = false;
 
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	for (int32 ViewIndex = 0, ViewCount = Views.Num(); ViewIndex < ViewCount; ++ViewIndex)
 	{
-		const FViewInfo& View = Views[ViewIndex];
-		bAnyViewUsesLightingChannels = bAnyViewUsesLightingChannels || View.bUsesLightingChannels;
+		bAnyViewUsesLightingChannels = bAnyViewUsesLightingChannels || Views[ViewIndex].bUsesLightingChannels;
 	}
 
 	if (bAnyViewUsesLightingChannels)
 	{
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		SCOPED_DRAW_EVENT(RHICmdList, CopyStencilToLightingChannels);
-		RHICmdList.Transition(FRHITransitionInfo(SceneContext.GetSceneDepthTexture(), ERHIAccess::Unknown, ERHIAccess::SRVMask));
+		RDG_EVENT_SCOPE(GraphBuilder, "CopyStencilToLightingChannels");
 
-		SceneContext.AllocateLightingChannelTexture(RHICmdList);
+		FRDGTextureRef LightingChannelsTexture = nullptr;
 
-		// Set the light attenuation surface as the render target, and the scene depth buffer as the depth-stencil surface.
-		FRHIRenderPassInfo RPInfo(SceneContext.LightingChannels->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Load_Store);
-		TransitionRenderPassTargets(RHICmdList, RPInfo);
-		RHICmdList.BeginRenderPass(RPInfo, TEXT("CopyStencilToLightingChannel"));
 		{
-		FGraphicsPipelineStateInitializer GraphicsPSOInit;
-		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA>::GetRHI();
-		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
-		extern TGlobalResource<FFilterVertexDeclaration> GFilterVertexDeclaration;
-		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+			const FRDGTextureDesc Desc = FRDGTextureDesc::Create2D(SceneContext.GetBufferSizeXY(), PF_R16_UINT, FClearValueBinding::None, TexCreate_RenderTargetable | TexCreate_ShaderResource);
+			LightingChannelsTexture = GraphBuilder.CreateTexture(Desc, TEXT("LightingChannels"));
+			ConvertToExternalTexture(GraphBuilder, LightingChannelsTexture, SceneContext.LightingChannels);
+		}
 
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+		const ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::ENoAction;
+
+		for (int32 ViewIndex = 0, ViewCount = Views.Num(); ViewIndex < ViewCount; ++ViewIndex)
 		{
 			const FViewInfo& View = Views[ViewIndex];
-			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+			RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
+			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
-			// Set shaders and texture
-			TShaderMapRef<FScreenVS> ScreenVertexShader(View.ShaderMap);
+			auto* PassParameters = GraphBuilder.AllocParameters<FCopyStencilToLightingChannelsPS::FParameters>();
+			PassParameters->RenderTargets[0] = FRenderTargetBinding(LightingChannelsTexture, View.DecayLoadAction(LoadAction));
+			PassParameters->SceneStencilTexture = SceneStencilTexture;
+
+			const FScreenPassTextureViewport Viewport(LightingChannelsTexture, View.ViewRect);
+
 			TShaderMapRef<FCopyStencilToLightingChannelsPS> PixelShader(View.ShaderMap);
-
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = ScreenVertexShader.GetVertexShader();
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
-			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-
-			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-			PixelShader->SetParameters(RHICmdList, View);
-
-			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Min.X + View.ViewRect.Width(), View.ViewRect.Min.Y + View.ViewRect.Height(), 1.0f);
-
-			DrawRectangle(
-				RHICmdList,
-				0, 0,
-				View.ViewRect.Width(), View.ViewRect.Height(),
-				View.ViewRect.Min.X, View.ViewRect.Min.Y,
-				View.ViewRect.Width(), View.ViewRect.Height(),
-				FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()),
-				SceneContext.GetBufferSizeXY(),
-				ScreenVertexShader,
-				EDRF_UseTriangleOptimization);
+			AddDrawScreenPass(GraphBuilder, {}, View, Viewport, Viewport, PixelShader, PassParameters);
 		}
-		}
-		RHICmdList.EndRenderPass();
-		RHICmdList.CopyToResolveTarget(SceneContext.LightingChannels->GetRenderTargetItem().TargetableTexture, SceneContext.LightingChannels->GetRenderTargetItem().TargetableTexture, FResolveParams());
 	}
 	else
 	{
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		ensure(SceneContext.LightingChannels.IsValid() == false);
+		ensure(!FSceneRenderTargets::Get(GraphBuilder.RHICmdList).LightingChannels.IsValid());
 	}
 }
 

@@ -340,7 +340,7 @@ class FRayTracingSkyLightRGS : public FGlobalShader
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSkyLightQuasiRandomData, SkyLightQuasiRandomData)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSkyLightVisibilityRaysData, SkyLightVisibilityRaysData)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SSProfilesTexture)
+		SHADER_PARAMETER_TEXTURE(Texture2D, SSProfilesTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, TransmissionProfilesLinearSampler)
 	END_SHADER_PARAMETER_STRUCT()
 };
@@ -444,36 +444,35 @@ void FDeferredShadingSceneRenderer::GenerateSkyLightVisibilityRays(
 DECLARE_GPU_STAT_NAMED(RayTracingSkyLight, TEXT("Ray Tracing SkyLight"));
 
 void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
-	FRHICommandListImmediate& RHICmdList,
-	TRefCountPtr<IPooledRenderTarget>& SkyLightRT,
-	TRefCountPtr<IPooledRenderTarget>& HitDistanceRT,
-	const FHairStrandsRenderingData* HairDatas
-)
+	FRDGBuilder& GraphBuilder,
+	FRDGTextureRef SceneColorTexture,
+	FRDGTextureRef& OutSkyLightTexture,
+	FRDGTextureRef& OutHitDistanceTexture,
+	const FHairStrandsRenderingData* HairDatas)
 {
-	SCOPED_DRAW_EVENT(RHICmdList, RayTracingSkyLight);
-	SCOPED_GPU_STAT(RHICmdList, RayTracingSkyLight);
-
-	if (!ShouldRenderRayTracingSkyLight(Scene->SkyLight))
+	FSkyLightSceneProxy* SkyLight = Scene->SkyLight;
+	if (!ShouldRenderRayTracingSkyLight(SkyLight))
 	{
 		return;
 	}
 
-	check(Scene->SkyLight->ProcessedTexture);
-	check((Scene->SkyLight->ImportanceSamplingData != nullptr) && Scene->SkyLight->ImportanceSamplingData->bIsValid);
+	RDG_EVENT_SCOPE(GraphBuilder, "RayTracingSkyLight");
+	RDG_GPU_STAT_SCOPE(GraphBuilder, RayTracingSkyLight);
 
-	// Declare render targets
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	check(SceneColorTexture);
+	check(SkyLight->ProcessedTexture);
+	check((SkyLight->ImportanceSamplingData != nullptr) && SkyLight->ImportanceSamplingData->bIsValid);
+
 	{
-		FPooledRenderTargetDesc Desc = SceneContext.GetSceneColor()->GetDesc();
+		FRDGTextureDesc Desc = SceneColorTexture->Desc;
 		Desc.Format = PF_FloatRGBA;
 		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SkyLightRT, TEXT("RayTracingSkylight"));
+		OutSkyLightTexture = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingSkylight"));
 
 		Desc.Format = PF_G16R16;
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, HitDistanceRT, TEXT("RayTracingSkyLightHitDistance"));
+		OutHitDistanceTexture = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingSkyLightHitDistance"));
 	}
 
-	FRDGBuilder GraphBuilder(RHICmdList);
 	FRDGBufferRef SkyLightVisibilityRaysBuffer;
 	FIntVector SkyLightVisibilityRaysDimensions;
 	if (CVarRayTracingSkyLightDecoupleSampleGeneration.GetValueOnRenderThread() == 1)
@@ -487,7 +486,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 		SkyLightVisibilityRaysDimensions = FIntVector(1);
 	}
 
-	const FRDGTextureDesc SceneColorDesc = Translate(SceneContext.GetSceneColor()->GetDesc());
+	const FRDGTextureDesc& SceneColorDesc = SceneColorTexture->Desc;
 
 	// Define RDG targets
 	FRDGTextureRef SkyLightTexture;
@@ -516,10 +515,10 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 	// Fill Scene Texture parameters
 	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
-	TRefCountPtr<IPooledRenderTarget> SubsurfaceProfileRT((IPooledRenderTarget*)GetSubsufaceProfileTexture_RT(RHICmdList));
-	if (!SubsurfaceProfileRT)
+	FRHITexture* SubsurfaceProfileTexture = GBlackTexture->TextureRHI;
+	if (IPooledRenderTarget* SubsurfaceProfileRT = GetSubsufaceProfileTexture_RT(GraphBuilder.RHICmdList))
 	{
-		SubsurfaceProfileRT = GSystemTextures.BlackDummy;
+		SubsurfaceProfileTexture = SubsurfaceProfileRT->GetShaderResourceRHI();
 	}
 
 	int32 ViewIndex = 0;
@@ -544,7 +543,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 		{
 			PassParameters->SkyLightVisibilityRaysData.SkyLightVisibilityRays = GraphBuilder.CreateSRV(SkyLightVisibilityRaysBuffer, EPixelFormat::PF_R32_UINT);
 		}
-		PassParameters->SSProfilesTexture = GraphBuilder.RegisterExternalTexture(SubsurfaceProfileRT);
+		PassParameters->SSProfilesTexture = SubsurfaceProfileTexture;
 		PassParameters->TransmissionProfilesLinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 		PassParameters->SceneTextures = SceneTextures;
 
@@ -611,7 +610,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 			{
 				IScreenSpaceDenoiser::FAmbientOcclusionRayTracingConfig RayTracingConfig;
 				RayTracingConfig.ResolutionFraction = 1.0;
-				RayTracingConfig.RayCountPerPixel = GetSkyLightSamplesPerPixel(Scene->SkyLight);
+				RayTracingConfig.RayCountPerPixel = GetSkyLightSamplesPerPixel(SkyLight);
 
 				RDG_EVENT_SCOPE(GraphBuilder, "%s%s(SkyLight) %dx%d",
 					DenoiserToUse != DefaultDenoiser ? TEXT("ThirdParty ") : TEXT(""),
@@ -648,10 +647,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 
 		++ViewIndex;
 	}
-
-	GraphBuilder.QueueTextureExtraction(SkyLightTexture, &SkyLightRT);
-	GraphBuilder.Execute();
-	GVisualizeTexture.SetCheckPoint(RHICmdList, SkyLightRT);
 }
 
 class FCompositeSkyLightPS : public FGlobalShader

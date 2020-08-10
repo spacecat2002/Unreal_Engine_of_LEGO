@@ -1906,16 +1906,6 @@ const FTexture2DRHIRef& FSceneRenderTargets::GetOptionalShadowDepthColorSurface(
 	return (const FTexture2DRHIRef&)OptionalShadowDepthColor[EmptySlot]->GetRenderTargetItem().TargetableTexture;
 }
 
-void FSceneRenderTargets::AllocateLightingChannelTexture(FRHICommandList& RHICmdList)
-{
-	if (!LightingChannels)
-	{
-		// Only need 3 bits for lighting channels
-		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R16_UINT, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, LightingChannels, TEXT("LightingChannels"), ERenderTargetTransience::NonTransient);
-	}
-}
-
 void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandListImmediate& RHICmdList, const int32 NumViews)
 {
 	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(CurrentFeatureLevel);
