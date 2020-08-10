@@ -43,8 +43,11 @@ class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
 struct FExposureBufferData;
 struct FCloudRenderContext;
+struct FSingleLayerWaterPassData;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
+
+DECLARE_GPU_DRAWCALL_STAT_EXTERN(VirtualTextureUpdate);
 
 
 /** Mobile only. Information used to determine whether static meshes will be rendered with CSM shaders or not. */
@@ -648,6 +651,14 @@ struct FVolumetricMeshBatch
 	const FPrimitiveSceneProxy* Proxy;
 };
 
+struct FSkyMeshBatch
+{
+	const FMeshBatch* Mesh;
+	const FPrimitiveSceneProxy* Proxy;
+	bool bVisibleInMainPass : 1;
+	bool bVisibleInRealTimeSkyCapture : 1;
+};
+
 struct FMeshDecalBatch
 {
 	const FMeshBatch* Mesh;
@@ -770,6 +781,12 @@ struct FGTAOTAAHistory
 };
 
 
+// Plugins can derive from this and use it for their own purposes
+class RENDERER_API ICustomTemporalAAHistory : public IRefCountedObject
+{
+public:
+	virtual ~ICustomTemporalAAHistory() {}
+};
 
 // Structure that hold all information related to previous frame.
 struct FPreviousViewInfo
@@ -801,6 +818,9 @@ struct FPreviousViewInfo
 
 	// Temporal AA result of last frame
 	FTemporalAAHistory TemporalAAHistory;
+
+	// Custom Temporal AA result of last frame, used by plugins
+	TRefCountPtr<ICustomTemporalAAHistory> CustomTemporalAAHistory;
 
 	// Half resolution version temporal AA result of last frame
 	TRefCountPtr<IPooledRenderTarget> HalfResTemporalAAHistory;
@@ -963,7 +983,7 @@ public:
 	TArray<FVolumetricMeshBatch, SceneRenderingAllocator> VolumetricMeshBatches;
 
 	/** Mesh batches with a sky material. */
-	TArray<FVolumetricMeshBatch, SceneRenderingAllocator> SkyMesheBatches;
+	TArray<FSkyMeshBatch, SceneRenderingAllocator> SkyMeshBatches;
 
 	/** A map from light ID to a boolean visibility value. */
 	TArray<FVisibleLightViewInfo,SceneRenderingAllocator> VisibleLightInfos;
@@ -1240,8 +1260,8 @@ public:
 #endif
 
 	/** Returns the size of view rect after primary upscale ( == only with secondary screen percentage). */
-	FIntPoint GetSecondaryViewRectSize() const;
-
+	RENDERER_API FIntPoint GetSecondaryViewRectSize() const;
+	
 	/** Returns whether the view requires a secondary upscale. */
 	bool RequiresSecondaryUpscale() const
 	{
@@ -1830,7 +1850,7 @@ protected:
 	/** Initialise volumetric cloud resources.*/
 	void InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList);
 	/** Render volumetric cloud. */
-	void RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList);
+	void RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList, bool bSkipVolumetricRenderTarget, bool bSkipPerPixelTracing);
 
 	/** Render notification to artist when a sky material is used but it might comtains the camera (and then the sky/background would look black).*/
 	void RenderSkyAtmosphereEditorNotifications(FRHICommandListImmediate& RHICmdList);
@@ -1843,11 +1863,18 @@ protected:
 	void ReconstructVolumetricRenderTarget(FRHICommandListImmediate& RHICmdList);
 	/** Compose the volumetric render target over the scene.*/
 	void ComposeVolumetricRenderTargetOverScene(FRHICommandListImmediate& RHICmdList);
+	/** Compose the volumetric render target over the scene from a view under water, in the water render target.*/
+	void ComposeVolumetricRenderTargetOverSceneUnderWater(FRHICommandListImmediate& RHICmdList, FSingleLayerWaterPassData& WaterPassData);
 
 	void ResolveSceneColor(FRHICommandList& RHICmdList);
 
 private:
 	void ComputeFamilySize();
+
+#if !UE_BUILD_SHIPPING
+	/** Dump all UPrimitiveComponents in the Scene to a CSV file */
+	void DumpPrimitives(const FViewCommands& ViewCommands);
+#endif
 };
 
 /**

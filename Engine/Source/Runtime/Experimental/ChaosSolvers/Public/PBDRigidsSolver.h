@@ -55,6 +55,12 @@ namespace Chaos
 	class FChaosArchive;
 	class FRewindData;
 
+	template <typename T,typename R,int d>
+	class ISpatialAccelerationCollection;
+
+	template <typename T,int d>
+	class TAccelerationStructureHandle;
+
 	enum class ELockType : uint8
 	{
 		Read,
@@ -365,6 +371,8 @@ namespace Chaos
 		FPerSolverFieldSystem& GetPerSolverField() { return *PerSolverField; }
 		const FPerSolverFieldSystem& GetPerSolverField() const { return *PerSolverField; }
 
+		void UpdateExternalAccelerationStructure_External(TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal,3>,FReal,3>>& ExternalStructure);
+
 	private:
 
 		template<typename ParticleType>
@@ -406,6 +414,7 @@ namespace Chaos
 		/**/
 		virtual void AdvanceSolverBy(const FReal DeltaTime) override;
 		virtual void PushPhysicsState(const FReal DeltaTime) override;
+		virtual void SetExternalTimeConsumed_External(const FReal Time) override;
 
 		//
 		// Solver Data
@@ -462,6 +471,10 @@ namespace Chaos
 		THandleArray<FChaosPhysicsMaterialMask> QueryMaterialMasks;
 		THandleArray<FChaosPhysicsMaterial> SimMaterials;
 		THandleArray<FChaosPhysicsMaterialMask> SimMaterialMasks;
+
+		void ProcessSinglePushedData_Internal(FPushPhysicsData& PushData);
+		virtual void ProcessPushedData_Internal(const TArray<FPushPhysicsData*>& PushDataArray) override;
+
 	public:
 
 		template<typename ParticleEntry, typename ProxyEntry, SIZE_T PreAllocCount>

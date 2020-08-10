@@ -456,6 +456,7 @@ void FDeferredShadingSceneRenderer::CopySingleLayerWaterTextures(FRHICommandList
 	const ERHIFeatureLevel::Type CurrentFeatureLevel = SceneContext.GetCurrentFeatureLevel();
 	const int32 RefractionDownsampleFactor = FMath::Clamp(GSingleLayerWaterRefractionDownsampleFactor, 1, 8);
 	const FIntPoint RefractionResolution = FIntPoint::DivideAndRoundDown(SceneContext.GetBufferSizeXY(), RefractionDownsampleFactor);
+	PassData.RefractionDownsampleFactor = float(RefractionDownsampleFactor);
 
 	FRDGBuilder GraphBuilder(RHICmdList);
 
@@ -779,12 +780,13 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(FRHIComman
 			{
 				check(View.ViewState);
 				FTAAPassParameters TAASettings(View);
+				TAASettings.SceneDepthTexture = SceneTextures.SceneDepthBuffer;
+				TAASettings.SceneVelocityTexture = SceneTextures.SceneVelocityBuffer;
 				TAASettings.Pass = ETAAPassConfig::ScreenSpaceReflections;
 				TAASettings.SceneColorInput = DenoiserInputs.Color;
 
 				FTAAOutputs TAAOutputs = AddTemporalAAPass(
 					GraphBuilder,
-					SceneTextures, 
 					View,
 					TAASettings,
 					View.PrevViewInfo.WaterSSRHistory,

@@ -245,7 +245,7 @@ DECLARE_GPU_STAT(HZB);
 DECLARE_GPU_STAT_NAMED(Unaccounted, TEXT("[unaccounted]"));
 DECLARE_GPU_DRAWCALL_STAT(WaterRendering);
 DECLARE_GPU_STAT(HairRendering);
-DECLARE_GPU_DRAWCALL_STAT(VirtualTextureUpdate);
+DEFINE_GPU_DRAWCALL_STAT(VirtualTextureUpdate);
 DECLARE_GPU_STAT(UploadDynamicBuffers);
 DECLARE_GPU_STAT(PostOpaqueExtensions);
 
@@ -1979,7 +1979,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 
 	// Capture the SkyLight using the SkyAtmosphere and VolumetricCloud component if available.
-	if (Scene->SkyLight && Scene->SkyLight->bRealTimeCaptureEnabled && Views.Num() > 0)
+	const bool bRealTimeSkyCaptureEnabled = Scene->SkyLight && Scene->SkyLight->bRealTimeCaptureEnabled && Views.Num() > 0;
+	if (bRealTimeSkyCaptureEnabled)
 	{
 		FViewInfo& MainView = Views[0];
 		Scene->AllocateAndCaptureFrameSkyEnvMap(RHICmdList, *this, MainView, bShouldRenderSkyAtmosphere, bShouldRenderVolumetricCloud);
@@ -2245,6 +2246,11 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SceneContext.BeginRenderingSceneColor(RHICmdList);
 		DrawClearQuad(RHICmdList, FLinearColor(0, 0, 0, 0));
 		SceneContext.FinishRenderingSceneColor(RHICmdList);
+	}
+
+	if (bRealTimeSkyCaptureEnabled)
+	{
+		Scene->ValidateSkyLightRealTimeCapture(RHICmdList, *this, Views[0]);
 	}
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
@@ -2557,6 +2563,16 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 
+	if (bShouldRenderVolumetricCloud)
+	{
+		// Generate the volumetric cloud render target
+		bool bSkipVolumetricRenderTarget = false;
+		bool bSkipPerPixelTracing = true;
+		RenderVolumetricCloud(RHICmdList, bSkipVolumetricRenderTarget, bSkipPerPixelTracing);
+		// Reconstruct the volumetric cloud render target to be ready to compose it over the scene
+		ReconstructVolumetricRenderTarget(RHICmdList);
+	}
+
 	const bool bShouldRenderSingleLayerWater = ShouldRenderSingleLayerWater(Views, ViewFamily.EngineShowFlags);
 	// All views are considered above water if we don't render any water materials
 	bool bHasAnyViewsAbovewater = !bShouldRenderSingleLayerWater;
@@ -2600,7 +2616,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// Render heightfog over the color buffer if it is allocated, e.g. SingleLayerWaterUsesSimpleShading is true which is not the case on Switch.
 		if (bCanOverlayRayTracingOutput && ShouldRenderFog(ViewFamily) && SingleLayerWaterPassData.SceneColorWithoutSingleLayerWater.IsValid())
 		{
-			RenderUnderWaterFog(RHICmdList, SingleLayerWaterPassData);
+			RenderUnderWaterFog(RHICmdList, SingleLayerWaterPassData); 
+		}
+		if (bShouldRenderVolumetricCloud)
+		{
+			// This path is only taken when rendering the clouds in a render target that can be composited
+			ComposeVolumetricRenderTargetOverSceneUnderWater(RHICmdList, SingleLayerWaterPassData);
 		}
 
 		// Make the Depth texture writable since the water GBuffer pass will update it
@@ -2676,10 +2697,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderSkyAtmosphere(RHICmdList);
 	}
 
-	// Draw volumetric clouds
+	// Draw volumetric clouds when using per pixel tracing
 	if (bShouldRenderVolumetricCloud)
 	{
-		RenderVolumetricCloud(RHICmdList);
+		bool bSkipVolumetricRenderTarget = true;
+		bool bSkipPerPixelTracing = false;
+		RenderVolumetricCloud(RHICmdList, bSkipVolumetricRenderTarget, bSkipPerPixelTracing);
 	}
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
@@ -2753,7 +2776,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bVolumetricRenderTargetRequired)
 	{
-		ReconstructVolumetricRenderTarget(RHICmdList);
+		ComposeVolumetricRenderTargetOverScene(RHICmdList);
 	}
 
 	if (bShouldRenderSkyAtmosphere)
@@ -3053,6 +3076,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			ShaderPrint::EndView(Views[ViewIndex]);
 			ShaderDrawDebug::EndView(Views[ViewIndex]);
 		}
+
+		GEngine->GetPostRenderDelegate().Broadcast();
 
 #if WITH_MGPU
 		DoCrossGPUTransfers(RHICmdList, RenderTargetGPUMask);

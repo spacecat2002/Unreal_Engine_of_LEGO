@@ -979,6 +979,10 @@ public:
 	// Ray Traced Global Illumination Gather Point Data
 	TRefCountPtr<FPooledRDGBuffer> GatherPointsBuffer;
 	FIntVector GatherPointsResolution;
+
+	// Last valid RTPSO is saved, so it could be used as fallback in future frames if background PSO compilation is enabled.
+	// This RTPSO can be used only if the only difference from previous PSO is the material hit shaders.
+	FRayTracingPipelineStateSignature LastRayTracingMaterialPipelineSignature;
 #endif
 
 	TUniquePtr<FForwardLightingViewResources> ForwardLightingResources;
@@ -1420,6 +1424,15 @@ public:
 	}
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	virtual const FViewMatrices* GetFrozenViewMatrices() const override
+	{
+		if (bIsFrozen && bIsFrozenViewMatricesCached)
+		{
+			return &CachedViewMatrices;
+		}
+		return nullptr;
+	}
+
 	virtual void ActivateFrozenViewMatrices(FSceneView& SceneView) override
 	{
 		auto* ViewState = static_cast<FSceneViewState*>(SceneView.State);
@@ -2737,6 +2750,7 @@ public:
 	virtual void AllocateReflectionCaptures(const TArray<UReflectionCaptureComponent*>& NewCaptures, const TCHAR* CaptureReason, bool bVerifyOnlyCapturing) override;
 	virtual void UpdateSkyCaptureContents(const USkyLightComponent* CaptureComponent, bool bCaptureEmissiveOnly, UTextureCube* SourceCubemap, FTexture* OutProcessedTexture, float& OutAverageBrightness, FSHVectorRGB3& OutIrradianceEnvironmentMap, TArray<FFloat16Color>* OutRadianceMap) override; 
 	virtual void AllocateAndCaptureFrameSkyEnvMap(FRHICommandListImmediate& RHICmdList, FSceneRenderer& SceneRenderer, FViewInfo& MainView, bool bShouldRenderSkyAtmosphere, bool bShouldRenderVolumetricCloud) override;
+	virtual void ValidateSkyLightRealTimeCapture(FRHICommandListImmediate& RHICmdList, FSceneRenderer& SceneRenderer, FViewInfo& MainView) override;
 	virtual void AddPrecomputedLightVolume(const class FPrecomputedLightVolume* Volume) override;
 	virtual void RemovePrecomputedLightVolume(const class FPrecomputedLightVolume* Volume) override;
 	virtual bool HasPrecomputedVolumetricLightmap_RenderThread() const override;

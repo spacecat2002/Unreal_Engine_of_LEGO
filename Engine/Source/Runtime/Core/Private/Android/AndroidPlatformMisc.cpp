@@ -2552,11 +2552,15 @@ FString FAndroidMisc::GetLoginId()
 #if USE_ANDROID_JNI
 FString FAndroidMisc::GetDeviceId()
 {
+#if GET_DEVICE_ID_UNAVAILABLE
+	return FString();
+#else
 	extern FString AndroidThunkCpp_GetAndroidId();
 	static FString DeviceId = AndroidThunkCpp_GetAndroidId();
 
 	// note: this can be empty or NOT unique depending on the OEM implementation!
 	return DeviceId;
+#endif
 }
 
 FString FAndroidMisc::GetUniqueAdvertisingId()
@@ -2774,3 +2778,40 @@ bool FAndroidMisc::Expand16BitIndicesTo32BitOnLoad()
 {
 	return  (CVarMaliMidgardIndexingBug.GetValueOnAnyThread() > 0);
 }
+
+TArray<int32> FAndroidMisc::GetSupportedNativeDisplayRefreshRates()
+{
+	TArray<int32> Result;
+#if USE_ANDROID_JNI
+	extern TArray<int32> AndroidThunkCpp_GetSupportedNativeDisplayRefreshRates();
+	Result = AndroidThunkCpp_GetSupportedNativeDisplayRefreshRates();
+#else
+	Result.Add(60);
+#endif
+	return Result;
+}
+
+bool FAndroidMisc::SetNativeDisplayRefreshRate(int32 RefreshRate)
+{
+#if USE_ANDROID_JNI
+	extern bool AndroidThunkCpp_SetNativeDisplayRefreshRate(int32 RefreshRate);
+	return AndroidThunkCpp_SetNativeDisplayRefreshRate(RefreshRate);
+#else
+	return RefreshRate == 60;
+#endif
+}
+
+int32 FAndroidMisc::GetNativeDisplayRefreshRate()
+{
+#if USE_ANDROID_JNI
+	extern int32 AndroidThunkCpp_GetNativeDisplayRefreshRate();
+	return AndroidThunkCpp_GetNativeDisplayRefreshRate();
+#else
+	return 60;
+#endif
+
+}
+
+
+
+
