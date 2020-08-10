@@ -524,7 +524,7 @@ IMPLEMENT_GLOBAL_SHADER(FAmbientOcclusionSetupPS, "/Engine/Private/PostProcessAm
 FScreenPassTexture AddAmbientOcclusionSetupPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	const SSAOCommonParameters& CommonParameters,
+	const FSSAOCommonParameters& CommonParameters,
 	FScreenPassTexture Input)
 {
 	RDG_GPU_STAT_SCOPE(GraphBuilder, SSAOSetup);
@@ -743,7 +743,7 @@ IMPLEMENT_GLOBAL_SHADER(FAmbientOcclusionCS, "/Engine/Private/PostProcessAmbient
 FScreenPassTexture AddAmbientOcclusionPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	const SSAOCommonParameters& CommonParameters,
+	const FSSAOCommonParameters& CommonParameters,
 	const FScreenPassTexture& SetupTexture,
 	const FScreenPassTexture& NormalsTexture,
 	const FScreenPassTexture& DownsampledAO,
@@ -875,19 +875,19 @@ FScreenPassTexture AddAmbientOcclusionPass(
 FScreenPassTexture AddAmbientOcclusionStepPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	const SSAOCommonParameters& CommonParameters,
-	const FScreenPassTexture& Input0,
-	const FScreenPassTexture& Input1,
-	const FScreenPassTexture& Input2,
+	const FSSAOCommonParameters& CommonParameters,
+	const FScreenPassTexture& SetupTexture,
+	const FScreenPassTexture& NormalsTexture,
+	const FScreenPassTexture& DownsampledAO,
 	const FScreenPassTexture& HZBInput)
 {
 	return AddAmbientOcclusionPass(
 		GraphBuilder,
 		View,
 		CommonParameters,
-		Input0,
-		Input1,
-		Input2,
+		SetupTexture,
+		NormalsTexture,
+		DownsampledAO,
 		HZBInput,
 		FScreenPassRenderTarget(),
 		CommonParameters.DownscaleType,
@@ -898,10 +898,10 @@ FScreenPassTexture AddAmbientOcclusionStepPass(
 FScreenPassTexture AddAmbientOcclusionFinalPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	const SSAOCommonParameters& CommonParameters,
-	const FScreenPassTexture& Input0,
-	const FScreenPassTexture& Input1,
-	const FScreenPassTexture& Input2,
+	const FSSAOCommonParameters& CommonParameters,
+	const FScreenPassTexture& SetupTexture,
+	const FScreenPassTexture& NormalsTexture,
+	const FScreenPassTexture& DownsampledAO,
 	const FScreenPassTexture& HZBInput,
 	FScreenPassRenderTarget FinalOutput)
 {
@@ -910,9 +910,9 @@ FScreenPassTexture AddAmbientOcclusionFinalPass(
 			GraphBuilder,
 			View,
 			CommonParameters,
-			Input0,
-			Input1,
-			Input2,
+			SetupTexture,
+			NormalsTexture,
+			DownsampledAO,
 			HZBInput,
 			CommonParameters.bNeedSmoothingPass ? FScreenPassRenderTarget() : FinalOutput,
 			CommonParameters.FullscreenType,

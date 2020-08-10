@@ -18,15 +18,17 @@ static TAutoConsoleVariable<float> CVarStencilSizeThreshold(
 	TEXT("0..1: optimization is enabled, value defines the minimum size (screen space) to trigger the optimization (default 0.1)")
 );
 
-FDeferredDecalPassTextures GetDeferredDecalPassTextures(FRDGBuilder& GraphBuilder, const FViewInfo& View)
+FDeferredDecalPassTextures GetDeferredDecalPassTextures(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer)
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
 	FDeferredDecalPassTextures PassTextures;
-	PassTextures.SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBufferA);
+	PassTextures.SceneTexturesUniformBuffer = SceneTexturesUniformBuffer;
 	PassTextures.Depth = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
 	PassTextures.Color = TryRegisterExternalTexture(GraphBuilder, SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable);
-	PassTextures.ScreenSpaceAO = TryRegisterExternalTexture(GraphBuilder, SceneContext.ScreenSpaceAO);
 	PassTextures.GBufferA = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferA);
 	PassTextures.GBufferB = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferB);
 	PassTextures.GBufferC = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferC);
@@ -432,7 +434,7 @@ void AddDeferredDecalPass(
 	uint32 SortedDecalCount = 0;
 	FTransientDecalRenderDataList* SortedDecals = nullptr;
 
-	checkf(DecalRenderStage != DRS_AmbientOcclusion || SceneContext.bScreenSpaceAOIsValid, TEXT("Attepting to render AO decals without SSAO having emitted a valid render target."));
+	checkf(DecalRenderStage != DRS_AmbientOcclusion || PassTextures.ScreenSpaceAO, TEXT("Attepting to render AO decals without SSAO having emitted a valid render target."));
 	checkf(DecalRenderStage != DRS_BeforeBasePass || IsUsingDBuffers(ShaderPlatform), TEXT("Only DBuffer decals are supported before the base pass."));
 
 	if (DecalCount)
@@ -618,19 +620,4 @@ void AddDeferredDecalPass(
 		FRenderTargetWriteMask::Decode(GraphBuilder, View.ShaderMap, MakeArrayView(Textures), OutputTexture, GFastVRamConfig.DBufferMask, TEXT("DBufferMaskCombine"));
 		ConvertToExternalTexture(GraphBuilder, OutputTexture, SceneContext.DBufferMask);
 	}
-}
-
-FRenderingCompositeOutputRef AddDeferredDecalPass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input, EDecalRenderStage DecalRenderStage)
-{
-	FRenderingCompositePass* DecalPass = Graph.RegisterPass(
-		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-			[DecalRenderStage](FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-		FDeferredDecalPassTextures PassTextures = GetDeferredDecalPassTextures(GraphBuilder, InContext.View);
-		AddDeferredDecalPass(GraphBuilder, InContext.View, PassTextures, DecalRenderStage);
-		GraphBuilder.Execute();
-	}));
-	DecalPass->SetInput(ePId_Input0, Input);
-	return DecalPass;
 }

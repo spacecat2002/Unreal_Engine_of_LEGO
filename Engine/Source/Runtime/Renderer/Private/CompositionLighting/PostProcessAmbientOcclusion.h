@@ -70,11 +70,16 @@ public:
 
 // SSAO
 
-struct SSAOCommonParameters
+struct FSSAOCommonParameters
 {
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = nullptr;
 	FScreenPassTextureViewport SceneTexturesViewport;
 
+	FScreenPassTexture HZBInput;
+	FScreenPassTexture GBufferA;
+	FScreenPassTexture SceneDepth;
+
+	uint32 Levels = 1;
 	int32 ShaderQuality = 4;
 	ESSAOType DownscaleType = ESSAOType::EPS;
 	ESSAOType FullscreenType = ESSAOType::EPS;
@@ -84,13 +89,13 @@ struct SSAOCommonParameters
 FScreenPassTexture AddAmbientOcclusionSetupPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	const SSAOCommonParameters& CommonParameters,
+	const FSSAOCommonParameters& CommonParameters,
 	FScreenPassTexture Input);
 
 FScreenPassTexture AddAmbientOcclusionStepPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	const SSAOCommonParameters& CommonParameters,
+	const FSSAOCommonParameters& CommonParameters,
 	const FScreenPassTexture& Input0,
 	const FScreenPassTexture& Input1,
 	const FScreenPassTexture& Input2,
@@ -99,7 +104,7 @@ FScreenPassTexture AddAmbientOcclusionStepPass(
 FScreenPassTexture AddAmbientOcclusionFinalPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	const SSAOCommonParameters& CommonParameters,
+	const FSSAOCommonParameters& CommonParameters,
 	const FScreenPassTexture& Input0,
 	const FScreenPassTexture& Input1,
 	const FScreenPassTexture& Input2,
@@ -112,6 +117,12 @@ struct FGTAOCommonParameters
 {
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = nullptr;
 	FScreenPassTextureViewport SceneTexturesViewport;
+	
+	FScreenPassTexture HZBInput;
+	FScreenPassTexture SceneDepth;
+	FScreenPassTexture SceneVelocity;
+
+	FIntRect DownsampledViewRect;
 
 	int32 ShaderQuality = 4;
 	uint32 DownscaleFactor = 1;

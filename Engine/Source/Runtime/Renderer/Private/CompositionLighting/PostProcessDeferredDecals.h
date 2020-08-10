@@ -41,14 +41,16 @@ struct FDeferredDecalPassTextures
 	FRDGTextureRef DBufferMask = nullptr;
 };
 
-FDeferredDecalPassTextures GetDeferredDecalPassTextures(FRDGBuilder& GraphBuilder);
+FDeferredDecalPassTextures GetDeferredDecalPassTextures(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 
-void AddDeferredDecalPass(FRDGBuilder& GraphBuilder, const FViewInfo& ViewInfo, FDeferredDecalPassTextures& Textures, EDecalRenderStage RenderStage);
-
-FRenderingCompositeOutputRef AddDeferredDecalPass(
-	FRenderingCompositionGraph& Graph,
-	FRenderingCompositeOutputRef Input,
-	EDecalRenderStage DecalRenderStage);
+void AddDeferredDecalPass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& ViewInfo,
+	FDeferredDecalPassTextures& Textures,
+	EDecalRenderStage RenderStage);
 
 BEGIN_SHADER_PARAMETER_STRUCT(FDeferredDecalPassParameters, )
 	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
