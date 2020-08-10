@@ -1564,7 +1564,13 @@ void FSceneRenderer::RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, F
 		});
 }
 
-void FSceneRenderer::RenderVolumetricCloud(FRDGBuilder& GraphBuilder, bool bSkipVolumetricRenderTarget, bool bSkipPerPixelTracing, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture)
+void FSceneRenderer::RenderVolumetricCloud(
+	FRDGBuilder& GraphBuilder,
+	const FSceneTextureShaderParameters& SceneTextures,
+	bool bSkipVolumetricRenderTarget,
+	bool bSkipPerPixelTracing,
+	FRDGTextureMSAA SceneColorTexture,
+	FRDGTextureMSAA SceneDepthTexture)
 {
 	check(ShouldRenderVolumetricCloud(Scene, ViewFamily.EngineShowFlags)); // This should not be called if we should not render SkyAtmosphere
 
@@ -1745,7 +1751,7 @@ void FSceneRenderer::RenderVolumetricCloud(FRDGBuilder& GraphBuilder, bool bSkip
 					SkyRC.bShouldSampleCloudSkyAO = CloudShadowAOData.bShouldSampleCloudSkyAO;
 					SkyRC.VolumetricCloudSkyAO = CloudShadowAOData.VolumetricCloudSkyAO;
 
-					RenderSkyAtmosphereInternal(GraphBuilder, SkyRC);
+					RenderSkyAtmosphereInternal(GraphBuilder, SceneTextures, SkyRC);
 				}
 
 

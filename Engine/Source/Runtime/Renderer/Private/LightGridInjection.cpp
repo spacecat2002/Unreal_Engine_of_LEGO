@@ -767,7 +767,7 @@ void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
 
 	RenderForwardShadowProjections(
 		GraphBuilder,
-		CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth),
+		CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth),
 		GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable),
 		GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::Targetable),
 		ForwardScreenSpaceShadowMask,

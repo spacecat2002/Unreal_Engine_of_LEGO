@@ -738,7 +738,6 @@ extern template void FSceneRenderTargets::ClearVolumeTextures<7>(FRHICommandList
 /** Sets up scene texture parameters for RDG (builder is valid) or passthrough RHI access (builder is null). Intended for temporary use during RDG refactor. */
 extern void SetupSceneTextureUniformParameters(
 	FRDGBuilder* GraphBuilder,
-	const FSceneView* View,
 	ERHIFeatureLevel::Type FeatureLevel,
 	const FSceneRenderTargets& SceneContext,
 	ESceneTextureSetupMode SetupMode,

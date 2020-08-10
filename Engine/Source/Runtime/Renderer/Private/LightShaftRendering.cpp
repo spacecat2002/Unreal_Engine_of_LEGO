@@ -423,7 +423,7 @@ void AddOcclusionTermPass(
 
 FRDGTextureRef FDeferredShadingSceneRenderer::RenderLightShaftOcclusion(
 	FRDGBuilder& GraphBuilder,
-	TArrayView<TRDGUniformBufferRef<FSceneTextureUniformParameters>> SceneTexturesPerView,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FIntPoint SceneTextureExtent)
 {
 	FScreenPassRenderTarget Output;
@@ -482,7 +482,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLightShaftOcclusion(
 							GraphBuilder,
 							View,
 							LightShaftParameters,
-							SceneTexturesPerView[ViewIndex],
+							SceneTexturesUniformBuffer,
 							SceneViewport,
 							OutputViewport,
 							TemporalHistory,
@@ -526,7 +526,7 @@ void AddLightShaftBloomPass(
 
 void FDeferredShadingSceneRenderer::RenderLightShaftBloom(
 	FRDGBuilder& GraphBuilder,
-	TArrayView<TRDGUniformBufferRef<FSceneTextureUniformParameters>> SceneTexturesPerView,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FIntPoint SceneTextureExtent,
 	FRDGTextureRef SceneColorTexture,
 	FSeparateTranslucencyTextures& SeparateTranslucencyTextures)
@@ -601,7 +601,7 @@ void FDeferredShadingSceneRenderer::RenderLightShaftBloom(
 								GraphBuilder,
 								View,
 								LightShaftParameters,
-								SceneTexturesPerView[ViewIndex],
+								SceneTexturesUniformBuffer,
 								SceneViewport,
 								LightShaftViewport,
 								TemporalHistory,

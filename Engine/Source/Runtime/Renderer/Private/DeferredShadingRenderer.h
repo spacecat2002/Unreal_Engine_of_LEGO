@@ -274,12 +274,18 @@ private:
 	void RenderDistanceFieldAOScreenGrid(
 		FRDGBuilder& GraphBuilder,
 		const FViewInfo& View,
-		const FDistanceFieldAOParameters& Parameters, 
+		const FDistanceFieldAOParameters& Parameters,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureRef VelocityTexture,
 		FRDGTextureRef DistanceFieldNormal,
 		FRDGTextureRef& OutDynamicBentNormalAO);
 
-	void RenderMeshDistanceFieldVisualization(FRDGBuilder& GraphBuilder, const FDistanceFieldAOParameters& Parameters);
+	void RenderMeshDistanceFieldVisualization(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		const FDistanceFieldAOParameters& Parameters);
 
 	/** Whether tiled deferred is supported and can be used at all. */
 	bool CanUseTiledDeferred() const;
@@ -364,12 +370,12 @@ private:
 	/** Renders the scene's light shafts */
 	FRDGTextureRef RenderLightShaftOcclusion(
 		FRDGBuilder& GraphBuilder,
-		TArrayView<TRDGUniformBufferRef<FSceneTextureUniformParameters>> SceneTexturesPerView,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FIntPoint SceneTextureExtent);
 
 	void RenderLightShaftBloom(
 		FRDGBuilder& GraphBuilder,
-		TArrayView<TRDGUniformBufferRef<FSceneTextureUniformParameters>> SceneTexturesPerView,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FIntPoint SceneTextureExtent,
 		FRDGTextureRef SceneColorTexture,
 		FSeparateTranslucencyTextures& OutSeparateTranslucencyTextures);
@@ -380,6 +386,7 @@ private:
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SceneDepthTexture,
 		FRDGTextureRef& VelocityTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		ERenderTargetLoadAction VelocityLoadAction,
 		EVelocityPass VelocityPass);
 
@@ -626,7 +633,10 @@ private:
 	void AddOrRemoveSceneHeightFieldPrimitives(bool bSkipAdd = false);
 	void PrepareDistanceFieldScene(FRHICommandListImmediate& RHICmdList, bool bSplitDispatch);
 
-	void CopySceneCaptureComponentToTarget(FRDGBuilder& GraphBuilder, FRDGTextureRef ViewFamilyTexture);
+	void CopySceneCaptureComponentToTarget(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef ViewFamilyTexture);
 
 	void SetupImaginaryReflectionTextureParameters(
 		FRDGBuilder& GraphBuilder,

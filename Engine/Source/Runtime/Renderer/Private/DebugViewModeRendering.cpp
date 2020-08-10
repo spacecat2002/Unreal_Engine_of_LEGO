@@ -33,7 +33,7 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FDebugViewModePassPassUniformParameters
 
 void SetupDebugViewModePassUniformBuffer(FSceneRenderTargets& SceneContext, const FViewInfo& ViewInfo, FDebugViewModePassPassUniformParameters& PassParameters)
 {
-	SetupSceneTextureUniformParameters(SceneContext, ViewInfo, ESceneTextureSetupMode::None, PassParameters.SceneTextures);
+	SetupSceneTextureUniformParameters(SceneContext, ViewInfo.FeatureLevel, ESceneTextureSetupMode::None, PassParameters.SceneTextures);
 
 	// Accuracy colors
 	{

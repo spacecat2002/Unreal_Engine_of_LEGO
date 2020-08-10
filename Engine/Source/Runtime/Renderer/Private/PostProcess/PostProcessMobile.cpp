@@ -884,7 +884,7 @@ FMobileSunMaskOutputs AddMobileSunMaskPass(FRDGBuilder& GraphBuilder, const FVie
 	PassParameters->RenderTargets[1] = SceneColorOutput.GetRenderTargetBinding();
 
 	PassParameters->View = View.ViewUniformBuffer;
-	PassParameters->SceneTextures = CreateMobileSceneTextureUniformBuffer(GraphBuilder, View);
+	PassParameters->SceneTextures = CreateMobileSceneTextureUniformBuffer(GraphBuilder);
 	PassParameters->SceneColorTexture = Inputs.SceneColor.Texture;
 	PassParameters->SceneColorSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 

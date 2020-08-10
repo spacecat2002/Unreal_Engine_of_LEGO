@@ -1558,7 +1558,10 @@ FSkyAtmosphereRenderContext::FSkyAtmosphereRenderContext()
 	InputCloudLuminanceTransmittanceTexture = nullptr;
 }
 
-void FSceneRenderer::RenderSkyAtmosphereInternal(FRDGBuilder& GraphBuilder, FSkyAtmosphereRenderContext& SkyRC)
+void FSceneRenderer::RenderSkyAtmosphereInternal(
+	FRDGBuilder& GraphBuilder,
+	const FSceneTextureShaderParameters& SceneTextures,
+	FSkyAtmosphereRenderContext& SkyRC)
 {
 	check(Scene->HasSkyAtmosphere());
 
@@ -1600,7 +1603,7 @@ void FSceneRenderer::RenderSkyAtmosphereInternal(FRDGBuilder& GraphBuilder, FSky
 		PsPassParameters->SkyAtmosphere = SkyInfo.GetInternalCommonParametersUniformBuffer();
 		PsPassParameters->ViewUniformBuffer = SkyRC.ViewUniformBuffer;
 		PsPassParameters->RenderTargets = SkyRC.RenderTargets;
-		PsPassParameters->SceneTextures = CreateSceneTextureShaderParameters(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth);
+		PsPassParameters->SceneTextures = SceneTextures;
 		PsPassParameters->TransmittanceLutTextureSampler = SamplerLinearClamp;
 		PsPassParameters->MultiScatteredLuminanceLutTextureSampler = SamplerLinearClamp;
 		PsPassParameters->SkyViewLutTextureSampler = SamplerLinearClamp;
@@ -1712,7 +1715,11 @@ void FSceneRenderer::RenderSkyAtmosphereInternal(FRDGBuilder& GraphBuilder, FSky
 
 
 
-void FSceneRenderer::RenderSkyAtmosphere(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColor, FRDGTextureRef SceneDepth)
+void FSceneRenderer::RenderSkyAtmosphere(
+	FRDGBuilder& GraphBuilder,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+	FRDGTextureRef SceneColor,
+	FRDGTextureRef SceneDepth)
 {
 	check(!IsMobilePlatform(Scene->GetShaderPlatform()));
 
@@ -1780,7 +1787,7 @@ void FSceneRenderer::RenderSkyAtmosphere(FRDGBuilder& GraphBuilder, FRDGTextureR
 		SkyRC.bShouldSampleCloudSkyAO = CloudShadowAOData.bShouldSampleCloudSkyAO;
 		SkyRC.VolumetricCloudSkyAO = CloudShadowAOData.VolumetricCloudSkyAO;
 
-		RenderSkyAtmosphereInternal(GraphBuilder, SkyRC);
+		RenderSkyAtmosphereInternal(GraphBuilder, GetSceneTextureShaderParameters(SceneTexturesUniformBuffer), SkyRC);
 	}
 
 #if WITH_EDITOR

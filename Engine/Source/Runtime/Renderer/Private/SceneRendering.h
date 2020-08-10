@@ -1679,7 +1679,10 @@ public:
 	void UpdateSkyIrradianceGpuBuffer(FRHICommandListImmediate& RHICmdList);
 
 	/** Common function to render a sky using shared LUT resources from any view point (if not using the SkyView and AerialPerspective textures). */
-	void RenderSkyAtmosphereInternal(FRDGBuilder& GraphBuilder, FSkyAtmosphereRenderContext& SkyRenderContext);
+	void RenderSkyAtmosphereInternal(
+		FRDGBuilder& GraphBuilder,
+		const FSceneTextureShaderParameters& SceneTextures,
+		FSkyAtmosphereRenderContext& SkyRenderContext);
 
 	/** Common function to render a cloud layer using shared LUT resources. */
 	void  RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, FCloudRenderContext& CloudRC);
@@ -1856,12 +1859,22 @@ protected:
 	/** Render the sky atmosphere look up table needed for this frame.*/
 	void RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& RHICmdList);
 	/** Render the sky atmosphere over the scene.*/
-	void RenderSkyAtmosphere(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture);
+	void RenderSkyAtmosphere(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture);
 
 	/** Initialise volumetric cloud resources.*/
 	void InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList);
 	/** Render volumetric cloud. */
-	void RenderVolumetricCloud(FRDGBuilder& GraphBuilder, bool bSkipVolumetricRenderTarget, bool bSkipPerPixelTracing, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture);
+	void RenderVolumetricCloud(
+		FRDGBuilder& GraphBuilder,
+		const FSceneTextureShaderParameters& SceneTextures,
+		bool bSkipVolumetricRenderTarget,
+		bool bSkipPerPixelTracing,
+		FRDGTextureMSAA SceneColorTexture,
+		FRDGTextureMSAA SceneDepthTexture);
 
 	/** Render notification to artist when a sky material is used but it might comtains the camera (and then the sky/background would look black).*/
 	void RenderSkyAtmosphereEditorNotifications(FRHICommandListImmediate& RHICmdList);

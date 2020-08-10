@@ -258,6 +258,7 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureRef DepthTexture,
 	FRDGTextureRef& VelocityTexture,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	ERenderTargetLoadAction VelocityLoadAction,
 	EVelocityPass VelocityPass)
 {
@@ -274,12 +275,10 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 
 	if (!VelocityTexture)
 	{
+		VelocityTexture = GraphBuilder.CreateTexture(FVelocityRendering::GetRenderTargetDesc(ShaderPlatform), TEXT("Velocity"));
+
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-		if (!SceneContext.SceneVelocity)
-		{
-			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, FVelocityRendering::GetRenderTargetDesc(ShaderPlatform), SceneContext.SceneVelocity, TEXT("Velocity"));
-		}
-		VelocityTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneVelocity);
+		ConvertToExternalTexture(GraphBuilder, VelocityTexture, SceneContext.SceneVelocity);
 	}
 	else
 	{
@@ -305,8 +304,10 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 			}
 
 			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+			VelocityLoadAction = View.DecayLoadAction(VelocityLoadAction);
 
 			FVelocityPassParameters* PassParameters = GraphBuilder.AllocParameters<FVelocityPassParameters>();
+			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
 				DepthTexture,
 				ERenderTargetLoadAction::ELoad,
@@ -314,15 +315,6 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 				VelocityPass == EVelocityPass::Opaque
 				? FExclusiveDepthStencil::DepthRead_StencilWrite
 				: FExclusiveDepthStencil::DepthWrite_StencilWrite);
-
-			// Only translucency can access scene textures.
-			if (VelocityPass == EVelocityPass::Translucent)
-			{
-				ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All;
-				// We can't expose velocity or scene depth because we're writing to them.
-				EnumRemoveFlags(SetupMode, ESceneTextureSetupMode::SceneVelocity | ESceneTextureSetupMode::SceneDepth);
-				PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], SetupMode);
-			}
 
 			if (IsParallelVelocity())
 			{
@@ -361,11 +353,6 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 					ParallelMeshPass.DispatchDraw(nullptr, RHICmdList);
 				});
 			}
-
-			if (!View.Family->bMultiGPUForkAndJoin)
-			{
-				VelocityLoadAction = ERenderTargetLoadAction::ELoad;
-			}
 		}
 	}
 }
@@ -375,10 +362,10 @@ EPixelFormat FVelocityRendering::GetFormat(EShaderPlatform ShaderPlatform)
 	return FDataDrivenShaderPlatformInfo::GetSupportsRayTracing(ShaderPlatform) ? PF_A16B16G16R16 : PF_G16R16;
 }
 
-FPooledRenderTargetDesc FVelocityRendering::GetRenderTargetDesc(EShaderPlatform ShaderPlatform)
+FRDGTextureDesc FVelocityRendering::GetRenderTargetDesc(EShaderPlatform ShaderPlatform)
 {
 	const FIntPoint BufferSize = FSceneRenderTargets::Get_FrameConstantsOnly().GetBufferSizeXY();
-	return FPooledRenderTargetDesc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetFormat(ShaderPlatform), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource, false));
+	return FRDGTextureDesc::Create2D(BufferSize, GetFormat(ShaderPlatform), FClearValueBinding::Transparent, TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource);
 }
 
 bool FVelocityRendering::IsSeparateVelocityPassSupported(EShaderPlatform ShaderPlatform)

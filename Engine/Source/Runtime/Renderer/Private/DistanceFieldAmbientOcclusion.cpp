@@ -355,7 +355,12 @@ private:
 
 IMPLEMENT_SHADER_TYPE(,FComputeDistanceFieldNormalCS,TEXT("/Engine/Private/DistanceFieldScreenGridLighting.usf"),TEXT("ComputeDistanceFieldNormalCS"),SF_Compute);
 
-void ComputeDistanceFieldNormal(FRDGBuilder& GraphBuilder, const TArray<FViewInfo>& Views, FRDGTextureRef DistanceFieldNormal, const FDistanceFieldAOParameters& Parameters)
+void ComputeDistanceFieldNormal(
+	FRDGBuilder& GraphBuilder,
+	const TArray<FViewInfo>& Views,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+	FRDGTextureRef DistanceFieldNormal,
+	const FDistanceFieldAOParameters& Parameters)
 {
 	if (GAOComputeShaderNormalCalculation)
 	{
@@ -369,7 +374,7 @@ void ComputeDistanceFieldNormal(FRDGBuilder& GraphBuilder, const TArray<FViewInf
 
 			auto* PassParameters = GraphBuilder.AllocParameters<FComputeDistanceFieldNormalCS::FParameters>();
 			PassParameters->View = View.ViewUniformBuffer;
-			PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View);
+			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 			PassParameters->RWDistanceFieldNormal = GraphBuilder.CreateUAV(DistanceFieldNormal);
 
 			TShaderMapRef<FComputeDistanceFieldNormalCS> ComputeShader(View.ShaderMap);
@@ -398,7 +403,7 @@ void ComputeDistanceFieldNormal(FRDGBuilder& GraphBuilder, const TArray<FViewInf
 
 			auto* PassParameters = GraphBuilder.AllocParameters<FComputeDistanceFieldNormalPS::FParameters>();
 			PassParameters->View = View.ViewUniformBuffer;
-			PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View);
+			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(DistanceFieldNormal, ViewIndex == 0 ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);
 
 			GraphBuilder.AddPass(
@@ -807,7 +812,7 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldLighting(
 		CullObjectsToView(GraphBuilder, Scene, View, Parameters, GAOCulledObjectBuffers);
 	}
 
-	ComputeDistanceFieldNormal(GraphBuilder, Views, DistanceFieldNormal, Parameters);
+	ComputeDistanceFieldNormal(GraphBuilder, Views, SceneTexturesUniformBuffer, DistanceFieldNormal, Parameters);
 
 	// Intersect objects with screen tiles, build lists
 	if (UseAOObjectDistanceField())
@@ -820,7 +825,8 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldLighting(
 	RenderDistanceFieldAOScreenGrid(
 		GraphBuilder,
 		View,
-		Parameters, 
+		Parameters,
+		SceneTexturesUniformBuffer,
 		VelocityTexture,
 		DistanceFieldNormal,
 		BentNormalOutput);
@@ -841,7 +847,7 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldLighting(
 	// Upsample to full resolution, write to output in case of debug AO visualization or scene color modulation (standard upsampling is done later together with sky lighting and reflection environment)
 	if (bModulateToSceneColor || bVisualizeAmbientOcclusion)
 	{
-		UpsampleBentNormalAO(GraphBuilder, Views, SceneColorTexture, BentNormalOutput, bModulateToSceneColor && !bVisualizeAmbientOcclusion);
+		UpsampleBentNormalAO(GraphBuilder, Views, SceneTexturesUniformBuffer, SceneColorTexture, BentNormalOutput, bModulateToSceneColor && !bVisualizeAmbientOcclusion);
 	}
 
 	OutDynamicBentNormalAO = BentNormalOutput;

@@ -1333,7 +1333,7 @@ void FSceneRenderTargets::AllocGBufferTargets(FRHICommandList& RHICmdList)
 
 	if (bAllocateVelocityGBuffer)
 	{
-		FPooledRenderTargetDesc VelocityRTDesc = FVelocityRendering::GetRenderTargetDesc(ShaderPlatform);
+		FPooledRenderTargetDesc VelocityRTDesc = Translate(FVelocityRendering::GetRenderTargetDesc(ShaderPlatform));
 		VelocityRTDesc.Flags |= GFastVRamConfig.GBufferVelocity;
 		GRenderTargetPool.FindFreeElement(RHICmdList, VelocityRTDesc, SceneVelocity, TEXT("GBufferVelocity"));
 	}
@@ -2040,7 +2040,7 @@ void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandLi
 
 	if (bAllocateVelocityGBuffer)
 	{
-		FPooledRenderTargetDesc VelocityRTDesc = FVelocityRendering::GetRenderTargetDesc(ShaderPlatform);
+		FPooledRenderTargetDesc VelocityRTDesc = Translate(FVelocityRendering::GetRenderTargetDesc(ShaderPlatform));
 		VelocityRTDesc.Flags |= GFastVRamConfig.GBufferVelocity;
 		GRenderTargetPool.FindFreeElement(RHICmdList, VelocityRTDesc, SceneVelocity, TEXT("GBufferVelocity"));
 	}
@@ -2618,7 +2618,6 @@ IMPLEMENT_STATIC_UNIFORM_BUFFER_STRUCT(FSceneTextureUniformParameters, "SceneTex
 
 void SetupSceneTextureUniformParameters(
 	FRDGBuilder* GraphBuilder,
-	const FSceneView* View,
 	ERHIFeatureLevel::Type FeatureLevel,
 	const FSceneRenderTargets& SceneContext,
 	ESceneTextureSetupMode SetupMode,
@@ -2698,42 +2697,42 @@ void SetupSceneTextureUniformParameters(
 
 void SetupSceneTextureUniformParameters(
 	const FSceneRenderTargets& SceneContext,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode,
 	FSceneTextureUniformParameters& SceneTextureParameters)
 {
-	SetupSceneTextureUniformParameters(nullptr, &View, View.FeatureLevel, SceneContext, SetupMode, SceneTextureParameters);
+	SetupSceneTextureUniformParameters(nullptr, FeatureLevel, SceneContext, SetupMode, SceneTextureParameters);
 }
 
 void SetupSceneTextureUniformParameters(
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode,
 	FSceneTextureUniformParameters& SceneTextureParameters)
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-	SetupSceneTextureUniformParameters(&GraphBuilder, &View, View.FeatureLevel, SceneContext, SetupMode, SceneTextureParameters);
+	SetupSceneTextureUniformParameters(&GraphBuilder, FeatureLevel, SceneContext, SetupMode, SceneTextureParameters);
 }
 
 TUniformBufferRef<FSceneTextureUniformParameters> CreateSceneTextureUniformBuffer(
 	FRHIComputeCommandList& RHICmdList,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode)
 {
 	FSceneTextureUniformParameters SceneTextures;
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	SetupSceneTextureUniformParameters(nullptr, &View, View.FeatureLevel, SceneContext, SetupMode, SceneTextures);
+	SetupSceneTextureUniformParameters(nullptr, FeatureLevel, SceneContext, SetupMode, SceneTextures);
 	return TUniformBufferRef<FSceneTextureUniformParameters>::CreateUniformBufferImmediate(SceneTextures, EUniformBufferUsage::UniformBuffer_SingleFrame);
 }
 
 TRDGUniformBufferRef<FSceneTextureUniformParameters> CreateSceneTextureUniformBuffer(
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode)
 {
 	FSceneTextureUniformParameters* SceneTextures = GraphBuilder.AllocParameters<FSceneTextureUniformParameters>();
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-	SetupSceneTextureUniformParameters(&GraphBuilder, &View, View.FeatureLevel, SceneContext, SetupMode, *SceneTextures);
+	SetupSceneTextureUniformParameters(&GraphBuilder, FeatureLevel, SceneContext, SetupMode, *SceneTextures);
 	return GraphBuilder.CreateUniformBuffer(SceneTextures, TEXT("SceneTextures"));
 }
 
@@ -2755,7 +2754,6 @@ IMPLEMENT_STATIC_UNIFORM_BUFFER_STRUCT(FMobileSceneTextureUniformParameters, "Mo
 
 static void SetupMobileSceneTextureUniformParameters(
 	FRDGBuilder* GraphBuilder,
-	const FSceneView* View,
 	const FSceneRenderTargets& SceneContext,
 	EMobileSceneTextureSetupMode SetupMode,
 	FMobileSceneTextureUniformParameters& SceneTextureParameters)
@@ -2831,90 +2829,67 @@ static void SetupMobileSceneTextureUniformParameters(
 
 void SetupMobileSceneTextureUniformParameters(
 	const FSceneRenderTargets& SceneContext,
-	const FSceneView& View,
 	EMobileSceneTextureSetupMode SetupMode,
 	FMobileSceneTextureUniformParameters& SceneTextureParameters)
 {
-	SetupMobileSceneTextureUniformParameters(nullptr, &View, SceneContext, SetupMode, SceneTextureParameters);
+	SetupMobileSceneTextureUniformParameters(nullptr, SceneContext, SetupMode, SceneTextureParameters);
 }
 
 TUniformBufferRef<FMobileSceneTextureUniformParameters> CreateMobileSceneTextureUniformBuffer(
 	FRHIComputeCommandList& RHICmdList,
-	const FSceneView& View,
 	EMobileSceneTextureSetupMode SetupMode)
 {
 	FMobileSceneTextureUniformParameters SceneTextures;
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	SetupMobileSceneTextureUniformParameters(nullptr, &View, SceneContext, SetupMode, SceneTextures);
+	SetupMobileSceneTextureUniformParameters(nullptr, SceneContext, SetupMode, SceneTextures);
 	return TUniformBufferRef<FMobileSceneTextureUniformParameters>::CreateUniformBufferImmediate(SceneTextures, EUniformBufferUsage::UniformBuffer_SingleFrame);
 }
 
 TRDGUniformBufferRef<FMobileSceneTextureUniformParameters> CreateMobileSceneTextureUniformBuffer(
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
 	EMobileSceneTextureSetupMode SetupMode)
 {
 	FMobileSceneTextureUniformParameters* SceneTextures = GraphBuilder.AllocParameters<FMobileSceneTextureUniformParameters>();
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-	SetupMobileSceneTextureUniformParameters(&GraphBuilder, &View, SceneContext, SetupMode, *SceneTextures);
+	SetupMobileSceneTextureUniformParameters(&GraphBuilder, SceneContext, SetupMode, *SceneTextures);
 	return GraphBuilder.CreateUniformBuffer(SceneTextures, TEXT("MobileSceneTextures"));
 }
 
 FSceneTextureShaderParameters CreateSceneTextureShaderParameters(
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode)
 {
 	FSceneTextureShaderParameters Parameters;
-	if (FSceneInterface::GetShadingPath(View.FeatureLevel) == EShadingPath::Deferred)
+	if (FSceneInterface::GetShadingPath(FeatureLevel) == EShadingPath::Deferred)
 	{
-		Parameters.SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View, SetupMode);
+		Parameters.SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, SetupMode);
 	}
-	else if (FSceneInterface::GetShadingPath(View.FeatureLevel) == EShadingPath::Mobile)
+	else if (FSceneInterface::GetShadingPath(FeatureLevel) == EShadingPath::Mobile)
 	{
-		Parameters.MobileSceneTextures = CreateMobileSceneTextureUniformBuffer(GraphBuilder, View, Translate(SetupMode));
+		Parameters.MobileSceneTextures = CreateMobileSceneTextureUniformBuffer(GraphBuilder, Translate(SetupMode));
 	}
 	return Parameters;
 }
 
 TRefCountPtr<FRHIUniformBuffer> CreateSceneTextureUniformBufferDependentOnShadingPath(
 	FRHIComputeCommandList& RHICmdList,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode)
 {
-	if (FSceneInterface::GetShadingPath(View.FeatureLevel) == EShadingPath::Deferred)
+	if (FSceneInterface::GetShadingPath(FeatureLevel) == EShadingPath::Deferred)
 	{
-		return CreateSceneTextureUniformBuffer(RHICmdList, View, SetupMode);
+		return CreateSceneTextureUniformBuffer(RHICmdList, FeatureLevel, SetupMode);
 	}
-	else if (FSceneInterface::GetShadingPath(View.FeatureLevel) == EShadingPath::Mobile)
+	else if (FSceneInterface::GetShadingPath(FeatureLevel) == EShadingPath::Mobile)
 	{
-		return CreateMobileSceneTextureUniformBuffer(RHICmdList, View, Translate(SetupMode));
+		return CreateMobileSceneTextureUniformBuffer(RHICmdList, Translate(SetupMode));
 	}
 	checkNoEntry();
 	return nullptr;
 }
 
 /** Deprecated APIs */
-
-void SetupSceneTextureUniformParameters(
-	FSceneRenderTargets& SceneContext,
-	ERHIFeatureLevel::Type FeatureLevel,
-	ESceneTextureSetupMode SetupMode,
-	FSceneTextureUniformParameters& OutParameters)
-{
-	SetupSceneTextureUniformParameters(nullptr, nullptr, FeatureLevel, SceneContext, SetupMode, OutParameters);
-}
-
-TUniformBufferRef<FSceneTextureUniformParameters> CreateSceneTextureUniformBuffer(
-	FSceneRenderTargets& SceneContext,
-	ERHIFeatureLevel::Type FeatureLevel,
-	ESceneTextureSetupMode SetupMode,
-	EUniformBufferUsage Usage)
-{
-	FSceneTextureUniformParameters SceneTextures;
-	SetupSceneTextureUniformParameters(nullptr, nullptr, FeatureLevel, SceneContext, SetupMode, SceneTextures);
-	return TUniformBufferRef<FSceneTextureUniformParameters>::CreateUniformBufferImmediate(SceneTextures, EUniformBufferUsage::UniformBuffer_SingleFrame);
-}
 
 void SetupMobileSceneTextureUniformParameters(
 	FSceneRenderTargets& SceneContext,
@@ -2932,5 +2907,5 @@ void SetupMobileSceneTextureUniformParameters(
 	{
 		SetupMode |= EMobileSceneTextureSetupMode::CustomDepth;
 	}
-	SetupMobileSceneTextureUniformParameters(nullptr, nullptr, SceneContext, SetupMode, SceneTextureParameters);
+	SetupMobileSceneTextureUniformParameters(nullptr, SceneContext, SetupMode, SceneTextureParameters);
 }

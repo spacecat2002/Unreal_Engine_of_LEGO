@@ -17,6 +17,7 @@ extern void UpdateHistory(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	const TCHAR* BentNormalHistoryRTName,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureRef VelocityTexture,
 	FRDGTextureRef BentNormalInterpolation,
 	FRDGTextureRef DistanceFieldNormal,
@@ -30,6 +31,7 @@ extern void UpdateHistory(
 extern void UpsampleBentNormalAO(
 	FRDGBuilder& GraphBuilder,
 	const TArray<FViewInfo>& Views,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef DistanceFieldAOBentNormal,
 	bool bModulateSceneColor);

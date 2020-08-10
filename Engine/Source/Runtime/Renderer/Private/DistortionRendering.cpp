@@ -63,7 +63,7 @@ void SetupDistortionParams(FVector4& DistortionParams, const FViewInfo& View)
 TRDGUniformBufferRef<FDistortionPassUniformParameters> CreateDistortionPassUniformBuffer(FRDGBuilder& GraphBuilder, const FViewInfo& View)
 {
 	auto* Parameters = GraphBuilder.AllocParameters<FDistortionPassUniformParameters>();
-	SetupSceneTextureUniformParameters(GraphBuilder, View, ESceneTextureSetupMode::All, Parameters->SceneTextures);
+	SetupSceneTextureUniformParameters(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::All, Parameters->SceneTextures);
 	SetupDistortionParams(Parameters->DistortionParams, View);
 	return GraphBuilder.CreateUniformBuffer(Parameters, TEXT("DistortionPass"));
 }
@@ -71,7 +71,7 @@ TRDGUniformBufferRef<FDistortionPassUniformParameters> CreateDistortionPassUnifo
 void SetupMobileDistortionPassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMobileDistortionPassUniformParameters& DistortionPassParameters)
 {
 	FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
-	SetupMobileSceneTextureUniformParameters(SceneRenderTargets, View, EMobileSceneTextureSetupMode::All, DistortionPassParameters.SceneTextures);
+	SetupMobileSceneTextureUniformParameters(SceneRenderTargets, EMobileSceneTextureSetupMode::All, DistortionPassParameters.SceneTextures);
 	SetupDistortionParams(DistortionPassParameters.DistortionParams, View);
 }
 

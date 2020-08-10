@@ -45,7 +45,7 @@ TRDGUniformBufferRef<FVoxelizeVolumePassUniformParameters> CreateVoxelizeVolumeP
 	FVector2D Jitter)
 {
 	auto* Parameters = GraphBuilder.AllocParameters<FVoxelizeVolumePassUniformParameters>();
-	SetupSceneTextureUniformParameters(GraphBuilder, View, ESceneTextureSetupMode::None, Parameters->SceneTextures);
+	SetupSceneTextureUniformParameters(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::None, Parameters->SceneTextures);
 
 	Parameters->ViewToVolumeClip = View.ViewMatrices.ComputeProjectionNoAAMatrix();
 	Parameters->ViewToVolumeClip.M[2][0] += Jitter.X;

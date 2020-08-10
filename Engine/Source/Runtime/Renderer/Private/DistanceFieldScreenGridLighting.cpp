@@ -438,7 +438,8 @@ IMPLEMENT_SHADER_TYPE(,FCombineConeVisibilityCS,TEXT("/Engine/Private/DistanceFi
 void PostProcessBentNormalAOScreenGrid(
 	FRDGBuilder& GraphBuilder, 
 	const FDistanceFieldAOParameters& Parameters, 
-	const FViewInfo& View, 
+	const FViewInfo& View,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureRef VelocityTexture,
 	FRDGTextureRef BentNormalInterpolation,
 	FRDGTextureRef DistanceFieldNormal,
@@ -450,8 +451,9 @@ void PostProcessBentNormalAOScreenGrid(
 
 	UpdateHistory(
 		GraphBuilder,
-		View, 
+		View,
 		TEXT("DistanceFieldAOHistory"),
+		SceneTexturesUniformBuffer,
 		VelocityTexture,
 		DistanceFieldNormal,
 		BentNormalInterpolation,
@@ -477,6 +479,7 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldAOScreenGrid(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	const FDistanceFieldAOParameters& Parameters,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureRef VelocityTexture,
 	FRDGTextureRef DistanceFieldNormal,
 	FRDGTextureRef& OutDynamicBentNormalAO)
@@ -510,7 +513,7 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldAOScreenGrid(
 
 	{
 		FDistanceFieldAOScreenGridParameters* PassParameters = GraphBuilder.AllocParameters<FDistanceFieldAOScreenGridParameters>();
-		PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View);
+		PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 		PassParameters->DistanceFieldNormal = DistanceFieldNormal;
 
 		GraphBuilder.AddPass(
@@ -638,6 +641,7 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldAOScreenGrid(
 		GraphBuilder,
 		Parameters,
 		View,
+		SceneTexturesUniformBuffer,
 		VelocityTexture,
 		DownsampledBentNormal,
 		DistanceFieldNormal,

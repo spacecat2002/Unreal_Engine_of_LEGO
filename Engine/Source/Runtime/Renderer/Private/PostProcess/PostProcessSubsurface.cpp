@@ -228,7 +228,7 @@ FSubsurfaceParameters GetSubsurfaceCommonParameters(FRDGBuilder& GraphBuilder, c
 
 	if (!SceneTextures)
 	{
-		SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View);
+		SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View.FeatureLevel);
 	}
 
 	FSubsurfaceParameters Parameters;

@@ -265,7 +265,7 @@ void FRenderingCompositePassContext::Process(const TArray<FRenderingCompositePas
 		Graph.RecursivelyGatherDependencies(Root);
 	}
 
-	SceneTexturesUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View);
+	SceneTexturesUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, FeatureLevel);
 
 	if(bNewOrder)
 	{

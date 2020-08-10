@@ -580,7 +580,8 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 					}
 					else
 					{
-						SceneRenderer.RenderSkyAtmosphereInternal(GraphBuilder, SkyRC);
+						FSceneTextureShaderParameters SceneTextures = CreateSceneTextureShaderParameters(GraphBuilder, SceneRenderer.FeatureLevel, ESceneTextureSetupMode::SceneDepth);
+						SceneRenderer.RenderSkyAtmosphereInternal(GraphBuilder, SceneTextures, SkyRC);
 					}
 
 					// Also render the height fog as part of the sky render pass when time slicing is enabled.

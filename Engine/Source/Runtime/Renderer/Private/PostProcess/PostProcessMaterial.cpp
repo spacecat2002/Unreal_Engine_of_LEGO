@@ -467,8 +467,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 	const bool bMobilePlatform = IsMobilePlatform(View.GetShaderPlatform());
 
 	FPostProcessMaterialParameters* PostProcessMaterialParameters = GraphBuilder.AllocParameters<FPostProcessMaterialParameters>();
-
-	PostProcessMaterialParameters->SceneTextures = CreateSceneTextureShaderParameters(GraphBuilder, View, ESceneTextureSetupMode::All);
+	PostProcessMaterialParameters->SceneTextures = Inputs.SceneTextures;
 	PostProcessMaterialParameters->View = View.ViewUniformBuffer;
 	if (bMobilePlatform)
 	{
@@ -731,6 +730,7 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 
 		FPostProcessMaterialInputs Inputs;
 		Inputs.OutputFormat = OverrideOutputFormat;
+		Inputs.SceneTextures = CreateSceneTextureShaderParameters(GraphBuilder, InContext.GetFeatureLevel());
 
 		// Either finds the overridden frame buffer target or returns null.
 		if (FRDGTextureRef OutputTexture = Pass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBufferOverride")))
@@ -864,6 +864,7 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 		FPostProcessMaterialInputs PassInputs;
 		PassSequence.AcceptOverrideIfLastPass(EPass::Material, PassInputs.OverrideOutput);
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		Output = AddPostProcessMaterialPass(GraphBuilder, View, PassInputs, Inputs.Material);
 	}
@@ -874,6 +875,7 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 
 		FPostProcessMaterialInputs PassInputs;
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		// Disallow the scene color input as output optimization since we need to not pollute the scene texture.
 		PassInputs.bAllowSceneColorInputAsOutput = false;
@@ -897,6 +899,7 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 		FPostProcessMaterialInputs PassInputs;
 		PassSequence.AcceptOverrideIfLastPass(EPass::CaptureRegionMaterial, PassInputs.OverrideOutput);
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		Output = AddPostProcessMaterialPass(GraphBuilder, View, PassInputs, Inputs.CaptureRegionMaterial);
 	}
@@ -915,6 +918,7 @@ void AddHighResScreenshotMask(FPostprocessContext& Context)
 		FHighResolutionScreenshotMaskInputs PassInputs;
 		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
 		PassInputs.SceneColor.ViewRect = InContext.SceneColorViewRect;
+		PassInputs.SceneTextures = CreateSceneTextureShaderParameters(GraphBuilder, InContext.GetFeatureLevel());
 
 		if (FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer")))
 		{

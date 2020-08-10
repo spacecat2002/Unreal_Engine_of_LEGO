@@ -621,13 +621,15 @@ void BuildTileObjectLists(FRDGBuilder& GraphBuilder, FScene* Scene, TArray<FView
 {
 	RDG_EVENT_SCOPE(GraphBuilder, "BuildTileList");
 
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Scene->GetFeatureLevel());
+
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		const FViewInfo& View = Views[ViewIndex];
 		RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 		auto* PassParameters = GraphBuilder.AllocParameters<FBuildTileObjectListParameters>();
-		PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View);
+		PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 		PassParameters->DistanceFieldNormal = DistanceFieldNormal;
 
 		// TODO(RDG) Port all of these into respective passes.
