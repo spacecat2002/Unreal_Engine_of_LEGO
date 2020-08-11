@@ -82,6 +82,11 @@ bool UVolumeTexture::UpdateSourceFromSourceTexture()
 	{
 		Source.Init(0, 0, 0, 0, TSF_Invalid, nullptr);
 		SourceLightingGuid.Invalidate();
+
+		if (PlatformData)
+		{
+			*PlatformData = FTexturePlatformData();
+		}
 	}
 
 	UpdateMipGenSettings();
@@ -608,7 +613,7 @@ void UVolumeTexture::PostEditChangeProperty(FPropertyChangedEvent& PropertyChang
 		const FName PropertyName = PropertyChangedEvent.Property->GetFName();
 
 		// Set default tile size if none is currently specified.
-		if (PropertyName == SourceTextureName && !Source2DTileSizeX && !Source2DTileSizeY)
+		if (PropertyName == SourceTextureName)
 		{
 			SetDefaultSource2DTileSize();
 		}
