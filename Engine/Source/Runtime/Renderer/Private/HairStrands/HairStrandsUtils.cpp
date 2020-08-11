@@ -34,11 +34,19 @@ static FAutoConsoleVariableRef CVarDeepShadowAABBScale(TEXT("r.HairStrands.DeepS
 static int32 GHairVisibilityRectOptimEnable = 0;
 static FAutoConsoleVariableRef CVarHairVisibilityRectOptimEnable(TEXT("r.HairStrands.RectLightingOptim"), GHairVisibilityRectOptimEnable, TEXT("Hair Visibility use projected view rect to light only relevant pixels"));
 
+static int32 GHairStrandsComposeAfterTranslucency = 1;
+static FAutoConsoleVariableRef CVarHairStrandsComposeAfterTranslucency(TEXT("r.HairStrands.ComposeAfterTranslucency"), GHairStrandsComposeAfterTranslucency, TEXT("Compose hair rendering with scene color after the translucency pass if true. Otherwise compose hair defor the translucent objects are rendered."));
+
 static float GHairDualScatteringRoughnessOverride = 0;
 static FAutoConsoleVariableRef CVarHairDualScatteringRoughnessOverride(TEXT("r.HairStrands.DualScatteringRoughness"), GHairDualScatteringRoughnessOverride, TEXT("Override all roughness for the dual scattering evaluation. 0 means no override. Default:0"));
 float GetHairDualScatteringRoughnessOverride()
 {
 	return GHairDualScatteringRoughnessOverride;
+}
+
+bool IsHairStrandsComposeAfterTranslucency()
+{
+	return GHairStrandsComposeAfterTranslucency > 0;
 }
 
 float GetDeepShadowAABBScale()

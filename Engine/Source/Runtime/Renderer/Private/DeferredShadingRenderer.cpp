@@ -2787,6 +2787,11 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	GRenderTargetPool.AddPhaseEvent(TEXT("Translucency"));
 
+	if (HairDatas && !IsHairStrandsComposeAfterTranslucency())
+	{
+		RenderHairComposition(RHICmdList, Views, HairDatas);
+	}
+
 	// Draw translucency.
 	if (bHasAnyViewsAbovewater && bCanOverlayRayTracingOutput && ViewFamily.EngineShowFlags.Translucency && !ViewFamily.EngineShowFlags.VisualizeLightCulling && !ViewFamily.UseDebugViewPS())
 	{
@@ -2846,7 +2851,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	{
 		SCOPED_GPU_STAT(RHICmdList, HairRendering);
-		if (HairDatas)
+		if (HairDatas && IsHairStrandsComposeAfterTranslucency())
 		{
 			RenderHairComposition(RHICmdList, Views, HairDatas);
 		}
