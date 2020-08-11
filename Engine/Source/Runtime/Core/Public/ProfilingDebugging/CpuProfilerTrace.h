@@ -86,6 +86,9 @@ struct FCpuProfilerTrace
 #define TRACE_CPUPROFILER_SHUTDOWN() \
 	FCpuProfilerTrace::Shutdown();
 
+// Trace a scoped cpu timing event providing a static string (const ANSICHAR* or const TCHAR*)
+// as the scope name and a trace channel.
+// Example: TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL_STR("My Scoped Timer A", CpuChannel)
 #define TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL_STR(NameStr, Channel) \
 	static uint32 PREPROCESSOR_JOIN(__CpuProfilerEventSpecId, __LINE__); \
 	if (bool(Channel) && PREPROCESSOR_JOIN(__CpuProfilerEventSpecId, __LINE__) == 0) { \
@@ -93,15 +96,40 @@ struct FCpuProfilerTrace
 	} \
 	FCpuProfilerTrace::FEventScope PREPROCESSOR_JOIN(__CpuProfilerEventScope, __LINE__)(PREPROCESSOR_JOIN(__CpuProfilerEventSpecId, __LINE__), Channel);
 
+// Trace a scoped cpu timing event providing a scope name (plain text) and a trace channel.
+// Example: TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL(MyScopedTimer::A, CpuChannel)
+// Note: Do not use this macro with a static string because, in that case, additional quotes will
+//       be added around the event scope name.
 #define TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL(Name, Channel) \
 	TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL_STR(#Name, Channel)
 
+// Trace a scoped cpu timing event providing a static string (const ANSICHAR* or const TCHAR*)
+// as the scope name. It will use the Cpu trace channel.
+// Example: TRACE_CPUPROFILER_EVENT_SCOPE_STR("My Scoped Timer A")
+#define TRACE_CPUPROFILER_EVENT_SCOPE_STR(NameStr) \
+	TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL_STR(NameStr, CpuChannel)
+
+// Trace a scoped cpu timing event providing a scope name (plain text) and a trace channel.
+// It will use the Cpu trace channel.
+// Example: TRACE_CPUPROFILER_EVENT_SCOPE(MyScopedTimer::A)
+// Note: Do not use this macro with a static string because, in that case, additional quotes will
+//       be added around the event scope name.
 #define TRACE_CPUPROFILER_EVENT_SCOPE(Name) \
 	TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL(Name, CpuChannel)
 
+// Trace a scoped cpu timing event providing a dynamic string (const ANSICHAR* or const TCHAR*)
+// as the scope name and a trace channel.
+// Example: TRACE_CPUPROFILER_EVENT_SCOPE_TEXT_ON_CHANNEL(*MyScopedTimerNameString, CpuChannel)
+// Note: This macro has a larger overhead compared to macro that accepts a plain text name
+//       or a static string. Use it only if scope name really needs to be a dynamic string.
 #define TRACE_CPUPROFILER_EVENT_SCOPE_TEXT_ON_CHANNEL(Name, Channel) \
 	FCpuProfilerTrace::FDynamicEventScope PREPROCESSOR_JOIN(__CpuProfilerEventScope, __LINE__)(Name, Channel);
-	
+
+// Trace a scoped cpu timing event providing a dynamic string (const ANSICHAR* or const TCHAR*)
+// as the scope name. It will use the Cpu trace channel.
+// Example: TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(*MyScopedTimerNameString)
+// Note: This macro has a larger overhead compared to macro that accepts a plain text name
+//       or a static string. Use it only if scope name really needs to be a dynamic string.
 #define TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(Name) \
 	TRACE_CPUPROFILER_EVENT_SCOPE_TEXT_ON_CHANNEL(Name, CpuChannel)
 
@@ -110,6 +138,7 @@ struct FCpuProfilerTrace
 #define TRACE_CPUPROFILER_SHUTDOWN()
 #define TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL_STR(NameStr, Channel)
 #define TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL(Name, Channel)
+#define TRACE_CPUPROFILER_EVENT_SCOPE_STR(NameStr)
 #define TRACE_CPUPROFILER_EVENT_SCOPE(Name)
 #define TRACE_CPUPROFILER_EVENT_SCOPE_TEXT_ON_CHANNEL(Name, Channel)
 #define TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(Name)

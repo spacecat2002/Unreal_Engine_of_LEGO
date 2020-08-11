@@ -118,19 +118,19 @@ public:
 
 #define SCOPED_NAMED_EVENT(Name, Color)\
 	FScopedNamedEventStatic ANONYMOUS_VARIABLE(NamedEvent_##Name##_)(Color, NAMED_EVENT_STR(#Name));\
-	TRACE_CPUPROFILER_EVENT_SCOPE(#Name);
+	TRACE_CPUPROFILER_EVENT_SCOPE(Name);
 
 #define SCOPED_NAMED_EVENT_FSTRING(Text, Color)\
 	FScopedNamedEvent ANONYMOUS_VARIABLE(NamedEvent_)(Color, *Text);\
 	TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(*Text);
 
 #define SCOPED_NAMED_EVENT_TCHAR(Text, Color)\
-    FScopedNamedEvent ANONYMOUS_VARIABLE(NamedEvent_)(Color, Text);\
+	FScopedNamedEvent ANONYMOUS_VARIABLE(NamedEvent_)(Color, Text);\
 	TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(Text);
 
 #define SCOPED_NAMED_EVENT_TEXT(Text, Color)\
 	FScopedNamedEventStatic ANONYMOUS_VARIABLE(NamedEvent_)(Color, NAMED_EVENT_STR(Text));\
-	TRACE_CPUPROFILER_EVENT_SCOPE(NAMED_EVENT_STR(Text));
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(Text);
 
 #define SCOPED_NAMED_EVENT_F(Format, Color, ...)\
 	FScopedNamedEvent ANONYMOUS_VARIABLE(NamedEvent_)(Color, *FString::Printf(Format, __VA_ARGS__));\
