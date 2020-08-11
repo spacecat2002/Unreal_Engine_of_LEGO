@@ -1080,7 +1080,7 @@ IMPLEMENT_GLOBAL_SHADER(FCloudShadowTemporalProcessCS, "/Engine/Private/Volumetr
 
 
 
-void FSceneRenderer::InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList)
+void FSceneRenderer::InitVolumetricCloudsForViews(FRDGBuilder& GraphBuilder)
 {
 	if (Scene)
 	{
@@ -1254,12 +1254,9 @@ void FSceneRenderer::InitVolumetricCloudsForViews(FRHICommandListImmediate& RHIC
 			FMaterialRenderProxy* CloudVolumeMaterialProxy = CloudProxy.GetCloudVolumeMaterial()->GetRenderProxy();
 			if (CloudVolumeMaterialProxy->GetMaterial(ViewFamily.GetFeatureLevel())->GetMaterialDomain() == MD_Volume)
 			{
-				SCOPED_DRAW_EVENT(RHICmdList, VolumetricCloudShadow);
-				SCOPED_GPU_STAT(RHICmdList, VolumetricCloudShadow);
+				RDG_EVENT_SCOPE(GraphBuilder, "VolumetricCloudShadow");
+				RDG_GPU_STAT_SCOPE(GraphBuilder, VolumetricCloudShadow);
 
-				FRDGBuilder GraphBuilder(RHICmdList);
-
-				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 				TRefCountPtr<IPooledRenderTarget> BlackDummy = GSystemTextures.BlackDummy;
 				FRDGTextureRef BlackDummyRDG = GraphBuilder.RegisterExternalTexture(BlackDummy);
 
@@ -1450,8 +1447,6 @@ void FSceneRenderer::InitVolumetricCloudsForViews(FRHICommandListImmediate& RHIC
 					GenerateCloudTexture(AtmosphericLight0, 0);
 					GenerateCloudTexture(AtmosphericLight1, 1);
 				}
-
-				GraphBuilder.Execute();
 			}
 		}
 	}

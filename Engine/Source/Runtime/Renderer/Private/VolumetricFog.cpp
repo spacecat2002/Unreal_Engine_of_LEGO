@@ -926,16 +926,6 @@ void FDeferredShadingSceneRenderer::SetupVolumetricFog()
 	}
 }
 
-void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediate& RHICmdListImmediate)
-{
-	if (ShouldRenderVolumetricFog())
-	{
-		FRDGBuilder GraphBuilder(RHICmdListImmediate);
-		ComputeVolumetricFog(GraphBuilder);
-		GraphBuilder.Execute();
-	}
-}
-
 void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRDGBuilder& GraphBuilder)
 {
 	if (!ShouldRenderVolumetricFog())

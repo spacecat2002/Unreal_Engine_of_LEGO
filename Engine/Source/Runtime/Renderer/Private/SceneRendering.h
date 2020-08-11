@@ -1853,8 +1853,10 @@ protected:
 
 	/** Initialise sky atmosphere resources.*/
 	void InitSkyAtmosphereForViews(FRHICommandListImmediate& RHICmdList);
+	
 	/** Render the sky atmosphere look up table needed for this frame.*/
-	void RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& RHICmdList);
+	void RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder);
+
 	/** Render the sky atmosphere over the scene.*/
 	void RenderSkyAtmosphere(
 		FRDGBuilder& GraphBuilder,
@@ -1863,7 +1865,8 @@ protected:
 		FRDGTextureRef SceneDepthTexture);
 
 	/** Initialise volumetric cloud resources.*/
-	void InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList);
+	void InitVolumetricCloudsForViews(FRDGBuilder& GraphBuilder);
+
 	/** Render volumetric cloud. */
 	void RenderVolumetricCloud(
 		FRDGBuilder& GraphBuilder,

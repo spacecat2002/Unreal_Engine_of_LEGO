@@ -546,7 +546,9 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	const bool bShouldRenderSkyAtmosphere = ShouldRenderSkyAtmosphere(Scene, ViewFamily.EngineShowFlags);
 	if (bShouldRenderSkyAtmosphere)
 	{
-		RenderSkyAtmosphereLookUpTables(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderSkyAtmosphereLookUpTables(GraphBuilder);
+		GraphBuilder.Execute();
 	}
 
 	if (bUseVirtualTexturing)

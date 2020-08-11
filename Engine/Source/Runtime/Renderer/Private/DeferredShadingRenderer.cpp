@@ -1854,7 +1854,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bShouldRenderVolumetricCloud)
 	{
-		InitVolumetricCloudsForViews(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		InitVolumetricCloudsForViews(GraphBuilder);
+		GraphBuilder.Execute();
 	}
 
 	// Generate sky LUTs once all shadow map has been evaluated (for volumetric light shafts). Requires bOcclusionBeforeBasePass.
@@ -1862,7 +1864,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (bShouldRenderSkyAtmosphere)
 	{
 		// Generate the Sky/Atmosphere look up tables
-		RenderSkyAtmosphereLookUpTables(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderSkyAtmosphereLookUpTables(GraphBuilder);
+		GraphBuilder.Execute();
 	}
 
 	// Capture the SkyLight using the SkyAtmosphere and VolumetricCloud component if available.
@@ -1891,7 +1895,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bOcclusionBeforeBasePass)
 	{
-		ComputeVolumetricFog(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		ComputeVolumetricFog(GraphBuilder);
+		GraphBuilder.Execute();
 	}
 
 	FHairStrandsRenderingData* HairDatas = nullptr;

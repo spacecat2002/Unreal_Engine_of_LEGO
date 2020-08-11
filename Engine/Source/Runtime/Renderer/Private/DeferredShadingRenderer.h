@@ -617,7 +617,6 @@ private:
 		float VolumetricFogDistance);
 
 	void ComputeVolumetricFog(FRDGBuilder& GraphBuilder);
-	void ComputeVolumetricFog(FRHICommandListImmediate& RHICmdList);
 
 	void VisualizeVolumetricLightmap(
 		FRDGBuilder& GraphBuilder,
