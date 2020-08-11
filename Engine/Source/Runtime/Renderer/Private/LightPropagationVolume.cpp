@@ -19,6 +19,7 @@
 #include "DeferredShadingRenderer.h"
 #include "ScenePrivate.h"
 #include "LightPropagationVolumeSettings.h"
+#include "RenderGraphUtils.h"
 
 DECLARE_GPU_STAT(LPV);
 
@@ -1436,7 +1437,7 @@ void FSceneViewState::DestroyLightPropagationVolume()
 }
 
 
-void FDeferredShadingSceneRenderer::ClearLPVs(FRHICommandListImmediate& RHICmdList)
+void FDeferredShadingSceneRenderer::ClearLPVs(FRDGBuilder& GraphBuilder)
 {
 	SCOPE_CYCLE_COUNTER(STAT_UpdateLPVs);
 	bool bAnyViewHasLPVs = false;
@@ -1460,11 +1461,11 @@ void FDeferredShadingSceneRenderer::ClearLPVs(FRHICommandListImmediate& RHICmdLi
 
 	if (bAnyViewHasLPVs)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, ClearLPVs);
+		RDG_EVENT_SCOPE(GraphBuilder, "ClearLPVs");
 
 		for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
-			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
+			RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
 
 			FViewInfo& View = Views[ViewIndex];
 
@@ -1475,9 +1476,15 @@ void FDeferredShadingSceneRenderer::ClearLPVs(FRHICommandListImmediate& RHICmdLi
 
 				if(LightPropagationVolume)
 				{
-					SCOPED_GPU_STAT(RHICmdList, LPV);
-					LightPropagationVolume->InitSettings(RHICmdList, Views[ViewIndex]);
-					LightPropagationVolume->Clear(RHICmdList, View);
+					RDG_GPU_STAT_SCOPE(GraphBuilder, LPV);
+					LightPropagationVolume->InitSettings(GraphBuilder.RHICmdList, Views[ViewIndex]);
+
+					AddPass(
+						GraphBuilder,
+						[LightPropagationVolume, &View](FRHICommandListImmediate& RHICmdList)
+					{
+						LightPropagationVolume->Clear(RHICmdList, View);
+					});
 				}
 			}
 		}

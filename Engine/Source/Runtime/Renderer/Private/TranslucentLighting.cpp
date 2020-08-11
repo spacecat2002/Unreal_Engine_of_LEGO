@@ -1477,10 +1477,40 @@ static void AddLightForInjection(
 	}
 }
 
-/** Injects all the lights in LightInjectionData into the translucent lighting volume textures. */
-static void InjectTranslucentLightArray(FRDGBuilder& GraphBuilder, const FViewInfo& View, const TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>& LightInjectionData, int32 ViewIndex)
+static FRDGTextureRef GetSkyTransmittanceLutTexture(FRDGBuilder& GraphBuilder, FScene* Scene, const FViewInfo& View)
 {
-	AddUntrackedAccessPass(GraphBuilder, RDG_EVENT_NAME("InjectTranslucentLightArray"), [&View, &LightInjectionData, ViewIndex](FRHICommandListImmediate& RHICmdList)
+	FRDGTextureRef TransmittanceLutTexture = nullptr;
+	if (ShouldRenderSkyAtmosphere(Scene, View.Family->EngineShowFlags))
+	{
+		if (FSkyAtmosphereRenderSceneInfo* SkyInfo = Scene->GetSkyAtmosphereSceneInfo())
+		{
+			TRefCountPtr<IPooledRenderTarget>& TransmittanceLutTarget = SkyInfo->GetTransmittanceLutTexture();
+			TransmittanceLutTexture = GraphBuilder.RegisterExternalTexture(TransmittanceLutTarget, TEXT("TransmittanceLutTexture"));
+		}
+	}
+	return TransmittanceLutTexture;
+}
+
+BEGIN_SHADER_PARAMETER_STRUCT(FInjectTranslucentLightArrayParameters, )
+	RDG_TEXTURE_ACCESS(TransmittanceLutTexture, ERHIAccess::SRVGraphics)
+END_SHADER_PARAMETER_STRUCT()
+
+/** Injects all the lights in LightInjectionData into the translucent lighting volume textures. */
+static void InjectTranslucentLightArray(
+	FRDGBuilder& GraphBuilder,
+	FScene* Scene,
+	const FViewInfo& View,
+	const TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>& LightInjectionData,
+	int32 ViewIndex)
+{
+ 	FInjectTranslucentLightArrayParameters* PassParameters = GraphBuilder.AllocParameters<FInjectTranslucentLightArrayParameters>();
+ 	PassParameters->TransmittanceLutTexture = GetSkyTransmittanceLutTexture(GraphBuilder, Scene, View);
+
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("InjectTranslucentLightArray"),
+		PassParameters,
+		ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass | ERDGPassFlags::UntrackedAccess | ERDGPassFlags::NeverCull,
+		[&View, &LightInjectionData, ViewIndex](FRHICommandListImmediate& RHICmdList)
 	{
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 		INC_DWORD_STAT_BY(STAT_NumLightsInjectedIntoTranslucency, LightInjectionData.Num());
@@ -1597,7 +1627,7 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLighting(FRDGBuilder&
 		AddLightForInjection(*this, LightSceneInfo, InProjectedShadowInfo, LightInjectionData);
 
 		// shadowed or unshadowed (InProjectedShadowInfo==0)
-		InjectTranslucentLightArray(GraphBuilder, View, LightInjectionData, ViewIndex);
+		InjectTranslucentLightArray(GraphBuilder, Scene, View, LightInjectionData, ViewIndex);
 	}
 }
 
@@ -1630,7 +1660,7 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLightingArray(FRDGBui
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		// non-shadowed, non-light function lights
-		InjectTranslucentLightArray(GraphBuilder, Views[ViewIndex], LightInjectionData[ViewIndex], ViewIndex);
+		InjectTranslucentLightArray(GraphBuilder, Scene, Views[ViewIndex], LightInjectionData[ViewIndex], ViewIndex);
 	}
 }
 

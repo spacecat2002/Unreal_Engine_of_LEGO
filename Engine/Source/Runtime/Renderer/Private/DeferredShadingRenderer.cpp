@@ -1715,48 +1715,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 
-	const bool bShouldRenderSkyAtmosphere = ShouldRenderSkyAtmosphere(Scene, ViewFamily.EngineShowFlags);
-	const bool bShouldRenderVolumetricCloud = ShouldRenderVolumetricCloud(Scene, ViewFamily.EngineShowFlags);
-	bool bVolumetricRenderTargetRequired = bShouldRenderVolumetricCloud;
-
-	if (bVolumetricRenderTargetRequired)
-	{
-		InitVolumetricRenderTargetForViews(RHICmdList);
-	}
-
-	if (bShouldRenderVolumetricCloud)
-	{
-		FRDGBuilder GraphBuilder(RHICmdList);
-		InitVolumetricCloudsForViews(GraphBuilder);
-		GraphBuilder.Execute();
-	}
-
-	// Generate sky LUTs once all shadow map has been evaluated (for volumetric light shafts). Requires bOcclusionBeforeBasePass.
-	// This also must happen before the BasePass for Sky material to be able to sample valid LUTs.
-	if (bShouldRenderSkyAtmosphere)
-	{
-		// Generate the Sky/Atmosphere look up tables
-		FRDGBuilder GraphBuilder(RHICmdList);
-		RenderSkyAtmosphereLookUpTables(GraphBuilder);
-		GraphBuilder.Execute();
-	}
-
-	// Capture the SkyLight using the SkyAtmosphere and VolumetricCloud component if available.
-	const bool bRealTimeSkyCaptureEnabled = Scene->SkyLight && Scene->SkyLight->bRealTimeCaptureEnabled && Views.Num() > 0;
-	if (bRealTimeSkyCaptureEnabled)
-	{
-		FViewInfo& MainView = Views[0];
-		Scene->AllocateAndCaptureFrameSkyEnvMap(RHICmdList, *this, MainView, bShouldRenderSkyAtmosphere, bShouldRenderVolumetricCloud);
-	}
-
-	// Clear LPVs for all views
-	if (FeatureLevel >= ERHIFeatureLevel::SM5)
-	{
-		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_ClearLPVs);
-		ClearLPVs(RHICmdList);
-		ServiceLocalQueue();
-	}
-
 	FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("DeferredShadingRenderer_Render(ViewFamily=%s)", ViewFamily.bResolveScene ? TEXT("Primary") : TEXT("Auxiliary")));
 
 	const FIntPoint SceneTextureExtent = SceneContext.GetBufferSizeXY();
@@ -1767,6 +1725,44 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth);
 
+	const bool bShouldRenderSkyAtmosphere = ShouldRenderSkyAtmosphere(Scene, ViewFamily.EngineShowFlags);
+	const bool bShouldRenderVolumetricCloud = ShouldRenderVolumetricCloud(Scene, ViewFamily.EngineShowFlags);
+	bool bVolumetricRenderTargetRequired = bShouldRenderVolumetricCloud;
+
+	if (bVolumetricRenderTargetRequired)
+	{
+		InitVolumetricRenderTargetForViews(GraphBuilder);
+	}
+
+	if (bShouldRenderVolumetricCloud)
+	{
+		InitVolumetricCloudsForViews(GraphBuilder);
+	}
+
+	// Generate sky LUTs once all shadow map has been evaluated (for volumetric light shafts). Requires bOcclusionBeforeBasePass.
+	// This also must happen before the BasePass for Sky material to be able to sample valid LUTs.
+	if (bShouldRenderSkyAtmosphere)
+	{
+		// Generate the Sky/Atmosphere look up tables
+		RenderSkyAtmosphereLookUpTables(GraphBuilder);
+	}
+
+	// Capture the SkyLight using the SkyAtmosphere and VolumetricCloud component if available.
+	const bool bRealTimeSkyCaptureEnabled = Scene->SkyLight && Scene->SkyLight->bRealTimeCaptureEnabled && Views.Num() > 0;
+	if (bRealTimeSkyCaptureEnabled)
+	{
+		FViewInfo& MainView = Views[0];
+		Scene->AllocateAndCaptureFrameSkyEnvMap(GraphBuilder, *this, MainView, bShouldRenderSkyAtmosphere, bShouldRenderVolumetricCloud);
+	}
+
+	// Clear LPVs for all views
+	if (FeatureLevel >= ERHIFeatureLevel::SM5)
+	{
+		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_ClearLPVs);
+		ClearLPVs(GraphBuilder);
+		AddServiceLocalQueuePass(GraphBuilder);
+	}
+
 	if(GetCustomDepthPassLocation() == 0)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_CustomDepthPass0);
@@ -1775,9 +1771,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bOcclusionBeforeBasePass)
 	{
-		FRDGBuilder GraphBuilder(RHICmdList);
 		ComputeVolumetricFog(GraphBuilder);
-		GraphBuilder.Execute();
 	}
 
 	FHairStrandsRenderingData* HairDatas = nullptr;

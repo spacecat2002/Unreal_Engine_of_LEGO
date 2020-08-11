@@ -56,7 +56,7 @@ public:
 	void ClearGBufferAtMaxZ(FRHICommandList& RHICmdList);
 
 	/** Clears LPVs for all views */
-	void ClearLPVs(FRHICommandListImmediate& RHICmdList);
+	void ClearLPVs(FRDGBuilder& GraphBuilder);
 
 	/** Propagates LPVs for all views */
 	void UpdateLPVs(FRHICommandListImmediate& RHICmdList);

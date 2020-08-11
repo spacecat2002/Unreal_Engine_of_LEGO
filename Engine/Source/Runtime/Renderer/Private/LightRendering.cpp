@@ -1343,7 +1343,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 										FLightPropagationVolume* Lpv = ViewState->GetLightPropagationVolume(View.GetFeatureLevel());
 										if (Lpv && LightSceneInfo->Proxy)
 										{
-											AddUntrackedAccessPass(GraphBuilder, [Lpv, &LightSceneInfo, &View](FRHICommandListImmediate& RHICmdList)
+											AddUntrackedAccessPass(GraphBuilder, [Lpv, LightSceneInfo, &View](FRHICommandListImmediate& RHICmdList)
 											{
 												Lpv->InjectLightDirect(RHICmdList, *LightSceneInfo->Proxy, View);
 											});

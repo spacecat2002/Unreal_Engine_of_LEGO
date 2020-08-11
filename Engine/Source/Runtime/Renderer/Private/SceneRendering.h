@@ -1882,7 +1882,7 @@ protected:
 	bool ShouldRenderSkyAtmosphereEditorNotifications();
 
 	/** Initialise volumetric render target.*/
-	void InitVolumetricRenderTargetForViews(FRHICommandListImmediate& RHICmdList);
+	void InitVolumetricRenderTargetForViews(FRDGBuilder& GraphBuilder);
 	/** Process the volumetric render target, generating the high resolution version.*/
 	void ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder);
 	/** Compose the volumetric render target over the scene.*/

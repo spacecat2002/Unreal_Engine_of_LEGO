@@ -311,7 +311,7 @@ FUintVector4 FVolumetricRenderTargetViewStateData::GetTracingToFullResResolution
 	FSceneRenderer implementation.
 =============================================================================*/
 
-void FSceneRenderer::InitVolumetricRenderTargetForViews(FRHICommandListImmediate& RHICmdList)
+void FSceneRenderer::InitVolumetricRenderTargetForViews(FRDGBuilder& GraphBuilder)
 {
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
