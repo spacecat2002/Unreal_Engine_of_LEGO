@@ -498,10 +498,6 @@ class FMobileDistanceFieldShadowsAndLQLightMapPolicy : public TDistanceFieldShad
 public:
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-		if (IsMobileDeferredShading() && !UsePermutationWithMobileDeferred(Parameters))
-		{
-			return false;
-		}
 		static auto* CVarMobileAllowDistanceFieldShadows = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.AllowDistanceFieldShadows"));
 		const bool bMobileAllowDistanceFieldShadows = CVarMobileAllowDistanceFieldShadows->GetValueOnAnyThread() == 1;
 		return bMobileAllowDistanceFieldShadows && Super::ShouldCompilePermutation(Parameters);

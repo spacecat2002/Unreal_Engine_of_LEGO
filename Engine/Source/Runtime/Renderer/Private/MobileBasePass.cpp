@@ -79,6 +79,9 @@ void GetMobileBasePassShaders(
 	case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP:
 		GetUniformMobileBasePassShaders<LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
 		break;
+	case LMP_CACHED_POINT_INDIRECT_LIGHTING:
+		GetUniformMobileBasePassShaders<LMP_CACHED_POINT_INDIRECT_LIGHTING, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		break;
 	case LMP_NO_LIGHTMAP:
 		GetUniformMobileBasePassShaders<LMP_NO_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
 		break;
@@ -231,12 +234,6 @@ ELightMapPolicyType MobileBasePass::SelectMeshLightmapPolicy(
 	// Unlit uses NoLightmapPolicy with 0 point lights
 	ELightMapPolicyType SelectedLightmapPolicy = LMP_NO_LIGHTMAP;
 	
-	if (IsMobileDeferredShading() && !(IsTranslucentBlendMode(BlendMode) || ShadingModels.HasShadingModel(MSM_SingleLayerWater)))
-	{
-		return LMP_NO_LIGHTMAP;
-	}
-
-	
 	// Check for a cached light-map.
 	const bool bIsLitMaterial = ShadingModels.IsLit();
 	if (bIsLitMaterial)
@@ -268,29 +265,40 @@ ELightMapPolicyType MobileBasePass::SelectMeshLightmapPolicy(
 
 			if (bUseMovableLight)
 			{
-				SelectedLightmapPolicy = LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP;
-			}
-			else
-			{
-				if (ShadowMapInteraction.GetType() == SMIT_Texture && ReadOnlyCVARCache.bMobileAllowDistanceFieldShadows)
+				if (!IsMobileDeferredShading())
 				{
-					SelectedLightmapPolicy = LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP;
+					SelectedLightmapPolicy = LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP;
 				}
 				else
 				{
 					SelectedLightmapPolicy = LMP_LQ_LIGHTMAP;
 				}
 			}
+			else
+			{
+				if (ShadowMapInteraction.GetType() == SMIT_Texture &&
+					ReadOnlyCVARCache.bMobileAllowDistanceFieldShadows)
+				{
+					SelectedLightmapPolicy = LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP;
+				}
+			}
 		}
 		else if ((bHasValidVLM || bHasValidILC) && bPrimitiveUsesILC)
 		{
-			if (bUseMovableLight)
+			if (IsMobileDeferredShading())
 			{
-				SelectedLightmapPolicy = LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT;
+				SelectedLightmapPolicy = LMP_CACHED_POINT_INDIRECT_LIGHTING;
 			}
 			else
 			{
-				SelectedLightmapPolicy = LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT;
+				if (bUseMovableLight)
+				{
+					SelectedLightmapPolicy = LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT;
+				}
+				else
+				{
+					SelectedLightmapPolicy = LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT;
+				}
 			}
 		}
 	}
