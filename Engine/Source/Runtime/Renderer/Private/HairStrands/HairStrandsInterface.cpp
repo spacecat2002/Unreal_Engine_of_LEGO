@@ -52,7 +52,17 @@ bool IsHairStrandsEnable(EShaderPlatform Platform)
 
 bool IsHairRayTracingEnabled()
 {
-	return IsRayTracingEnabled() && GHairStrandsRaytracingEnable;
+	FString Commandline = FCommandLine::Get();
+	bool bIsCookCommandlet = IsRunningCommandlet() && Commandline.Contains(TEXT("run=cook"));
+
+	if (GIsRHIInitialized && !bIsCookCommandlet)
+	{
+		return IsRayTracingEnabled() && GHairStrandsRaytracingEnable;
+	}
+	else
+	{
+		return false;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

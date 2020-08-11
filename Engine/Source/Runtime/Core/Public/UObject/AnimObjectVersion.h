@@ -35,6 +35,9 @@ struct CORE_API FAnimObjectVersion
 		// Serialized register dynamic state for RigVM
 		SerializeRigVMRegisterDynamicState,
 
+		// Groom cards serialization
+		SerializeGroomCards,
+
 		// Serialized rigvm entry names
 		SerializeRigVMEntries,
 

@@ -3561,6 +3561,95 @@ void USkeletalMesh::InvalidateDeriveDataCacheGUID()
 	GetImportedModel()->GenerateNewGUID();
 }
 
+namespace InternalSkeletalMeshHelper
+{
+	/**
+	 * We want to recreate the LODMaterialMap correctly. The hypothesis is the original section will always be the same when we build the skeletalmesh
+	 * Max GPU bone per section which drive the chunking which can generate different number of section but the number of original section will always be the same.
+	 * So we simply reset the LODMaterialMap and rebuild it with the backup we took before building the skeletalmesh.
+	 */
+	void CreateLodMaterialMapBackup(const USkeletalMesh* SkeletalMesh, TMap<int32, TArray<uint16>>& BackupSectionsPerLOD)
+	{
+		if (!ensure(SkeletalMesh != nullptr))
+		{
+			return;
+		}
+		BackupSectionsPerLOD.Reset();
+		const FSkeletalMeshModel* ImportedModel = SkeletalMesh->GetImportedModel();
+		if (!ImportedModel)
+		{
+			return;
+		}
+		//Create the backup
+		for (int32 LODIndex = 0; LODIndex < SkeletalMesh->GetLODNum(); ++LODIndex)
+		{
+			const FSkeletalMeshLODInfo* LODInfoEntry = SkeletalMesh->GetLODInfo(LODIndex);
+			//Do not backup/restore LODMaterialMap if...
+			if (!ImportedModel->LODModels.IsValidIndex(LODIndex)
+				|| LODInfoEntry == nullptr
+				|| LODInfoEntry->LODMaterialMap.Num() == 0 //If there is no LODMaterialMap we have nothing to backup
+				|| SkeletalMesh->IsReductionActive(LODIndex) //Reduction will manage the LODMaterialMap, avoid backup restore
+				|| !SkeletalMesh->IsLODImportedDataBuildAvailable(LODIndex)) //Legacy asset are not build, avoid backup restore
+			{
+				continue;
+			}
+			const FSkeletalMeshLODModel& LODModel = ImportedModel->LODModels[LODIndex];
+			TArray<uint16>& BackupSections = BackupSectionsPerLOD.FindOrAdd(LODIndex);
+			int32 SectionCount = LODModel.Sections.Num();
+			BackupSections.Reserve(SectionCount);
+			for (int32 SectionIndex = 0; SectionIndex < SectionCount; ++SectionIndex)
+			{
+				if (LODModel.Sections[SectionIndex].ChunkedParentSectionIndex == INDEX_NONE)
+				{
+					BackupSections.Add(LODInfoEntry->LODMaterialMap.IsValidIndex(SectionIndex) ? LODInfoEntry->LODMaterialMap[SectionIndex] : INDEX_NONE);
+				}
+			}
+		}
+	}
+
+	void RestoreLodMaterialMapBackup(USkeletalMesh* SkeletalMesh, const TMap<int32, TArray<uint16>>& BackupSectionsPerLOD)
+	{
+		if (!ensure(SkeletalMesh != nullptr))
+		{
+			return;
+		}
+		const FSkeletalMeshModel* ImportedModel = SkeletalMesh->GetImportedModel();
+		if (!ImportedModel)
+		{
+			return;
+		}
+
+		for (int32 LODIndex = 0; LODIndex < SkeletalMesh->GetLODNum(); ++LODIndex)
+		{
+			FSkeletalMeshLODInfo* LODInfoEntry = SkeletalMesh->GetLODInfo(LODIndex);
+			if (!ImportedModel->LODModels.IsValidIndex(LODIndex) || LODInfoEntry == nullptr)
+			{
+				continue;
+			}
+			const TArray<uint16>* BackupSectionsPtr = BackupSectionsPerLOD.Find(LODIndex);
+			if (!BackupSectionsPtr)
+			{
+				continue;
+			}
+
+			const TArray<uint16>& BackupSections = *BackupSectionsPtr;
+			const FSkeletalMeshLODModel& LODModel = ImportedModel->LODModels[LODIndex];
+			LODInfoEntry->LODMaterialMap.Reset();
+			const int32 SectionCount = LODModel.Sections.Num();
+			for (int32 SectionIndex = 0; SectionIndex < SectionCount; ++SectionIndex)
+			{
+				const FSkelMeshSection& Section = LODModel.Sections[SectionIndex];
+				int32 NewLODMaterialMapValue = INDEX_NONE;
+				if (BackupSections.IsValidIndex(Section.OriginalDataSectionIndex))
+				{
+					NewLODMaterialMapValue = BackupSections[Section.OriginalDataSectionIndex];
+				}
+				LODInfoEntry->LODMaterialMap.Add(NewLODMaterialMapValue);
+			}
+		}
+	}
+} //namespace InternalSkeletalMeshHelper
+
 void USkeletalMesh::CacheDerivedData()
 {
 	// Cache derived data for the running platform.
@@ -3569,7 +3658,17 @@ void USkeletalMesh::CacheDerivedData()
 	check(RunningPlatform);
 
 	AllocateResourceForRendering();
+
+	//LODMaterialMap from LODInfo is store in the uasset and not in the DDC, so we want to fix it here
+	//to cover the post load and the post edit change. The build can change the number of section and LODMaterialMap is index per section
+	//TODO, move LODMaterialmap functionality into the LODModel UserSectionsData which are index per original section (imported section).
+	TMap<int32, TArray<uint16>> BackupSectionsPerLOD;
+	InternalSkeletalMeshHelper::CreateLodMaterialMapBackup(this, BackupSectionsPerLOD);
+
 	SkeletalMeshRenderData->Cache(RunningPlatform, this);
+
+	InternalSkeletalMeshHelper::RestoreLodMaterialMapBackup(this, BackupSectionsPerLOD);
+
 	PostMeshCached.Broadcast(this);
 }
 
