@@ -357,7 +357,7 @@ static FScreenPassTexture AddPostProcessingGTAOAllPasses(
 		}
 	}
 
-	return FinalTarget;
+	return MoveTemp(FinalTarget);
 }
 
 // These are the passes run after Async where some are run before on the Async pipe
@@ -459,7 +459,7 @@ static FScreenPassTexture AddPostProcessingGTAOPostAsync(
 		}
 	}
 
-	return FinalTarget;
+	return MoveTemp(FinalTarget);
 }
 
 // @param Levels 0..3, how many different resolution levels we want to render
