@@ -348,6 +348,8 @@ public:
 
 	virtual void RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions) override final
 	{
+		checkf(!State.bInsideBeginRenderPass, TEXT("Beginning a transition within a renderpass is not supported!"));
+
 		for (const FRHITransition* Transition : Transitions)
 		{
 			Tracker->AddOps(Transition->PendingOperationsBegin);
@@ -358,6 +360,8 @@ public:
 
 	virtual void RHIEndTransitions(TArrayView<const FRHITransition*> Transitions) override final
 	{
+		checkf(!State.bInsideBeginRenderPass, TEXT("Ending a transition within a renderpass is not supported!"));
+
 		for (const FRHITransition* Transition : Transitions)
 		{
 			Tracker->AddOps(Transition->PendingOperationsEnd);
