@@ -528,7 +528,13 @@ static FScreenPassTexture AddPostProcessingAmbientOcclusion(
 	return FinalOutput;
 }
 
-void FCompositionLighting::ProcessBeforeBasePass(FRHICommandListImmediate& RHICmdList, FViewInfo& View, bool bDBuffer, uint32 SSAOLevels)
+void FCompositionLighting::ProcessBeforeBasePass(
+	FRDGBuilder& GraphBuilder,
+	FPersistentUniformBuffers& UniformBuffers,
+	const FViewInfo& View,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+	bool bDBuffer,
+	uint32 SSAOLevels)
 {
 	check(IsInRenderingThread());
 
@@ -539,39 +545,35 @@ void FCompositionLighting::ProcessBeforeBasePass(FRHICommandListImmediate& RHICm
 	{
 		FMemMark Mark(FMemStack::Get());
 
-		FRDGBuilder GraphBuilder(RHICmdList);
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
+		RDG_EVENT_SCOPE(GraphBuilder, "CompositionBeforeBasePass");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, CompositionBeforeBasePass);
+
+		AddPass(GraphBuilder, [&UniformBuffers, &View](FRHICommandList&)
 		{
-			RDG_EVENT_SCOPE(GraphBuilder, "CompositionBeforeBasePass");
-			RDG_GPU_STAT_SCOPE(GraphBuilder, CompositionBeforeBasePass);
+			UniformBuffers.UpdateViewUniformBuffer(View);
+		});
 
-			TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer =
-				CreateSceneTextureUniformBuffer(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
-
-			// decals are before AmbientOcclusion so the decal can output a normal that AO is affected by
-			if (bDBuffer)
-			{
-				//Context.FinalOutput = AddDeferredDecalPass(Context.Graph, Context.FinalOutput, DRS_BeforeBasePass);
-				FDeferredDecalPassTextures DecalPassTextures = GetDeferredDecalPassTextures(GraphBuilder, View, SceneTexturesUniformBuffer);
-				AddDeferredDecalPass(GraphBuilder, View, DecalPassTextures, DRS_BeforeBasePass);
-			}
-
-			if (bNeedSSAO)
-			{
-				FSSAOCommonParameters Parameters = GetSSAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SSAOLevels);
-				FScreenPassRenderTarget FinalTarget = FScreenPassRenderTarget(GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceAO, TEXT("AmbientOcclusionDirect")), View.ViewRect, ERenderTargetLoadAction::ENoAction);
-
-				AddPostProcessingAmbientOcclusion(
-					GraphBuilder,
-					View,
-					Parameters,
-					FinalTarget);
-				SceneContext.bScreenSpaceAOIsValid = true;
-			}
+		// decals are before AmbientOcclusion so the decal can output a normal that AO is affected by
+		if (bDBuffer)
+		{
+			FDeferredDecalPassTextures DecalPassTextures = GetDeferredDecalPassTextures(GraphBuilder, View, SceneTexturesUniformBuffer);
+			AddDeferredDecalPass(GraphBuilder, View, DecalPassTextures, DRS_BeforeBasePass);
 		}
 
-		GraphBuilder.Execute();
+		if (bNeedSSAO)
+		{
+			FSSAOCommonParameters Parameters = GetSSAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SSAOLevels);
+			FScreenPassRenderTarget FinalTarget = FScreenPassRenderTarget(GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceAO, TEXT("AmbientOcclusionDirect")), View.ViewRect, ERenderTargetLoadAction::ENoAction);
+
+			AddPostProcessingAmbientOcclusion(
+				GraphBuilder,
+				View,
+				Parameters,
+				FinalTarget);
+			SceneContext.bScreenSpaceAOIsValid = true;
+		}
 	}
 }
 

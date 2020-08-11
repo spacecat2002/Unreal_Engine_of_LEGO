@@ -1925,15 +1925,17 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(DeferredShadingSceneRenderer_DBuffer);
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_DBuffer);
 
+		FRDGBuilder GraphBuilder(RHICmdList);
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures =
+			CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
+
 		// e.g. DBuffer deferred decals
 		for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
 		{	
-			FViewInfo& View = Views[ViewIndex];
+			const FViewInfo& View = Views[ViewIndex];
 
-			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView,Views.Num() > 1, TEXT("View%d"), ViewIndex);
-
-			Scene->UniformBuffers.UpdateViewUniformBuffer(View);
+			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+			RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
 
 			uint32 SSAOLevels = FSSAOHelper::ComputeAmbientOcclusionPassCount(View);
 			// In deferred shader, the SSAO uses the GBuffer and must be executed after base pass. Otherwise, async compute runs the shader in RenderHzb()
@@ -1943,10 +1945,11 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 				SSAOLevels = 0;
 			}
 
-			GCompositionLighting.ProcessBeforeBasePass(RHICmdList, View, bDBuffer, SSAOLevels);
+			GCompositionLighting.ProcessBeforeBasePass(GraphBuilder, Scene->UniformBuffers, View, SceneTextures, bDBuffer, SSAOLevels);
 		}
+		AddServiceLocalQueuePass(GraphBuilder);
 
-		ServiceLocalQueue();
+		GraphBuilder.Execute();
 	}
 	
 	if (IsForwardShadingEnabled(ShaderPlatform) && SceneContext.IsStaticLightingAllowed())

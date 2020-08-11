@@ -17,11 +17,17 @@ class FPersistentUniformBuffers;
 class FCompositionLighting
 {
 public:
-	void ProcessBeforeBasePass(FRHICommandListImmediate& RHICmdList, FViewInfo& View, bool bDBuffer, uint32 SSAOLevels);
+	void ProcessBeforeBasePass(
+		FRDGBuilder& GraphBuilder,
+		FPersistentUniformBuffers& UniformBuffers,
+		const FViewInfo& View,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		bool bDBuffer,
+		uint32 SSAOLevels);
 
 	void ProcessAfterBasePass(
 		FRDGBuilder& GraphBuilder,
-		FPersistentUniformBuffers& Scene,
+		FPersistentUniformBuffers& UniformBuffers,
 		const FViewInfo& View,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 
