@@ -779,12 +779,17 @@ static void GetDepthStencilWritableState(VkImageLayout Layout, bool& bDepthWrita
 	}
 }
 
-static void AdjustDepthStencilLayout(VkImageMemoryBarrier& Barrier)
+static void AdjustDepthStencilLayout(VkImageMemoryBarrier& Barrier, VkImageAspectFlags FullAspectMask)
 {
-	// If this barrier specifies a single depth/stencil aspect, we need to make sure that the layout reflects the current state
-	// of the other aspect. The code in RHICreateTransition cannot know the current state, so it assumed it's read-only when it
-	// set up the barrier. If it turns out it's writable, we need to change the layout accordingly.
-	if (Barrier.subresourceRange.aspectMask != VK_IMAGE_ASPECT_DEPTH_BIT && Barrier.subresourceRange.aspectMask != VK_IMAGE_ASPECT_STENCIL_BIT)
+	// If this barrier specifies a sub-aspect of a depth-stencil surface, we need to make sure that the layout reflects the current state
+	// of the other aspect. The code in RHICreateTransition cannot know the current state, so it assumed it's read-only when it set up the
+	// barrier. If it turns out it's writable, we need to change the layout accordingly.
+	if (FullAspectMask == Barrier.subresourceRange.aspectMask)
+	{
+		return;
+	}
+
+	if (!ensure(Barrier.subresourceRange.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT || Barrier.subresourceRange.aspectMask == VK_IMAGE_ASPECT_STENCIL_BIT))
 	{
 		return;
 	}
@@ -909,7 +914,9 @@ void FVulkanCommandListContext::RHIBeginTransitions(TArrayView<const FRHITransit
 			RealBarrier.dstAccessMask = 0; // Release resource from current queue.
 			RealBarrier.oldLayout = SrcLayout;
 			RealBarrier.newLayout = DstLayout;
-			AdjustDepthStencilLayout(RealBarrier);
+			
+			// Fix up the destination layout if this barrier specifies a sub-aspect of a depth-stencil surface.
+			AdjustDepthStencilLayout(RealBarrier, Texture->Surface.GetFullAspectMask());
 
 			// We don't update the image layout here. That will be done in RHIEndTransitions.
 		}
@@ -1116,7 +1123,7 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 			RealBarrier.newLayout = DstLayout;
 			
 			// Fix up the destination layout if this barrier specifies a sub-aspect of a depth-stencil surface.
-			AdjustDepthStencilLayout(RealBarrier);
+			AdjustDepthStencilLayout(RealBarrier, Texture->Surface.GetFullAspectMask());
 
 			Layout.Set(RealBarrier.newLayout, RealBarrier.subresourceRange);
 		}
