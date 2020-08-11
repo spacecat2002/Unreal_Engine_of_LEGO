@@ -2,17 +2,19 @@
 
 #pragma once
 
-#include "Delegates/Delegate.h"
-
 /**
- *  DELEGATE COMBINATIONS
+ *  DELEGATE PARAMETER COMBINATIONS
  *  -----------------------------------------------------------------------------------------------
  *
- *	This file defines the different combination of macros used to declare delegate types used by engine and game classes.
- *	Each delegate type can be found to functions that handle up to 9 parameters.
- *	Full documentation for the delegate system can be found in the main Delegate.h header linked above.
+ *	This file defines the different combinations of macros used to declare different delegate types.
+ *	Each delegate type can be bound to functions that take up to 9 parameters.
+ *	Full documentation for the delegate system can be found in the main Delegate.h header, 
+ *	which should be included in cpp files that need access to these macros.
  */
 
+#if 0 // Example of correct header include
+#include "Delegates/Delegate.h"
+#endif
 
 /** Declares a delegate that can only bind to one native function at a time */
 #define DECLARE_DELEGATE( DelegateName ) FUNC_DECLARE_DELEGATE( DelegateName, void )
