@@ -704,18 +704,21 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		VkImageLayout SrcLayout, DstLayout;
 
 		auto GetOtherAspectAccess = [DepthStencilFlags](ERHIAccess ExplicitAspectAccess) -> ERHIAccess {
-			// If the aspect that was explicitly set has any depth-stencil flags, the other aspect will be read-only (DSVRead).
-			// Otherwise, both aspects get the same access, since presumably it's something like Unknown or SRVGraphics or something.
+			// If the aspect that was explicitly set has any depth-stencil flags, we'll assume that the other aspect is read-only (DSVRead). When the barrier
+			// is executed, we check the actual state of the other aspect and adjust the layout if it turns out that the assumption was wrong.
+			// If we don't have any depth-stencil flags, we assume that both aspects will be in the same state, since it's presumably SRVGraphics or SRVCompute.
 			return EnumHasAnyFlags(ExplicitAspectAccess, DepthStencilFlags) ? ERHIAccess::DSVRead : ExplicitAspectAccess;
 		};
 
 		ERHIAccess SrcDepthAccess, SrcStencilAccess, DstDepthAccess, DstStencilAccess;
+		VkImageAspectFlags AspectMask;
 		if (PendingTransition.bDepthAccessSet)
 		{
 			SrcDepthAccess = PendingTransition.SrcDepthAccess;
 			DstDepthAccess = PendingTransition.DestDepthAccess;
 			SrcStencilAccess = GetOtherAspectAccess(SrcDepthAccess);
 			DstStencilAccess = GetOtherAspectAccess(DstDepthAccess);
+			AspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 		}
 		else
 		{
@@ -723,10 +726,12 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 			DstStencilAccess = PendingTransition.DestStencilAccess;
 			SrcDepthAccess = GetOtherAspectAccess(SrcStencilAccess);
 			DstDepthAccess = GetOtherAspectAccess(DstStencilAccess);
+			AspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
 		}
 
 		GetDepthStencilStageAndAccessFlags(SrcDepthAccess, SrcStencilAccess, SrcStageMask, SrcAccessFlags, SrcLayout, true);
 		GetDepthStencilStageAndAccessFlags(DstDepthAccess, DstStencilAccess, DstStageMask, DstAccessFlags, DstLayout, false);
+		
 		// Don't bother trying to figure out the source layout, let the cache fill it in.
 		SrcLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -734,7 +739,7 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		Data->DstStageMask |= DstStageMask;
 
 		VkImageMemoryBarrier& ImgBarrier = Data->ImageBarriers.AddDefaulted_GetRef();
-		SetupImageBarrierEntireRes(ImgBarrier, VK_NULL_HANDLE, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+		SetupImageBarrierEntireRes(ImgBarrier, VK_NULL_HANDLE, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, AspectMask);
 		ImgBarrier.srcQueueFamilyIndex = SrcQueueFamilyIndex;
 		ImgBarrier.dstQueueFamilyIndex = DstQueueFamilyIndex;
 
@@ -745,6 +750,68 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 void FVulkanDynamicRHI::RHIReleaseTransition(FRHITransition* Transition)
 {
 	Transition->GetPrivateData<FVulkanPipelineBarrier>()->~FVulkanPipelineBarrier();
+}
+
+static void GetDepthStencilWritableState(VkImageLayout Layout, bool& bDepthWritable, bool& bStencilWritable)
+{
+	switch (Layout)
+	{
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+		bDepthWritable = true;
+		bStencilWritable = true;
+		break;
+
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR:
+		bDepthWritable = false;
+		bStencilWritable = true;
+		break;
+
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR:
+		bDepthWritable = true;
+		bStencilWritable = false;
+		break;
+
+	default:
+		// This includes VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, which is what we normally expect for read-only DS.
+		bDepthWritable = false;
+		bStencilWritable = false;
+		break;
+	}
+}
+
+static void AdjustDepthStencilLayout(VkImageMemoryBarrier& Barrier)
+{
+	// If this barrier specifies a single depth/stencil aspect, we need to make sure that the layout reflects the current state
+	// of the other aspect. The code in RHICreateTransition cannot know the current state, so it assumed it's read-only when it
+	// set up the barrier. If it turns out it's writable, we need to change the layout accordingly.
+	if (Barrier.subresourceRange.aspectMask != VK_IMAGE_ASPECT_DEPTH_BIT && Barrier.subresourceRange.aspectMask != VK_IMAGE_ASPECT_STENCIL_BIT)
+	{
+		return;
+	}
+
+	bool bDepthWritableCurrent, bStencilWritableCurrent;
+	GetDepthStencilWritableState(Barrier.oldLayout, bDepthWritableCurrent, bStencilWritableCurrent);
+
+	bool bDepthWritableNew, bStencilWritableNew;
+	GetDepthStencilWritableState(Barrier.newLayout, bDepthWritableNew, bStencilWritableNew);
+
+	if (Barrier.subresourceRange.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT)
+	{
+		if (bStencilWritableCurrent)
+		{
+			Barrier.newLayout = bDepthWritableNew ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR;
+		}
+	}
+	else
+	{
+		if (bDepthWritableCurrent)
+		{
+			Barrier.newLayout = bStencilWritableNew ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR;
+		}
+	}
+
+	// Now that we have the correct layout, we can set the mask to include both aspects.
+	Barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 }
 
 void FVulkanCommandListContext::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
@@ -842,6 +909,7 @@ void FVulkanCommandListContext::RHIBeginTransitions(TArrayView<const FRHITransit
 			RealBarrier.dstAccessMask = 0; // Release resource from current queue.
 			RealBarrier.oldLayout = SrcLayout;
 			RealBarrier.newLayout = DstLayout;
+			AdjustDepthStencilLayout(RealBarrier);
 
 			// We don't update the image layout here. That will be done in RHIEndTransitions.
 		}
@@ -1042,13 +1110,15 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 
 			VkImageMemoryBarrier& RealBarrier = RealImageBarriers.AddDefaulted_GetRef();
 			RealBarrier = ImageBarrier;
-			// Use the up to date image handle.
-			RealBarrier.image = Texture->Surface.Image;
+			RealBarrier.image = Texture->Surface.Image; // Use the up to date image handle.
 			RealBarrier.srcAccessMask = SrcAccessFlags;
 			RealBarrier.oldLayout = SrcLayout;
 			RealBarrier.newLayout = DstLayout;
+			
+			// Fix up the destination layout if this barrier specifies a sub-aspect of a depth-stencil surface.
+			AdjustDepthStencilLayout(RealBarrier);
 
-			Layout.Set(DstLayout, ImageBarrier.subresourceRange);
+			Layout.Set(RealBarrier.newLayout, RealBarrier.subresourceRange);
 		}
 
 		int NumMemoryBarriers = (Data->MemoryBarrier.srcAccessMask != 0) || (Data->MemoryBarrier.dstAccessMask != 0) ? 1 : 0;
