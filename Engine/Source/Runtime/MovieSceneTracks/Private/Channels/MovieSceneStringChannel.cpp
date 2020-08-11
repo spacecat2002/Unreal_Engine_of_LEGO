@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Sections/MovieSceneStringChannel.h"
+#include "Channels/MovieSceneStringChannel.h"
 #include "Curves/StringCurve.h"
 #include "MovieSceneFwd.h"
 #include "Channels/MovieSceneChannelProxy.h"
