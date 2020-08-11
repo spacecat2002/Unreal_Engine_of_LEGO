@@ -13,6 +13,14 @@ class TIMEMANAGEMENT_API UGenlockedCustomTimeStep : public UFixedFrameRateCustom
 {
 	GENERATED_BODY()
 
+protected:
+
+	/** Blocks until it gets a sync signal. Returns false if unsuccessful */
+	virtual bool WaitForSync() PURE_VIRTUAL(UGenlockedCustomTimeStep::WaitForSync, return false;);
+
+	/** Update FApp CurrentTime, IdleTime and DeltaTime */
+	void UpdateAppTimes(const double& TimeBeforeSync, const double& TimeAfterSync) const;
+
 public:
 	//~ UFixedFrameRateCustomTimeStep interface
 	virtual FFrameRate GetFixedFrameRate() const PURE_VIRTUAL(UGenlockedCustomTimeStep::GetFixedFrameRate, return FFrameRate(24,1););
