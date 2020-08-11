@@ -339,7 +339,7 @@ public:
 #endif
 
 	/** An instance created from the PostPhysicsBlueprint property of the skeletal mesh we're using,
-	 *  Runs after physics has been blended
+	 *  Runs after (and receives pose from) the main anim instance.
 	 */
 	UPROPERTY(transient)
 	UAnimInstance* PostProcessAnimInstance;
