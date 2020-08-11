@@ -356,7 +356,19 @@ void FD3D12DynamicRHIModule::FindAdapter()
 				if (bIsNVIDIA) bIsAnyNVIDIA = true;
 
 				// Simple heuristic but without profiling it's hard to do better
-				const bool bIsIntegrated = bIsIntel;
+				bool bIsNonLocalMemoryPresent = false;
+				if (bIsIntel)
+				{
+					TRefCountPtr<IDXGIAdapter3> TempDxgiAdapter3;
+					DXGI_QUERY_VIDEO_MEMORY_INFO NonLocalVideoMemoryInfo;
+					if (SUCCEEDED(TempAdapter->QueryInterface(_uuidof(IDXGIAdapter3), (void**)TempDxgiAdapter3.GetInitReference())) &&
+						TempDxgiAdapter3.IsValid() && SUCCEEDED(TempDxgiAdapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &NonLocalVideoMemoryInfo)))
+					{
+						bIsNonLocalMemoryPresent = NonLocalVideoMemoryInfo.Budget != 0;
+					}
+				}
+				const bool bIsIntegrated = bIsIntel && !bIsNonLocalMemoryPresent;
+
 				// PerfHUD is for performance profiling
 				const bool bIsPerfHUD = !FCString::Stricmp(AdapterDesc.Description, TEXT("NVIDIA PerfHUD"));
 
@@ -411,7 +423,7 @@ void FD3D12DynamicRHIModule::FindAdapter()
 #endif
 
 	TSharedPtr<FD3D12Adapter> NewAdapter;
-	if (bFavorNonIntegrated && (bIsAnyAMD || bIsAnyNVIDIA))
+	if (bFavorNonIntegrated)
 	{
 		// We assume Intel is integrated graphics (slower than discrete) than NVIDIA or AMD cards and rather take a different one
 		if (FirstWithoutIntegratedAdapter.IsValid())
