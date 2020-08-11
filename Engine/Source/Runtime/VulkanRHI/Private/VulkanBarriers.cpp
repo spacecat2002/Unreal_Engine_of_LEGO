@@ -1129,7 +1129,7 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 		}
 
 		int NumMemoryBarriers = (Data->MemoryBarrier.srcAccessMask != 0) || (Data->MemoryBarrier.dstAccessMask != 0) ? 1 : 0;
-		if (NumMemoryBarriers == 0 && RealImageBarriers.Num() == 0)
+		if (NumMemoryBarriers == 0 && RealBufferBarriers.Num() == 0 && RealImageBarriers.Num() == 0)
 		{
 			continue;
 		}
