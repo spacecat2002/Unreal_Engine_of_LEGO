@@ -112,6 +112,13 @@ namespace
 		TEXT("0: Disable profile id cache using in the sampling pass.\n")
 		TEXT("1: Consumes 1 byte per pixel more memory to make Burley pass much faster. (default)\n"),
 		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<int32> CVarSSSBurleyBilateralFilterKernelFunctionType(
+		TEXT("r.SSS.Burley.BilateralFilterKernelFunctionType"),
+		1,
+		TEXT("0: Depth Only. It is more performant (x2 faster for close view).")
+		TEXT("1: Depth and normal. It leads to better quality in regions like eyelids. (default)"),
+		ECVF_RenderThreadSafe);
 }
 
 // Define to use a custom ps to clear UAV.
@@ -158,6 +165,11 @@ int32 GetSSSSampleSet()
 int32 GetSSSQuality()
 {
 	return CVarSSSQuality.GetValueOnRenderThread();
+}
+
+int32 GetSSSBurleyBilateralFilterKernelFunctionType()
+{
+	return CVarSSSBurleyBilateralFilterKernelFunctionType.GetValueOnRenderThread();
 }
 
 // Returns the SS profile texture with a black fallback texture if none exists yet.
@@ -548,11 +560,11 @@ public:
 		High,
 		MAX
 	};
-
-	enum class ESubsurfaceSamplerType : uint32
+	
+	enum class EBilateralFilterKernelFunctionType : uint32
 	{
-		PointSampler,
-		NonPointSampler,	//bilinear on LDS or trilinear on texture. 
+		Depth,
+		DepthAndNormal,
 		MAX
 	};
 
@@ -565,13 +577,13 @@ public:
 
 	class FSubsurfacePassFunction : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_PASS", ESubsurfacePass);
 	class FDimensionQuality : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_QUALITY", EQuality);
-	class FSubsurfaceSamplerType : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_SAMPLER_TYPE", ESubsurfaceSamplerType);
+	class FBilateralFilterKernelFunctionType : SHADER_PERMUTATION_ENUM_CLASS("BILATERAL_FILTER_KERNEL_FUNCTION_TYPE", EBilateralFilterKernelFunctionType);
 	class FSubsurfaceType : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_TYPE", ESubsurfaceType);
 	class FDimensionHalfRes : SHADER_PERMUTATION_BOOL("SUBSURFACE_HALF_RES");
 	class FRunningInSeparable : SHADER_PERMUTATION_BOOL("SUBSURFACE_FORCE_SEPARABLE");
 	class FDimensionEnableProfileIDCache : SHADER_PERMUTATION_BOOL("ENABLE_PROFILE_ID_CACHE");
 	using FPermutationDomain = TShaderPermutationDomain<FSubsurfacePassFunction, FDimensionQuality, 
-		FSubsurfaceSamplerType, FSubsurfaceType, FDimensionHalfRes, FRunningInSeparable, FDimensionEnableProfileIDCache>;
+		FBilateralFilterKernelFunctionType, FSubsurfaceType, FDimensionHalfRes, FRunningInSeparable, FDimensionEnableProfileIDCache>;
 
 	// Returns the sampler state based on the requested SSS filter CVar setting and half resolution setting.
 	static FRHISamplerState* GetSamplerState(bool bHalfRes)
@@ -603,16 +615,13 @@ public:
 				static_cast<int32>(FSubsurfaceIndirectDispatchCS::EQuality::High)));
 	}
 
-	static ESubsurfaceSamplerType GetSamplerType()
+	static EBilateralFilterKernelFunctionType GetBilateralFilterKernelFunctionType()
 	{
-		if (GetSSSFilter())
-		{
-			return ESubsurfaceSamplerType::NonPointSampler;
-		}
-		else
-		{
-			return ESubsurfaceSamplerType::PointSampler;
-		}
+		return static_cast<FSubsurfaceIndirectDispatchCS::EBilateralFilterKernelFunctionType>(
+			FMath::Clamp(
+				GetSSSBurleyBilateralFilterKernelFunctionType(),
+				static_cast<int32>(FSubsurfaceIndirectDispatchCS::EBilateralFilterKernelFunctionType::Depth),
+				static_cast<int32>(FSubsurfaceIndirectDispatchCS::EBilateralFilterKernelFunctionType::DepthAndNormal)));
 	}
 };
 
@@ -1027,7 +1036,7 @@ void AddSubsurfaceViewPass(
 				SHADER::FPermutationDomain ComputeShaderPermutationVector;
 				ComputeShaderPermutationVector.Set<SHADER::FSubsurfacePassFunction>(SubsurfacePassFunction);
 				ComputeShaderPermutationVector.Set<SHADER::FDimensionQuality>(SHADER::GetQuality());
-				ComputeShaderPermutationVector.Set<SHADER::FSubsurfaceSamplerType>(SHADER::GetSamplerType());
+                ComputeShaderPermutationVector.Set<SHADER::FBilateralFilterKernelFunctionType>(SHADER::GetBilateralFilterKernelFunctionType());
 				ComputeShaderPermutationVector.Set<SHADER::FSubsurfaceType>(SubsurfaceType);
 				ComputeShaderPermutationVector.Set<SHADER::FDimensionHalfRes>(bHalfRes);
 				ComputeShaderPermutationVector.Set<SHADER::FRunningInSeparable>(bForceRunningInSeparable);
