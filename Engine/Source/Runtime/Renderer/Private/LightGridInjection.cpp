@@ -756,39 +756,7 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 
 void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
 	FRDGBuilder& GraphBuilder,
-	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskRHI,
-	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixelRHI,
-	const FHairStrandsRenderingData* InHairDatas)
-{
-	const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-
-	FRDGTextureRef ForwardScreenSpaceShadowMask = nullptr;
-	FRDGTextureRef ForwardScreenSpaceShadowMaskSubPixel = nullptr;
-
-	RenderForwardShadowProjections(
-		GraphBuilder,
-		CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth),
-		GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable),
-		GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::Targetable),
-		ForwardScreenSpaceShadowMask,
-		ForwardScreenSpaceShadowMaskSubPixel,
-		InHairDatas);
-
-	if (ForwardScreenSpaceShadowMask)
-	{
-		GraphBuilder.QueueTextureExtraction(ForwardScreenSpaceShadowMask, &ForwardScreenSpaceShadowMaskRHI);
-	}
-
-	if (ForwardScreenSpaceShadowMaskSubPixel)
-	{
-		GraphBuilder.QueueTextureExtraction(ForwardScreenSpaceShadowMaskSubPixel, &ForwardScreenSpaceShadowMaskSubPixelRHI);
-	}
-}
-
-void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
-	FRDGBuilder& GraphBuilder,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef SceneDepthTexture,
 	FRDGTextureRef& OutForwardScreenSpaceShadowMask,
 	FRDGTextureRef& OutForwardScreenSpaceShadowMaskSubPixel,

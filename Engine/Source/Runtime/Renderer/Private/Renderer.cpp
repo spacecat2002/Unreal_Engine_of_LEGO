@@ -430,13 +430,6 @@ static bool RendererExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		VisualizeTextureExec(Cmd, Ar);
 		return true;
 	}
-	else if (FParse::Command(&Cmd, TEXT("ShowMipLevels")))
-	{
-		extern bool GVisualizeMipLevels;
-		GVisualizeMipLevels = !GVisualizeMipLevels;
-		Ar.Logf( TEXT( "Showing mip levels: %s" ), GVisualizeMipLevels ? TEXT("ENABLED") : TEXT("DISABLED") );
-		return true;
-	}
 	else if(FParse::Command(&Cmd,TEXT("DumpUnbuiltLightInteractions")))
 	{
 		InWorld->Scene->DumpUnbuiltLightInteractions(Ar);

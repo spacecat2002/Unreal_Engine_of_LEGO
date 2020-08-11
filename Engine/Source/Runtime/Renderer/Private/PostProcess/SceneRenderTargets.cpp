@@ -938,7 +938,6 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 
 	SCOPED_DRAW_EVENT(RHICmdList, BeginRenderingGBuffer);
 	check(CurrentFeatureLevel >= ERHIFeatureLevel::SM5);
-	AllocSceneColor(RHICmdList);
 
 	const ERenderTargetStoreAction DepthStoreAction = DepthStencilAccess.IsDepthWrite() ? ERenderTargetStoreAction::EStore : ERenderTargetStoreAction::ENoAction;
 
@@ -1026,40 +1025,6 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 		RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthWrite_StencilWrite;
 		RHICmdList.BeginRenderPass(RPInfo, TEXT("Wireframe"));	
 	}
-}
-
-void FSceneRenderTargets::FinishGBufferPassAndResolve(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil DepthStencilAccess)
-{
-	RHICmdList.EndRenderPass();
-
-	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(CurrentFeatureLevel);
-	if (IsSimpleForwardShadingEnabled(ShaderPlatform))
-	{
-		// Currently nothing to do here for simple forward shading.
-		return;
-	}
-
-	int32 VelocityRTIndex = -1;
-	FRHIRenderTargetView RenderTargets[MaxSimultaneousRenderTargets];
-	int32 NumMRTs = GetGBufferRenderTargets(ERenderTargetLoadAction::ELoad, RenderTargets, VelocityRTIndex);
-
-	FResolveParams ResolveParams;
-
-	// Skip the SceneColor resolve when using forward shading as this is done after this function is called.
-	int32 i = IsForwardShadingEnabled(ShaderPlatform) ? 1 : 0;
-
-	for ( ; i < NumMRTs; ++i)
-	{
-		// When the basepass outputs to the velocity buffer, don't resolve it yet if selective outputs are enabled, as it will be resolved after the velocity pass.
-		if (i != VelocityRTIndex || !IsUsingSelectiveBasePassOutputs(ShaderPlatform))
-		{
-			RHICmdList.CopyToResolveTarget(RenderTargets[i].Texture, RenderTargets[i].Texture, ResolveParams);
-		}
-	}
-
-	// If depth or stencil writes are enabled, transition the depth buffer back to readable.
-	// It was set to writable in BeginRenderingGBuffer().
-	RHICmdList.TransitionResource(DepthStencilAccess.GetReadableTransition(), GetSceneDepthSurface());
 }
 
 int32 FSceneRenderTargets::GetNumGBufferTargets() const

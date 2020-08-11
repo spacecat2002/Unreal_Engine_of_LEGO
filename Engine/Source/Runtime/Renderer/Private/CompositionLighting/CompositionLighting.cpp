@@ -543,8 +543,6 @@ void FCompositionLighting::ProcessBeforeBasePass(
 	// so that the passes can register themselves to the graph
 	if (bDBuffer || bNeedSSAO)
 	{
-		FMemMark Mark(FMemStack::Get());
-
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
 		RDG_EVENT_SCOPE(GraphBuilder, "CompositionBeforeBasePass");
@@ -809,14 +807,11 @@ void FCompositionLighting::FinishAsyncSSAO(FRDGBuilder& GraphBuilder)
 	}
 }
 
-void FCompositionLighting::GfxWaitForAsyncSSAO(FRDGBuilder& GraphBuilder)
+void FCompositionLighting::GfxWaitForAsyncSSAO(FRHICommandListImmediate& RHICmdList)
 {
 	if (AsyncSSAOTransition)
 	{
-		AddPass(GraphBuilder, [this](FRHICommandList& RHICmdList)
-		{
-			RHICmdList.EndTransition(AsyncSSAOTransition);
-			AsyncSSAOTransition = nullptr;
-		});
+		RHICmdList.EndTransition(AsyncSSAOTransition);
+		AsyncSSAOTransition = nullptr;
 	}
 }

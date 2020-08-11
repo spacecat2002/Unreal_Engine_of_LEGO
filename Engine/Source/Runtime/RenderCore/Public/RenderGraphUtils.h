@@ -17,6 +17,11 @@ inline FRHITexture* TryGetRHI(FRDGTextureRef Texture)
 	return Texture ? Texture->GetRHI() : nullptr;
 }
 
+inline IPooledRenderTarget* TryGetPooledRenderTarget(FRDGTextureRef Texture)
+{
+	return Texture ? Texture->GetPooledRenderTarget() : nullptr;
+}
+
 /**
  * Clears all render graph tracked resources that are not bound by a shader.
  * Excludes any resources on the ExcludeList from being cleared regardless of whether the 

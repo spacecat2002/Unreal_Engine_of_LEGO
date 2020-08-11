@@ -234,7 +234,6 @@ public:
 	FIntPoint GetVirtualTextureFeedbackBufferSize() const;
 
 	void BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERenderTargetLoadAction ColorLoadAction, ERenderTargetLoadAction DepthLoadAction, FExclusiveDepthStencil DepthStencilAccess, const FLinearColor& ClearColor = FLinearColor(0, 0, 0, 1), bool bIsWireframe=false);
-	void FinishGBufferPassAndResolve(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil DepthStencilAccess);
 
 	/**
 	 * Sets the scene color target and restores its contents if necessary

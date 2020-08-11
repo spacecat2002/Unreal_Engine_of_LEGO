@@ -97,19 +97,26 @@ public:
 	/** Renders editor primitives for a given View. */
 	void RenderEditorPrimitivesForDPG(FRHICommandList& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& DrawRenderState, ESceneDepthPriorityGroup DepthPriorityGroup, bool& bOutDirty);
 
-	/** 
-	* Renders the scene's base pass 
-	* @return true if anything was rendered
-	*/
-	bool RenderBasePass(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, IPooledRenderTarget* ForwardScreenSpaceShadowMask, bool bParallelBasePass, bool bRenderLightmapDensity);
+	void RenderBasePass(
+		FRDGBuilder& GraphBuilder,
+		FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
+		FRDGTextureRef SceneDepthTexture,
+		ERenderTargetLoadAction SceneDepthLoadAction,
+		FRDGTextureRef ForwardShadowMaskTexture);
+
+	bool RenderBasePass(
+		FRHICommandListImmediate& RHICmdList,
+		FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
+		IPooledRenderTarget* ForwardScreenSpaceShadowMask,
+		bool bParallelBasePass,
+		bool bRenderLightmapDensity);
 
 	bool ShouldRenderAnisotropyPass() const;
 
 	void RenderAnisotropyPass(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SceneDepthTexture,
-		bool bDoParallelPass
-		);
+		bool bDoParallelPass);
 
 	void RenderSingleLayerWater(
 		FRDGBuilder& GraphBuilder,
@@ -463,17 +470,9 @@ private:
 		const FHairStrandsRenderingData* HairDatas,
 		bool& bInjectedTranslucentVolume);
 
-	/** Render shadow projections when forward rendering. */
-	void RenderForwardShadowProjections(
-		FRDGBuilder& GraphBuilder,
-		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask,
-		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
-		const FHairStrandsRenderingData* InHairDatas);
-
 	void RenderForwardShadowProjections(
 		FRDGBuilder& GraphBuilder,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-		FRDGTextureRef SceneColorTexture,
 		FRDGTextureRef SceneDepthTexture,
 		FRDGTextureRef& ForwardScreenSpaceShadowMask,
 		FRDGTextureRef& ForwardScreenSpaceShadowMaskSubPixel,

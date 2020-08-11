@@ -1,9 +1,5 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	BasePassRendering.cpp: Base pass rendering implementation.
-=============================================================================*/
-
 #include "BasePassRendering.h"
 #include "DeferredShadingRenderer.h"
 #include "DistortionRendering.h"
@@ -15,6 +11,10 @@
 #include "SingleLayerWaterRendering.h"
 #include "Rendering/SkyAtmosphereCommonData.h"
 #include "SceneTextureParameters.h"
+#include "CompositionLighting/CompositionLighting.h"
+#include "SceneViewExtension.h"
+#include "OneColorShader.h"
+#include "ClearQuad.h"
 
 // Changing this causes a full shader recompile
 static TAutoConsoleVariable<int32> CVarSelectiveBasePassOutputs(
@@ -68,8 +68,14 @@ static TAutoConsoleVariable<int32> CVarSupportAllShaderPermutations(
 	TEXT("Local user config override to force all shader permutation features on."),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe);
 
-/** Whether to replace lightmap textures with solid colors to visualize the mip-levels. */
-bool GVisualizeMipLevels = false;
+static TAutoConsoleVariable<int32> CVarParallelBasePass(
+	TEXT("r.ParallelBasePass"),
+	1,
+	TEXT("Toggles parallel base pass rendering. Parallel rendering must be enabled for this to have an effect."),
+	ECVF_RenderThreadSafe);
+
+// Scene color alpha is used during scene captures and planar reflections.  1 indicates background should be shown, 0 indicates foreground is fully present.
+static const float kSceneColorClearAlpha = 1.0f;
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FSharedBasePassUniformParameters, "BasePass");
 IMPLEMENT_STATIC_UNIFORM_BUFFER_STRUCT(FOpaqueBasePassUniformParameters, "OpaqueBasePass", SceneTextures);
@@ -125,6 +131,14 @@ IMPLEMENT_BASEPASS_LIGHTMAPPED_SHADER_TYPE( TUniformLightMapPolicy<LMP_DISTANCE_
 IMPLEMENT_MATERIAL_SHADER_TYPE(, F128BitRTBasePassPS, TEXT("/Engine/Private/BasePassPixelShader.usf"), TEXT("MainPS"), SF_Pixel);
 
 DECLARE_GPU_DRAWCALL_STAT(Basepass);
+
+DECLARE_CYCLE_STAT(TEXT("DeferredShadingSceneRenderer ClearGBufferAtMaxZ"), STAT_FDeferredShadingSceneRenderer_ClearGBufferAtMaxZ, STATGROUP_SceneRendering);
+DECLARE_CYCLE_STAT(TEXT("DeferredShadingSceneRenderer SetAndClearViewGBuffer"), STAT_FDeferredShadingSceneRenderer_SetAndClearViewGBuffer, STATGROUP_SceneRendering);
+DECLARE_CYCLE_STAT(TEXT("DeferredShadingSceneRenderer ViewExtensionPostRenderBasePass"), STAT_FDeferredShadingSceneRenderer_ViewExtensionPostRenderBasePass, STATGROUP_SceneRendering);
+DECLARE_CYCLE_STAT(TEXT("BasePass"), STAT_CLM_BasePass, STATGROUP_CommandListMarkers);
+DECLARE_CYCLE_STAT(TEXT("AfterBasePass"), STAT_CLM_AfterBasePass, STATGROUP_CommandListMarkers);
+DECLARE_CYCLE_STAT(TEXT("AnisotropyPass"), STAT_CLM_AnisotropyPass, STATGROUP_CommandListMarkers);
+DECLARE_CYCLE_STAT(TEXT("AfterAnisotropyPass"), STAT_CLM_AfterAnisotropyPass, STATGROUP_CommandListMarkers);
 
 void SetTranslucentRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FMaterial& Material, const EShaderPlatform Platform, ETranslucencyPass::Type InTranslucencyPassType)
 {
@@ -670,10 +684,255 @@ TUniformBufferRef<FOpaqueBasePassUniformParameters> CreateOpaqueBasePassUniformB
 	return TUniformBufferRef<FOpaqueBasePassUniformParameters>::CreateUniformBufferImmediate(BasePassParameters, UniformBuffer_SingleFrame);
 }
 
-/**
- * Renders the scene's base pass. This assumes there is a current renderpass active. 
- * @return true if anything was rendered
- */
+BEGIN_SHADER_PARAMETER_STRUCT(FBasePassParameters, )
+	RDG_TEXTURE_ACCESS(ForwardShadowMask, ERHIAccess::SRVGraphics)
+END_SHADER_PARAMETER_STRUCT()
+
+void FDeferredShadingSceneRenderer::RenderBasePass(
+	FRDGBuilder& GraphBuilder,
+	FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
+	FRDGTextureRef SceneDepthTexture,
+	ERenderTargetLoadAction SceneDepthLoadAction,
+	FRDGTextureRef ForwardShadowMaskTexture)
+{
+	const bool bEnableParallelBasePasses = GRHICommandList.UseParallelAlgorithms() && CVarParallelBasePass.GetValueOnRenderThread();
+
+	auto* PassParameters = GraphBuilder.AllocParameters<FBasePassParameters>();
+	PassParameters->ForwardShadowMask = ForwardShadowMaskTexture;
+
+	GraphBuilder.AddPass(
+		{},
+		PassParameters,
+		ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass | ERDGPassFlags::NeverCull | ERDGPassFlags::UntrackedAccess,
+		[this, SceneDepthLoadAction, BasePassDepthStencilAccess, bEnableParallelBasePasses, ForwardShadowMaskTexture](FRHICommandListImmediate& RHICmdList)
+	{
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
+		static const auto ClearMethodCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.ClearSceneMethod"));
+		bool bRequiresRHIClear = true;
+		bool bRequiresFarZQuadClear = false;
+
+		if (ClearMethodCVar)
+		{
+			int32 ClearMethod = ClearMethodCVar->GetValueOnRenderThread();
+
+			if (ClearMethod == 0 && !ViewFamily.EngineShowFlags.Game)
+			{
+				// Do not clear the scene only if the view family is in game mode.
+				ClearMethod = 1;
+			}
+
+			switch (ClearMethod)
+			{
+			case 0: // No clear
+				bRequiresRHIClear = false;
+				bRequiresFarZQuadClear = false;
+				break;
+
+			case 1: // RHICmdList.Clear
+				bRequiresRHIClear = true;
+				bRequiresFarZQuadClear = false;
+				break;
+
+			case 2: // Clear using far-z quad
+				bRequiresFarZQuadClear = true;
+				bRequiresRHIClear = false;
+				break;
+			}
+		}
+
+		// Always perform a full buffer clear for wireframe, shader complexity view mode, and stationary light overlap viewmode.
+		if (ViewFamily.EngineShowFlags.Wireframe || ViewFamily.EngineShowFlags.ShaderComplexity || ViewFamily.EngineShowFlags.StationaryLightOverlap)
+		{
+			bRequiresRHIClear = true;
+		}
+
+		const bool bIsWireframeRenderpass = ViewFamily.EngineShowFlags.Wireframe && FSceneRenderer::ShouldCompositeEditorPrimitives(Views[0]);
+		const bool bDebugViewMode = ViewFamily.UseDebugViewPS();
+		const bool bRenderLightmapDensity = ViewFamily.EngineShowFlags.LightMapDensity && AllowDebugViewmodes();
+		const bool bRenderSkyAtmosphereEditorNotifications = ShouldRenderSkyAtmosphereEditorNotifications();
+		const bool bDoParallelBasePass = bEnableParallelBasePasses && !bDebugViewMode && !bRenderLightmapDensity; // DebugView and LightmapDensity are non-parallel substitutions inside BasePass
+		const bool bNeedsBeginRender = AllowDebugViewmodes() &&
+			(ViewFamily.EngineShowFlags.RequiredTextureResolution ||
+				ViewFamily.EngineShowFlags.MaterialTextureScaleAccuracy ||
+				ViewFamily.EngineShowFlags.MeshUVDensityAccuracy ||
+				ViewFamily.EngineShowFlags.PrimitiveDistanceAccuracy ||
+				ViewFamily.EngineShowFlags.ShaderComplexity ||
+				ViewFamily.EngineShowFlags.LODColoration ||
+				ViewFamily.EngineShowFlags.HLODColoration);
+
+		bool bIsGBufferCurrent = false;
+		if (bRequiresRHIClear)
+		{
+			SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_SetAndClearViewGBuffer);
+
+			// if we didn't to the prepass above, then we will need to clear now, otherwise, it's already been cleared and rendered to
+			ERenderTargetLoadAction ColorLoadAction = ERenderTargetLoadAction::ELoad;
+
+			const bool bClearBlack = ViewFamily.EngineShowFlags.ShaderComplexity || ViewFamily.EngineShowFlags.StationaryLightOverlap;
+			const float ClearAlpha = kSceneColorClearAlpha;
+			FLinearColor ClearColor = bClearBlack ? FLinearColor(0, 0, 0, ClearAlpha) : FLinearColor(Views[0].BackgroundColor.R, Views[0].BackgroundColor.G, Views[0].BackgroundColor.B, ClearAlpha);
+			ColorLoadAction = ERenderTargetLoadAction::EClear;
+
+			if (ViewFamily.EngineShowFlags.ShaderComplexity)
+			{
+				SceneContext.ClearQuadOverdrawUAV(RHICmdList);
+			}
+
+			// The first time through we'll clear the Overdraw UAVs.
+			SceneContext.BeginRenderingGBuffer(RHICmdList, ColorLoadAction, SceneDepthLoadAction, BasePassDepthStencilAccess, ClearColor);
+
+			// If we are in wireframe mode or will go wide later this pass is just the clear.
+			if (bIsWireframeRenderpass || bRenderSkyAtmosphereEditorNotifications || bDoParallelBasePass)
+			{
+				RHICmdList.EndRenderPass();
+			}
+			else
+			{
+				bIsGBufferCurrent = true;
+			}
+
+			if (bRenderSkyAtmosphereEditorNotifications)
+			{
+				// We only render this warning text when bRequiresRHIClear==true to make sure the scene color buffer is allocated at this stage.
+				// When false, the option specifies that all pixels must be written to by a sky dome anyway.
+				RenderSkyAtmosphereEditorNotifications(RHICmdList);
+			}
+		}
+
+		// Wireframe mode requires bRequiresRHIClear to be true. 
+		// Rendering will be very funny without it and the call to BeginRenderingGBuffer will call AllocSceneColor which is needed for the EditorPrimitives resolve.
+		if (bIsWireframeRenderpass)
+		{
+			check(bRequiresRHIClear);
+
+			// In Editor we want wire frame view modes to be MSAA for better quality. Resolve will be done with EditorPrimitives
+			FRHIRenderPassInfo RPInfo(SceneContext.GetEditorPrimitivesColor(RHICmdList), ERenderTargetActions::Clear_Store);
+			RPInfo.DepthStencilRenderTarget.Action = EDepthStencilTargetActions::ClearDepthStencil_StoreDepthStencil;
+			RPInfo.DepthStencilRenderTarget.DepthStencilTarget = SceneContext.GetEditorPrimitivesDepth(RHICmdList);
+			RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthWrite_StencilWrite;
+			RHICmdList.BeginRenderPass(RPInfo, TEXT("Wireframe"));
+
+			// #todo-renderpasses In serial mode wireframe rendering only binds one target
+			// In parallel the entire gbuffer is bound. This was the previous SetRenderTarget behavior, preserved here.
+			// This is just a clear in the parallel case.
+			if (bDoParallelBasePass)
+			{
+				RHICmdList.EndRenderPass();
+			}
+		}
+		else if (!bIsGBufferCurrent && (!bDoParallelBasePass || bNeedsBeginRender))
+		{
+			// Make sure we have began the renderpass
+			SceneContext.BeginRenderingGBuffer(RHICmdList, ERenderTargetLoadAction::ELoad, SceneDepthLoadAction, BasePassDepthStencilAccess);
+		}
+
+		// Wait for Async SSAO before rendering base pass with forward rendering
+		if (IsForwardShadingEnabled(ShaderPlatform))
+		{
+			GCompositionLighting.GfxWaitForAsyncSSAO(RHICmdList);
+		}
+
+		GRenderTargetPool.AddPhaseEvent(TEXT("BasePass"));
+
+		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_BasePass));
+		RenderBasePass(RHICmdList, BasePassDepthStencilAccess, TryGetPooledRenderTarget(ForwardShadowMaskTexture), bDoParallelBasePass, bRenderLightmapDensity);
+		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_AfterBasePass));
+
+		// If we ran parallel in the basepass there will be no renderpass at this point.
+		if (bDoParallelBasePass && !bNeedsBeginRender)
+		{
+			SceneContext.BeginRenderingGBuffer(RHICmdList, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, BasePassDepthStencilAccess);
+		}
+
+		{
+			SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_ViewExtensionPostRenderBasePass);
+			for (int32 ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ++ViewExt)
+			{
+				for (int32 ViewIndex = 0; ViewIndex < ViewFamily.Views.Num(); ++ViewIndex)
+				{
+					FViewInfo& View = Views[ViewIndex];
+					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+					ViewFamily.ViewExtensions[ViewExt]->PostRenderBasePass_RenderThread(RHICmdList, View);
+				}
+			}
+		}
+
+		if (bRequiresFarZQuadClear)
+		{
+			SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_ClearGBufferAtMaxZ);
+			ClearGBufferAtMaxZ(RHICmdList);
+		}
+
+		RHICmdList.EndRenderPass();
+	});
+
+	if (ShouldRenderAnisotropyPass())
+	{
+		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_AnisotropyPass));
+		RenderAnisotropyPass(GraphBuilder, SceneDepthTexture, bEnableParallelBasePasses);
+		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_AfterAnisotropyPass));
+	}
+}
+
+void FDeferredShadingSceneRenderer::ClearGBufferAtMaxZ(FRHICommandList& RHICmdList)
+{
+	// Assumes BeginRenderingSceneColor() has been called before this function
+	check(RHICmdList.IsInsideRenderPass());
+	SCOPED_DRAW_EVENT(RHICmdList, ClearGBufferAtMaxZ);
+
+	// Clear the G Buffer render targets
+	const bool bClearBlack = Views[0].Family->EngineShowFlags.ShaderComplexity || Views[0].Family->EngineShowFlags.StationaryLightOverlap;
+	const float ClearAlpha = kSceneColorClearAlpha;
+	const FLinearColor ClearColor = bClearBlack ? FLinearColor(0, 0, 0, ClearAlpha) : FLinearColor(Views[0].BackgroundColor.R, Views[0].BackgroundColor.G, Views[0].BackgroundColor.B, ClearAlpha);
+	FLinearColor ClearColors[MaxSimultaneousRenderTargets] =
+	{ ClearColor, FLinearColor(0.5f,0.5f,0.5f,0), FLinearColor(0,0,0,1), FLinearColor(0,0,0,0), FLinearColor(0,1,1,1), FLinearColor(1,1,1,1), FLinearColor::Transparent, FLinearColor::Transparent };
+
+	uint32 NumActiveRenderTargets = FSceneRenderTargets::Get(RHICmdList).GetNumGBufferTargets();
+
+	auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
+
+	TShaderMapRef<TOneColorVS<true> > VertexShader(ShaderMap);
+	TOneColorPixelShaderMRT::FPermutationDomain PermutationVector;
+	PermutationVector.Set<TOneColorPixelShaderMRT::TOneColorPixelShaderNumOutputs>(NumActiveRenderTargets);
+	TShaderMapRef<TOneColorPixelShaderMRT>PixelShader(ShaderMap, PermutationVector);
+
+	FGraphicsPipelineStateInitializer GraphicsPSOInit;
+	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+	// Opaque rendering, depth test but no depth writes
+	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+	GraphicsPSOInit.BlendState = TStaticBlendStateWriteMask<>::GetRHI();
+	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI();
+
+	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+	GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+
+	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+	VertexShader->SetDepthParameter(RHICmdList, float(ERHIZBuffer::FarPlane));
+
+	// Clear each viewport by drawing background color at MaxZ depth
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		FViewInfo& View = Views[ViewIndex];
+
+		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+		SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("ClearView%d"), ViewIndex);
+
+		// Set viewport for this view
+		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
+
+		// Setup PS
+		PixelShader->SetColors(RHICmdList, ClearColors, NumActiveRenderTargets);
+
+		RHICmdList.SetStreamSource(0, GClearVertexBuffer.VertexBufferRHI, 0);
+		// Render quad
+		RHICmdList.DrawPrimitive(0, 2, 1);
+	}
+}
+
 bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, IPooledRenderTarget* ForwardScreenSpaceShadowMask, bool bParallelBasePass, bool bRenderLightmapDensity)
 {
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderBasePass);

@@ -41,7 +41,7 @@ public:
 		const TArray<FViewInfo>& Views,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 
-	void GfxWaitForAsyncSSAO(FRDGBuilder& GraphBuilder);
+	void GfxWaitForAsyncSSAO(FRHICommandListImmediate& RHICmdList);
 
 private:
 	void PrepareAsyncSSAO();

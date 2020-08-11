@@ -281,8 +281,6 @@ void PrefilterPlanarReflection(FRHICommandListImmediate& RHICmdList, FViewInfo& 
 	}
 }
 
-extern float GetSceneColorClearAlpha();
-
 static void UpdatePlanarReflectionContents_RenderThread(
 	FRHICommandListImmediate& RHICmdList, 
 	FSceneRenderer* MainSceneRenderer, 
