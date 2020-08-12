@@ -22,6 +22,19 @@ inline IPooledRenderTarget* TryGetPooledRenderTarget(FRDGTextureRef Texture)
 	return Texture ? Texture->GetPooledRenderTarget() : nullptr;
 }
 
+inline FRenderTargetBindingSlots GetRenderTargetBindings(ERenderTargetLoadAction ColorLoadAction, TArrayView<FRDGTextureRef> ColorTextures)
+{
+	check(ColorTextures.Num() <= MaxSimultaneousRenderTargets);
+
+	FRenderTargetBindingSlots BindingSlots;
+	for (int32 Index = 0, Count = ColorTextures.Num(); Index < Count; ++Index)
+	{
+		check(ColorTextures[Index]);
+		BindingSlots[Index] = FRenderTargetBinding(ColorTextures[Index], ColorLoadAction);
+	}
+	return BindingSlots;
+}
+
 /**
  * Clears all render graph tracked resources that are not bound by a shader.
  * Excludes any resources on the ExcludeList from being cleared regardless of whether the 

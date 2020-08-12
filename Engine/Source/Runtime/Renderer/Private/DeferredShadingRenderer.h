@@ -52,9 +52,6 @@ public:
 	/** Clears a view */
 	void ClearView(FRHICommandListImmediate& RHICmdList);
 
-	/** Clears gbuffer where Z is still at the maximum value (ie no geometry rendered) */
-	void ClearGBufferAtMaxZ(FRHICommandList& RHICmdList);
-
 	/** Clears LPVs for all views */
 	void ClearLPVs(FRDGBuilder& GraphBuilder);
 
@@ -79,35 +76,19 @@ public:
 	 */
 	void ComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet);
 
-	/** Renders the basepass for a given View, in parallel */
-	void RenderBasePassViewParallel(const FViewInfo& View, FRHICommandListImmediate& ParentCmdList, FRHIUniformBuffer* PassUniformBuffer, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
-
-	/** Renders the basepass for a given View. */
-	bool RenderBasePassView(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
-
-	/** Renders the sky pass for a given View, in parallel */
-	void RenderSkyPassViewParallel(FRHICommandListImmediate& ParentCmdList, const FViewInfo& View, FRHIUniformBuffer* PassUniformBuffer, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
-
-	/** Renders the sky pass for a given View. */
-	bool RenderSkyPassView(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
-
-	/** Renders editor primitives for a given View. */
-	void RenderEditorPrimitives(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& DrawRenderState, bool& bOutDirty);
-
-	/** Renders editor primitives for a given View. */
-	void RenderEditorPrimitivesForDPG(FRHICommandList& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& DrawRenderState, ESceneDepthPriorityGroup DepthPriorityGroup, bool& bOutDirty);
-
 	void RenderBasePass(
 		FRDGBuilder& GraphBuilder,
 		FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
+		FRDGTextureRef SceneColorTexture,
 		FRDGTextureRef SceneDepthTexture,
 		ERenderTargetLoadAction SceneDepthLoadAction,
 		FRDGTextureRef ForwardShadowMaskTexture);
 
-	bool RenderBasePass(
-		FRHICommandListImmediate& RHICmdList,
+	void RenderBasePassInternal(
+		FRDGBuilder& GraphBuilder,
+		const FRenderTargetBindingSlots& BasePassRenderTargets,
 		FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
-		IPooledRenderTarget* ForwardScreenSpaceShadowMask,
+		FRDGTextureRef ForwardScreenSpaceShadowMask,
 		bool bParallelBasePass,
 		bool bRenderLightmapDensity);
 
@@ -408,10 +389,10 @@ private:
 	void RenderDistortion(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture);
 
 	/** Renders world-space lightmap density instead of the normal color. */
-	bool RenderLightMapDensities(FRHICommandListImmediate& RHICmdList);
+	void RenderLightMapDensities(FRDGBuilder& GraphBuilder, const FRenderTargetBindingSlots& RenderTargets);
 
 	/** Renders one of the EDebugViewShaderMode instead of the normal color. */
-	bool RenderDebugViewMode(FRHICommandListImmediate& RHICmdList);
+	void RenderDebugViewMode(FRDGBuilder& GraphBuilder, const FRenderTargetBindingSlots& RenderTargets);
 
 	FRDGTextureRef CopyStencilToLightingChannelTexture(FRDGBuilder& GraphBuilder, FRDGTextureSRVRef SceneStencilTexture);
 

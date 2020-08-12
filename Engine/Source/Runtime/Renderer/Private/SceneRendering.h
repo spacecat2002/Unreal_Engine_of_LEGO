@@ -492,6 +492,35 @@ private:
 	void WaitForTasksInternal();
 };
 
+class FRDGParallelCommandListSet final : public FParallelCommandListSet
+{
+public:
+	FRDGParallelCommandListSet(
+		FRHICommandListImmediate& InParentCmdList,
+		TStatId InStatId,
+		const FSceneRenderer& InSceneRenderer,
+		const FViewInfo& InView,
+		const FParallelCommandListBindings& InBindings,
+		float InViewportScale = 1.0f)
+		: FParallelCommandListSet(InStatId, InView, InParentCmdList, false)
+		, SceneRenderer(InSceneRenderer)
+		, Bindings(InBindings)
+		, ViewportScale(InViewportScale)
+	{}
+
+	~FRDGParallelCommandListSet() override
+	{
+		Dispatch();
+	}
+
+	void SetStateOnCommandList(FRHICommandList& RHICmdList) override;
+
+private:
+	const FSceneRenderer& SceneRenderer;
+	FParallelCommandListBindings Bindings;
+	float ViewportScale;
+};
+
 enum EVolumeUpdateType
 {
 	VUT_MeshDistanceFields = 1,
@@ -1877,7 +1906,8 @@ protected:
 		FRDGTextureMSAA SceneDepthTexture);
 
 	/** Render notification to artist when a sky material is used but it might comtains the camera (and then the sky/background would look black).*/
-	void RenderSkyAtmosphereEditorNotifications(FRHICommandListImmediate& RHICmdList);
+	void RenderSkyAtmosphereEditorNotifications(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture);
+
 	/** We should render on screen notification only if any of the scene contains a mesh using a sky material.*/
 	bool ShouldRenderSkyAtmosphereEditorNotifications();
 

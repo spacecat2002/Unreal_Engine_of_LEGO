@@ -196,11 +196,12 @@ FORCEINLINE ParameterStructType* FRDGBuilder::AllocParameters()
 }
 
 template <typename ParameterStructType>
-TRDGUniformBufferRef<ParameterStructType> FRDGBuilder::CreateUniformBuffer(ParameterStructType* ParameterStruct, const TCHAR* Name)
+TRDGUniformBufferRef<ParameterStructType> FRDGBuilder::CreateUniformBuffer(ParameterStructType* ParameterStruct)
 {
+	const TCHAR* Name = ParameterStructType::StaticStructMetadata.GetShaderVariableName();
+
 #if RDG_ENABLE_DEBUG
 	{
-		checkf(Name, TEXT("Uniform buffer requires a valid name."));
 		checkf(ParameterStruct, TEXT("Uniform buffer '%s' created with null parameters."), Name);
 		UserValidation.ExecuteGuard(TEXT("CreateUniformBuffer"), Name);
 	}

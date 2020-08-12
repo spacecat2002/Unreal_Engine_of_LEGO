@@ -226,20 +226,12 @@ public:
 	static int32 GetQuadOverdrawUAVIndex(EShaderPlatform Platform, ERHIFeatureLevel::Type FeatureLevel);
 #endif
 
-	void ClearQuadOverdrawUAV(FRHICommandListImmediate& RHICmdList);
+	void ClearQuadOverdrawUAV(FRDGBuilder& GraphBuilder);
 
 	FUnorderedAccessViewRHIRef GetQuadOverdrawBufferUAV() const;
 	FUnorderedAccessViewRHIRef GetVirtualTextureFeedbackUAV() const;
 	int32 GetVirtualTextureFeedbackScale() const;
 	FIntPoint GetVirtualTextureFeedbackBufferSize() const;
-
-	void BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERenderTargetLoadAction ColorLoadAction, ERenderTargetLoadAction DepthLoadAction, FExclusiveDepthStencil DepthStencilAccess, const FLinearColor& ClearColor = FLinearColor(0, 0, 0, 1), bool bIsWireframe=false);
-
-	/**
-	 * Sets the scene color target and restores its contents if necessary
-	 */
-	void BeginRenderingSceneColor(FRHICommandList& FRHICommandListImmediate, ESimpleRenderTargetMode RenderTargetMode = ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil DepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite, bool bTransitionWritable = true);
-	void FinishRenderingSceneColor(FRHICommandList& RHICmdList);
 
 	/** Binds the appropriate shadow depth cube map for rendering. */
 	void BeginRenderingCubeShadowDepth(FRHICommandList& RHICmdList, int32 ShadowResolution);
@@ -577,6 +569,7 @@ public:
 	/** Gets all GBuffers to use.  Returns the number actually used. */
 	int32 GetGBufferRenderTargets(const TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const;
 	int32 GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const;
+	int32 GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, TStaticArray<FRDGTextureRef, MaxSimultaneousRenderTargets>& OutRenderTargets) const;
 	int32 GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBinding OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const;
 	int32 GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBindingSlots& OutRenderTargets) const;
 
@@ -684,12 +677,6 @@ private:
 
 	// Set this per frame since there might be cases where we don't need an extra GBuffer
 	bool bAllocateVelocityGBuffer;
-
-	/** Helpers to track gbuffer state on platforms that need to propagate clear information across parallel rendering boundaries. */
-	bool bGBuffersFastCleared;	
-
-	/** Helpers to track scenedepth state on platforms that need to propagate clear information across parallel rendering boundaries. */
-	bool bSceneDepthCleared;
 
 	/** true is this is a snapshot on the scene allocator */
 	bool bSnapshot;

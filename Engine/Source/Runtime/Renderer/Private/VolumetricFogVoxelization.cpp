@@ -54,7 +54,7 @@ TRDGUniformBufferRef<FVoxelizeVolumePassUniformParameters> CreateVoxelizeVolumeP
 	Parameters->FrameJitterOffset0 = IntegrationData.FrameJitterOffsetValues[0];
 
 	SetupVolumetricFogGlobalData(View, Parameters->VolumetricFog);
-	return GraphBuilder.CreateUniformBuffer(Parameters, TEXT("VoxelizeVolumePass"));
+	return GraphBuilder.CreateUniformBuffer(Parameters);
 }
 
 class FQuadMeshVertexBuffer : public FRenderResource

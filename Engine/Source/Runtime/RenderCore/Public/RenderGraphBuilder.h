@@ -105,7 +105,7 @@ public:
 
 	/** Creates a graph tracked uniform buffer which can be attached to passes. */
 	template <typename ParameterStructType>
-	TRDGUniformBufferRef<ParameterStructType> CreateUniformBuffer(ParameterStructType* ParameterStruct, const TCHAR* Name);
+	TRDGUniformBufferRef<ParameterStructType> CreateUniformBuffer(ParameterStructType* ParameterStruct);
 
 	/** Adds a lambda pass to the graph.
 	 *

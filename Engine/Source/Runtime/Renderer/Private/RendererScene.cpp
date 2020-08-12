@@ -890,7 +890,6 @@ void FPersistentUniformBuffers::Clear()
 	ReflectionCaptureUniformBuffer.SafeRelease();
 	CSMShadowDepthViewUniformBuffer.SafeRelease();
 	CSMShadowDepthPassUniformBuffer.SafeRelease();
-	DebugViewModePassUniformBuffer.SafeRelease();
 	VoxelizeVolumeViewUniformBuffer.SafeRelease();
 	CustomDepthViewUniformBuffer.SafeRelease();
 	InstancedCustomDepthViewUniformBuffer.SafeRelease();
@@ -924,9 +923,6 @@ void FPersistentUniformBuffers::Initialize()
 
 	FShadowDepthPassUniformParameters CSMShadowDepthPassParameters;
 	CSMShadowDepthPassUniformBuffer = TUniformBufferRef<FShadowDepthPassUniformParameters>::CreateUniformBufferImmediate(CSMShadowDepthPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FDebugViewModePassPassUniformParameters DebugViewModePassPassUniformParameters;
-	DebugViewModePassUniformBuffer = TUniformBufferRef<FDebugViewModePassPassUniformParameters>::CreateUniformBufferImmediate(DebugViewModePassPassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 
 	VoxelizeVolumeViewUniformBuffer = TUniformBufferRef<FViewUniformShaderParameters>::CreateUniformBufferImmediate(ViewUniformBufferParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 

@@ -492,6 +492,12 @@ private:
 } // namespace
 #endif // !UE_BUILD_SHIPPING
 
+void FRDGParallelCommandListSet::SetStateOnCommandList(FRHICommandList& RHICmdList)
+{
+	FParallelCommandListSet::SetStateOnCommandList(RHICmdList);
+	Bindings.SetOnCommandList(RHICmdList);
+	SceneRenderer.SetStereoViewport(RHICmdList, View, ViewportScale);
+}
 
 FFastVramConfig::FFastVramConfig()
 {

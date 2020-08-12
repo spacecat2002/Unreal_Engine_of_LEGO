@@ -1344,18 +1344,16 @@ void FDeferredShadingSceneRenderer::RenderOcclusion(
 
 		const float ViewportScale = (float)SmallDepthTexture->Desc.Extent.X / (float)SceneDepthTexture->Desc.Extent.X;
 
+		// Update the quarter-sized depth buffer with the current contents of the scene depth texture.
+		// This needs to happen before occlusion tests, which makes use of the small depth buffer.
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
-			// Update the quarter-sized depth buffer with the current contents of the scene depth texture.
-			// This needs to happen before occlusion tests, which makes use of the small depth buffer.
-			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-			{
-				const FViewInfo& View = Views[ViewIndex];
-				RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+			const FViewInfo& View = Views[ViewIndex];
+			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
-				const FScreenPassTexture SceneDepth(SceneDepthTexture, View.ViewRect);
-				const FScreenPassRenderTarget SmallDepth(SmallDepthTexture, GetScaledRect(View.ViewRect, ViewportScale), ERenderTargetLoadAction::ELoad);
-				AddDownsampleDepthPass(GraphBuilder, View, SceneDepth, SmallDepth, EDownsampleDepthFilter::Max);
-			}
+			const FScreenPassTexture SceneDepth(SceneDepthTexture, View.ViewRect);
+			const FScreenPassRenderTarget SmallDepth(SmallDepthTexture, GetScaledRect(View.ViewRect, ViewportScale), ERenderTargetLoadAction::ELoad);
+			AddDownsampleDepthPass(GraphBuilder, View, SceneDepth, SmallDepth, EDownsampleDepthFilter::Max);
 		}
 
 		// Issue occlusion queries. This is done after the downsampled depth buffer is created so that it can be used for issuing queries.

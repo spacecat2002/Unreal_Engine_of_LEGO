@@ -65,7 +65,7 @@ TRDGUniformBufferRef<FDistortionPassUniformParameters> CreateDistortionPassUnifo
 	auto* Parameters = GraphBuilder.AllocParameters<FDistortionPassUniformParameters>();
 	SetupSceneTextureUniformParameters(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::All, Parameters->SceneTextures);
 	SetupDistortionParams(Parameters->DistortionParams, View);
-	return GraphBuilder.CreateUniformBuffer(Parameters, TEXT("DistortionPass"));
+	return GraphBuilder.CreateUniformBuffer(Parameters);
 }
 
 void SetupMobileDistortionPassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMobileDistortionPassUniformParameters& DistortionPassParameters)

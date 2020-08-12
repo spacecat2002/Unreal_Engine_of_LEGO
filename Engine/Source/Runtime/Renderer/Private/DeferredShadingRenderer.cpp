@@ -1856,11 +1856,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 	}
 
-	{
-		SceneContext.AllocSceneColor(RHICmdList);
+	SceneContext.AllocSceneColor(RHICmdList);
+	FRDGTextureMSAA SceneColorTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.GetSceneColor());
 
+	{
 		const ERenderTargetLoadAction DepthLoadAction = bDepthWasCleared ? ERenderTargetLoadAction::ELoad : ERenderTargetLoadAction::EClear;
-		RenderBasePass(GraphBuilder, BasePassDepthStencilAccess, SceneDepthTexture.Target, DepthLoadAction, ForwardScreenSpaceShadowMaskTexture);
+		RenderBasePass(GraphBuilder, BasePassDepthStencilAccess, SceneColorTexture.Target, SceneDepthTexture.Target, DepthLoadAction, ForwardScreenSpaceShadowMaskTexture);
 		AddServiceLocalQueuePass(GraphBuilder);
 
 		if (!bAllowReadonlyDepthBasePass)
@@ -1870,7 +1871,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 
 	FRDGTextureRef VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
-	FRDGTextureMSAA SceneColorTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.GetSceneColor());
 
 	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
 
@@ -1970,10 +1970,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (!IsForwardShadingEnabled(ShaderPlatform))
 	{
-		AddPass(GraphBuilder, [](FRHICommandListImmediate& InRHICmdList)
-		{
-			GCompositionLighting.GfxWaitForAsyncSSAO(InRHICmdList);
-		});
+		GCompositionLighting.GfxWaitForAsyncSSAO(GraphBuilder);
 	}
 	else
 	{

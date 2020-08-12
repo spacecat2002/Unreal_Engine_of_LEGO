@@ -807,11 +807,14 @@ void FCompositionLighting::FinishAsyncSSAO(FRDGBuilder& GraphBuilder)
 	}
 }
 
-void FCompositionLighting::GfxWaitForAsyncSSAO(FRHICommandListImmediate& RHICmdList)
+void FCompositionLighting::GfxWaitForAsyncSSAO(FRDGBuilder& GraphBuilder)
 {
 	if (AsyncSSAOTransition)
 	{
-		RHICmdList.EndTransition(AsyncSSAOTransition);
-		AsyncSSAOTransition = nullptr;
+		AddPass(GraphBuilder, [this](FRHICommandListImmediate& RHICmdList)
+		{
+			RHICmdList.EndTransition(AsyncSSAOTransition);
+			AsyncSSAOTransition = nullptr;
+		});
 	}
 }

@@ -292,8 +292,6 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, CurrentShadingPath(SnapshotSource.CurrentShadingPath)
 	, bRequireSceneColorAlpha(SnapshotSource.bRequireSceneColorAlpha)
 	, bAllocateVelocityGBuffer(SnapshotSource.bAllocateVelocityGBuffer)
-	, bGBuffersFastCleared(SnapshotSource.bGBuffersFastCleared)	
-	, bSceneDepthCleared(SnapshotSource.bSceneDepthCleared)	
 	, bSnapshot(true)
 	, DefaultColorClear(SnapshotSource.DefaultColorClear)
 	, DefaultDepthClear(SnapshotSource.DefaultDepthClear)
@@ -740,34 +738,6 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 	AllocateRenderTargets(RHICmdList, ViewFamily.Views.Num());
 }
 
-void FSceneRenderTargets::BeginRenderingSceneColor(FRHICommandList& RHICmdList, ESimpleRenderTargetMode RenderTargetMode/*=EUninitializedColorExistingDepth*/, FExclusiveDepthStencil DepthStencilAccess, bool bTransitionWritable)
-{
-	check(RHICmdList.IsOutsideRenderPass());
-
-	SCOPED_DRAW_EVENT(RHICmdList, BeginRenderingSceneColor);
-	AllocSceneColor(RHICmdList);
-
-	ERenderTargetLoadAction ColorLoadAction, DepthLoadAction, StencilLoadAction;
-	ERenderTargetStoreAction ColorStoreAction, DepthStoreAction, StencilStoreAction;
-	DecodeRenderTargetMode(RenderTargetMode, ColorLoadAction, ColorStoreAction, DepthLoadAction, DepthStoreAction, StencilLoadAction, StencilStoreAction, DepthStencilAccess);
-
-	FRHIRenderPassInfo RPInfo(GetSceneColorSurface(), MakeRenderTargetActions(ColorLoadAction, ColorStoreAction));
-	RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(MakeRenderTargetActions(DepthLoadAction, DepthStoreAction), MakeRenderTargetActions(StencilLoadAction, StencilStoreAction));
-	RPInfo.DepthStencilRenderTarget.DepthStencilTarget = GetSceneDepthSurface();
-	RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = DepthStencilAccess;
-
-	if (bTransitionWritable)
-	{
-		TransitionRenderPassTargets(RHICmdList, RPInfo);
-	}
-	RHICmdList.BeginRenderPass(RPInfo, TEXT("BeginRenderingSceneColor"));
-} 
-
-void FSceneRenderTargets::FinishRenderingSceneColor(FRHICommandList& RHICmdList)
-{
-	RHICmdList.EndRenderPass();
-}
-
 int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const
 {
 	int32 MRTCount = 0;
@@ -853,6 +823,19 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ER
 	return MRTCount;
 }
 
+int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, TStaticArray<FRDGTextureRef, MaxSimultaneousRenderTargets>& OutRenderTargets) const
+{
+	int32 OutVelocityRTIndex = -1;
+	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
+	const int32 Count = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
+
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		OutRenderTargets[Index] = GraphBuilder.RegisterExternalTexture(*RenderTargets[Index], ERenderTargetTexture::Targetable);
+	}
+	return Count;
+}
+
 int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBindingSlots& OutRenderTargets) const
 {
 	int32 OutVelocityRTIndex = -1;
@@ -899,7 +882,7 @@ int32 FSceneRenderTargets::GetQuadOverdrawUAVIndex(EShaderPlatform Platform, ERH
 }
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
-void FSceneRenderTargets::ClearQuadOverdrawUAV(FRHICommandListImmediate& RHICmdList)
+void FSceneRenderTargets::ClearQuadOverdrawUAV(FRDGBuilder& GraphBuilder)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(CurrentFeatureLevel);
@@ -907,10 +890,8 @@ void FSceneRenderTargets::ClearQuadOverdrawUAV(FRHICommandListImmediate& RHICmdL
 	{
 		if (QuadOverdrawBuffer.IsValid() && QuadOverdrawBuffer->GetRenderTargetItem().UAV.IsValid())
 		{
-			FRDGBuilder GraphBuilder(RHICmdList);
 			FRDGTextureRef QuadOverdrawTexture = GraphBuilder.RegisterExternalTexture(QuadOverdrawBuffer);
 			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(QuadOverdrawTexture), FUintVector4(0, 0, 0, 0));
-			GraphBuilder.Execute();
 		}
 	}
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -930,101 +911,6 @@ FUnorderedAccessViewRHIRef FSceneRenderTargets::GetQuadOverdrawBufferUAV() const
 	}
 #endif
 	return GBlackTextureWithUAV->UnorderedAccessViewRHI;
-}
-
-void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERenderTargetLoadAction ColorLoadAction, ERenderTargetLoadAction DepthLoadAction, FExclusiveDepthStencil DepthStencilAccess, const FLinearColor& ClearColor/*=(0,0,0,1)*/, bool bIsWireframe)
-{
-	check(RHICmdList.IsOutsideRenderPass());
-
-	SCOPED_DRAW_EVENT(RHICmdList, BeginRenderingGBuffer);
-	check(CurrentFeatureLevel >= ERHIFeatureLevel::SM5);
-
-	const ERenderTargetStoreAction DepthStoreAction = DepthStencilAccess.IsDepthWrite() ? ERenderTargetStoreAction::EStore : ERenderTargetStoreAction::ENoAction;
-
-	bool bClearColor = ColorLoadAction == ERenderTargetLoadAction::EClear;
-	bool bClearDepth = DepthLoadAction == ERenderTargetLoadAction::EClear;
-
-	//if the desired clear color doesn't match the bound hwclear value, or there isn't one at all (editor code)
-	//then we need to fall back to a shader clear.
-	const FTextureRHIRef& SceneColorTex = GetSceneColorSurface();
-	bool bShaderClear = false;
-	if (bClearColor)
-	{
-		if (!SceneColorTex->HasClearValue() || (ClearColor != SceneColorTex->GetClearColor()))
-		{
-			ColorLoadAction = ERenderTargetLoadAction::ENoAction;
-			bShaderClear = true;
-		}
-		else
-		{
-			bGBuffersFastCleared = true;
-		}
-	}
-
-	int32 VelocityRTIndex = -1;
-	FRHIRenderPassInfo RPInfo;
-	int32 MRTCount = FillGBufferRenderPassInfo(ColorLoadAction, RPInfo, VelocityRTIndex);
-
-	//make sure our conditions for shader clear fallback are valid.
-	check(RPInfo.ColorRenderTargets[0].RenderTarget == SceneColorTex);
-
-	if (bClearDepth)
-	{
-		bSceneDepthCleared = true;
-	}
-
-	// Stencil always has to be store or certain VK drivers will leave the attachment in an undefined state.
-	RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(MakeRenderTargetActions(DepthLoadAction, DepthStoreAction), MakeRenderTargetActions(DepthLoadAction, ERenderTargetStoreAction::EStore));
-	RPInfo.DepthStencilRenderTarget.DepthStencilTarget = GetSceneDepthSurface();
-	RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = DepthStencilAccess;
-
-	FRHITransitionInfo Transitions[MaxSimultaneousRenderTargets];
-	uint32 TransitionCount = 0;
-	for (uint32 RTIndex = 0; RTIndex < MaxSimultaneousRenderTargets; ++RTIndex)
-	{
-		if (RPInfo.ColorRenderTargets[RTIndex].RenderTarget != nullptr)
-		{
-			Transitions[TransitionCount++] = FRHITransitionInfo(RPInfo.ColorRenderTargets[RTIndex].RenderTarget, ERHIAccess::Unknown, ERHIAccess::RTV);
-		}
-	}
-	RHICmdList.Transition(MakeArrayView(Transitions, TransitionCount));
-	RHICmdList.TransitionResource(DepthStencilAccess, RPInfo.DepthStencilRenderTarget.DepthStencilTarget);
-
-	RHICmdList.BeginRenderPass(RPInfo, TEXT("GBuffer"));
-
-	if (bShaderClear)
-	{
-		FLinearColor ClearColors[MaxSimultaneousRenderTargets];
-		FRHITexture* Textures[MaxSimultaneousRenderTargets];
-		ClearColors[0] = ClearColor;
-		Textures[0] = RPInfo.ColorRenderTargets[0].RenderTarget;
-		for (int32 i = 1; i < MRTCount; ++i)
-		{
-			ClearColors[i] = RPInfo.ColorRenderTargets[i].RenderTarget->GetClearColor();
-			Textures[i] = RPInfo.ColorRenderTargets[i].RenderTarget;
-		}
-		//depth/stencil should have been handled by the fast clear.  only color for RT0 can get changed.
-		DrawClearQuadMRT(RHICmdList, true, MRTCount, ClearColors, false, 0, false, 0);
-	}
-
-	if (bIsWireframe)
-	{
-		RHICmdList.EndRenderPass();
-
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-
-		RPInfo = FRHIRenderPassInfo();
-
-		RPInfo.ColorRenderTargets[0].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
-		RPInfo.ColorRenderTargets[0].RenderTarget = SceneContext.GetEditorPrimitivesColor(RHICmdList);
-		RPInfo.ColorRenderTargets[0].ArraySlice = -1;
-		RPInfo.ColorRenderTargets[0].MipIndex = 0;
-
-		RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(MakeRenderTargetActions(DepthLoadAction, ERenderTargetStoreAction::EStore), MakeRenderTargetActions(DepthLoadAction, ERenderTargetStoreAction::EStore));
-		RPInfo.DepthStencilRenderTarget.DepthStencilTarget = SceneContext.GetEditorPrimitivesDepth(RHICmdList);
-		RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthWrite_StencilWrite;
-		RHICmdList.BeginRenderPass(RPInfo, TEXT("Wireframe"));	
-	}
 }
 
 int32 FSceneRenderTargets::GetNumGBufferTargets() const
@@ -1371,7 +1257,6 @@ void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, boo
 		// Note, this is a reversed Z depth surface, so 0.0f is the far plane.
 		ERenderTargetActions StencilAction = bStencilClear ? ERenderTargetActions::Clear_Store : ERenderTargetActions::Load_Store;
 		RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Clear_Store, StencilAction);
-		bSceneDepthCleared = true;	
 	}
 	else
 	{
@@ -2610,7 +2495,7 @@ TRDGUniformBufferRef<FSceneTextureUniformParameters> CreateSceneTextureUniformBu
 	FSceneTextureUniformParameters* SceneTextures = GraphBuilder.AllocParameters<FSceneTextureUniformParameters>();
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 	SetupSceneTextureUniformParameters(&GraphBuilder, FeatureLevel, SceneContext, SetupMode, *SceneTextures);
-	return GraphBuilder.CreateUniformBuffer(SceneTextures, TEXT("SceneTextures"));
+	return GraphBuilder.CreateUniformBuffer(SceneTextures);
 }
 
 EMobileSceneTextureSetupMode Translate(ESceneTextureSetupMode InSetupMode)
@@ -2729,7 +2614,7 @@ TRDGUniformBufferRef<FMobileSceneTextureUniformParameters> CreateMobileSceneText
 	FMobileSceneTextureUniformParameters* SceneTextures = GraphBuilder.AllocParameters<FMobileSceneTextureUniformParameters>();
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 	SetupMobileSceneTextureUniformParameters(&GraphBuilder, SceneContext, SetupMode, *SceneTextures);
-	return GraphBuilder.CreateUniformBuffer(SceneTextures, TEXT("MobileSceneTextures"));
+	return GraphBuilder.CreateUniformBuffer(SceneTextures);
 }
 
 FSceneTextureShaderParameters CreateSceneTextureShaderParameters(

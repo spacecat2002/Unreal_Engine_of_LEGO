@@ -599,8 +599,6 @@ void GetBasePassShaders<FUniformLightMapPolicy>(
 	TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>& PixelShader
 	);
 
-void SetupBasePassView(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer* SceneRenderer, const bool bIsEditorPrimitivePass = false);
-	
 class FBasePassMeshProcessor : public FMeshPassProcessor
 {
 public:

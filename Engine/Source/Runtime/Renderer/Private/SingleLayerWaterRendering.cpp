@@ -270,36 +270,6 @@ class FWaterRefractionCopyPS : public FGlobalShader
 
 IMPLEMENT_GLOBAL_SHADER(FWaterRefractionCopyPS, "/Engine/Private/SingleLayerWaterComposite.usf", "WaterRefractionCopyPS", SF_Pixel);
 
-class FSingleLayerWaterPassParallelCommandListSet : public FParallelCommandListSet
-{
-public:
-	FSingleLayerWaterPassParallelCommandListSet(
-		FRHICommandListImmediate& InParentCmdList,
-		const FSceneRenderer& InSceneRenderer,
-		const FViewInfo& InView,
-		const FParallelCommandListBindings& InBindings)
-		: FParallelCommandListSet(GET_STATID(STAT_CLP_WaterSingleLayerPass), InView, InParentCmdList, false)
-		, SceneRenderer(InSceneRenderer)
-		, Bindings(InBindings)
-	{}
-
-	virtual ~FSingleLayerWaterPassParallelCommandListSet()
-	{
-		Dispatch();
-	}
-
-	virtual void SetStateOnCommandList(FRHICommandList& RHICmdList) override
-	{
-		FParallelCommandListSet::SetStateOnCommandList(RHICmdList);
-		Bindings.SetOnCommandList(RHICmdList);
-		SceneRenderer.SetStereoViewport(RHICmdList, View);
-	}
-
-private:
-	const FSceneRenderer& SceneRenderer;
-	FParallelCommandListBindings Bindings;
-};
-
 static FSceneWithoutWaterTextures AddCopySceneWithoutWaterPass(
 	FRDGBuilder& GraphBuilder,
 	TArrayView<const FViewInfo> Views,
@@ -765,7 +735,7 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 				[this, &View, PassParameters](FRHICommandListImmediate& RHICmdList)
 			{
 				Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-				FSingleLayerWaterPassParallelCommandListSet ParallelCommandListSet(RHICmdList, *this, View, FParallelCommandListBindings(PassParameters));
+				FRDGParallelCommandListSet ParallelCommandListSet(RHICmdList, GET_STATID(STAT_CLP_WaterSingleLayerPass), *this, View, FParallelCommandListBindings(PassParameters));
 				View.ParallelMeshDrawCommandPasses[EMeshPass::SingleLayerWaterPass].DispatchDraw(&ParallelCommandListSet, RHICmdList);
 			});
 		}
@@ -778,7 +748,7 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 				[this, &View](FRHICommandListImmediate& RHICmdList)
 			{
 				Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-				SetupBasePassView(RHICmdList, View, this);
+				SetStereoViewport(RHICmdList, View, 1.0f);
 				View.ParallelMeshDrawCommandPasses[EMeshPass::SingleLayerWaterPass].DispatchDraw(nullptr, RHICmdList);
 			});
 		}

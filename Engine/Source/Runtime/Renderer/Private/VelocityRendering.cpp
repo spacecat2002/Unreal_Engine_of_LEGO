@@ -176,49 +176,7 @@ EMeshPass::Type GetMeshPassFromVelocityPass(EVelocityPass VelocityPass)
 	return EMeshPass::Velocity;
 }
 
-static void SetVelocitiesState(
-	FRHICommandList& RHICmdList,
-	const FSceneRenderer& SceneRenderer,
-	const FViewInfo& View,
-	EVelocityPass VelocityPass)
-{
-	SceneRenderer.SetStereoViewport(RHICmdList, View);
-}
-
 DECLARE_CYCLE_STAT(TEXT("Velocity"), STAT_CLP_Velocity, STATGROUP_ParallelCommandListMarkers);
-
-class FVelocityPassParallelCommandListSet : public FParallelCommandListSet
-{
-public:
-	FVelocityPassParallelCommandListSet(
-		FRHICommandListImmediate& InRHICmdList,
-		const FSceneRenderer& InSceneRenderer,
-		const FViewInfo& InView,
-		const FParallelCommandListBindings& InBindings,
-		EVelocityPass InVelocityPass)
-		: FParallelCommandListSet(GET_STATID(STAT_CLP_Velocity), InView, InRHICmdList, false)
-		, SceneRenderer(InSceneRenderer)
-		, Bindings(InBindings)
-		, VelocityPass(InVelocityPass)
-	{}
-
-	virtual ~FVelocityPassParallelCommandListSet()
-	{
-		Dispatch();
-	}
-
-	virtual void SetStateOnCommandList(FRHICommandList& RHICmdList) override
-	{
-		FParallelCommandListSet::SetStateOnCommandList(RHICmdList);
-		Bindings.SetOnCommandList(RHICmdList);
-		SceneRenderer.SetStereoViewport(RHICmdList, View);
-	}
-
-private:
-	const FSceneRenderer& SceneRenderer;
-	FParallelCommandListBindings Bindings;
-	EVelocityPass VelocityPass;
-};
 
 bool FDeferredShadingSceneRenderer::ShouldRenderVelocities() const
 {
@@ -330,8 +288,7 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 					[this, &View, &ParallelMeshPass, VelocityPass, PassParameters](FRHICommandListImmediate& RHICmdList)
 				{
 					Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-					FVelocityPassParallelCommandListSet ParallelCommandListSet(RHICmdList, *this, View, FParallelCommandListBindings(PassParameters), VelocityPass);
-					
+					FRDGParallelCommandListSet ParallelCommandListSet(RHICmdList, GET_STATID(STAT_CLP_Velocity), *this, View, FParallelCommandListBindings(PassParameters));
 					ParallelMeshPass.DispatchDraw(&ParallelCommandListSet, RHICmdList);
 				});
 			}

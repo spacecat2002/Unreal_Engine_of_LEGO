@@ -203,13 +203,9 @@ void FRendererModule::DrawTileMesh(FRHICommandListImmediate& RHICmdList, FMeshPa
 			// is this path used on mobile?
 			if (ShadingPath == EShadingPath::Deferred)
 			{
-				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-				FDebugViewModePassPassUniformParameters PassParameters;
-				SetupDebugViewModePassUniformBuffer(SceneContext, View, PassParameters);
-				TUniformBufferRef<FDebugViewModePassPassUniformParameters> DebugViewModePassUniformBuffer = TUniformBufferRef<FDebugViewModePassPassUniformParameters>::CreateUniformBufferImmediate(
-					PassParameters,
-					UniformBuffer_SingleFrame
-				);
+				TUniformBufferRef<FDebugViewModePassUniformParameters> DebugViewModePassUniformBuffer = CreateDebugViewModePassUniformBuffer(RHICmdList, View);
+				FUniformBufferStaticBindings GlobalUniformBuffers(DebugViewModePassUniformBuffer);
+				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 				DrawDynamicMeshPass(View, RHICmdList,
 					[Scene, &View, &DrawRenderState, &DebugViewModePassUniformBuffer, &Mesh](FMeshPassDrawListContext* InDrawListContext)
