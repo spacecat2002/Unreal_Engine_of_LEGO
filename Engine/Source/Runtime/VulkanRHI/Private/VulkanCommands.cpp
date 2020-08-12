@@ -365,83 +365,16 @@ void FVulkanCommandListContext::RHISetShaderParameter(FRHIComputeShader* Compute
 	PendingComputeState->SetPackedGlobalShaderParameter(BufferIndex, BaseIndex, NumBytes, NewValue);
 }
 
-struct FSrtResourceBinding
-{
-	typedef TRefCountPtr<FRHIResource> ResourceRef;
-
-	FSrtResourceBinding(): BindingIndex(-1), Resource(nullptr) {}
-	FSrtResourceBinding(int32 InBindingIndex, FRHIResource* InResource): BindingIndex(InBindingIndex), Resource(InResource) {}
-
-	int32 BindingIndex;
-	ResourceRef Resource;
-};
-
-
-typedef TArray<FSrtResourceBinding, TInlineAllocator<16>> FResourceBindingArray;
-
-static void GatherUniformBufferResources(
-	const TArray<uint32>& InBindingArray,
-	const uint32& InBindingMask,
-	const FVulkanUniformBuffer* UniformBuffer,
-	uint32 BufferIndex,
-	FResourceBindingArray& OutResourcesBindings)
-{
-	ensure(0);
-/*
-	check(UniformBuffer);
-
-	if (!((1 << BufferIndex) & InBindingMask))
-	{
-		return;
-	}
-
-	const TArray<TRefCountPtr<FRHIResource>>& ResourceArray = UniformBuffer->GetResourceTable();
-
-	// Expected to get an empty array
-	check(OutResourcesBindings.Num() == 0);
-
-	// Verify mask and array correlational validity
-	check(InBindingMask == 0 ? (InBindingArray.Num() == 0) : (InBindingArray.Num() > 0));
-
-	// InBindingArray contains index to the buffer offset and also buffer offsets
-	uint32 BufferOffset = InBindingArray[BufferIndex];
-	const uint32* ResourceInfos = &InBindingArray[BufferOffset];
-	uint32 ResourceInfo = *ResourceInfos++;
-
-	// The mask check at the top of this function does not appear to replace this check completely.  The mask only tells you if data exists for a given descriptor set; doesn't tell you what kind of data exists.
-	// Because different data types are stored in different arrays, it is possible to end up trying to parse the token stream for one array solely because another array happened to have valid data in it 
-	// for the current descriptors.  Bad things can (and do) result - like trying to push a sampler resource as if it were a texture resource.
-	if (BufferOffset > 0)
-	{
-		// Extract all resources related to the current BufferIndex
-		do
-		{
-			// Verify that we have correct buffer index
-			check(FRHIResourceTableEntry::GetUniformBufferIndex(ResourceInfo) == BufferIndex);
-
-			// Extract binding index from ResourceInfo
-			const uint32 BindingIndex = FRHIResourceTableEntry::GetBindIndex(ResourceInfo);
-
-			// Extract index of the resource stored in the resource table from ResourceInfo
-			const uint16 ResourceIndex = FRHIResourceTableEntry::GetResourceIndex(ResourceInfo);
-
-			if (ResourceIndex < ResourceArray.Num())
-			{
-				check(ResourceArray[ResourceIndex]);
-				OutResourcesBindings.Add(FSrtResourceBinding(BindingIndex, ResourceArray[ResourceIndex]));
-			}
-
-			// Iterate to next info
-			ResourceInfo = *ResourceInfos++;
-		}
-		while (FRHIResourceTableEntry::GetUniformBufferIndex(ResourceInfo) == BufferIndex);
-	}
-*/
-}
-
 template <typename TState>
-inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulkanCommandListContext* Context, TState* State, const FVulkanShader* Shader, const TArray<FVulkanShaderHeader::FGlobalInfo>& GlobalInfos, const TArray<TEnumAsByte<VkDescriptorType>>& DescriptorTypes, const FVulkanShaderHeader::FUniformBufferInfo& HeaderUBInfo, const FVulkanUniformBuffer* UniformBuffer, const TArray<FDescriptorSetRemappingInfo::FRemappingInfo>& GlobalRemappingInfo)
+inline void SetShaderUniformBufferResources(FVulkanCommandListContext* Context, TState* State, const FVulkanShader* Shader, const TArray<FVulkanShaderHeader::FGlobalInfo>& GlobalInfos, const TArray<TEnumAsByte<VkDescriptorType>>& DescriptorTypes, const FVulkanShaderHeader::FUniformBufferInfo& HeaderUBInfo, const FVulkanUniformBuffer* UniformBuffer, const TArray<FDescriptorSetRemappingInfo::FRemappingInfo>& GlobalRemappingInfo)
 {
+#if ENABLE_RHI_VALIDATION
+	static_assert(TIsSame<TState, FVulkanPendingGfxState>::Value || TIsSame<TState, FVulkanPendingComputeState>::Value, "TState must be FVulkanPendingGfxState or FVulkanPendingComputeState");
+	constexpr bool bIsGfx = TIsSame<TState, FVulkanPendingGfxState>::Value;
+	constexpr ERHIAccess SRVAccess = bIsGfx ? ERHIAccess::SRVGraphics : ERHIAccess::SRVCompute;
+	constexpr ERHIAccess UAVAccess = bIsGfx ? ERHIAccess::UAVGraphics : ERHIAccess::UAVCompute;
+#endif
+
 	ensure(UniformBuffer->GetLayout().GetHash() == HeaderUBInfo.LayoutHash);
 	float CurrentTime = (float)FPlatformTime::Seconds();
 	const TArray<TRefCountPtr<FRHIResource>>& ResourceArray = UniformBuffer->GetResourceTable();
@@ -468,8 +401,9 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			{
 				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid sampler in SRT table for shader '%s'"), *Shader->GetDebugName());
 			}
-		}
 			break;
+		}
+
 		case UBMT_TEXTURE:
 		case UBMT_RDG_TEXTURE:
 		{
@@ -484,6 +418,13 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 					BaseTexture = FVulkanTextureBase::Cast(GBlackTexture->TextureRHI.GetReference());
 				}
 
+#if ENABLE_RHI_VALIDATION
+				if (Context->Tracker)
+				{
+					Context->Tracker->Assert(TexRef->GetViewIdentity(0, 0, 0, 0, uint32(RHIValidation::EResourcePlane::Common), 1), SRVAccess);
+				}
+#endif
+
 				VkImageLayout Layout = Context->GetLayoutManager().FindLayoutChecked(BaseTexture->Surface.Image);
 				State->SetTextureForUBResource(GlobalRemappingInfo[ResourceInfo.GlobalIndex].NewDescriptorSet, GlobalRemappingInfo[ResourceInfo.GlobalIndex].NewBindingIndex, BaseTexture, Layout);
 				TexRef->SetLastRenderTime(CurrentTime);
@@ -492,8 +433,9 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			{
 				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table for shader '%s'"), *Shader->GetDebugName());
 			}
-		}
 			break;
+		}
+
 		case UBMT_SRV:
 		{
 			const VkDescriptorType DescriptorType = DescriptorTypes[GlobalInfos[ResourceInfo.GlobalIndex].TypeIndex];
@@ -504,6 +446,12 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			FRHIShaderResourceView* CurrentSRV = (FRHIShaderResourceView*)(ResourceArray[ResourceInfo.SourceUBResourceIndex].GetReference());
 			if (CurrentSRV)
 			{
+#if ENABLE_RHI_VALIDATION
+				if (Context->Tracker)
+				{
+					Context->Tracker->Assert(CurrentSRV->ViewIdentity, SRVAccess);
+				}
+#endif
 				FVulkanShaderResourceView* SRV = ResourceCast(CurrentSRV);
 				State->SetSRVForUBResource(GlobalRemappingInfo[ResourceInfo.GlobalIndex].NewDescriptorSet, GlobalRemappingInfo[ResourceInfo.GlobalIndex].NewBindingIndex, SRV);
 			}
@@ -511,8 +459,9 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			{
 				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table for shader '%s'"), *Shader->GetDebugName());
 			}
+			break;
 		}
-		break;
+
 		case UBMT_UAV:
 		{
 			const VkDescriptorType DescriptorType = DescriptorTypes[GlobalInfos[ResourceInfo.GlobalIndex].TypeIndex];
@@ -522,6 +471,12 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			FRHIUnorderedAccessView* CurrentUAV = (FRHIUnorderedAccessView*)(ResourceArray[ResourceInfo.SourceUBResourceIndex].GetReference());
 			if (CurrentUAV)
 			{
+#if ENABLE_RHI_VALIDATION
+				if (Context->Tracker)
+				{
+					Context->Tracker->Assert(CurrentUAV->ViewIdentity, UAVAccess);
+				}
+#endif
 				FVulkanUnorderedAccessView* UAV = ResourceCast(CurrentUAV);
 				State->SetUAVForUBResource(GlobalRemappingInfo[ResourceInfo.GlobalIndex].NewDescriptorSet, GlobalRemappingInfo[ResourceInfo.GlobalIndex].NewBindingIndex, UAV);
 			}
@@ -529,39 +484,14 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			{
 				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table for shader '%s'"), *Shader->GetDebugName());
 			}
+			break;
 		}
-		break;
 
 		default:
 			check(0);
 			break;
 		}
 	}
-/*
-	FResourceBindingArray SRVBindings;
-	if (ResourceBindingTable.ShaderResourceViewMap.Num() != 0)
-	{
-		GatherUniformBufferResources(ResourceBindingTable.ShaderResourceViewMap, ResourceBindingTable.ResourceTableBits, UniformBuffer, BindingIndex, SRVBindings);
-		if (CurrentTime == 0.0f)
-		{
-			CurrentTime = (float)FPlatformTime::Seconds();
-		}
-		for (int32 Index = 0; Index < SRVBindings.Num(); Index++)
-		{
-			const FSrtResourceBinding* CurrSRVBinding = &SRVBindings[Index];
-			FRHIShaderResourceView* CurrentSRV = static_cast<FRHIShaderResourceView*>(CurrSRVBinding->Resource.GetReference());
-			if (CurrentSRV)
-			{
-				FVulkanShaderResourceView* SRV = ResourceCast(CurrentSRV);
-				State->SetSRV(Stage, CurrSRVBinding->BindingIndex, SRV);
-			}
-			else
-			{
-				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid SRV in SRT table for shader '%s'"), *Shader->DebugName);
-			}
-		}
-	}
-	*/
 }
 
 inline void FVulkanCommandListContext::SetShaderUniformBuffer(ShaderStage::EStage Stage, const FVulkanUniformBuffer* UniformBuffer, int32 BufferIndex, const FVulkanShader* Shader)
