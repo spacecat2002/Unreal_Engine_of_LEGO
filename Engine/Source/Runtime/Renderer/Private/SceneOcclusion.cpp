@@ -1168,35 +1168,13 @@ static void BeginOcclusionTests(
 	TArrayView<FViewInfo> Views,
 	ERHIFeatureLevel::Type FeatureLevel,
 	const FViewOcclusionQueriesPerView& QueriesPerView,
-	float ViewportScale)
+	uint32 DownsampleFactor)
 {
 	check(RHICmdList.IsInsideRenderPass());
 	check(QueriesPerView.Num() == Views.Num());
 
 	SCOPE_CYCLE_COUNTER(STAT_BeginOcclusionTestsTime);
 	SCOPED_DRAW_EVENT(RHICmdList, BeginOcclusionTests);
-
-	int32 NumQueriesForBatch = 0;
-	{
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-		{
-			const FViewOcclusionQueries& ViewQuery = QueriesPerView[ViewIndex];
-			NumQueriesForBatch += ViewQuery.PointLightQueries.Num();
-			NumQueriesForBatch += ViewQuery.CSMQueries.Num();
-			NumQueriesForBatch += ViewQuery.ShadowQueries.Num();
-			NumQueriesForBatch += ViewQuery.ReflectionQueries.Num();
-
-			FViewInfo& View = Views[ViewIndex];
-			FSceneViewState* ViewState = (FSceneViewState*)View.State;
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-			if (!ViewState->HasViewParent() && !ViewState->bIsFrozen)
-#endif
-			{
-				NumQueriesForBatch += View.IndividualOcclusionQueries.GetNumBatchOcclusionQueries();
-				NumQueriesForBatch += View.GroupedOcclusionQueries.GetNumBatchOcclusionQueries();
-			}
-		}
-	}
 
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1218,7 +1196,7 @@ static void BeginOcclusionTests(
 		// We only need to render the front-faces of the culling geometry (this halves the amount of pixels we touch)
 		GraphicsPSOInit.RasterizerState = View.bReverseCulling ? TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI() : TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
 
-		const FIntRect ViewRect = GetScaledRect(View.ViewRect, ViewportScale);
+		const FIntRect ViewRect = GetDownscaledRect(View.ViewRect, DownsampleFactor);
 		RHICmdList.SetViewport(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, ViewRect.Max.X, ViewRect.Max.Y, 1.0f);
 
 		// Lookup the vertex shader.
@@ -1342,18 +1320,27 @@ void FDeferredShadingSceneRenderer::RenderOcclusion(
 
 		RDG_GPU_STAT_SCOPE(GraphBuilder, HZB);
 
-		const float ViewportScale = (float)SmallDepthTexture->Desc.Extent.X / (float)SceneDepthTexture->Desc.Extent.X;
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+
+		uint32 DownsampleFactor = 1;
+		FRDGTextureRef OcclusionDepthTexture = SceneDepthTexture;
 
 		// Update the quarter-sized depth buffer with the current contents of the scene depth texture.
 		// This needs to happen before occlusion tests, which makes use of the small depth buffer.
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+		if (SceneContext.UseDownsizedOcclusionQueries())
 		{
-			const FViewInfo& View = Views[ViewIndex];
-			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+			DownsampleFactor = SceneContext.GetSmallColorDepthDownsampleFactor();
+			OcclusionDepthTexture = SmallDepthTexture;
 
-			const FScreenPassTexture SceneDepth(SceneDepthTexture, View.ViewRect);
-			const FScreenPassRenderTarget SmallDepth(SmallDepthTexture, GetScaledRect(View.ViewRect, ViewportScale), ERenderTargetLoadAction::ELoad);
-			AddDownsampleDepthPass(GraphBuilder, View, SceneDepth, SmallDepth, EDownsampleDepthFilter::Max);
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+			{
+				const FViewInfo& View = Views[ViewIndex];
+				RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+
+				const FScreenPassTexture SceneDepth(SceneDepthTexture, View.ViewRect);
+				const FScreenPassRenderTarget SmallDepth(SmallDepthTexture, GetDownscaledRect(View.ViewRect, DownsampleFactor), ERenderTargetLoadAction::ELoad);
+				AddDownsampleDepthPass(GraphBuilder, View, SceneDepth, SmallDepth, EDownsampleDepthFilter::Max);
+			}
 		}
 
 		// Issue occlusion queries. This is done after the downsampled depth buffer is created so that it can be used for issuing queries.
@@ -1361,16 +1348,40 @@ void FDeferredShadingSceneRenderer::RenderOcclusion(
 
 		if (QueriesPerView.Num())
 		{
+			int32 NumQueriesForBatch = 0;
+
+			{
+				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+				{
+					const FViewOcclusionQueries& ViewQuery = QueriesPerView[ViewIndex];
+					NumQueriesForBatch += ViewQuery.PointLightQueries.Num();
+					NumQueriesForBatch += ViewQuery.CSMQueries.Num();
+					NumQueriesForBatch += ViewQuery.ShadowQueries.Num();
+					NumQueriesForBatch += ViewQuery.ReflectionQueries.Num();
+
+					FViewInfo& View = Views[ViewIndex];
+					FSceneViewState* ViewState = (FSceneViewState*)View.State;
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+					if (!ViewState->HasViewParent() && !ViewState->bIsFrozen)
+#endif
+					{
+						NumQueriesForBatch += View.IndividualOcclusionQueries.GetNumBatchOcclusionQueries();
+						NumQueriesForBatch += View.GroupedOcclusionQueries.GetNumBatchOcclusionQueries();
+					}
+				}
+			}
+
 			auto* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
-			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SmallDepthTexture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite);
+			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(OcclusionDepthTexture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite);
+			PassParameters->RenderTargets.NumOcclusionQueries = NumQueriesForBatch;
 
 			GraphBuilder.AddPass(
 				RDG_EVENT_NAME("BeginOcclusionTests"),
 				PassParameters,
 				ERDGPassFlags::Raster,
-				[this, LocalQueriesPerView = MoveTemp(QueriesPerView), ViewportScale](FRHICommandListImmediate& RHICmdList)
+				[this, LocalQueriesPerView = MoveTemp(QueriesPerView), DownsampleFactor](FRHICommandListImmediate& RHICmdList)
 			{
-				BeginOcclusionTests(RHICmdList, Views, FeatureLevel, LocalQueriesPerView, ViewportScale);
+				BeginOcclusionTests(RHICmdList, Views, FeatureLevel, LocalQueriesPerView, DownsampleFactor);
 			});
 		}
 	}

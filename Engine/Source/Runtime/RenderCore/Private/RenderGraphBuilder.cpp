@@ -452,7 +452,7 @@ FRDGTextureRef FRDGBuilder::RegisterExternalTexture(
 	Texture->bExternal = true;
 	Texture->AccessInitial = AccessInitial;
 	Texture->AccessFinal = kDefaultAccessFinal;
-	Texture->FirstPass = Texture->AcquirePass = GetProloguePassHandle();
+	Texture->AcquirePass = GetProloguePassHandle();
 
 	FRDGTextureState& TextureState = Texture->GetState();
 
@@ -515,7 +515,7 @@ FRDGBufferRef FRDGBuilder::RegisterExternalBuffer(
 	Buffer->bExternal = true;
 	Buffer->AccessInitial = AccessInitial;
 	Buffer->AccessFinal = kDefaultAccessFinal;
-	Buffer->FirstPass = Buffer->AcquirePass = GetProloguePassHandle();
+	Buffer->AcquirePass = GetProloguePassHandle();
 
 	FRDGSubresourceState& BufferState = Buffer->GetState();
 	checkf(BufferState.Access == ERHIAccess::Unknown,
@@ -1077,7 +1077,7 @@ void FRDGBuilder::Execute()
 				auto* NextOwner = Registry[Resource->NextOwner];
 				LogFile.AddAliasEdge(Resource, Resource->LastPass, NextOwner, NextOwner->AcquirePass);
 			}
-			LogFile.AddFirstEdge(Resource, Resource->AcquirePass);
+			LogFile.AddFirstEdge(Resource, Resource->FirstPass);
 		}
 	};
 #endif
@@ -1857,6 +1857,11 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Tex
 {
 	check(Texture);
 
+	if (!Texture->FirstPass.IsValid())
+	{
+		Texture->FirstPass = PassHandle;
+	}
+
 	if (Texture->PooledTexture)
 	{
 		return;
@@ -1879,7 +1884,6 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Tex
 
 	FRDGTextureRef PreviousOwner = nullptr;
 	Texture->SetRHI(PooledRenderTarget, PreviousOwner);
-	Texture->FirstPass = PassHandle;
 	Texture->bTransient = PooledRenderTarget->IsTransient();
 
 	check(!IsResourceLifetimeExtended() || !PreviousOwner);
@@ -1918,6 +1922,11 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGTextureSRVRef 
 	FRDGTextureRef Texture = SRV->Desc.Texture;
 	FRDGPooledTexture* PooledTexture = Texture->PooledTexture;
 	check(PooledTexture);
+
+	if (!Texture->FirstPass.IsValid())
+	{
+		Texture->FirstPass = PassHandle;
+	}
 
 	if (SRV->Desc.MetaData == ERDGTextureMetaDataAccess::HTile)
 	{
@@ -2002,6 +2011,11 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGBufferRef Buff
 {
 	check(Buffer);
 
+	if (!Buffer->FirstPass.IsValid())
+	{
+		Buffer->FirstPass = PassHandle;
+	}
+
 	if (Buffer->PooledBuffer)
 	{
 		return;
@@ -2035,6 +2049,11 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGBufferSRVRef S
 	FRDGBufferRef Buffer = SRV->Desc.Buffer;
 
 	check(Buffer->PooledBuffer);
+
+	if (!Buffer->FirstPass.IsValid())
+	{
+		Buffer->FirstPass = PassHandle;
+	}
 
 	if (Buffer->PooledBuffer->SRVs.Contains(SRV->Desc))
 	{

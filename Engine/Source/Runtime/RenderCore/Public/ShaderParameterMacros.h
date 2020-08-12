@@ -439,6 +439,7 @@ struct alignas(SHADER_PARAMETER_STRUCT_ALIGNMENT) FRenderTargetBindingSlots
 	TStaticArray<FRenderTargetBinding, MaxSimultaneousRenderTargets> Output;
 	FDepthStencilBinding DepthStencil;
 	FResolveRect ResolveRect;
+	uint32 NumOcclusionQueries = 0;
 
 	/** Accessors for regular output to simplify the syntax to:
 	 *
@@ -532,7 +533,7 @@ struct alignas(SHADER_PARAMETER_STRUCT_ALIGNMENT) FRenderTargetBindingSlots
 	};
 };
 
-static_assert(sizeof(FRenderTargetBindingSlots) == 224, "FRenderTargetBindingSlots needs to be same size on all platforms.");
+static_assert(sizeof(FRenderTargetBindingSlots) == 240, "FRenderTargetBindingSlots needs to be same size on all platforms.");
 
 /** Static array of shader resource shader that is initialized to nullptr. */
 template<typename TElement, uint32 NumElements>

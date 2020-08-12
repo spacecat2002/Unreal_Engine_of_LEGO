@@ -1128,7 +1128,7 @@ void FRDGLogFile::End()
 			PrevPassInPipelineHandle = PassHandle;
 		}
 	}
-	else
+	else if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_LOW)
 	{
 		for (FRDGPassHandle PassHandle = Passes->Begin(); PassHandle != Passes->End(); ++PassHandle)
 		{
@@ -1273,9 +1273,19 @@ void FRDGLogFile::End()
 	bOpen = false;
 }
 
+bool FRDGLogFile::IncludeTransitionEdgeInGraph(FRDGPassHandle Pass) const
+{
+	return Pass.IsValid() && Pass != ProloguePassHandle && Pass != EpiloguePassHandle;
+}
+
+bool FRDGLogFile::IncludeTransitionEdgeInGraph(FRDGPassHandle PassBefore, FRDGPassHandle PassAfter) const
+{
+	return IncludeTransitionEdgeInGraph(PassBefore) && IncludeTransitionEdgeInGraph(PassAfter);
+}
+
 void FRDGLogFile::AddFirstEdge(const FRDGTextureRef Texture, FRDGPassHandle FirstPass)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen)
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(FirstPass))
 	{
 		AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s]"),
 			*GetNodeName(Texture),
@@ -1286,7 +1296,7 @@ void FRDGLogFile::AddFirstEdge(const FRDGTextureRef Texture, FRDGPassHandle Firs
 
 void FRDGLogFile::AddFirstEdge(const FRDGBufferRef Buffer, FRDGPassHandle FirstPass)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen)
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(FirstPass))
 	{
 		AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s]"),
 			*GetNodeName(Buffer),
@@ -1296,26 +1306,26 @@ void FRDGLogFile::AddFirstEdge(const FRDGBufferRef Buffer, FRDGPassHandle FirstP
 }
 
 
-void FRDGLogFile::AddAliasEdge(const FRDGTextureRef TextureBefore, FRDGPassHandle BeforePass, const FRDGTextureRef TextureAfter, FRDGPassHandle PassAfter)
+void FRDGLogFile::AddAliasEdge(const FRDGTextureRef TextureBefore, FRDGPassHandle BeforePass, const FRDGTextureRef TextureAfter, FRDGPassHandle AfterPass)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen)
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(BeforePass, AfterPass))
 	{
 		AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<Alias: <b>%s -&gt; %s</b>>]"),
 			*GetProducerName(BeforePass),
-			*GetConsumerName(PassAfter),
+			*GetConsumerName(AfterPass),
 			AliasColorAttributes,
 			TextureBefore->Name,
 			TextureAfter->Name));
 	}
 }
 
-void FRDGLogFile::AddAliasEdge(const FRDGBufferRef BufferBefore, FRDGPassHandle BeforePass, const FRDGBufferRef BufferAfter, FRDGPassHandle PassAfter)
+void FRDGLogFile::AddAliasEdge(const FRDGBufferRef BufferBefore, FRDGPassHandle BeforePass, const FRDGBufferRef BufferAfter, FRDGPassHandle AfterPass)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen)
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(BeforePass, AfterPass))
 	{
 		AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<Alias: <b>%s -&gt; %s</b>>]"),
 			*GetProducerName(BeforePass),
-			*GetConsumerName(PassAfter),
+			*GetConsumerName(AfterPass),
 			AliasColorAttributes,
 			BufferBefore->Name,
 			BufferAfter->Name));
@@ -1324,7 +1334,7 @@ void FRDGLogFile::AddAliasEdge(const FRDGBufferRef BufferBefore, FRDGPassHandle 
 
 void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen)
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(StateBefore.PassHandle, StateAfter.PassHandle))
 	{
 		if (FRDGSubresourceState::IsTransitionRequired(StateBefore, StateAfter))
 		{
@@ -1350,7 +1360,7 @@ void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubres
 
 void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture, uint32 MipIndex, uint32 ArraySlice, uint32 PlaneSlice)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen)
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(StateBefore.PassHandle, StateAfter.PassHandle))
 	{
 		if (FRDGSubresourceState::IsTransitionRequired(StateBefore, StateAfter))
 		{
@@ -1378,7 +1388,7 @@ void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubres
 
 void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGBufferRef Buffer)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen)
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(StateBefore.PassHandle, StateAfter.PassHandle))
 	{
 		if (FRDGSubresourceState::IsTransitionRequired(StateBefore, StateAfter))
 		{

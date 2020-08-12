@@ -278,6 +278,7 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, BufferSize(SnapshotSource.BufferSize)
 	, LastStereoSize(SnapshotSource.LastStereoSize)
 	, SmallColorDepthDownsampleFactor(SnapshotSource.SmallColorDepthDownsampleFactor)
+	, bUseDownsizedOcclusionQueries(SnapshotSource.bUseDownsizedOcclusionQueries)
 	, CurrentGBufferFormat(SnapshotSource.CurrentGBufferFormat)
 	, CurrentSceneColorFormat(SnapshotSource.CurrentSceneColorFormat)
 	, CurrentMobileSceneColorFormat(SnapshotSource.CurrentMobileSceneColorFormat)
@@ -707,6 +708,7 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 		(CurrentSceneColorFormat != SceneColorFormat) ||
 		(CurrentMobileSceneColorFormat != MobileSceneColorFormat) ||
 		(bAllowStaticLighting != bNewAllowStaticLighting) ||
+		(bUseDownsizedOcclusionQueries != bDownsampledOcclusionQueries) ||
 		(CurrentMaxShadowResolution != MaxShadowResolution) ||
  		(CurrentRSMResolution != RSMResolution) ||
 		(CurrentTranslucencyLightingVolumeDim != TranslucencyLightingVolumeDim) ||
@@ -718,6 +720,7 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 		CurrentSceneColorFormat = SceneColorFormat;
 		CurrentMobileSceneColorFormat = MobileSceneColorFormat;
 		bAllowStaticLighting = bNewAllowStaticLighting;
+		bUseDownsizedOcclusionQueries = bDownsampledOcclusionQueries;
 		CurrentMaxShadowResolution = MaxShadowResolution;
 		CurrentRSMResolution = RSMResolution;
 		CurrentTranslucencyLightingVolumeDim = TranslucencyLightingVolumeDim;

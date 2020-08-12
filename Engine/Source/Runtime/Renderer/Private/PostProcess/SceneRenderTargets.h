@@ -175,6 +175,7 @@ protected:
 		BufferSize(0, 0),
 		LastStereoSize(0, 0),
 		SmallColorDepthDownsampleFactor(2),
+		bUseDownsizedOcclusionQueries(true),
 		CurrentGBufferFormat(0),
 		CurrentSceneColorFormat(0),
 		CurrentMobileSceneColorFormat(EPixelFormat::PF_Unknown),
@@ -340,6 +341,8 @@ public:
 	FCustomDepthTextures RequestCustomDepth(FRDGBuilder& GraphBuilder, bool bPrimitives);
 
 	static bool IsCustomDepthPassWritingStencil(ERHIFeatureLevel::Type InFeatureLevel);
+
+	bool UseDownsizedOcclusionQueries() const { return bUseDownsizedOcclusionQueries; }
 
 	// ---
 
@@ -648,6 +651,8 @@ private:
 	FIntPoint LastStereoSize;
 	/** e.g. 2 */
 	uint32 SmallColorDepthDownsampleFactor;
+	/** Whether to use SmallDepthZ for occlusion queries. */
+	bool bUseDownsizedOcclusionQueries;
 	/** To detect a change of the CVar r.GBufferFormat */
 	int32 CurrentGBufferFormat;
 	/** To detect a change of the CVar r.SceneColorFormat */
