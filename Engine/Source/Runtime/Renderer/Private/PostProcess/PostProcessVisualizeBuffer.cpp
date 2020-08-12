@@ -361,6 +361,7 @@ FScreenPassTexture AddVisualizeGBufferOverviewPass(
 		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::PreTonemapHDRColor, Inputs.SceneColorBeforeTonemap);
 		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::PostTonemapHDRColor, Inputs.SceneColorAfterTonemap);
 		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::Velocity, Inputs.Velocity);
+		PostProcessMaterialInputs.SceneTextures = Inputs.SceneTextures;
 		PostProcessMaterialInputs.OutputFormat = OutputFormat;
 
 		Output = AddPostProcessMaterialPass(GraphBuilder, View, PostProcessMaterialInputs, MaterialInterface);

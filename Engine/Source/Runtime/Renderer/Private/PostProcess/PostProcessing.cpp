@@ -926,6 +926,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassInputs.SceneColorAfterTonemap = SceneColorAfterTonemap;
 		PassInputs.SeparateTranslucency = SeparateTranslucency;
 		PassInputs.Velocity = Velocity;
+		PassInputs.SceneTextures = GetSceneTextureShaderParameters(Inputs.SceneTextures);
 		PassInputs.bOverview = bVisualizeGBufferOverview;
 		PassInputs.bDumpToFile = bVisualizeGBufferDumpToFile;
 		PassInputs.bOutputInHDR = bOutputInHDR;
