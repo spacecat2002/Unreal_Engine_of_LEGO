@@ -262,13 +262,14 @@ FRDGPassRef FRDGBuilder::AddPass(
 	}
 #endif
 
-	FRDGPass* Pass = Passes.Allocate<LambdaPassType>(
-		Allocator,
+	FRDGPass* Pass = Allocator.AllocObject<LambdaPassType>(
 		MoveTemp(Name),
 		ParameterStruct,
 		OverridePassFlags(Name.GetTCHAR(), Flags, LambdaPassType::kSupportsAsyncCompute),
 		MoveTemp(ExecuteLambda));
 
+	IF_RDG_ENABLE_DEBUG(ClobberPassOutputs(Pass));
+	Passes.Insert(Pass);
 	SetupPass(Pass);
 	return Pass;
 }

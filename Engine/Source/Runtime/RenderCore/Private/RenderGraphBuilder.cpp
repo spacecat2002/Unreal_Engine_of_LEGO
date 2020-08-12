@@ -585,7 +585,7 @@ void FRDGBuilder::Compile()
 		{
 			const FRDGPassHandle ProducerHandle = Resource->LastProducer;
 
-			// Certain readable states are also writable, so this could be the first access.
+			// Mark this pass as a consumer for the resource.
 			if (ProducerHandle.IsValid())
 			{
 				AddPassDependency(ProducerHandle, PassHandle);
@@ -904,11 +904,51 @@ void FRDGBuilder::Compile()
 	{
 		SCOPED_NAMED_EVENT(FRDGBuilder_Compile_RenderPassMerge, FColor::Emerald);
 
+		TArray<FRDGPassHandle, SceneRenderingAllocator> PassesToMerge;
 		FRDGPass* PrevPass = nullptr;
 		const FRenderTargetBindingSlots* PrevRenderTargets = nullptr;
 
-		const auto InvalidateMerge = [&]
+		const auto CommitMerge = [&]
 		{
+			if (PassesToMerge.Num())
+			{
+				const FRDGPassHandle FirstPassHandle = PassesToMerge[0];
+				const FRDGPassHandle LastPassHandle = PassesToMerge.Last();
+
+				// Given an interval of passes to merge into a single render pass: [B, X, X, X, X, E]
+				//
+				// The begin pass (B) and end (E) passes will call {Begin, End}RenderPass, respectively. Also,
+				// begin will handle all prologue barriers for the entire merged interval, and end will handle all
+				// epilogue barriers. This avoids transitioning of resources within the render pass and batches the
+				// transitions more efficiently. This assumes we have filtered out dependencies between passes from
+				// the merge set, which is done during traversal.
+
+				// (B) First pass in the merge sequence.
+				{
+					FRDGPass* Pass = Passes[FirstPassHandle];
+					Pass->bSkipRenderPassEnd = 1;
+					Pass->EpilogueBarrierPass = LastPassHandle;
+				}
+
+				// (X) Intermediate passes.
+				for (int32 PassIndex = 1, PassCount = PassesToMerge.Num() - 1; PassIndex < PassCount; ++PassIndex)
+				{
+					const FRDGPassHandle PassHandle = PassesToMerge[PassIndex];
+					FRDGPass* Pass = Passes[PassHandle];
+					Pass->bSkipRenderPassBegin = 1;
+					Pass->bSkipRenderPassEnd = 1;
+					Pass->PrologueBarrierPass = FirstPassHandle;
+					Pass->EpilogueBarrierPass = LastPassHandle;
+				}
+
+				// (E) Last pass in the merge sequence.
+				{
+					FRDGPass* Pass = Passes[LastPassHandle];
+					Pass->bSkipRenderPassBegin = 1;
+					Pass->PrologueBarrierPass = FirstPassHandle;
+				}
+			}
+			PassesToMerge.Reset();
 			PrevPass = nullptr;
 			PrevRenderTargets = nullptr;
 		};
@@ -924,17 +964,17 @@ void FRDGBuilder::Compile()
 			{
 				FRDGPass* NextPass = Passes[PassHandle];
 
-				// A pass where the user controls the render pass can't merge with other passes.
-				if (EnumHasAnyFlags(NextPass->GetFlags(), ERDGPassFlags::SkipRenderPass))
+				// A pass where the user controls the render pass can't merge with other passes, and raster UAV passes can't merge due to potential interdependencies.
+				if (EnumHasAnyFlags(NextPass->GetFlags(), ERDGPassFlags::SkipRenderPass) || NextPass->bUAVAccess)
 				{
-					InvalidateMerge();
+					CommitMerge();
 					continue;
 				}
 
 				// A graphics fork pass can't merge with a previous raster pass.
-				if (NextPass->IsGraphicsFork())
+				if (NextPass->bGraphicsFork)
 				{
-					InvalidateMerge();
+					CommitMerge();
 				}
 
 				const FRenderTargetBindingSlots& RenderTargets = NextPass->GetParameters().GetRenderTargets();
@@ -945,8 +985,15 @@ void FRDGBuilder::Compile()
 
 					if (PrevRenderTargets->CanMergeBefore(RenderTargets) && PrevPass->GPUMask == NextPass->GPUMask)
 					{
-						PrevPass->bSkipRenderPassEnd = 1;
-						NextPass->bSkipRenderPassBegin = 1;
+						if (!PassesToMerge.Num())
+						{
+							PassesToMerge.Add(PrevPass->GetHandle());
+						}
+						PassesToMerge.Add(PassHandle);
+					}
+					else
+					{
+						CommitMerge();
 					}
 				}
 
@@ -956,9 +1003,11 @@ void FRDGBuilder::Compile()
 			else if (!PassesOnAsyncCompute[PassHandle])
 			{
 				// A non-raster pass on the graphics pipe will invalidate the render target merge.
-				InvalidateMerge();
+				CommitMerge();
 			}
 		}
+
+		CommitMerge();
 	}
 }
 
@@ -1134,13 +1183,14 @@ void FRDGBuilder::Clear()
 
 void FRDGBuilder::SetupPass(FRDGPass* Pass)
 {
-	IF_RDG_ENABLE_DEBUG(ClobberPassOutputs(Pass));
 	IF_RDG_ENABLE_DEBUG(UserValidation.ValidateAddPass(Pass, bInDebugPassScope));
 
 	const FRDGParameterStruct PassParameters = Pass->GetParameters();
 	const FRDGPassHandle PassHandle = Pass->GetHandle();
 	const ERDGPassFlags PassFlags = Pass->GetFlags();
 	const ERHIPipeline PassPipeline = Pass->GetPipeline();
+
+	bool bPassUAVAccess = false;
 
 	// Reserve and generate the texture access map; track one reference for each subresource.
 	Pass->TextureAccessMap.Reserve(PassParameters.GetTextureParameterCount() + (PassParameters.HasRenderTargets() ? (MaxSimultaneousRenderTargets + 1) : 0));
@@ -1152,6 +1202,7 @@ void FRDGBuilder::SetupPass(FRDGPass* Pass)
 		AccessInfo.ReferenceCount += Range.GetSubresourceCount();
 		AccessInfo.NoUAVBarrierFilter.AddHandle(GetHandleIfNoUAVBarrier(TextureView));
 		AccessInfo.FlagsUnion |= GetTextureViewTransitionFlags(TextureView);
+		bPassUAVAccess |= EnumHasAnyFlags(Access, ERHIAccess::UAVMask);
 	});
 
 	// Build the pass and texture subresource tracking policy.
@@ -1176,7 +1227,10 @@ void FRDGBuilder::SetupPass(FRDGPass* Pass)
 		AccessInfo.AccessUnion |= Access;
 		AccessInfo.ReferenceCount++;
 		AccessInfo.NoUAVBarrierFilter.AddHandle(GetHandleIfNoUAVBarrier(BufferView));
+		bPassUAVAccess |= EnumHasAnyFlags(Access, ERHIAccess::UAVMask);
 	});
+
+	Pass->bUAVAccess = bPassUAVAccess;
 
 	const bool bEmptyParameters = !Pass->TextureAccessMap.Num() && !Pass->BufferAccessMap.Num();
 	PassesWithEmptyParameters.Add(bEmptyParameters);
@@ -1204,6 +1258,8 @@ void FRDGBuilder::SetupPassInternal(FRDGPass* Pass, FRDGPassHandle PassHandle, E
 
 	Pass->GraphicsJoinPass = PassHandle;
 	Pass->GraphicsForkPass = PassHandle;
+	Pass->PrologueBarrierPass = PassHandle;
+	Pass->EpilogueBarrierPass = PassHandle;
 
 #if WITH_MGPU
 	Pass->GPUMask = RHICmdList.GetGPUMask();
@@ -1758,18 +1814,21 @@ void FRDGBuilder::AddTransitionInternal(
 	// occurs immediately before the pass executes in the prologue (no splitting). Otherwise,
 	// the transition is split to occur after the previous pass executes.
 
+	FRDGPass* PrologueBarrierPass = Passes[NextPass->PrologueBarrierPass];
+
 	FRDGBarrierBatchBegin* BarriersToBegin = nullptr;
 	if (PrevPass == NextPass || GRDGImmediateMode)
 	{
-		BarriersToBegin = &NextPass->PrologueBarriersToBegin;
+		BarriersToBegin = &PrologueBarrierPass->PrologueBarriersToBegin;
 	}
 	else
 	{
-		BarriersToBegin = PrevPass->GetEpilogueBarriersToBeginFor(StateAfter.Pipeline);
+		FRDGPass* EpilogueBarrierPass = Passes[PrevPass->EpilogueBarrierPass];
+		BarriersToBegin = EpilogueBarrierPass->GetEpilogueBarriersToBeginFor(StateAfter.Pipeline);
 	}
 	BarriersToBegin->AddTransition(Resource, TransitionInfo);
 
-	NextPass->PrologueBarriersToEnd.AddDependency(BarriersToBegin);
+	PrologueBarrierPass->PrologueBarriersToEnd.AddDependency(BarriersToBegin);
 }
 
 void FRDGBuilder::BeginResourceRHI(FRDGUniformBuffer* UniformBuffer)
@@ -2204,14 +2263,14 @@ void FRDGBuilder::ClobberPassOutputs(const FRDGPass* Pass)
 
 				if (UserValidation.TryMarkForClobber(Texture))
 				{
-					if (TextureAccess.GetAccess() == ERHIAccess::UAVCompute || TextureAccess.GetAccess() == ERHIAccess::UAVGraphics)
+					if (EnumHasAnyFlags(TextureAccess.GetAccess(), ERHIAccess::UAVMask))
 					{
 						for (int32 MipLevel = 0; MipLevel < Texture->Desc.NumMips; MipLevel++)
 						{
 							AddClearUAVPass(*this, this->CreateUAV(FRDGTextureUAVDesc(Texture, MipLevel)), ClobberColor);
 						}
 					}
-					else if (TextureAccess.GetAccess() == ERHIAccess::RTV)
+					else if (EnumHasAnyFlags(TextureAccess.GetAccess(), ERHIAccess::RTV))
 					{
 						AddClearRenderTargetPass(*this, Texture, ClobberColor);
 					}
