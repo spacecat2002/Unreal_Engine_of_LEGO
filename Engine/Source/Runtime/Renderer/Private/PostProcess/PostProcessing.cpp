@@ -1478,18 +1478,6 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 
 		bool bUseAa = View.AntiAliasingMethod == AAM_TemporalAA;
 
-		if (!bUseAa && View.ViewState)
-		{
-			View.ViewState->PrevFrameViewInfo.MobileAaBloomSunVignette.SafeRelease();
-			View.ViewState->PrevFrameViewInfo.MobileAaColor.SafeRelease();
-		}
-
-		// Release the cached bloom setup output if we don't use basic/histogram eye adaptation.
-		if (!(bUseBasicEyeAdaptation || bUseHistogramEyeAdaptation) && View.ViewState)
-		{
-			View.ViewState->PrevFrameViewInfo.MobileBloomSetup_EyeAdaptation.SafeRelease();
-		}
-
 		bool bUseDistortion = IsMobileDistortionActive(View);
 
 		bool bUseSeparateTranslucency = IsMobileSeparateTranslucencyActive(View);
@@ -1573,7 +1561,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 
 			BloomSetupOutputs = AddMobileBloomSetupPass(GraphBuilder, View, EyeAdaptationParameters, BloomSetupInputs);
 
-			if (bHasEyeAdaptationPass && View.ViewState)
+			if (bHasEyeAdaptationPass && View.ViewState && !View.bStatePrevViewInfoIsReadOnly)
 			{
 				GraphBuilder.QueueTextureExtraction(BloomSetupOutputs.EyeAdaptation.Texture, &View.ViewState->PrevFrameViewInfo.MobileBloomSetup_EyeAdaptation);
 			}
@@ -1810,7 +1798,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 
 			BloomOutput = AddMobileSunMergePass(GraphBuilder, View, SunMergeInputs);
 
-			if (bUseAa && View.ViewState)
+			if (bUseAa && View.ViewState && !View.bStatePrevViewInfoIsReadOnly)
 			{
 				GraphBuilder.QueueTextureExtraction(BloomOutput.Texture, &View.ViewState->PrevFrameViewInfo.MobileAaBloomSunVignette);
 			}
@@ -1965,7 +1953,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 
 		if (PassSequence.IsEnabled(EPass::TAA))
 		{
-			if (View.ViewState)
+			if (View.ViewState && !View.bStatePrevViewInfoIsReadOnly)
 			{
 				GraphBuilder.QueueTextureExtraction(SceneColor.Texture, &View.ViewState->PrevFrameViewInfo.MobileAaColor);
 			}
