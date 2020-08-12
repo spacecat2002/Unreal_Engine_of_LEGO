@@ -1093,7 +1093,12 @@ void FRDGLogFile::End()
 		for (FRDGPassHandle PassHandle = Passes->Begin(); PassHandle != Passes->End(); ++PassHandle)
 		{
 			const FRDGPass* Pass = Passes->Get(PassHandle);
-			
+
+			if (!EnumHasAnyFlags(Pass->GetFlags(), ERDGPassFlags::Copy | ERDGPassFlags::Raster | ERDGPassFlags::Compute | ERDGPassFlags::AsyncCompute))
+			{
+				continue;
+			}
+
 			ERHIPipeline PassPipeline = Pass->GetPipeline();
 			checkf(FMath::IsPowerOfTwo(uint32(PassPipeline)), TEXT("This logic doesn't handle multi-pipe passes."));
 			uint32 PipeIndex = FMath::FloorLog2(uint32(PassPipeline));
