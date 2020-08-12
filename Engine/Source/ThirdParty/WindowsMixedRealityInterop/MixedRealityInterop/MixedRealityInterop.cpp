@@ -62,8 +62,6 @@
 #include <sstream>
 #include "HandMeshObserver.h"
 
-#include <winrt/Windows.UI.ViewManagement.h>
-
 //https://docs.microsoft.com/en-us/cpp/preprocessor/predefined-macros?view=vs-2019
 //_M_ARM64 Defined as 1 for compilations that target 64-bit ARM processors. Otherwise, undefined.
 #if !PLATFORM_HOLOLENS || (PLATFORM_HOLOLENS && defined(_M_ARM64))
@@ -4100,36 +4098,6 @@ namespace WindowsMixedReality
 	void MixedRealityInterop::StopQRCodeTracking()
 	{
 		StopQRCodeObserver();
-	}
-	
-	bool MixedRealityInterop::ShowSystemKeyboard()
-	{
-		try
-		{
-			auto inputPane{ winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView() };
-			return inputPane.TryShow();
-		}
-		catch (winrt::hresult_error const&)
-		{
-			return false;
-		}
-
-		return false;
-	}
-
-	bool MixedRealityInterop::HideSystemKeyboard()
-	{
-		try
-		{
-			auto inputPane{ winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView() };
-			return inputPane.TryHide();
-		}
-		catch (winrt::hresult_error const&) 
-		{
-			return false;
-		}
-
-		return false;
 	}
 
 	bool MixedRealityInterop::IsThirdCameraActive()
