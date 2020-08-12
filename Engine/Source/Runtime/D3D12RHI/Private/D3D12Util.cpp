@@ -614,7 +614,7 @@ namespace D3D12RHI
 			UE_LOG(LogD3D12RHI, Error, TEXT("%s"), *ErrorMessage.ToText().ToString());
 		}
 
-#if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
+#if PLATFORM_WINDOWS
 		// If we have crash dump data then dump to disc
 		if (InGPUCrashDump != nullptr)
 		{
@@ -633,7 +633,7 @@ namespace D3D12RHI
 			ReportGPUCrash(TEXT("Aftermath GPU Crash dump Triggered"), 0);
 		}
 		else
-#endif // PLATFORM_WINDOWS || PLATFORM_HOLOLENS
+#endif // PLATFORM_WINDOWS
 		{
 			// Make sure the log is flushed!
 			GLog->PanicFlushThreadedLogs();

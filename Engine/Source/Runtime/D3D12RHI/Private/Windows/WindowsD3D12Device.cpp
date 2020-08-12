@@ -102,7 +102,11 @@ static void SafeCreateDXGIFactory(IDXGIFactory4** DXGIFactory)
 	{
 		bIsQuadBufferStereoEnabled = FParse::Param(FCommandLine::Get(), TEXT("quad_buffer_stereo"));
 
+#if PLATFORM_HOLOLENS
+		CreateDXGIFactory1(__uuidof(IDXGIFactory4), (void**)DXGIFactory);
+#else
 		CreateDXGIFactory(__uuidof(IDXGIFactory4), (void**)DXGIFactory);
+#endif
 	}
 	__except (IsDelayLoadException(GetExceptionInformation()))
 	{
@@ -221,10 +225,12 @@ static bool SupportsHDROutput(FD3D12DynamicRHI* D3DRHI)
 
 bool FD3D12DynamicRHIModule::IsSupported()
 {
+#if !PLATFORM_HOLOLENS
 	if (!FPlatformMisc::VerifyWindowsVersion(10, 0))
 	{
 		return false;
 	}
+#endif
 
 	// If not computed yet
 	if (ChosenAdapters.Num() == 0)
