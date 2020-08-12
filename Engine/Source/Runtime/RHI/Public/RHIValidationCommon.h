@@ -457,6 +457,17 @@ namespace RHIValidation
 			Identity.SubresourceRange.NumPlanes = Resource->NumPlanes;
 			return Identity;
 		}
+
+		inline FResourceIdentity GetWholeResourceIdentitySRV()
+		{
+			FResourceIdentity Identity = GetWholeResourceIdentity();
+
+			// When binding a whole texture for shader read (SRV), we only use the first plane.
+			// Other planes like stencil require a separate view to access for read in the shader.
+			Identity.SubresourceRange.NumPlanes = 1;
+
+			return Identity;
+		}
 	};
 
 	struct FView

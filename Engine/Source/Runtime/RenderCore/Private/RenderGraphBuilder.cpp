@@ -7,12 +7,6 @@
 #include "VisualizeTexture.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 
-inline bool IsSubresourceTrackingRequired(ERHIAccess Access, EResourceTransitionFlags Flags)
-{
-	// Aggressively merge into a whole union state if possible. Otherwise, revert to subresource tracking.
-	return !IsValidAccess(Access) || Flags != EResourceTransitionFlags::None;
-}
-
 inline ERHIAccess MakeValidAccess(ERHIAccess Access)
 {
 	// If we find any write states in the access mask, remove all read-only states. This mainly exists
@@ -1191,32 +1185,25 @@ void FRDGBuilder::SetupPass(FRDGPass* Pass)
 	const ERHIPipeline PassPipeline = Pass->GetPipeline();
 
 	bool bPassUAVAccess = false;
+	bool bPassSubresourceTrackingRequired = false;
 
 	// Reserve and generate the texture access map; track one reference for each subresource.
 	Pass->TextureAccessMap.Reserve(PassParameters.GetTextureParameterCount() + (PassParameters.HasRenderTargets() ? (MaxSimultaneousRenderTargets + 1) : 0));
 	EnumerateTextureAccess(PassParameters, PassFlags, [&](FRDGViewRef TextureView, FRDGTextureRef Texture, ERHIAccess Access, FRDGTextureSubresourceRange Range)
 	{
+		const bool bIsPartialResourceRange = !Range.IsWholeResource(Texture->GetSubresourceLayout());
+
 		check(Access != ERHIAccess::Unknown);
 		auto& AccessInfo = Pass->TextureAccessMap.FindOrAdd(Texture);
 		AccessInfo.AccessUnion |= Access;
 		AccessInfo.ReferenceCount += Range.GetSubresourceCount();
 		AccessInfo.NoUAVBarrierFilter.AddHandle(GetHandleIfNoUAVBarrier(TextureView));
 		AccessInfo.FlagsUnion |= GetTextureViewTransitionFlags(TextureView);
+		AccessInfo.bSubresourceTrackingRequired |= bIsPartialResourceRange;
+
 		bPassUAVAccess |= EnumHasAnyFlags(Access, ERHIAccess::UAVMask);
+		bPassSubresourceTrackingRequired |= bIsPartialResourceRange;
 	});
-
-	// Build the pass and texture subresource tracking policy.
-	bool bPassSubresourceTrackingRequired = false;
-	for (auto& TextureAccessPair : Pass->TextureAccessMap)
-	{
-		FRDGTextureRef Texture = TextureAccessPair.Key;
-		auto& AccessInfo = TextureAccessPair.Value;
-
-		const bool bSubresourceTrackingRequired = IsSubresourceTrackingRequired(AccessInfo.AccessUnion, AccessInfo.FlagsUnion);
-		AccessInfo.bSubresourceTrackingRequired |= bSubresourceTrackingRequired;
-		bPassSubresourceTrackingRequired |= bSubresourceTrackingRequired;
-	}
-	Pass->bSubresourceTrackingRequired = bPassSubresourceTrackingRequired;
 
 	// Reserve and generate the buffer access map.
 	Pass->BufferAccessMap.Reserve(PassParameters.GetBufferParameterCount());
@@ -1231,6 +1218,7 @@ void FRDGBuilder::SetupPass(FRDGPass* Pass)
 	});
 
 	Pass->bUAVAccess = bPassUAVAccess;
+	Pass->bSubresourceTrackingRequired = bPassSubresourceTrackingRequired;
 
 	const bool bEmptyParameters = !Pass->TextureAccessMap.Num() && !Pass->BufferAccessMap.Num();
 	PassesWithEmptyParameters.Add(bEmptyParameters);
