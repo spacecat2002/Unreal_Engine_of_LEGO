@@ -743,6 +743,7 @@ void FSystemTextures::ReleaseDynamicRHI()
 	SobolSampling.SafeRelease();
 	SSAORandomization.SafeRelease();
 	GTAORandomization.SafeRelease();
+	GTAOPreIntegrated.SafeRelease();
 	PreintegratedGF.SafeRelease();
 	HairLUT0.SafeRelease();
 	HairLUT1.SafeRelease();
