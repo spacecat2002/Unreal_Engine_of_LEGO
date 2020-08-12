@@ -318,7 +318,7 @@ static FSceneWithoutWaterTextures AddCopySceneWithoutWaterPass(
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 	const int32 RefractionDownsampleFactor = FMath::Clamp(GSingleLayerWaterRefractionDownsampleFactor, 1, 8);
 	const FIntPoint RefractionResolution = FIntPoint::DivideAndRoundDown(SceneColorDesc.Extent, RefractionDownsampleFactor);
-	FRDGTextureRef SceneColorWithoutSingleLayerWaterTexture = nullptr;
+	FRDGTextureRef SceneColorWithoutSingleLayerWaterTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 
 	if (bCopyColor)
 	{
@@ -388,6 +388,8 @@ static FSceneWithoutWaterTextures AddCopySceneWithoutWaterPass(
 			RefractionViewRect);
 	}
 
+	check(SceneColorWithoutSingleLayerWaterTexture);
+	check(SceneDepthWithoutSingleLayerWaterTexture);
 	Textures.ColorTexture = SceneColorWithoutSingleLayerWaterTexture;
 	Textures.DepthTexture = SceneDepthWithoutSingleLayerWaterTexture;
 	return MoveTemp(Textures);
