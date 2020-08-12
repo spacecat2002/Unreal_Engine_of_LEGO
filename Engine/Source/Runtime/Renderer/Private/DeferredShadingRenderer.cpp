@@ -1954,11 +1954,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Copy lighting channels out of stencil before deferred decals which overwrite those values
 	FRDGTextureRef LightingChannelsTexture = CopyStencilToLightingChannelTexture(GraphBuilder, SceneStencilTexture);
 
-	if (!IsForwardShadingEnabled(ShaderPlatform))
-	{
-		GCompositionLighting.GfxWaitForAsyncSSAO(GraphBuilder);
-	}
-	else
+	if (IsForwardShadingEnabled(ShaderPlatform))
 	{
 		AddPass(GraphBuilder, [this, &SceneContext](FRHICommandList&)
 		{

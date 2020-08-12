@@ -40,13 +40,6 @@ public:
 		FRDGBuilder& GraphBuilder,
 		const TArray<FViewInfo>& Views,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
-
-	void GfxWaitForAsyncSSAO(FRDGBuilder& GraphBuilder);
-
-private:
-	void PrepareAsyncSSAO();
-	void FinishAsyncSSAO(FRDGBuilder& GraphBuilder);
-	const FRHITransition* AsyncSSAOTransition = nullptr;
 };
 
 /** The global used for deferred lighting. */

@@ -864,7 +864,11 @@ void FDeferredShadingSceneRenderer::RenderBasePass(
 
 		auto* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
 		PassParameters->RenderTargets = GetRenderTargetBindings(ColorLoadAction, BasePassTexturesView);
-		PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(BasePassDepthTexture, SceneDepthLoadAction, SceneDepthLoadAction, ExclusiveDepthStencil);
+
+		if (SceneDepthLoadAction == ERenderTargetLoadAction::EClear)
+		{
+			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(BasePassDepthTexture, SceneDepthLoadAction, SceneDepthLoadAction, ExclusiveDepthStencil);
+		}
 
 		GraphBuilder.AddPass(RDG_EVENT_NAME("GBufferClear"), PassParameters, ERDGPassFlags::Raster,
 			[PassParameters, ColorLoadAction, SceneColorClearValue](FRHICommandList& RHICmdList)
@@ -920,12 +924,6 @@ void FDeferredShadingSceneRenderer::RenderBasePass(
 		PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(BasePassDepthTexture, ERenderTargetLoadAction::EClear, ERenderTargetLoadAction::EClear, ExclusiveDepthStencil);
 
 		GraphBuilder.AddPass(RDG_EVENT_NAME("WireframeClear"), PassParameters, ERDGPassFlags::Raster, [](FRHICommandList&) {});
-	}
-
-	// Wait for Async SSAO before rendering base pass with forward rendering
-	if (IsForwardShadingEnabled(ShaderPlatform))
-	{
-		GCompositionLighting.GfxWaitForAsyncSSAO(GraphBuilder);
 	}
 
 	// Render targets bindings should remain constant at this point.

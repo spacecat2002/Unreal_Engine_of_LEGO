@@ -725,26 +725,15 @@ bool FCompositionLighting::CanProcessAsyncSSAO(const TArray<FViewInfo>& Views)
 	return bAnyAsyncSSAO;
 }
 
-void FCompositionLighting::PrepareAsyncSSAO()
-{
-	//clear out last frame's fence.
-	ensureMsgf(AsyncSSAOTransition == nullptr, TEXT("Old AsyncCompute SSAO transition has not been cleared."));
-
-	// Setup 'invalid' transition because the resource isn't know - this needs to be fixed!
-	FRHITransitionInfo SRVTransition((FRHIUnorderedAccessView*)nullptr, ERHIAccess::Unknown, ERHIAccess::SRVMask);
-	AsyncSSAOTransition = RHICreateTransition(ERHIPipeline::AsyncCompute, ERHIPipeline::Graphics, ERHICreateTransitionFlags::None, MakeArrayView(&SRVTransition, 1));
-
-	//Grab the async compute commandlist.
-	FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
-	RHICmdListComputeImmediate.SetAsyncComputeBudget(FSSAOHelper::GetAmbientOcclusionAsyncComputeBudget());
-}
-
 void FCompositionLighting::ProcessAsyncSSAO(
 	FRDGBuilder& GraphBuilder,
 	const TArray<FViewInfo>& Views,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer)
 {
-	PrepareAsyncSSAO();
+	AddPass(GraphBuilder, [](FRHICommandList&)
+	{
+		FRHICommandListExecutor::GetImmediateAsyncComputeCommandList().SetAsyncComputeBudget(FSSAOHelper::GetAmbientOcclusionAsyncComputeBudget());
+	});
 
 	for (const FViewInfo& View : Views)
 	{
@@ -789,32 +778,9 @@ void FCompositionLighting::ProcessAsyncSSAO(
 				GTAODepths);
 		}
 	}
-	FinishAsyncSSAO(GraphBuilder);
-}
 
-void FCompositionLighting::FinishAsyncSSAO(FRDGBuilder& GraphBuilder)
-{
-	if (AsyncSSAOTransition)
+	AddPass(GraphBuilder, [this](FRHICommandList&)
 	{
-		AddPass(GraphBuilder, [this](FRHICommandList&)
-		{
-			FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
-
-			RHICmdListComputeImmediate.SetAsyncComputeBudget(EAsyncComputeBudget::EAll_4);
-			RHICmdListComputeImmediate.BeginTransition(AsyncSSAOTransition);
-			FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHICmdListComputeImmediate);
-		});
-	}
-}
-
-void FCompositionLighting::GfxWaitForAsyncSSAO(FRDGBuilder& GraphBuilder)
-{
-	if (AsyncSSAOTransition)
-	{
-		AddPass(GraphBuilder, [this](FRHICommandListImmediate& RHICmdList)
-		{
-			RHICmdList.EndTransition(AsyncSSAOTransition);
-			AsyncSSAOTransition = nullptr;
-		});
-	}
+		FRHICommandListExecutor::GetImmediateAsyncComputeCommandList().SetAsyncComputeBudget(EAsyncComputeBudget::EAll_4);
+	});
 }
