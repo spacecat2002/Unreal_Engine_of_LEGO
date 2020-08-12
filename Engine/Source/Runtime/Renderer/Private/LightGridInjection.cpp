@@ -282,7 +282,7 @@ void UpdateDynamicVector4BufferData(const TArray<T, SceneRenderingAllocator> &Da
 }
 
 
-void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet)
+void FDeferredShadingSceneRenderer::ComputeLightGrid(FRDGBuilder& GraphBuilder, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet)
 {
 	if (!bNeedLightGrid || FeatureLevel < ERHIFeatureLevel::SM5)
 	{
@@ -295,9 +295,9 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 	}
 
 	{
-		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(ComputeLightGrid);
+		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, ComputeLightGrid);
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_ComputeLightGrid);
-		SCOPED_DRAW_EVENT(RHICmdList, ComputeLightGrid);
+		RDG_EVENT_SCOPE(GraphBuilder, "ComputeLightGrid");
 
 		static const auto AllowStaticLightingVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowStaticLighting"));
 		const bool bAllowStaticLighting = (!AllowStaticLightingVar || AllowStaticLightingVar->GetValueOnRenderThread() != 0);
@@ -624,8 +624,9 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 			}
 
 			const bool bShouldCacheTemporaryBuffers = View.ViewState != nullptr;
-			FForwardLightingCullingResources LocalCullingResources;
-			FForwardLightingCullingResources& ForwardLightingCullingResources = bShouldCacheTemporaryBuffers ? View.ViewState->ForwardLightingCullingResources : LocalCullingResources;
+			FForwardLightingCullingResources& ForwardLightingCullingResources = bShouldCacheTemporaryBuffers
+				? View.ViewState->ForwardLightingCullingResources
+				: *GraphBuilder.AllocObject<FForwardLightingCullingResources>();
 
 			const uint32 CulledLightLinksElements = NumCells * GMaxCulledLightsPerCell * LightLinkStride;
 
@@ -657,99 +658,106 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 				View.ForwardLightingResources->NumCulledLightsGrid.UAV,
 				View.ForwardLightingResources->CulledLightDataGrid.UAV });
 
-			TArray<FRHITransitionInfo, TInlineAllocator<2>> UAVTransitions;
+			auto& UAVTransitions = *GraphBuilder.AllocObject<TArray<FRHITransitionInfo, TInlineAllocator<2, SceneRenderingAllocator>>>();
 			for (FRHIUnorderedAccessView* UAV : OutUAVs)
 			{
 				UAVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
 			}
-			RHICmdList.Transition(MakeArrayView(UAVTransitions.GetData(), UAVTransitions.Num()));
+
+			AddPass(GraphBuilder, [&UAVTransitions](FRHIComputeCommandList& RHICmdList)
+			{
+				RHICmdList.Transition(MakeArrayView(UAVTransitions.GetData(), UAVTransitions.Num()));
+			});
 
 			{
-				FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("LightGridInjection(View=%d)", ViewIndex));
+				RDG_EVENT_SCOPE(GraphBuilder, "CullLights %ux%ux%u NumLights %u NumCaptures %u",
+					ForwardLightData.CulledGridSize.X,
+					ForwardLightData.CulledGridSize.Y,
+					ForwardLightData.CulledGridSize.Z,
+					ForwardLightData.NumLocalLights,
+					ForwardLightData.NumReflectionCaptures);
+
+				// TODO: change to render graph?
+				//FRDGBufferRef NumCulledLightsGridBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), NumCells * NumCulledLightsGridStride), TEXT("NumCulledLightsGrid"));
+				//FRDGBufferRef CulledLightDataGridBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(LightIndexTypeSize, NumCells * GMaxCulledLightsPerCell), TEXT("CulledLightDataGrid"));
+
+				FRDGBufferRef CulledLightLinksBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), CulledLightLinksElements), TEXT("CulledLightLinks"));
+				FRDGBufferRef StartOffsetGridBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), NumCells), TEXT("StartOffsetGrid"));
+				FRDGBufferRef NextCulledLightLinkBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("NextCulledLightLink"));
+				FRDGBufferRef NextCulledLightDataBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("NextCulledLightData"));
+
+#if ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
+				// TODO: When CPU-side generative passes are added this can also use render graph
+				//FRDGBufferRef ViewSpacePosAndRadiusDataBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector4), ViewSpacePosAndRadiusData.Num()), TEXT("ViewSpacePosAndRadiusData"));
+				//FRDGBufferRef ViewSpaceDirAndPreprocAngleDataBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector4), ViewSpaceDirAndPreprocAngleData.Num()), TEXT("ViewSpacePosAndRadiusData"));
+#endif // ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
+
+				FLightGridInjectionCS::FParameters *PassParameters = GraphBuilder.AllocParameters<FLightGridInjectionCS::FParameters>();
+
+				PassParameters->View = View.ViewUniformBuffer;
+				PassParameters->ReflectionCapture = View.ReflectionCaptureUniformBuffer;
+				PassParameters->Forward = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
+				PassParameters->RWNumCulledLightsGrid = View.ForwardLightingResources->NumCulledLightsGrid.UAV;
+				PassParameters->RWCulledLightDataGrid = View.ForwardLightingResources->CulledLightDataGrid.UAV;
+				PassParameters->RWNextCulledLightLink = GraphBuilder.CreateUAV(NextCulledLightLinkBuffer, PF_R32_UINT);
+				PassParameters->RWStartOffsetGrid = GraphBuilder.CreateUAV(StartOffsetGridBuffer, PF_R32_UINT);
+				PassParameters->RWCulledLightLinks = GraphBuilder.CreateUAV(CulledLightLinksBuffer, PF_R32_UINT);
+
+#if ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
+				// TODO: When CPU-side generative passes are added this can also use render graph
+				//PassParameters->LightViewSpacePositionAndRadius = GraphBuilder.CreateSRV(ViewSpacePosAndRadiusDataBuffer);
+				//PassParameters->LightViewSpaceDirAndPreprocAngle = GraphBuilder.CreateSRV(ViewSpaceDirAndPreprocAngleDataBuffer);
+				PassParameters->LightViewSpacePositionAndRadius = ForwardLightingCullingResources.ViewSpacePosAndRadiusData.SRV;
+				PassParameters->LightViewSpaceDirAndPreprocAngle = ForwardLightingCullingResources.ViewSpaceDirAndPreprocAngleData.SRV;
+#endif // ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
+
+				FLightGridInjectionCS::FPermutationDomain PermutationVector;
+				PermutationVector.Set<FLightGridInjectionCS::FUseLinkedListDim>(GLightLinkedListCulling != 0);
+				TShaderMapRef<FLightGridInjectionCS> ComputeShader(View.ShaderMap, PermutationVector);
+
+				if (GLightLinkedListCulling != 0)
 				{
-					RDG_EVENT_SCOPE(GraphBuilder, "CullLights %ux%ux%u NumLights %u NumCaptures %u",
-						ForwardLightData.CulledGridSize.X,
-						ForwardLightData.CulledGridSize.Y,
-						ForwardLightData.CulledGridSize.Z,
-						ForwardLightData.NumLocalLights,
-						ForwardLightData.NumReflectionCaptures);
+					AddClearUAVPass(GraphBuilder, PassParameters->RWStartOffsetGrid, 0xFFFFFFFF);
+					AddClearUAVPass(GraphBuilder, PassParameters->RWNextCulledLightLink, 0);
+					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(NextCulledLightDataBuffer, PF_R32_UINT), 0);
+					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("LightGridInject:LinkedList"), ComputeShader, PassParameters, NumGroups);
 
-					// TODO: change to render graph?
-					//FRDGBufferRef NumCulledLightsGridBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), NumCells * NumCulledLightsGridStride), TEXT("NumCulledLightsGrid"));
-					//FRDGBufferRef CulledLightDataGridBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(LightIndexTypeSize, NumCells * GMaxCulledLightsPerCell), TEXT("CulledLightDataGrid"));
 
-					FRDGBufferRef CulledLightLinksBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), CulledLightLinksElements), TEXT("CulledLightLinks"));
-					FRDGBufferRef StartOffsetGridBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), NumCells), TEXT("StartOffsetGrid"));
-					FRDGBufferRef NextCulledLightLinkBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("NextCulledLightLink"));
-					FRDGBufferRef NextCulledLightDataBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("NextCulledLightData"));
-
-#if ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
-					// TODO: When CPU-side generative passes are added this can also use render graph
-					//FRDGBufferRef ViewSpacePosAndRadiusDataBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector4), ViewSpacePosAndRadiusData.Num()), TEXT("ViewSpacePosAndRadiusData"));
-					//FRDGBufferRef ViewSpaceDirAndPreprocAngleDataBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector4), ViewSpaceDirAndPreprocAngleData.Num()), TEXT("ViewSpacePosAndRadiusData"));
-#endif // ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
-
-					FLightGridInjectionCS::FParameters *PassParameters = GraphBuilder.AllocParameters<FLightGridInjectionCS::FParameters>();
-
-					PassParameters->View = View.ViewUniformBuffer;
-					PassParameters->ReflectionCapture = View.ReflectionCaptureUniformBuffer;
-					PassParameters->Forward = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
-					PassParameters->RWNumCulledLightsGrid = View.ForwardLightingResources->NumCulledLightsGrid.UAV;
-					PassParameters->RWCulledLightDataGrid = View.ForwardLightingResources->CulledLightDataGrid.UAV;
-					PassParameters->RWNextCulledLightLink = GraphBuilder.CreateUAV(NextCulledLightLinkBuffer, PF_R32_UINT);
-					PassParameters->RWStartOffsetGrid = GraphBuilder.CreateUAV(StartOffsetGridBuffer, PF_R32_UINT);
-					PassParameters->RWCulledLightLinks = GraphBuilder.CreateUAV(CulledLightLinksBuffer, PF_R32_UINT);
-
-#if ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
-					// TODO: When CPU-side generative passes are added this can also use render graph
-					//PassParameters->LightViewSpacePositionAndRadius = GraphBuilder.CreateSRV(ViewSpacePosAndRadiusDataBuffer);
-					//PassParameters->LightViewSpaceDirAndPreprocAngle = GraphBuilder.CreateSRV(ViewSpaceDirAndPreprocAngleDataBuffer);
-					PassParameters->LightViewSpacePositionAndRadius = ForwardLightingCullingResources.ViewSpacePosAndRadiusData.SRV;
-					PassParameters->LightViewSpaceDirAndPreprocAngle = ForwardLightingCullingResources.ViewSpaceDirAndPreprocAngleData.SRV;
-#endif // ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
-
-					FLightGridInjectionCS::FPermutationDomain PermutationVector;
-					PermutationVector.Set<FLightGridInjectionCS::FUseLinkedListDim>(GLightLinkedListCulling != 0);
-					TShaderMapRef<FLightGridInjectionCS> ComputeShader(View.ShaderMap, PermutationVector);
-
-					if (GLightLinkedListCulling != 0)
 					{
-						AddClearUAVPass(GraphBuilder, PassParameters->RWStartOffsetGrid, 0xFFFFFFFF);
-						AddClearUAVPass(GraphBuilder, PassParameters->RWNextCulledLightLink, 0);
-						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(NextCulledLightDataBuffer, PF_R32_UINT), 0);
-						FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("LightGridInject:LinkedList"), ComputeShader, PassParameters, NumGroups);
+						TShaderMapRef<FLightGridCompactCS> ComputeShaderCompact(View.ShaderMap);
+						FLightGridCompactCS::FParameters *PassParametersCompact = GraphBuilder.AllocParameters<FLightGridCompactCS::FParameters>();
+						PassParametersCompact->View = View.ViewUniformBuffer;
+						PassParametersCompact->Forward = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
 
+						PassParametersCompact->CulledLightLinks = GraphBuilder.CreateSRV(CulledLightLinksBuffer, PF_R32_UINT);
+						PassParametersCompact->RWNumCulledLightsGrid = View.ForwardLightingResources->NumCulledLightsGrid.UAV;
+						PassParametersCompact->RWCulledLightDataGrid = View.ForwardLightingResources->CulledLightDataGrid.UAV;
+						PassParametersCompact->RWNextCulledLightData = GraphBuilder.CreateUAV(NextCulledLightDataBuffer, PF_R32_UINT);
+						PassParametersCompact->StartOffsetGrid = GraphBuilder.CreateSRV(StartOffsetGridBuffer, PF_R32_UINT);
 
-						{
-							TShaderMapRef<FLightGridCompactCS> ComputeShaderCompact(View.ShaderMap);
-							FLightGridCompactCS::FParameters *PassParametersCompact = GraphBuilder.AllocParameters<FLightGridCompactCS::FParameters>();
-							PassParametersCompact->View = View.ViewUniformBuffer;
-							PassParametersCompact->Forward = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
-
-							PassParametersCompact->CulledLightLinks = GraphBuilder.CreateSRV(CulledLightLinksBuffer, PF_R32_UINT);
-							PassParametersCompact->RWNumCulledLightsGrid = View.ForwardLightingResources->NumCulledLightsGrid.UAV;
-							PassParametersCompact->RWCulledLightDataGrid = View.ForwardLightingResources->CulledLightDataGrid.UAV;
-							PassParametersCompact->RWNextCulledLightData = GraphBuilder.CreateUAV(NextCulledLightDataBuffer, PF_R32_UINT);
-							PassParametersCompact->StartOffsetGrid = GraphBuilder.CreateSRV(StartOffsetGridBuffer, PF_R32_UINT);
-
-							FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("CompactLinks"), ComputeShaderCompact, PassParametersCompact, NumGroups);
-						}
+						FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("CompactLinks"), ComputeShaderCompact, PassParametersCompact, NumGroups);
 					}
-					else
+				}
+				else
+				{
+					AddPass(GraphBuilder, [&View](FRHICommandList& RHICmdList)
 					{
 						RHICmdList.ClearUAVUint(View.ForwardLightingResources->NumCulledLightsGrid.UAV, FUintVector4(0, 0, 0, 0));
-						FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("LightGridInject:NotLinkedList"), ComputeShader, PassParameters, NumGroups);
-					}
+					});
+					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("LightGridInject:NotLinkedList"), ComputeShader, PassParameters, NumGroups);
 				}
-				GraphBuilder.Execute();
-
-				TArray<FRHITransitionInfo, TInlineAllocator<2>> SRVTransitions;
-				for (FRHIUnorderedAccessView* UAV : OutUAVs)
-				{
-					SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-				}
-				RHICmdList.Transition(MakeArrayView(SRVTransitions.GetData(), SRVTransitions.Num()));
 			}
+
+			auto& SRVTransitions = *GraphBuilder.AllocObject<TArray<FRHITransitionInfo, TInlineAllocator<2, SceneRenderingAllocator>>>();
+			for (FRHIUnorderedAccessView* UAV : OutUAVs)
+			{
+				SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+			}
+
+			AddPass(GraphBuilder, [&SRVTransitions](FRHIComputeCommandList& RHICmdList)
+			{
+				RHICmdList.Transition(MakeArrayView(SRVTransitions.GetData(), SRVTransitions.Num()));
+			});
 		}
 	}
 }

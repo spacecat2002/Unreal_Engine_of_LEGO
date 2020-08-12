@@ -1647,22 +1647,29 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	// Z-Prepass End
 
-	checkSlow(RHICmdList.IsOutsideRenderPass());
+	FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("DeferredShadingRenderer_Render(ViewFamily=%s)", ViewFamily.bResolveScene ? TEXT("Primary") : TEXT("Auxiliary")));
+
+	const FIntPoint SceneTextureExtent = SceneContext.GetBufferSizeXY();
+
+	FRDGTextureMSAA SceneDepthTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
+	FRDGTextureRef SmallDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SmallDepthZ, ERenderTargetTexture::Targetable);
+	FRDGTextureSRVRef SceneStencilTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(SceneDepthTexture.Target, PF_X24_G8));
+
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth);
 
 	const bool bShouldRenderVelocities = ShouldRenderVelocities();
 	const bool bBasePassCanOutputVelocity = FVelocityRendering::BasePassCanOutputVelocity(FeatureLevel);
 	const bool bUseSelectiveBasePassOutputs = IsUsingSelectiveBasePassOutputs(ShaderPlatform);
 
-	ResolveSceneDepth(RHICmdList);
+	AddResolveSceneDepthPass(GraphBuilder, Views, SceneDepthTexture);
 
 	// NOTE: The ordering of the lights is used to select sub-sets for different purposes, e.g., those that support clustered deferred.
 	FSortedLightSetSceneInfo SortedLightSet;
 	
 	{
-		SCOPED_GPU_STAT(RHICmdList, SortLights);
+		RDG_GPU_STAT_SCOPE(GraphBuilder, SortLights);
 		GatherAndSortLights(SortedLightSet);
-		ComputeLightGrid(RHICmdList, bComputeLightGrid, SortedLightSet);
-
+		ComputeLightGrid(GraphBuilder, bComputeLightGrid, SortedLightSet);
 	}
 
 	CSV_CUSTOM_STAT(LightCount, All,  float(SortedLightSet.SortedLights.Num()), ECsvCustomStatOp::Set);
@@ -1673,50 +1680,29 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_AllocGBufferTargets);
 		SceneContext.PreallocGBufferTargets(); // Even if !bShouldRenderVelocities, the velocity buffer must be bound because it's a compile time option for the shader.
 		SceneContext.AllocGBufferTargets(RHICmdList);
-	}	
-
-	checkSlow(RHICmdList.IsOutsideRenderPass());
+	}
 
 	// Early occlusion queries
 	const bool bOcclusionBeforeBasePass = (EarlyZPassMode == EDepthDrawingMode::DDM_AllOccluders) || (EarlyZPassMode == EDepthDrawingMode::DDM_AllOpaque);
 
 	if (bOcclusionBeforeBasePass)
 	{
-		FRDGBuilder GraphBuilder(RHICmdList);
-		FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::Targetable);
-		FRDGTextureRef SmallDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SmallDepthZ, ERenderTargetTexture::Targetable);
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
-		{
-			RDG_GPU_STAT_SCOPE(GraphBuilder, HZB);
-			RenderOcclusion(GraphBuilder, SceneDepthTexture, SmallDepthTexture, SceneTextures, bIsOcclusionTesting);
-		}
-		GraphBuilder.Execute();
+		RenderOcclusion(GraphBuilder, SceneDepthTexture.Target, SmallDepthTexture, SceneTextures, bIsOcclusionTesting);
 	}
 
-	ServiceLocalQueue();
+	AddServiceLocalQueuePass(GraphBuilder);
 	// End early occlusion queries
-
-	checkSlow(RHICmdList.IsOutsideRenderPass());
 
 	// Early Shadow depth rendering
 	if (bOcclusionBeforeBasePass)
 	{
-		RenderShadowDepthMaps(RHICmdList);
-		ServiceLocalQueue();
+		AddUntrackedAccessPass(GraphBuilder, [this](FRHICommandListImmediate& InRHICmdList)
+		{
+			RenderShadowDepthMaps(InRHICmdList);
+		});
+		AddServiceLocalQueuePass(GraphBuilder);
 	}
 	// End early Shadow depth rendering
-
-	checkSlow(RHICmdList.IsOutsideRenderPass());
-
-	FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("DeferredShadingRenderer_Render(ViewFamily=%s)", ViewFamily.bResolveScene ? TEXT("Primary") : TEXT("Auxiliary")));
-
-	const FIntPoint SceneTextureExtent = SceneContext.GetBufferSizeXY();
-
-	FRDGTextureMSAA SceneDepthTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
-	FRDGTextureRef SmallDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SmallDepthZ, ERenderTargetTexture::Targetable);
-	FRDGTextureSRVRef SceneStencilTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(SceneDepthTexture.Target, PF_X24_G8));
-
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth);
 
 	const bool bShouldRenderSkyAtmosphere = ShouldRenderSkyAtmosphere(Scene, ViewFamily.EngineShowFlags);
 	const bool bShouldRenderVolumetricCloud = ShouldRenderVolumetricCloud(Scene, ViewFamily.EngineShowFlags);
@@ -1911,9 +1897,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Shadow and fog after base pass
 	if (!bOcclusionBeforeBasePass)
 	{
-		AddUntrackedAccessPass(GraphBuilder, [this](FRHICommandListImmediate& RHICmdList)
+		AddUntrackedAccessPass(GraphBuilder, [this](FRHICommandListImmediate& InRHICmdList)
 		{
-			RenderShadowDepthMaps(RHICmdList);
+			RenderShadowDepthMaps(InRHICmdList);
 		});
 
 		ComputeVolumetricFog(GraphBuilder);

@@ -74,7 +74,7 @@ public:
 	 * Culls local lights and reflection probes to a grid in frustum space, builds one light list and grid per view in the current Views.  
 	 * Needed for forward shading or translucency using the Surface lighting mode, and clustered deferred shading. 
 	 */
-	void ComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet);
+	void ComputeLightGrid(FRDGBuilder& GraphBuilder, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet);
 
 	void RenderBasePass(
 		FRDGBuilder& GraphBuilder,
