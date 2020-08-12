@@ -684,7 +684,7 @@ public:
 
 	class FUseUpsampleDim       : SHADER_PERMUTATION_BOOL("USE_UPSAMPLE");
 	class FUseAoSetupAsInputDim : SHADER_PERMUTATION_BOOL("USE_AO_SETUP_AS_INPUT");
-	class FShaderQualityDim     : SHADER_PERMUTATION_INT("SHADER_QUALITY", 4);
+	class FShaderQualityDim     : SHADER_PERMUTATION_INT("SHADER_QUALITY", 5);
 
 	using FPermutationDomain = TShaderPermutationDomain<FUseUpsampleDim, FUseAoSetupAsInputDim, FShaderQualityDim>;
 
@@ -715,7 +715,7 @@ public:
 
 	class FUseUpsampleDim       : SHADER_PERMUTATION_BOOL("USE_UPSAMPLE");
 	class FUseAoSetupAsInputDim : SHADER_PERMUTATION_BOOL("USE_AO_SETUP_AS_INPUT");
-	class FShaderQualityDim     : SHADER_PERMUTATION_INT("SHADER_QUALITY", 4);
+	class FShaderQualityDim     : SHADER_PERMUTATION_INT("SHADER_QUALITY", 5);
 
 	using FPermutationDomain = TShaderPermutationDomain<FUseUpsampleDim, FUseAoSetupAsInputDim, FShaderQualityDim>;
 
@@ -941,7 +941,7 @@ public:
 	DECLARE_GLOBAL_SHADER(FGTAOHorizonSearchAndIntegrateCS);
 	SHADER_USE_PARAMETER_STRUCT(FGTAOHorizonSearchAndIntegrateCS, FGlobalShader);
 
-	class FShaderQualityDim : SHADER_PERMUTATION_INT("SHADER_QUALITY", 4);
+	class FShaderQualityDim : SHADER_PERMUTATION_INT("SHADER_QUALITY", 5);
 	class FUseNormalBufferDim : SHADER_PERMUTATION_BOOL("USE_NORMALBUFFER");
 
 	using FPermutationDomain = TShaderPermutationDomain<FShaderQualityDim, FUseNormalBufferDim>;
@@ -1137,7 +1137,7 @@ public:
 	DECLARE_GLOBAL_SHADER(FGTAOHorizonSearchCS);
 	SHADER_USE_PARAMETER_STRUCT(FGTAOHorizonSearchCS, FGlobalShader);
 
-	class FShaderQualityDim : SHADER_PERMUTATION_INT("SHADER_QUALITY", 4);
+	class FShaderQualityDim : SHADER_PERMUTATION_INT("SHADER_QUALITY", 5);
 
 	using FPermutationDomain = TShaderPermutationDomain<FShaderQualityDim>;
 
