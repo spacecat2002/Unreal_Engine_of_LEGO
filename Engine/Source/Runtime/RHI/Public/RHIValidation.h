@@ -1429,6 +1429,11 @@ public:
 	}
 #endif // WITH_MGPU
 
+	virtual uint64 RHIGetMinimumAlignmentForBufferBackedSRV(EPixelFormat Format) override final
+	{
+		return RHI->RHIGetMinimumAlignmentForBufferBackedSRV(Format);
+	}
+
 	///////// Pass through functions that allow RHIs to optimize certain calls.
 	virtual FVertexBufferRHIRef CreateAndLockVertexBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 Size, uint32 InUsage, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo, void*& OutDataBuffer) override final
 	{
