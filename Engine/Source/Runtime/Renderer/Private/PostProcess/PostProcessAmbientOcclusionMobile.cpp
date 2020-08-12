@@ -11,6 +11,7 @@
 #include "SceneRenderTargets.h"
 #include "SystemTextures.h"
 #include "ScreenPass.h"
+#include "ScenePrivate.h"
 
 FAmbientOcclusionMobileOutputs GAmbientOcclusionMobileOutputs;
 
@@ -67,9 +68,9 @@ public:
 		SHADER_PARAMETER_EX(FVector4, DepthBufferSizeAndInvSize, EShaderPrecisionModifier::Half)
 		SHADER_PARAMETER_EX(FVector4, BufferSizeAndInvSize, EShaderPrecisionModifier::Half)
 		SHADER_PARAMETER_EX(FVector4, ViewSizeAndInvSize, EShaderPrecisionModifier::Half)
-		SHADER_PARAMETER_EX(FVector4, FadeRadiusMulAdd_FadeDistance, EShaderPrecisionModifier::Half)
-		SHADER_PARAMETER_EX(FVector4, Power_Intensity_WorldRadiusAdj_AttenFactor, EShaderPrecisionModifier::Half)
-		SHADER_PARAMETER_EX(FVector4, NumAngles_SinDeltaAngle_CosDeltaAngle_Thickness, EShaderPrecisionModifier::Half)
+		SHADER_PARAMETER(FVector4, FadeRadiusMulAdd_FadeDistance)
+		SHADER_PARAMETER(FVector4, Power_Intensity_WorldRadiusAdj_AttenFactor)
+		SHADER_PARAMETER(FVector4, NumAngles_SinDeltaAngle_CosDeltaAngle_Thickness)
 
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthSampler)
@@ -391,29 +392,38 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FGTAOMobile_SpatialFilterPS, "/Engine/Private/PostProcessAmbientOcclusionMobile.usf", "GTAOSpatialFilterPS", SF_Pixel);
 
-void FMobileSceneRenderer::InitAmbientOcclusionOutputs(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& SceneDepthZ)
+void FMobileSceneRenderer::InitAmbientOcclusionOutputs(FRHICommandListImmediate& RHICmdList, const TRefCountPtr<IPooledRenderTarget>& SceneDepthZ)
 {
 	FPooledRenderTargetDesc SceneDepthZDesc = SceneDepthZ->GetDesc();
 
 	const FIntPoint& BufferSize = SceneDepthZDesc.Extent;
 
-	static const auto GTAODownsampleCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.GTAO.Downsample"));
-	const uint32 DownsampleFactor = (GTAODownsampleCVar && GTAODownsampleCVar->GetValueOnRenderThread() > 0) ? 2 : 1;
+	const uint32 DownsampleFactor = 2;
 
 	FIntPoint Extent = FIntPoint::DivideAndRoundUp(BufferSize, DownsampleFactor);
 
 	const bool bUsePixelShader = CVarMobileAmbientOcclusionShaderType.GetValueOnRenderThread() == 2;
 
-	if (!GAmbientOcclusionMobileOutputs.IsValid() || GAmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Extent != Extent || (bUsePixelShader && GAmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Format != PF_G8))
+	if (!GAmbientOcclusionMobileOutputs.IsValid() || GAmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Extent != Extent || (bUsePixelShader && GAmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Format != PF_G8) || (!bUsePixelShader && GAmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Format != PF_R8G8B8A8))
 	{
 		GAmbientOcclusionMobileOutputs.AmbientOcclusionTexture.SafeRelease();
 
 		GRenderTargetPool.FindFreeElement(RHICmdList, FPooledRenderTargetDesc::Create2DDesc(Extent, bUsePixelShader ? PF_G8 : PF_R8G8B8A8, FClearValueBinding::Black, TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV, false), GAmbientOcclusionMobileOutputs.AmbientOcclusionTexture, TEXT("AmbientOcclusionTexture"));
 	}
+}
 
-	GAmbientOcclusionMobileOutputs.SceneDepthZ = SceneDepthZ;
+void FMobileSceneRenderer::CacheSceneDepthZ(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, TRefCountPtr<IPooledRenderTarget>& InOutSceneDepthZ)
+{
+	if (View.ViewState && !View.bStatePrevViewInfoIsReadOnly)
+	{
+		FPooledRenderTargetDesc SceneDepthZDesc = InOutSceneDepthZ->GetDesc();
+	
+		View.ViewState->PrevFrameViewInfo.MobileSceneDepthZ = InOutSceneDepthZ;
 
-	GRenderTargetPool.FindFreeElement(RHICmdList, SceneDepthZDesc, SceneDepthZ, TEXT("SceneDepthZ"));
+		InOutSceneDepthZ.SafeRelease();
+
+		GRenderTargetPool.FindFreeElement(RHICmdList, SceneDepthZDesc, InOutSceneDepthZ, TEXT("SceneDepthZ"));
+	}
 }
 
 void FMobileSceneRenderer::ReleaseAmbientOcclusionOutputs()
@@ -423,7 +433,7 @@ void FMobileSceneRenderer::ReleaseAmbientOcclusionOutputs()
 
 void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHICmdList, const TRefCountPtr<IPooledRenderTarget>& SceneDepthZ)
 {
-	checkSlow(GAmbientOcclusionMobileOutputs.IsValid());
+	checkSlow(GAmbientOcclusionMobileOutputs.IsValid() && SceneDepthZ.IsValid());
 
 	SCOPED_DRAW_EVENT(RHICmdList, AmbientOcclusion);
 
@@ -444,9 +454,8 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRDGBuilder& GraphBuilder, FRD
 	static const auto GTAOThicknessBlendCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.ThicknessBlend"));
 	static const auto GTAOFalloffStartRatioCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.FalloffStartRatio"));
 	static const auto GTAOFalloffEndCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.FalloffEnd"));
-	static const auto GTAODownsampleCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.GTAO.Downsample"));
 	static const auto GTAONumAnglesCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.NumAngles"));
-	const uint32 DownsampleFactor = (GTAODownsampleCVar && GTAODownsampleCVar->GetValueOnRenderThread() > 0) ? 2 : 1;
+	const uint32 DownsampleFactor = 2;
 
 	const int32 MobileGTAOPreIntegratedTextureType = CVarMobileGTAOPreIntegratedTextureType.GetValueOnRenderThread();
 	const int32 MobileAmbientOcclusionQuality = CVarMobileAmbientOcclusionQuality.GetValueOnRenderThread();

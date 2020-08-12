@@ -11,7 +11,6 @@
 struct FAmbientOcclusionMobileOutputs
 {
 	TRefCountPtr<IPooledRenderTarget> AmbientOcclusionTexture;
-	TRefCountPtr<IPooledRenderTarget> SceneDepthZ;
 
 	bool IsValid()
 	{
@@ -21,7 +20,6 @@ struct FAmbientOcclusionMobileOutputs
 	void Release()
 	{
 		AmbientOcclusionTexture.SafeRelease();
-		SceneDepthZ.SafeRelease();
 	}
 };
 
