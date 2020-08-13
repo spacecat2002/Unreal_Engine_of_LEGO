@@ -540,15 +540,15 @@ void FLinkerDiff::GenerateDependsArrayDiff(FLinker* LHSLinker, int32 LHSIndex, F
 		TSet<FPackageIndex> RHSDepSet;
 		int32 LHSStartIndex = 0, RHSStartIndex = 0;
 
+		RHSStartIndex = RHSExport.FirstExportDependency;
+		LHSStartIndex = LHSExport.FirstExportDependency;
 		if (LHSExport.SerializationBeforeSerializationDependencies != RHSExport.SerializationBeforeSerializationDependencies)
 		{
-			RHSStartIndex = RHSExport.FirstExportDependency;
 			for (int32 Index = 0; Index < RHSExport.SerializationBeforeSerializationDependencies; ++Index)
 			{
 				RHSDepSet.Add(RHSDepList[RHSStartIndex + Index]);
 			}
 
-			LHSStartIndex = LHSExport.FirstExportDependency;
 			for (int32 Index = 0; Index < LHSExport.SerializationBeforeSerializationDependencies; ++Index)
 			{
 				FPackageIndex LHSDepIndex = LHSDepList[LHSStartIndex + Index];
@@ -557,7 +557,7 @@ void FLinkerDiff::GenerateDependsArrayDiff(FLinker* LHSLinker, int32 LHSIndex, F
 				FSetElementId Id = RHSDepSet.FindId(RHSDepIndex);
 				if (Id.IsValidId())
 				{
-					RHSExportDependencies.Remove(Id);
+					RHSDepSet.Remove(Id);
 				}
 				else
 				{
@@ -582,16 +582,16 @@ void FLinkerDiff::GenerateDependsArrayDiff(FLinker* LHSLinker, int32 LHSIndex, F
 			}
 		}
 
+		RHSStartIndex += RHSExport.SerializationBeforeSerializationDependencies;
+		LHSStartIndex += LHSExport.SerializationBeforeSerializationDependencies;
 		if (LHSExport.CreateBeforeSerializationDependencies != RHSExport.CreateBeforeSerializationDependencies)
 		{
 			RHSDepSet.Reset();
-			RHSStartIndex += RHSExport.SerializationBeforeSerializationDependencies;
 			for (int32 Index = 0; Index < RHSExport.CreateBeforeSerializationDependencies; ++Index)
 			{
 				RHSDepSet.Add(RHSDepList[RHSStartIndex + Index]);
 			}
 
-			LHSStartIndex += LHSExport.SerializationBeforeSerializationDependencies;
 			for (int32 Index = 0; Index < LHSExport.CreateBeforeSerializationDependencies; ++Index)
 			{
 				FPackageIndex LHSDepIndex = LHSDepList[LHSStartIndex + Index];
@@ -625,16 +625,16 @@ void FLinkerDiff::GenerateDependsArrayDiff(FLinker* LHSLinker, int32 LHSIndex, F
 			}
 		}
 
+		RHSStartIndex += RHSExport.CreateBeforeSerializationDependencies;
+		LHSStartIndex += LHSExport.CreateBeforeSerializationDependencies;
 		if (LHSExport.SerializationBeforeCreateDependencies != RHSExport.SerializationBeforeCreateDependencies)
 		{
 			RHSDepSet.Reset();
-			RHSStartIndex += RHSExport.CreateBeforeSerializationDependencies;
 			for (int32 Index = 0; Index < RHSExport.SerializationBeforeCreateDependencies; ++Index)
 			{
 				RHSDepSet.Add(RHSDepList[RHSStartIndex + Index]);
 			}
 
-			LHSStartIndex += LHSExport.CreateBeforeSerializationDependencies;
 			for (int32 Index = 0; Index < LHSExport.SerializationBeforeCreateDependencies; ++Index)
 			{
 				FPackageIndex LHSDepIndex = LHSDepList[LHSStartIndex + Index];
@@ -668,16 +668,16 @@ void FLinkerDiff::GenerateDependsArrayDiff(FLinker* LHSLinker, int32 LHSIndex, F
 			}
 		}
 
+		RHSStartIndex += RHSExport.SerializationBeforeCreateDependencies;
+		LHSStartIndex += LHSExport.SerializationBeforeCreateDependencies;
 		if (LHSExport.CreateBeforeCreateDependencies != RHSExport.CreateBeforeCreateDependencies)
 		{
 			RHSDepSet.Reset();
-			RHSStartIndex += RHSExport.SerializationBeforeCreateDependencies;
 			for (int32 Index = 0; Index < RHSExport.CreateBeforeCreateDependencies; ++Index)
 			{
 				RHSDepSet.Add(RHSDepList[RHSStartIndex + Index]);
 			}
 
-			LHSStartIndex += LHSExport.SerializationBeforeCreateDependencies;
 			for (int32 Index = 0; Index < LHSExport.CreateBeforeCreateDependencies; ++Index)
 			{
 				FPackageIndex LHSDepIndex = LHSDepList[LHSStartIndex + Index];

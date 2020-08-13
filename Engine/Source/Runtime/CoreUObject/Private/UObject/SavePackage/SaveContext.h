@@ -321,7 +321,7 @@ public:
 
 	uint32 GetPortFlags() const
 	{
-		return PPF_DeepCompareInstances;
+		return PPF_DeepCompareInstances | PPF_DeepCompareDSOsOnly;
 	}
 
 	bool GetPreSaveCleanup() const
@@ -358,6 +358,10 @@ public:
 	{
 		Excluded.Add(InObject);
 	}
+
+	void MarkUnsaveable(UObject* InObject);
+
+	bool IsUnsaveable(UObject* InObject) const;
 
 	bool IsImport(UObject* InObject) const
 	{

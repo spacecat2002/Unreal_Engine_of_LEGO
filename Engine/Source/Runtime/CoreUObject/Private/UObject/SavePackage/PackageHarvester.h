@@ -72,6 +72,8 @@ public:
 	void HarvestSearchableName(UObject* TypeObject, FName Name);
 	void HarvestDependency(UObject* InObj, bool bIsNative);
 
+	bool CurrentExportHasDependency(UObject* InObj) const;
+
 	// FArchiveUObject implementation
 	virtual FString GetArchiveName() const override;
 	virtual void MarkSearchableName(const UObject* TypeObject, const FName& ValueName) const override;

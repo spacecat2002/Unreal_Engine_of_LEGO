@@ -122,50 +122,6 @@ bool ConditionallyExcludeObjectForTarget(FSaveContext& SaveContext, UObject* Obj
 	return bExcluded;
 }
 
-// Mark Object transient if needed
-void MarkUnsaveableObject(FSaveContext& SaveContext, UObject* InObj)
-{
-	// if the object class is abstract or has been marked as deprecated, mark this
-	// object as transient so that it isn't serialized
-	if (InObj->GetClass()->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists | CLASS_Transient))
-	{
-		if (!InObj->HasAnyFlags(RF_ClassDefaultObject) || InObj->GetClass()->HasAnyClassFlags(CLASS_Deprecated))
-		{
-			InObj->SetFlags(RF_Transient);
-		}
-		// @todo FH: validate CLASS_HasInstancedReference, is that useful at all?
-		//if (!InObj->HasAnyFlags(RF_ClassDefaultObject) && InObj->GetClass()->HasAnyClassFlags(CLASS_HasInstancedReference))
-		//{
-		//	TArray<UObject*> ComponentReferences;
-		//	FReferenceFinder ComponentCollector(ComponentReferences, InObj, false, true, true);
-		//	ComponentCollector.FindReferences(InObj, SerializedObject, Ar.GetSerializedProperty());
-		//	for (int32 Index = 0; Index < ComponentReferences.Num(); Index++)
-		//	{
-		//		ComponentReferences[Index]->SetFlags(RF_Transient);
-		//	}
-		//}
-	}
-	else if (SavePackageUtilities::HasUnsaveableOuter(InObj, SaveContext.GetPackage()))
-	{
-		InObj->SetFlags(RF_Transient);
-	}
-
-	if (InObj->HasAnyFlags(RF_ClassDefaultObject)
-		&& (InObj->GetClass()->ClassGeneratedBy == nullptr || !InObj->GetClass()->HasAnyFlags(RF_Transient)))
-	{
-		// if this is the class default object, make sure it's not
-		// marked transient for any reason, as we need it to be saved
-		// to disk (unless it's associated with a transient generated class)
-		InObj->ClearFlags(RF_Transient);
-	}
-}
-
-bool IsUnsaveable(FSaveContext& SaveContext, UObject* InObject)
-{
-	ensureAlways(!InObject->HasAnyFlags(RF_ClassDefaultObject | RF_Transient) || InObject->GetClass()->ClassGeneratedBy == nullptr || !InObject->GetClass()->HasAnyFlags(RF_Transient));
-	return SavePackageUtilities::HasUnsaveableOuter(InObject, SaveContext.GetPackage());
-}
-
 bool DoesObjectNeedLoadForEditorGame(UObject* InObject)
 {
 	check(InObject);
@@ -216,11 +172,19 @@ void FPackageHarvester::ProcessExport(UObject* InObject)
 	UClass* Class = InObject->GetClass();
 	*this << Class;
 
-	// Harvest its outer if it isn't an export, if it is it will harvested through iteration on the package
-	UObject* Outer = InObject->GetOuter();
-	if (!Outer->IsInPackage(SaveContext.GetPackage()))
+	// Harvest the export outer
+	if (UObject* Outer = InObject->GetOuter())
 	{
-		*this << Outer;
+		if (!Outer->IsInPackage(SaveContext.GetPackage()))
+		{
+			*this << Outer;
+		}
+		else
+		{
+			// Legacy behavior does not add an export outer as a preload dependency if that outer is also an export since those are handled already by the EDL
+			FIgnoreDependenciesScope IgnoreDependencies(*this);
+			*this << Outer;
+		}
 	}
 
 	// Harvest its template, if any
@@ -292,7 +256,7 @@ void FPackageHarvester::TryHarvestExport(UObject* InObject)
 	check(InObject && InObject->IsInPackage(SaveContext.GetPackage()));
 	if (!SaveContext.IsExport(InObject))
 	{
-		MarkUnsaveableObject(SaveContext, InObject);
+		SaveContext.MarkUnsaveable(InObject);
 		bool bExcluded = false;
 		if (!InObject->HasAnyFlags(RF_Transient))
 		{
@@ -331,7 +295,7 @@ void FPackageHarvester::TryHarvestImport(UObject* InObject)
 
 	bool bExcluded = ConditionallyExcludeObjectForTarget(SaveContext, InObject);
 	bool bExcludePackageFromCook = InObject && FCoreUObjectDelegates::ShouldCookPackageForPlatform.IsBound() ? !FCoreUObjectDelegates::ShouldCookPackageForPlatform.Execute(InObject->GetOutermost(), CookingTarget()) : false;
-	if (!bExcludePackageFromCook && !bExcluded && !IsUnsaveable(SaveContext, InObject))
+	if (!bExcludePackageFromCook && !bExcluded && !SaveContext.IsUnsaveable(InObject))
 	{
 		bool bIsNative = IsObjNative(InObject);
 		SaveContext.AddImport(InObject);
@@ -545,6 +509,11 @@ void FPackageHarvester::HarvestDependency(UObject* InObj, bool bIsNative)
 	}
 }
 
+bool FPackageHarvester::CurrentExportHasDependency(UObject* InObj) const
+{
+	return SaveContext.ExportObjectDependencies.Contains(InObj) || SaveContext.ExportNativeObjectDependencies.Contains(InObj);
+}
+
 void FPackageHarvester::HarvestName(FName Name)
 {
 	SaveContext.ReferencedNames.Add(Name.GetDisplayIndex());
@@ -553,7 +522,7 @@ void FPackageHarvester::HarvestName(FName Name)
 void FPackageHarvester::HarvestSearchableName(UObject* TypeObject, FName Name)
 {
 	// Make sure the object is tracked as a dependency
-	if (!SaveContext.IsIncluded(TypeObject))
+	if (!CurrentExportHasDependency(TypeObject))
 	{
 		(*this) << TypeObject;
 	}

@@ -210,35 +210,38 @@ ESavePackageResult RoutePresave(FSaveContext& SaveContext)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UPackage_RoutePresave);
 
-	// Just route presave on all objects in the package. 
+	// Just route presave on all objects in the package while skipping unsaveable objects. 
 	// This should be more efficient then trying to restrict to just the actual export, 
 	// objects likely to not be export will probably not care about PreSave and should be mainly noop
 	TArray<UObject*> ObjectsInPackage;
 	GetObjectsWithPackage(SaveContext.GetPackage(), ObjectsInPackage);
 	for (UObject* Object : ObjectsInPackage)
 	{
-		if (SaveContext.IsCooking() && Object->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject))
+		if (!SaveContext.IsUnsaveable(Object))
 		{
-			FArchiveObjectCrc32NonEditorProperties CrcArchive;
-			int32 Before = CrcArchive.Crc32(Object);
-			Object->PreSave(SaveContext.GetTargetPlatform());
-			int32 After = CrcArchive.Crc32(Object);
-
-			if (Before != After)
+			if (SaveContext.IsCooking() && Object->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject))
 			{
-				UE_ASSET_LOG(
-					LogSavePackage,
-					Warning,
-					Object,
-					TEXT("Non-deterministic cook warning - PreSave() has modified %s '%s' - a resave may be required"),
-					Object->HasAnyFlags(RF_ClassDefaultObject) ? TEXT("CDO") : TEXT("archetype"),
-					*Object->GetName()
-				);
+				FArchiveObjectCrc32NonEditorProperties CrcArchive;
+				int32 Before = CrcArchive.Crc32(Object);
+				Object->PreSave(SaveContext.GetTargetPlatform());
+				int32 After = CrcArchive.Crc32(Object);
+
+				if (Before != After)
+				{
+					UE_ASSET_LOG(
+						LogSavePackage,
+						Warning,
+						Object,
+						TEXT("Non-deterministic cook warning - PreSave() has modified %s '%s' - a resave may be required"),
+						Object->HasAnyFlags(RF_ClassDefaultObject) ? TEXT("CDO") : TEXT("archetype"),
+						*Object->GetName()
+					);
+				}
 			}
-		}
-		else
-		{
-			Object->PreSave(SaveContext.GetTargetPlatform());
+			else
+			{
+				Object->PreSave(SaveContext.GetTargetPlatform());
+			}
 		}
 	}
 
