@@ -3752,7 +3752,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 					{	
 						// Save asset registry data so the editor can search for information about assets in this package
 						SCOPED_SAVETIMER(UPackage_Save_SaveAssetRegistryData);
-						UE::AssetRegistry::WritePackageData(StructuredArchiveRoot, InOuter, Linker.Get(), ImportsUsedInGame, SoftPackagesUsedInGame);
+						UE::AssetRegistry::WritePackageData(StructuredArchiveRoot, Linker->IsCooking(), InOuter, Linker.Get(), ImportsUsedInGame, SoftPackagesUsedInGame);
 					}
 
 					// Save level information used by World browser

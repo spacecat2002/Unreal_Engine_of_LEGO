@@ -1629,8 +1629,11 @@ namespace UE
 namespace AssetRegistry
 {
 	// See the corresponding ReadPackageDataMain and ReadPackageDataDependencies defined in PackageReader.cpp in AssetRegistry module
-	void WritePackageData(FStructuredArchiveRecord& ParentRecord, const UPackage* Package, FLinkerSave* Linker, const TSet<UObject*>& ImportsUsedInGame, const TSet<FName>& SoftPackagesUsedInGame)
+	void WritePackageData(FStructuredArchiveRecord& ParentRecord, bool bIsCooking, const UPackage* Package, FLinkerSave* Linker, const TSet<UObject*>& ImportsUsedInGame, const TSet<FName>& SoftPackagesUsedInGame)
 	{
+		// To avoid large patch sizes, we have frozen cooked package format at the format before VER_UE4_ASSETREGISTRY_DEPENDENCYFLAGS
+		bool bPreDependencyFormat = bIsCooking;
+
 		// WritePackageData is currently only called if not bTextFormat; we rely on that to save offsets
 		FArchive& BinaryArchive = ParentRecord.GetUnderlyingArchive();
 		check(!BinaryArchive.IsTextFormat());
@@ -1639,13 +1642,18 @@ namespace AssetRegistry
 		Linker->Summary.AssetRegistryDataOffset = BinaryArchive.Tell();
 		FStructuredArchiveRecord AssetRegistryRecord = ParentRecord.EnterField(SA_FIELD_NAME(TEXT("AssetRegistry"))).EnterRecord();
 
-		// Write placeholder data for the offset to the separately-serialized AssetRegistryDependencyData
-		int64 OffsetToAssetRegistryDependencyDataOffset = BinaryArchive.Tell();
-		int64 AssetRegistryDependencyDataOffset = 0;
-		AssetRegistryRecord << SA_VALUE(TEXT("AssetRegistryDependencyDataOffset"), AssetRegistryDependencyDataOffset);
-		check(BinaryArchive.Tell() == OffsetToAssetRegistryDependencyDataOffset + sizeof(AssetRegistryDependencyDataOffset));
+		// Offset to Dependencies
+		int64 OffsetToAssetRegistryDependencyDataOffset = INDEX_NONE;
+		if (!bPreDependencyFormat)
+		{
+			// Write placeholder data for the offset to the separately-serialized AssetRegistryDependencyData
+			OffsetToAssetRegistryDependencyDataOffset = BinaryArchive.Tell();
+			int64 AssetRegistryDependencyDataOffset = 0;
+			AssetRegistryRecord << SA_VALUE(TEXT("AssetRegistryDependencyDataOffset"), AssetRegistryDependencyDataOffset);
+			check(BinaryArchive.Tell() == OffsetToAssetRegistryDependencyDataOffset + sizeof(AssetRegistryDependencyDataOffset));
+		}
 
-		// Collect the tag map and add it to the Record
+		// Collect the tag map
 		TArray<UObject*> AssetObjects;
 		if (!(Linker->Summary.PackageFlags & PKG_FilterEditorOnly))
 		{
@@ -1701,12 +1709,19 @@ namespace AssetRegistry
 				TagMap.EnterElement(Key) << Value;
 			}
 		}
+		if (bPreDependencyFormat)
+		{
+			// The legacy format did not write the other sections, or the offsets to those other sections
+			return;
+		}
 
 		// Overwrite the placeholder offset for the AssetRegistryDependencyData and enter a record for the asset registry dependency data
-		AssetRegistryDependencyDataOffset = Linker->Tell();
-		BinaryArchive.Seek(OffsetToAssetRegistryDependencyDataOffset);
-		BinaryArchive << AssetRegistryDependencyDataOffset;
-		BinaryArchive.Seek(AssetRegistryDependencyDataOffset);
+		{
+			int64 AssetRegistryDependencyDataOffset = Linker->Tell();
+			BinaryArchive.Seek(OffsetToAssetRegistryDependencyDataOffset);
+			BinaryArchive << AssetRegistryDependencyDataOffset;
+			BinaryArchive.Seek(AssetRegistryDependencyDataOffset);
+		}
 		FStructuredArchiveRecord DependencyDataRecord = ParentRecord.EnterField(SA_FIELD_NAME(TEXT("AssetRegistryDependencyData"))).EnterRecord();
 
 		// Convert the IsUsedInGame sets into a bitarray with a value per import/softpackagereference

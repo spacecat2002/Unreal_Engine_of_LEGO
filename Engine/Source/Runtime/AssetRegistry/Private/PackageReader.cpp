@@ -11,10 +11,10 @@
 #include "AssetRegistry.h"
 
 FPackageReader::FPackageReader()
+	: Loader(nullptr)
+	, PackageFileSize(0)
+	, AssetRegistryDependencyDataOffset(INDEX_NONE)
 {
-	Loader = nullptr;
-	PackageFileSize = 0;
-	AssetRegistryDependencyDataOffset = INDEX_NONE;
 	this->SetIsLoading(true);
 	this->SetIsPersistent(true);
 }
@@ -173,7 +173,7 @@ bool FPackageReader::ReadAssetRegistryData(TArray<FAssetData*>& AssetDataList)
 
 bool FPackageReader::SerializeAssetRegistryDependencyData(FPackageDependencyData& DependencyData)
 {
-	if (PackageFileSummary.GetFileVersionUE4() < VER_UE4_ASSETREGISTRY_DEPENDENCYFLAGS)
+	if (AssetRegistryDependencyDataOffset == INDEX_NONE)
 	{
 		// For old package versions that did not write out the dependency flags, set default values of the flags
 		DependencyData.ImportUsedInGame.Init(true, DependencyData.ImportMap.Num());
@@ -345,7 +345,7 @@ bool FPackageReader::ReadDependencyData(FPackageDependencyData& OutDependencyDat
 		return false;
 	}
 
-	check(OutDependencyData.IsValid()); // We should have early exited above rather than creating invalid dependency data
+	checkf(OutDependencyData.IsValid(), TEXT("We should have early exited above rather than creating invalid dependency data"));
 	return true;
 }
 
@@ -613,14 +613,17 @@ namespace AssetRegistry
 		const int64 PackageFileSize = BinaryArchive.TotalSize();
 		const bool bIsMapPackage = (PackageFileSummary.PackageFlags & PKG_ContainsMap) != 0;
 
+		// To avoid large patch sizes, we have frozen cooked package format at the format before VER_UE4_ASSETREGISTRY_DEPENDENCYFLAGS
+		bool bPreDependencyFormat = PackageFileSummary.GetFileVersionUE4() < VER_UE4_ASSETREGISTRY_DEPENDENCYFLAGS || !!(PackageFileSummary.PackageFlags & PKG_FilterEditorOnly);
+
 		// Load offsets to optionally-read data
-		if (PackageFileSummary.GetFileVersionUE4() >= VER_UE4_ASSETREGISTRY_DEPENDENCYFLAGS)
+		if (bPreDependencyFormat)
 		{
-			BinaryArchive << OutDependencyDataOffset;
+			OutDependencyDataOffset = INDEX_NONE;
 		}
 		else
 		{
-			OutDependencyDataOffset = INDEX_NONE;
+			BinaryArchive << OutDependencyDataOffset;
 		}
 
 		// Load the object count
