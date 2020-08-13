@@ -495,6 +495,7 @@ namespace WindowsMixedReality
 		bool IsRemotingConnected();
 		uint32_t SubscribeConnectionEvent(ConnectionCallback callback);
 		void UnsubscribeConnectionEvent(uint32_t id);
+		wchar_t* GetFailureString();
 
 		// Spatial Mapping
 		void StartSpatialMapping(float InTriangleDensity, float InVolumeSize, void(*StartFunctionPointer)(),
@@ -542,6 +543,10 @@ namespace WindowsMixedReality
 		bool SetEnabledMixedRealityCamera(bool enabled);
 		bool ResizeMixedRealityCamera(/*inout*/ SIZE& sz);
 		void GetThirdCameraDimensions(int& width, int& height);
+
+	private:
+		//For returning more descriptive error messages
+		wchar_t failureString[MAX_PATH];
 	};
 
 	class SpatialAudioClientRenderer;

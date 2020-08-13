@@ -1126,6 +1126,9 @@ namespace WindowsMixedReality
 #if PLATFORM_HOLOLENS || HOLO_STREAMING_RENDERING
 		supportsEyeTracking = is19H1;//This code was hanging sometime -> EyesPose::IsSupported();
 #endif
+
+		//make sure to set to empty
+		wcsncpy_s(failureString, L"", std::size(failureString));
 	}
 
 	bool CreateInteropDevice(ID3D11Device* device)
@@ -3763,8 +3766,11 @@ namespace WindowsMixedReality
 					ReportConnectionStatus(MixedRealityInterop::ConnectionEvent::Listening);
 				});
 
+				//emptry failure reason as we are trying to connect
+				wcsncpy_s(failureString, L"", std::size(failureString));
+
 				m_onDisconnectedEventRevoker =
-					m_remoteContext.OnDisconnected(winrt::auto_revoke, [this](winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason failureReason) 
+					m_remoteContext.OnDisconnected(winrt::auto_revoke, [this](winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason failureReason)
 				{
 					const wchar_t ConnectFailureReasonString[static_cast<int32>(winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason::DisconnectRequest) + 1][32] =
 					{
@@ -3789,6 +3795,9 @@ namespace WindowsMixedReality
 						L"DeviceLost",
 						L"DisconnectRequest"
 					}; 
+
+					//copy reason for future retrieval
+					wcsncpy_s(failureString, ConnectFailureReasonString[static_cast<int32>(failureReason)], std::size(failureString));
 
 					{ std::wstringstream string; string << L"RemotingDisconnectedEvent: Reason: " << static_cast<int>(failureReason) << " " << ConnectFailureReasonString[static_cast<int32>(failureReason)]; Log(string); }
 
@@ -4026,6 +4035,10 @@ namespace WindowsMixedReality
 #endif
 	}
 
+	wchar_t* MixedRealityInterop::GetFailureString()
+	{
+		return failureString;
+	}
 
 	void MixedRealityInterop::StartSpatialMapping(
 		float InTriangleDensity,
