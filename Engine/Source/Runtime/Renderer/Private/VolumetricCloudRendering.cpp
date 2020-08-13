@@ -1282,10 +1282,10 @@ void FSceneRenderer::InitVolumetricCloudsForViews(FRDGBuilder& GraphBuilder)
 							bSkyAOPass ? RDG_EVENT_NAME("CloudSkyAO") : RDG_EVENT_NAME("CloudShadow"),
 							CloudShadowParameters,
 							ERDGPassFlags::Raster,
-							[CloudShadowParameters, Scene = Scene, &ViewInfo, &CloudVolumeMaterialProxy, TraceVolumetricCloudParamsUB](FRHICommandListImmediate& RHICmdList)
+							[CloudShadowParameters, &ViewInfo, CloudVolumeMaterialProxy, TraceVolumetricCloudParamsUB](FRHICommandListImmediate& RHICmdList)
 							{
 								DrawDynamicMeshPass(ViewInfo, RHICmdList,
-									[&ViewInfo, &CloudVolumeMaterialProxy, &RHICmdList, &TraceVolumetricCloudParamsUB](FDynamicPassMeshDrawListContext* DynamicMeshPassContext)
+									[&ViewInfo, CloudVolumeMaterialProxy, &RHICmdList, &TraceVolumetricCloudParamsUB](FDynamicPassMeshDrawListContext* DynamicMeshPassContext)
 									{
 										FVolumetricCloudRenderShadowMeshProcessor PassMeshProcessor(
 											ViewInfo.Family->Scene->GetRenderScene(), &ViewInfo,
