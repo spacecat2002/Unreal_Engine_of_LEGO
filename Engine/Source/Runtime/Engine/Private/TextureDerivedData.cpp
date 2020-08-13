@@ -2164,9 +2164,9 @@ void UTexture::SerializeCookedPlatformData(FArchive& Ar)
 	}
 }
 
-int32 UTexture2D::GMinTextureResidentMipCount = NUM_INLINE_DERIVED_MIPS;
+int32 UTexture::GMinTextureResidentMipCount = NUM_INLINE_DERIVED_MIPS;
 
-void UTexture2D::SetMinTextureResidentMipCount(int32 InMinTextureResidentMipCount)
+void UTexture::SetMinTextureResidentMipCount(int32 InMinTextureResidentMipCount)
 {
 	int32 MinAllowedMipCount = FPlatformProperties::RequiresCookedData() ? 1 : NUM_INLINE_DERIVED_MIPS;
 	GMinTextureResidentMipCount = FMath::Max(InMinTextureResidentMipCount, MinAllowedMipCount);

@@ -19,7 +19,7 @@ class FStreamableTextureResource : public FTextureResource
 {
 public:
 
-	FStreamableTextureResource(UTexture* InOwner, const FTexturePlatformData* InPlatformData, const FStreamableRenderResourceState& InPostInitState);
+	FStreamableTextureResource(UTexture* InOwner, const FTexturePlatformData* InPlatformData, const FStreamableRenderResourceState& InPostInitState, bool bAllowPartiallyResidentMips);
 
 	// Dynamic cast methods.
 	ENGINE_API virtual FStreamableTextureResource* GetStreamableTextureResource() { return this; }

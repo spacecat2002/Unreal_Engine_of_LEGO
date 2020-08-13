@@ -200,51 +200,6 @@ void UTexture2D::Serialize(FArchive& Ar)
 #endif // #if WITH_EDITOR
 }
 
-float UTexture2D::GetLastRenderTimeForStreaming() const
-{
-	float LastRenderTime = -FLT_MAX;
-	if (Resource)
-	{
-		// The last render time is the last time the resource was directly bound or the last
-		// time the texture reference was cached in a resource table, whichever was later.
-		LastRenderTime = FMath::Max<double>(Resource->LastRenderTime,TextureReference.GetLastRenderTime());
-	}
-	return LastRenderTime;
-}
-
-void UTexture2D::InvalidateLastRenderTimeForStreaming()
-{
-	if (Resource)
-	{
-		Resource->LastRenderTime = -FLT_MAX;
-	}
-	TextureReference.InvalidateLastRenderTime();
-}
-
-FIoFilenameHash UTexture2D::GetMipIoFilenameHash(const int32 MipIndex) const
-{
-	if (PlatformData && PlatformData->Mips.IsValidIndex(MipIndex))
-	{
-		return PlatformData->Mips[MipIndex].BulkData.GetIoFilenameHash();
-	}
-	else
-	{
-		return INVALID_IO_FILENAME_HASH;
-	}
-}
-
-bool UTexture2D::DoesMipDataExist(const int32 MipIndex) const
-{
-	if (PlatformData)
-	{
-		if (MipIndex < PlatformData->Mips.Num() && MipIndex >= 0)
-		{
-			return PlatformData->Mips[MipIndex].BulkData.DoesExist();
-		}
-	}
-	return false;
-}
-
 int32 UTexture2D::GetNumResidentMips() const
 {
 	if (Resource)
@@ -512,16 +467,6 @@ FString UTexture2D::GetDesc()
 		);
 }
 
-bool UTexture2D::HasPendingRenderResourceInitialization() const
-{
-	return Resource && !Resource->IsInitialized();
-}
-
-bool UTexture2D::HasPendingLODTransition() const
-{
-	return Resource && Resource->MipBiasFade.IsFading();
-}
-
 int32 UTexture2D::CalcTextureMemorySize( int32 MipCount ) const
 {
 	int32 Size = 0;
@@ -703,60 +648,8 @@ FTextureResource* UTexture2D::CreateResource()
 		}
 		else
 		{
-			const int32 NumOfNonOptionalMips = FMath::Min<int32>(NumMips, PlatformData->GetNumNonOptionalMips());
-			const int32 NumOfNonStreamingMips = FMath::Min<int32>(NumMips, PlatformData->GetNumNonStreamingMips());
-
-			bool bMakeStreamble = false;
-			int32 NumRequestedMips = 0;
-
-#if PLATFORM_SUPPORTS_TEXTURE_STREAMING
-			if (!NeverStream && 
-				NumOfNonStreamingMips < NumMips && 
-				LODGroup != TEXTUREGROUP_UI && 
-				!bTemporarilyDisableStreaming &&
-				PlatformData->CanBeLoaded())
-			{
-				bMakeStreamble  = true;
-			}
-#endif
-			if (bMakeStreamble && IStreamingManager::Get().IsRenderAssetStreamingEnabled(EStreamableRenderAssetType::Texture))
-			{
-				NumRequestedMips = NumOfNonStreamingMips;
-			}
-			else
-			{
-				const int32 NumMipsInTail = FMath::Max(GMinTextureResidentMipCount, PlatformData->GetNumMipsInTail());
-				// Bias is not allowed to shrink the mip count bellow NumMipsInTail.
-				// Also, don't rely on optional mips 
-				if (NumMips - GetCachedLODBias() < NumMipsInTail)
-				{
-					NumRequestedMips = FMath::Min<int32>(NumMips, NumMipsInTail);
-				}
-				else if (NumMips > NumOfNonOptionalMips && !DoesMipDataExist(PlatformData->Mips.Num() - NumMips))
-				{
-					NumRequestedMips = FMath::Min<int32>(NumOfNonOptionalMips - GetCachedLODBias(), NumOfNonOptionalMips);
-				}
-				else
-				{
-					NumRequestedMips = FMath::Min<int32>(NumMips - GetCachedLODBias(), NumMips);
-				}
-			}
-
 			// Should be as big as the mips we have already directly loaded into GPU mem
-			if( ResourceMem )
-			{	
-				NumRequestedMips = FMath::Clamp<int32>(NumRequestedMips, ResourceMem->GetNumMips(), NumMips);
-			}
-
-			FStreamableRenderResourceState PostInitState;
-			PostInitState.bSupportsStreaming = bMakeStreamble;
-			PostInitState.NumNonStreamingLODs = (uint8)NumOfNonStreamingMips;
-			PostInitState.NumNonOptionalLODs = (uint8)NumOfNonOptionalMips;
-			PostInitState.MaxNumLODs = (uint8)NumMips;
-			PostInitState.AssetLODBias = (uint8)(PlatformData->Mips.Num() - NumMips);
-			PostInitState.NumResidentLODs = (uint8)NumRequestedMips;
-			PostInitState.NumRequestedLODs = (uint8)NumRequestedMips;
-
+			const FStreamableRenderResourceState PostInitState = GetResourcePostInitState(PlatformData, !bTemporarilyDisableStreaming, ResourceMem ? ResourceMem->GetNumMips() : 0, NumMips);
 			FTexture2DResource* Texture2DResource = new FTexture2DResource(this, PostInitState);
 			// preallocated memory for the UTexture2D resource is now owned by this resource
 			// and will be freed by the RHI resource or when the FTexture2DResource is deleted
@@ -799,17 +692,6 @@ void UTexture2D::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
 			CumulativeResourceSize.AddDedicatedVideoMemoryBytes(CalcTextureMemorySize(GetNumMipsAllowed(true)));
 		}
 	}
-}
-
-
-bool UTexture2D::ShouldMipLevelsBeForcedResident() const
-{
-	if (LODGroup == TEXTUREGROUP_Skybox || this->Super::ShouldMipLevelsBeForcedResident())
-	{
-		return true;
-	}
-
-	return false;
 }
 
 UTexture2D* UTexture2D::CreateTransient(int32 InSizeX, int32 InSizeY, EPixelFormat InFormat, const FName InName)

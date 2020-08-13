@@ -125,16 +125,9 @@ public:
 
 	//~ Begin UStreamableRenderAsset Interface
 	virtual int32 CalcCumulativeLODSize(int32 NumLODs) const final override { return CalcTextureMemorySize(NumLODs); }
-	virtual FIoFilenameHash GetMipIoFilenameHash(const int32 MipIndex) const final override;
-	virtual bool DoesMipDataExist(const int32 MipIndex) const final override;
 	ENGINE_API int32 GetNumResidentMips() const;
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	virtual bool HasPendingRenderResourceInitialization() const final override;
-	virtual bool HasPendingLODTransition() const final override;
-	virtual void InvalidateLastRenderTimeForStreaming() final override;
-	virtual float GetLastRenderTimeForStreaming() const final override;
-	virtual bool ShouldMipLevelsBeForcedResident() const final override;
 	//~ End UStreamableRenderAsset Interface
 
 	/** Trivial accessors. */
@@ -202,25 +195,12 @@ public:
 	 */
 	ENGINE_API int32 GetNumMipsAllowed(bool bIgnoreMinResidency) const;
 
-private:
-	/** The minimum number of mips that must be resident in memory (cannot be streamed). */
-	static ENGINE_API int32 GMinTextureResidentMipCount;
-
 public:
 	/** Returns the minimum number of mips that must be resident in memory (cannot be streamed). */
 	FORCEINLINE int32 GetMinTextureResidentMipCount() const
 	{
 		return FMath::Max(GMinTextureResidentMipCount, PlatformData ? (int32)PlatformData->GetNumMipsInTail() : 0);
 	}
-
-	/** Returns the minimum number of mips that must be resident in memory (cannot be streamed). */
-	static FORCEINLINE int32 GetStaticMinTextureResidentMipCount()
-	{
-		return GMinTextureResidentMipCount;
-	}
-
-	/** Sets the minimum number of mips that must be resident in memory (cannot be streamed). */
-	static void SetMinTextureResidentMipCount(int32 InMinTextureResidentMipCount);
 
 	/**
 	 * Get mip data starting with the specified mip index.

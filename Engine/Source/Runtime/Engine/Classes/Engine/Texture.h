@@ -1039,6 +1039,13 @@ public:
 	//~ Begin UStreamableRenderAsset Interface
 	virtual int32 GetLODGroupForStreaming() const final override { return static_cast<int32>(LODGroup); }
 	virtual EStreamableRenderAssetType GetRenderAssetType() const final override { return EStreamableRenderAssetType::Texture; }
+	ENGINE_API virtual FIoFilenameHash GetMipIoFilenameHash(const int32 MipIndex) const final override;
+	ENGINE_API virtual bool DoesMipDataExist(const int32 MipIndex) const final override;
+	ENGINE_API virtual bool HasPendingRenderResourceInitialization() const final override;
+	ENGINE_API virtual bool HasPendingLODTransition() const final override;
+	ENGINE_API virtual void InvalidateLastRenderTimeForStreaming() final override;
+	ENGINE_API virtual float GetLastRenderTimeForStreaming() const final override;
+	ENGINE_API virtual bool ShouldMipLevelsBeForcedResident() const final override;
 	//~ End UStreamableRenderAsset Interface
 
 	/**
@@ -1128,7 +1135,19 @@ public:
 	 */
 	ENGINE_API static class UEnum* GetPixelFormatEnum();
 
+	/** Returns the minimum number of mips that must be resident in memory (cannot be streamed). */
+	static FORCEINLINE int32 GetStaticMinTextureResidentMipCount()
+	{
+		return GMinTextureResidentMipCount;
+	}
+
+	/** Sets the minimum number of mips that must be resident in memory (cannot be streamed). */
+	static void SetMinTextureResidentMipCount(int32 InMinTextureResidentMipCount);
+
 protected:
+
+	/** The minimum number of mips that must be resident in memory (cannot be streamed). */
+	static ENGINE_API int32 GMinTextureResidentMipCount;
 
 #if WITH_EDITOR
 
@@ -1138,6 +1157,16 @@ protected:
 #endif //WITH_EDITOR
 
 	void BeginFinalReleaseResource();
+
+	/**
+	 * Calculates the render resource initial state, expected to be used in InitResource() for derived classes implementing streaming.
+	 *
+	 * @param	PlatformData - the asset platform data.
+	 * @param	bAllowStreaming - where streaming is allowed, might still be disabled based on asset settings.
+	 * @param	MaxMipCount - optional limitation on the max mip count.
+	 * @return  The state to be passed to FStreamableTextureResource.
+	 */
+	FStreamableRenderResourceState GetResourcePostInitState(FTexturePlatformData* PlatformData, bool bAllowStreaming, int32 MinRequestMipCount = 0, int32 MaxMipCount = 0) const;
 };
 
 /** 

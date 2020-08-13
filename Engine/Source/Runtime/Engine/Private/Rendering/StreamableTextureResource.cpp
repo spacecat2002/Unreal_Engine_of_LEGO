@@ -84,7 +84,7 @@ private:
 	const FStreamableTextureResource* Resource = nullptr;
 };
 
-FStreamableTextureResource::FStreamableTextureResource(UTexture* InOwner, const FTexturePlatformData* InPlatformData, const FStreamableRenderResourceState& InPostInitState)
+FStreamableTextureResource::FStreamableTextureResource(UTexture* InOwner, const FTexturePlatformData* InPlatformData, const FStreamableRenderResourceState& InPostInitState, bool bAllowPartiallyResidentMips)
 	: PlatformData(InPlatformData)
 	, State(InPostInitState)
 	, TextureName(InOwner->GetFName())
@@ -107,7 +107,7 @@ FStreamableTextureResource::FStreamableTextureResource(UTexture* InOwner, const 
 
 	// Whether the virtual update path is enabled for this texture. This allows to map / unmap top mip memory in an out.
 	// Whether the texture will be created with TexCreate_Virtual depends on the requested mip count and "r.VirtualTextureReducedMemory"
-	bUsePartiallyResidentMips = InPostInitState.bSupportsStreaming && CanCreateWithPartiallyResidentMips(CreationFlags);
+	bUsePartiallyResidentMips = bAllowPartiallyResidentMips && InPostInitState.bSupportsStreaming && CanCreateWithPartiallyResidentMips(CreationFlags);
 	 
 	STAT(LODGroupStatName = TextureGroupStatFNames[LODGroup]);
 	STAT(bIsNeverStream = InOwner->NeverStream);

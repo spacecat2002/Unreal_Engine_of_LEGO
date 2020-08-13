@@ -25,7 +25,7 @@ static TAutoConsoleVariable<int32> CVarForceHighestMipOnUITexturesEnabled(
  * @param InState			
  */
 FTexture2DResource::FTexture2DResource(UTexture2D* InOwner, const FStreamableRenderResourceState& InState)
-	: FStreamableTextureResource(InOwner, InOwner->PlatformData, InState)
+	: FStreamableTextureResource(InOwner, InOwner->PlatformData, InState, true)
 	, ResourceMem( InOwner->ResourceMem )
 {
 	// Retrieve initial mip data.
