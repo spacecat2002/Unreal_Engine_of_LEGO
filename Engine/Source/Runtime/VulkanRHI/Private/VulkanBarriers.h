@@ -61,6 +61,11 @@ struct FVulkanImageLayout
 			return MainLayout;
 		}
 
+		if (Layer == (uint32)-1)
+		{
+			Layer = 0;
+		}
+
 		check(Layer < NumLayers && Mip < NumMips);
 		return SubresLayouts[Layer * NumMips + Mip];
 	}

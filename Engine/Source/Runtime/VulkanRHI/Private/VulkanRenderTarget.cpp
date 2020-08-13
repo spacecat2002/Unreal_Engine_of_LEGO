@@ -726,8 +726,21 @@ void FVulkanCommandListContext::RHIBeginRenderPass(const FRHIRenderPassInfo& InI
 		BeginOcclusionQueryBatch(CmdBuffer, InInfo.NumOcclusionQueries);
 	}
 
-	FVulkanRenderTargetLayout RTLayout(*Device, InInfo);
+	FRHITexture* DSTexture = InInfo.DepthStencilRenderTarget.DepthStencilTarget;
+	VkImageLayout CurrentDSLayout;
+	if (DSTexture)
+	{
+		FVulkanSurface& Surface = FVulkanTextureBase::Cast(DSTexture)->Surface;
+		CurrentDSLayout = LayoutManager.FindLayoutChecked(Surface.Image);
+	}
+	else
+	{
+		CurrentDSLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	}
+
+	FVulkanRenderTargetLayout RTLayout(*Device, InInfo, CurrentDSLayout);
 	check(RTLayout.GetExtent2D().width != 0 && RTLayout.GetExtent2D().height != 0);
+
 	FVulkanRenderPass* RenderPass = LayoutManager.GetOrCreateRenderPass(*Device, RTLayout);
 	FRHISetRenderTargetsInfo RTInfo;
 	InInfo.ConvertToRenderTargetsInfo(RTInfo);
@@ -1039,7 +1052,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 }
 
 
-FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, const FRHIRenderPassInfo& RPInfo)
+FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, const FRHIRenderPassInfo& RPInfo, VkImageLayout CurrentDSLayout)
 	: NumAttachmentDescriptions(0)
 	, NumColorAttachments(0)
 	, bHasDepthStencil(false)
@@ -1181,7 +1194,32 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 			ExclusiveDepthStencil = FExclusiveDepthStencil::DepthWrite_StencilWrite;
 		}
 
+		ensure(CurrentDSLayout != VK_IMAGE_LAYOUT_UNDEFINED);
 		DepthStencilLayout = VulkanRHI::GetDepthStencilLayout(ExclusiveDepthStencil, InDevice);
+		if (DepthStencilLayout != CurrentDSLayout)
+		{
+			// The high level code doesn't transition writable depth/stencil to readable. In that case, we cannot simply use the layout which corresponds to RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil,
+			// because it will be different from the actual layout of the surface. Check that the requested layout is compatible with the current layout (i.e. it doesn't try to write to an aspect that's read-only),
+			// and if it is, use the current layout instead in the attachment description.
+			switch (CurrentDSLayout)
+			{
+			case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+				// Both aspects were writable, any destination state with at least one read-only aspect is valid.
+				ensure(DepthStencilLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL || DepthStencilLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR || DepthStencilLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR);
+				break;
+			case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR:
+			case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR:
+				// Only one aspect is writable, the only valid destination is read-only for both aspects.
+				ensure(DepthStencilLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+				break;
+			default:
+				ensureMsgf(false, TEXT("Depth target is in layout %u, expected %u. Please add a transition before starting the render pass."), CurrentDSLayout, DepthStencilLayout);
+				break;
+			}
+
+			DepthStencilLayout = CurrentDSLayout;
+		}
+
 		// If the initial != final we need to change the FullHashInfo and use FinalLayout
 		CurrDesc.initialLayout = DepthStencilLayout;
 		CurrDesc.finalLayout = DepthStencilLayout;
