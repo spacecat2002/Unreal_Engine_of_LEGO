@@ -7,5 +7,6 @@
 class FRHICommandListImmediate;
 class FScene;
 class FViewInfo;
+struct FSortedLightSetSceneInfo;
 
-void MobileDeferredShadingPass(FRHICommandListImmediate& RHICmdList, const FScene& Scene, const FViewInfo& View);
+void MobileDeferredShadingPass(FRHICommandListImmediate& RHICmdList, const FScene& Scene, const FViewInfo& View, const FSortedLightSetSceneInfo &SortedLightSet);

@@ -44,6 +44,7 @@ class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
 struct FCloudRenderContext;
 struct FHairStrandsVisibilityViews;
+struct FSortedLightSetSceneInfo;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
 
@@ -1869,6 +1870,28 @@ protected:
 	void ResolveSceneColor(FRHICommandListImmediate& RHICmdList);
 	void ResolveSceneDepth(FRHICommandListImmediate& RHICmdList);
 
+	/**
+	 * Rounds up lights and sorts them according to what type of renderer supports them. The result is stored in OutSortedLights 
+	 * NOTE: Also extracts the SimpleLights AND adds them to the sorted range (first sub-range). 
+	 */
+	void GatherAndSortLights(FSortedLightSetSceneInfo& OutSortedLights);
+	
+	/** 
+	 * Culls local lights and reflection probes to a grid in frustum space, builds one light list and grid per view in the current Views.  
+	 * Needed for forward shading or translucency using the Surface lighting mode, and clustered deferred shading. 
+	 */
+	void ComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bCullLightsToGrid, FSortedLightSetSceneInfo &SortedLightSet);
+
+	/**
+	* Used by RenderLights to figure out if light functions need to be rendered to the attenuation buffer.
+	*
+	* @param LightSceneInfo Represents the current light
+	* @return true if anything got rendered
+	*/
+	bool CheckForLightFunction(const FLightSceneInfo* LightSceneInfo) const;
+
+	void SetupSceneReflectionCaptureBuffer(FRHICommandListImmediate& RHICmdList);
+
 private:
 	void ComputeFamilySize();
 };
@@ -1950,7 +1973,7 @@ protected:
 	void UpdateSkyReflectionUniformBuffer();
 
 	FRHITexture* RenderForward(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
-	FRHITexture* RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
+	FRHITexture* RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList, const FSortedLightSetSceneInfo& SortedLightSet);
 	
 	void InitAmbientOcclusionOutputs(FRHICommandListImmediate& RHICmdList, const TRefCountPtr<IPooledRenderTarget>& SceneDepthZ);
 	void RenderAmbientOcclusion(FRHICommandListImmediate& RHICmdList, const TRefCountPtr<IPooledRenderTarget>& SceneDepthZ);

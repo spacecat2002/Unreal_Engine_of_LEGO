@@ -328,20 +328,40 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 		Scene->IndirectLightingCache.FinalizeCacheUpdates(Scene, *this, ILCTaskData);
 	}
 
+	const bool bMobileDeferredShading = IsMobileDeferredShading();
 	// initialize per-view uniform buffer.  Pass in shadow info as necessary.
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
-		if (Views[ViewIndex].ViewState)
+		FViewInfo& View = Views[ViewIndex];
+		
+		if (bMobileDeferredShading)
 		{
-			Views[ViewIndex].ViewState->UpdatePreExposure(Views[ViewIndex]);
+			if (View.ViewState)
+			{
+				if (!View.ViewState->ForwardLightingResources)
+				{
+					View.ViewState->ForwardLightingResources.Reset(new FForwardLightingViewResources());
+				}
+				View.ForwardLightingResources = View.ViewState->ForwardLightingResources.Get();
+			}
+			else
+			{
+				View.ForwardLightingResourcesStorage.Reset(new FForwardLightingViewResources());
+				View.ForwardLightingResources = View.ForwardLightingResourcesStorage.Get();
+			}
+		}
+	
+		if (View.ViewState)
+		{
+			View.ViewState->UpdatePreExposure(View);
 		}
 
 		// Initialize the view's RHI resources.
-		Views[ViewIndex].InitRHIResources();
+		View.InitRHIResources();
 
 		// TODO: remove when old path is removed
 		// Create the directional light uniform buffers
-		CreateDirectionalLightUniformBuffers(Views[ViewIndex]);
+		CreateDirectionalLightUniformBuffers(View);
 	}
 
 	UpdateGPUScene(RHICmdList, *Scene);
@@ -373,6 +393,10 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 		UpdateOpaqueBasePassUniformBuffer(RHICmdList, View);
 		UpdateTranslucentBasePassUniformBuffer(RHICmdList, View);
 		UpdateDirectionalLightUniformBuffers(RHICmdList, View);
+	}
+	if (bMobileDeferredShading)
+	{
+		SetupSceneReflectionCaptureBuffer(RHICmdList);
 	}
 	UpdateSkyReflectionUniformBuffer();
 
@@ -551,6 +575,13 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RHICmdList.ClearUAVUint(FeedbackUAV, FUintVector4(~0u, ~0u, ~0u, ~0u));
 		RHICmdList.Transition(FRHITransitionInfo(FeedbackUAV, ERHIAccess::UAVMask, ERHIAccess::UAVMask));
 	}
+	
+	FSortedLightSetSceneInfo SortedLightSet;
+	if (bDeferredShading)
+	{
+		GatherAndSortLights(SortedLightSet);
+		ComputeLightGrid(RHICmdList, true, SortedLightSet);
+	}
 
 	// Generate the Sky/Atmosphere look up tables
 	const bool bShouldRenderSkyAtmosphere = ShouldRenderSkyAtmosphere(Scene, ViewFamily.EngineShowFlags);
@@ -599,7 +630,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FRHITexture* SceneColor = nullptr;
 	if (bDeferredShading)
 	{
-		SceneColor = RenderDeferred(RHICmdList, ViewList);
+		SceneColor = RenderDeferred(RHICmdList, ViewList, SortedLightSet);
 	}
 	else
 	{
@@ -973,7 +1004,7 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 	return SceneColorResolve ? SceneColorResolve : SceneColor;
 }
 
-FRHITexture* FMobileSceneRenderer::RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList)
+FRHITexture* FMobileSceneRenderer::RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList, const FSortedLightSetSceneInfo& SortedLightSet)
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 			
@@ -1047,7 +1078,7 @@ FRHITexture* FMobileSceneRenderer::RenderDeferred(FRHICommandListImmediate& RHIC
 		// SceneColor write, SceneDepth is read only
 		RHICmdList.NextSubpass();
 		
-		MobileDeferredShadingPass(RHICmdList, *Scene, *ViewList[0]);
+		MobileDeferredShadingPass(RHICmdList, *Scene, *ViewList[0], SortedLightSet);
 		// Draw translucency.
 		if (ViewFamily.EngineShowFlags.Translucency)
 		{
@@ -1099,14 +1130,14 @@ FRHITexture* FMobileSceneRenderer::RenderDeferred(FRHICommandListImmediate& RHIC
 				EDepthStencilTargetActions::LoadDepthStencil_StoreDepthStencil, 
 				nullptr,
 				nullptr,
-				FExclusiveDepthStencil::DepthRead_StencilRead
+				FExclusiveDepthStencil::DepthRead_StencilWrite
 			);
 			ShadingPassInfo.NumOcclusionQueries = 0;
 			ShadingPassInfo.bOcclusionQueries = false;
 			
 			RHICmdList.BeginRenderPass(ShadingPassInfo, TEXT("MobileShadingPass"));
 			
-			MobileDeferredShadingPass(RHICmdList, *Scene, *ViewList[0]);
+			MobileDeferredShadingPass(RHICmdList, *Scene, *ViewList[0], SortedLightSet);
 			// Draw translucency.
 			if (ViewFamily.EngineShowFlags.Translucency)
 			{

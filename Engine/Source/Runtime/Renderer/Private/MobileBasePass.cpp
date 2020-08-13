@@ -317,9 +317,9 @@ void MobileBasePass::SetOpaqueRenderState(FMeshPassProcessorRenderState& DrawRen
 	
 	if (IsMobileDeferredShading())
 	{
-		// add more values
+		// store into [1-3] bits
 		uint8 ShadingModel = Material.GetShadingModels().IsLit() ? MSM_DefaultLit : MSM_Unlit;
-		StencilValue|= (ShadingModel & 0x0f); // store into first 4 bits
+		StencilValue|= GET_STENCIL_MOBILE_SM_MASK(ShadingModel);
 	}
 		
 	if (bEnableReceiveDecalOutput || IsMobileDeferredShading())

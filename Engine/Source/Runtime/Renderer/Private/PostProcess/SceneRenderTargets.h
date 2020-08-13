@@ -121,6 +121,10 @@ static const int32 NumTranslucencyShadowSurfaces = 2;
 
 #define STENCIL_LIGHTING_CHANNELS_MASK(Value) uint8((Value & 0x7) << STENCIL_LIGHTING_CHANNELS_BIT_ID)
 
+// Mobile specific
+// Store shading model into stencil [1-3] bits
+#define GET_STENCIL_MOBILE_SM_MASK(Value) uint8((Value & 0x7) << 1)
+
 #if !defined(PREVENT_RENDERTARGET_SIZE_THRASHING)
 	#define PREVENT_RENDERTARGET_SIZE_THRASHING (PLATFORM_DESKTOP || PLATFORM_PS4 || PLATFORM_ANDROID || PLATFORM_IOS || PLATFORM_SWITCH || PLATFORM_UNIX)
 #endif

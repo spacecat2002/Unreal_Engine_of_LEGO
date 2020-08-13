@@ -180,7 +180,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) || IsMobileDeferredShading();
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -214,7 +214,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) || IsMobileDeferredShading();
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -282,19 +282,8 @@ void UpdateDynamicVector4BufferData(const TArray<T, SceneRenderingAllocator> &Da
 }
 
 
-void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet)
+void FSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bCullLightsToGrid, FSortedLightSetSceneInfo &SortedLightSet)
 {
-	if (!bNeedLightGrid || FeatureLevel < ERHIFeatureLevel::SM5)
-	{
-		for (auto& View : Views)
-		{
-			View.ForwardLightingResources = GetMinimalDummyForwardLightingResources();
-		}
-
-		return;
-	}
-
-	{
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(ComputeLightGrid);
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_ComputeLightGrid);
 		SCOPED_DRAW_EVENT(RHICmdList, ComputeLightGrid);
@@ -302,21 +291,6 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 		static const auto AllowStaticLightingVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowStaticLighting"));
 		const bool bAllowStaticLighting = (!AllowStaticLightingVar || AllowStaticLightingVar->GetValueOnRenderThread() != 0);
 		const bool bAllowFormatConversion = RHISupportsBufferLoadTypeConversion(GMaxRHIShaderPlatform);
-
-		bool bAnyViewUsesForwardLighting = false;
-
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-		{
-			const FViewInfo& View = Views[ViewIndex];
-			bAnyViewUsesForwardLighting |= View.bTranslucentSurfaceLighting || ShouldRenderVolumetricFog() || View.bHasSingleLayerWaterMaterial;
-		}
-
-		const bool bCullLightsToGrid = GLightCullingQuality 
-			&& (ViewFamily.EngineShowFlags.DirectLighting 
-			&& (IsForwardShadingEnabled(ShaderPlatform) || bAnyViewUsesForwardLighting || IsRayTracingEnabled() || ShouldUseClusteredDeferredShading()));
-			   
-		// Store this flag if lights are injected in the grids, check with 'AreClusteredLightsInLightGrid()'
-		bClusteredShadingLightsInLightGrid = bCullLightsToGrid;
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
@@ -751,7 +725,35 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 				RHICmdList.Transition(MakeArrayView(SRVTransitions.GetData(), SRVTransitions.Num()));
 			}
 		}
+}
+
+void FDeferredShadingSceneRenderer::GatherLightsAndComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet)
+{
+	GatherAndSortLights(SortedLightSet);
+	
+	if (!bNeedLightGrid)
+	{
+		for (auto& View : Views)
+		{
+			View.ForwardLightingResources = GetMinimalDummyForwardLightingResources();
+		}
+		return;
 	}
+
+	bool bAnyViewUsesForwardLighting = false;
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		const FViewInfo& View = Views[ViewIndex];
+		bAnyViewUsesForwardLighting |= View.bTranslucentSurfaceLighting || ShouldRenderVolumetricFog() || View.bHasSingleLayerWaterMaterial;
+	}
+	
+	const bool bCullLightsToGrid = GLightCullingQuality 
+		&& (ViewFamily.EngineShowFlags.DirectLighting 
+		&& (IsForwardShadingEnabled(ShaderPlatform) || bAnyViewUsesForwardLighting || IsRayTracingEnabled() || ShouldUseClusteredDeferredShading()));
+	// Store this flag if lights are injected in the grids, check with 'AreClusteredLightsInLightGrid()'
+	bClusteredShadingLightsInLightGrid = bCullLightsToGrid;
+	
+	ComputeLightGrid(RHICmdList, bCullLightsToGrid, SortedLightSet);
 }
 
 void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(

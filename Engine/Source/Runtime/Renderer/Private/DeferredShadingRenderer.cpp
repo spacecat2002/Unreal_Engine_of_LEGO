@@ -1846,12 +1846,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	// NOTE: The ordering of the lights is used to select sub-sets for different purposes, e.g., those that support clustered deferred.
 	FSortedLightSetSceneInfo SortedLightSet;
-	
 	{
 		SCOPED_GPU_STAT(RHICmdList, SortLights);
-		GatherAndSortLights(SortedLightSet);
-		ComputeLightGrid(RHICmdList, bComputeLightGrid, SortedLightSet);
-
+		GatherLightsAndComputeLightGrid(RHICmdList, bComputeLightGrid, SortedLightSet);
 	}
 
 	CSV_CUSTOM_STAT(LightCount, All,  float(SortedLightSet.SortedLights.Num()), ECsvCustomStatOp::Set);

@@ -73,12 +73,6 @@ public:
 	 */
 	bool RenderPrePassViewParallel(const FViewInfo& View, FRHICommandListImmediate& ParentCmdList,TFunctionRef<void()> AfterTasksAreStarted, bool bDoPrePre);
 
-	/** 
-	 * Culls local lights and reflection probes to a grid in frustum space, builds one light list and grid per view in the current Views.  
-	 * Needed for forward shading or translucency using the Surface lighting mode, and clustered deferred shading. 
-	 */
-	void ComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet);
-
 	/** Renders the basepass for a given View, in parallel */
 	void RenderBasePassViewParallel(const FViewInfo& View, FRHICommandListImmediate& ParentCmdList, FRHIUniformBuffer* PassUniformBuffer, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
 
@@ -166,14 +160,6 @@ private:
 		TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& OutPreShadows);
 
 	/**
-	* Used by RenderLights to figure out if light functions need to be rendered to the attenuation buffer.
-	*
-	* @param LightSceneInfo Represents the current light
-	* @return true if anything got rendered
-	*/
-	bool CheckForLightFunction(const FLightSceneInfo* LightSceneInfo) const;
-
-	/**
 	* Performs once per frame setup prior to visibility determination.
 	*/
 	void PreVisibilityFrameSetup(FRHICommandListImmediate& RHICmdList);
@@ -182,9 +168,7 @@ private:
 	bool InitViews(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, struct FILCUpdatePrimTaskData& ILCTaskData);
 
 	void InitViewsPossiblyAfterPrepass(FRHICommandListImmediate& RHICmdList, struct FILCUpdatePrimTaskData& ILCTaskData);
-
-	void SetupSceneReflectionCaptureBuffer(FRHICommandListImmediate& RHICmdList);
-
+		
 	void CreateIndirectCapsuleShadows();
 
 	/**
@@ -314,12 +298,6 @@ private:
 		int32 TiledDeferredLightsStart,
 		int32 TiledDeferredLightsEnd,
 		const FSimpleLightArray& SimpleLights);
-
-	/**
-	 * Rounds up lights and sorts them according to what type of renderer supports them. The result is stored in OutSortedLights 
-	 * NOTE: Also extracts the SimpleLights AND adds them to the sorted range (first sub-range). 
-	 */
-	void GatherAndSortLights(FSortedLightSetSceneInfo& OutSortedLights);
 
 	/** Renders the scene's lighting. */
 	FRDGTextureRef RenderLights(
@@ -797,7 +775,9 @@ private:
 
 #endif // RHI_RAYTRACING
 
-	/** Set to true if the lights needed for clustered shading have been injected in the light grid (set in ComputeLightGrid). */
+	void GatherLightsAndComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet);
+
+	/** Set to true if the lights needed for clustered shading have been injected in the light grid (set in GatherLightsAndComputeLightGrid). */
 	bool bClusteredShadingLightsInLightGrid;
 };
 
