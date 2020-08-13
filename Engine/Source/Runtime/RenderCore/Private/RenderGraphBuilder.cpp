@@ -23,11 +23,17 @@ inline void GetPassAccess(ERDGPassFlags PassFlags, ERHIAccess& SRVAccess, ERHIAc
 
 	if (EnumHasAnyFlags(PassFlags, ERDGPassFlags::Raster))
 	{
-		SRVAccess |= ERHIAccess::SRVGraphics;
+		SRVAccess |= ERHIAccess::SRVCompute | ERHIAccess::SRVGraphics;
 		UAVAccess |= ERHIAccess::UAVGraphics;
 	}
 
-	if (EnumHasAnyFlags(PassFlags, ERDGPassFlags::Compute | ERDGPassFlags::AsyncCompute))
+	if (EnumHasAnyFlags(PassFlags, ERDGPassFlags::Compute))
+	{
+		SRVAccess |= ERHIAccess::SRVCompute | ERHIAccess::SRVGraphics;
+		UAVAccess |= ERHIAccess::UAVCompute;
+	}
+
+	if (EnumHasAnyFlags(PassFlags, ERDGPassFlags::AsyncCompute))
 	{
 		SRVAccess |= ERHIAccess::SRVCompute;
 		UAVAccess |= ERHIAccess::UAVCompute;

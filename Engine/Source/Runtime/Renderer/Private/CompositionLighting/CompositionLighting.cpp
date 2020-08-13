@@ -164,12 +164,14 @@ static FSSAOCommonParameters GetSSAOCommonParameters(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+	TUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBufferRHI,
 	uint32 Levels)
 {
 	const FSceneTextureParameters SceneTextureParameters = GetSceneTextureParameters(GraphBuilder, SceneTexturesUniformBuffer);
 
 	FSSAOCommonParameters CommonParameters;
 	CommonParameters.SceneTexturesUniformBuffer = SceneTexturesUniformBuffer;
+	CommonParameters.SceneTexturesUniformBufferRHI = SceneTexturesUniformBufferRHI;
 	CommonParameters.SceneTexturesViewport = FScreenPassTextureViewport(SceneTextureParameters.SceneDepthTexture, View.ViewRect);
 
 	CommonParameters.HZBInput = FScreenPassTexture(GraphBuilder.RegisterExternalTexture(View.HZB, TEXT("HZBInput")));
@@ -192,6 +194,7 @@ FGTAOCommonParameters GetGTAOCommonParameters(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+	TUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBufferRHI,
 	EGTAOType GTAOType
 	)
 {
@@ -199,6 +202,7 @@ FGTAOCommonParameters GetGTAOCommonParameters(
 
 	FGTAOCommonParameters CommonParameters;
 	CommonParameters.SceneTexturesUniformBuffer = SceneTexturesUniformBuffer;
+	CommonParameters.SceneTexturesUniformBufferRHI = SceneTexturesUniformBufferRHI;
 	CommonParameters.SceneTexturesViewport = FScreenPassTextureViewport(SceneTextureParameters.SceneDepthTexture, View.ViewRect);
 
 	CommonParameters.HZBInput = FScreenPassTexture(GraphBuilder.RegisterExternalTexture(View.HZB, TEXT("HZBInput")));
@@ -562,7 +566,8 @@ void FCompositionLighting::ProcessBeforeBasePass(
 
 		if (bNeedSSAO)
 		{
-			FSSAOCommonParameters Parameters = GetSSAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SSAOLevels);
+			TUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBufferRHI = CreateSceneTextureUniformBuffer(GraphBuilder.RHICmdList, View.FeatureLevel, ESceneTextureSetupMode::SceneDepth);
+			FSSAOCommonParameters Parameters = GetSSAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SceneTexturesUniformBufferRHI, SSAOLevels);
 			FScreenPassRenderTarget FinalTarget = FScreenPassRenderTarget(GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceAO, TEXT("AmbientOcclusionDirect")), View.ViewRect, ERenderTargetLoadAction::ENoAction);
 
 			AddPostProcessingAmbientOcclusion(
@@ -636,10 +641,12 @@ void FCompositionLighting::ProcessAfterBasePass(
 			{
 				const EGTAOType GTAOType = FSSAOHelper::GetGTAOPassType(View, SSAOLevels);
 
+				TUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBufferRHI = CreateSceneTextureUniformBuffer(GraphBuilder.RHICmdList, View.FeatureLevel, ESceneTextureSetupMode::SceneDepth);
+
 				// If doing the Split GTAO method then we need to do the second part here.
 				if (GTAOType == EGTAOType::EAsyncHorizonSearch || GTAOType == EGTAOType::EAsyncCombinedSpatial)
 				{
-					FGTAOCommonParameters Parameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, GTAOType);
+					FGTAOCommonParameters Parameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SceneTexturesUniformBufferRHI, GTAOType);
 
 					FScreenPassTexture GTAOHorizons(GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceGTAOHorizons, TEXT("GTAOHorizons")), Parameters.DownsampledViewRect);
 					FScreenPassTexture GTAODepths(GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceGTAODepths, TEXT("GTAODepths")), Parameters.DownsampledViewRect);
@@ -654,12 +661,12 @@ void FCompositionLighting::ProcessAfterBasePass(
 				{
 					if (GTAOType == EGTAOType::ENonAsync)
 					{
-						FGTAOCommonParameters Parameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, GTAOType);
+						FGTAOCommonParameters Parameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SceneTexturesUniformBufferRHI, GTAOType);
 						AmbientOcclusion = AddPostProcessingGTAOAllPasses(GraphBuilder, View, Parameters, FinalTarget);
 					}
 					else
 					{
-						FSSAOCommonParameters Parameters = GetSSAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SSAOLevels);
+						FSSAOCommonParameters Parameters = GetSSAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SceneTexturesUniformBufferRHI, SSAOLevels);
 						AmbientOcclusion = AddPostProcessingAmbientOcclusion(GraphBuilder, View, Parameters, FinalTarget);
 					}
 
@@ -744,7 +751,8 @@ void FCompositionLighting::ProcessAsyncSSAO(
 		{
 			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
-			FGTAOCommonParameters CommonParameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, GTAOType);
+			TUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBufferRHI = CreateSceneTextureUniformBuffer(GraphBuilder.RHICmdList, View.FeatureLevel, ESceneTextureSetupMode::SceneDepth);
+			FGTAOCommonParameters CommonParameters = GetGTAOCommonParameters(GraphBuilder, View, SceneTexturesUniformBuffer, SceneTexturesUniformBufferRHI, GTAOType);
 
 			FRDGTextureRef GTAOHorizonsTexture = nullptr;
 			FRDGTextureRef GTAODepthsTexture = nullptr;
