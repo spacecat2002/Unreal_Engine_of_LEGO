@@ -12,7 +12,7 @@ Texture2DStreamIn_DDC.cpp: Stream in helper for 2D textures loading DDC files.
 
 #if WITH_EDITORONLY_DATA
 
-int32 GStreamingUseAsyncRequestsForDDC = 0;
+int32 GStreamingUseAsyncRequestsForDDC = 1;
 static FAutoConsoleVariableRef CVarStreamingDDCPendingSleep(
 	TEXT("r.Streaming.UseAsyncRequestsForDDC"),
 	GStreamingUseAsyncRequestsForDDC,
