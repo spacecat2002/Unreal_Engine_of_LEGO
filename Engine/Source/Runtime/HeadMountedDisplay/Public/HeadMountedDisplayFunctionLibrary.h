@@ -333,4 +333,12 @@ class HEADMOUNTEDDISPLAY_API UHeadMountedDisplayFunctionLibrary : public UBluepr
 
 	UFUNCTION(BlueprintCallable, Category = "Input|XRTracking", meta = (ToolTip = "Specify which gestures to capture."))
 	static bool ConfigureGestures(const FXRGestureConfig& GestureConfig);
+
+	
+	/** Connect to a remote device */
+	UFUNCTION(BlueprintCallable, Category = "XR|HeadMountedDisplay")
+	static EXRDeviceConnectionResult::Type ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate, FString& OutDetails);
+	/** Disconnect remote AR Device */
+	UFUNCTION(BlueprintCallable, Category = "XR|HeadMountedDisplay")
+	static void DisconnectRemoteXRDevice();
 };

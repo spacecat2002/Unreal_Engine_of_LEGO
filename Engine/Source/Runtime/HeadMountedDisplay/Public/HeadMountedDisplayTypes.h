@@ -82,6 +82,23 @@ namespace EHMDWornState
 	};
 }
 
+
+/**
+* Enumeration of results from Connecting to Remote XR device
+*/
+UENUM(BlueprintType)
+namespace EXRDeviceConnectionResult
+{
+	enum Type
+	{
+		NoTrackingSystem,
+		FeatureNotSupported,
+		NoValidViewport,
+		MiscFailure,
+		Success
+	};
+}
+
 /**
 * Flags to better inform the user about specifics of the underlying XR system
 */
@@ -310,6 +327,8 @@ struct HEADMOUNTEDDISPLAY_API FXRMotionControllerData
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	TArray<struct FVector> HandKeyPositions;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	TArray<struct FQuat> HandKeyRotations;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	TArray<float> HandKeyRadii;
 
