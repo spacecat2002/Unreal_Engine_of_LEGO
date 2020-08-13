@@ -364,6 +364,9 @@ static void GetTextureBuildSettings(
 	OutBuildSettings.bVolume = false;
 	OutBuildSettings.bCubemap = false;
 	OutBuildSettings.bTextureArray = false;
+	OutBuildSettings.DiffuseConvolveMipLevel = 0;
+	OutBuildSettings.bLongLatSource = false;
+	OutBuildSettings.bStreamable = false;
 
 	if (Texture.MaxTextureSize > 0)
 	{
@@ -385,19 +388,15 @@ static void GetTextureBuildSettings(
 	else if (Texture.IsA(UTexture2DArray::StaticClass()))
 	{
 		OutBuildSettings.bTextureArray = true;
-		OutBuildSettings.DiffuseConvolveMipLevel = 0;
-		OutBuildSettings.bLongLatSource = false;
 	}
 	else if (Texture.IsA(UVolumeTexture::StaticClass()))
 	{
+		OutBuildSettings.bStreamable = GSupportsVolumeTextureStreaming;
 		OutBuildSettings.bVolume = true;
-		OutBuildSettings.DiffuseConvolveMipLevel = 0;
-		OutBuildSettings.bLongLatSource = false;
 	}
-	else
+	else if (Texture.IsA(UTexture2D::StaticClass()))
 	{
-		OutBuildSettings.DiffuseConvolveMipLevel = 0;
-		OutBuildSettings.bLongLatSource = false;
+		OutBuildSettings.bStreamable = true;
 	}
 
 	bool bDownsampleWithAverage;
@@ -427,7 +426,7 @@ static void GetTextureBuildSettings(
 	OutBuildSettings.CompositePower = Texture.CompositePower;
 	OutBuildSettings.LODBias = TextureLODSettings.CalculateLODBias(SourceSize.X, SourceSize.Y, Texture.MaxTextureSize, Texture.LODGroup, Texture.LODBias, Texture.NumCinematicMipLevels, Texture.MipGenSettings, bVirtualTextureStreaming);
 	OutBuildSettings.LODBiasWithCinematicMips = TextureLODSettings.CalculateLODBias(SourceSize.X, SourceSize.Y, Texture.MaxTextureSize, Texture.LODGroup, Texture.LODBias, 0, Texture.MipGenSettings, bVirtualTextureStreaming);
-	OutBuildSettings.bStreamable = bPlatformSupportsTextureStreaming && !Texture.NeverStream && (Texture.LODGroup != TEXTUREGROUP_UI) && (Cast<const UTexture2D>(&Texture) != NULL);
+	OutBuildSettings.bStreamable &= bPlatformSupportsTextureStreaming && !Texture.NeverStream && (Texture.LODGroup != TEXTUREGROUP_UI);
 	OutBuildSettings.bVirtualStreamable = bVirtualTextureStreaming;
 	OutBuildSettings.PowerOfTwoMode = Texture.PowerOfTwoMode;
 	OutBuildSettings.PaddingColor = Texture.PaddingColor;
