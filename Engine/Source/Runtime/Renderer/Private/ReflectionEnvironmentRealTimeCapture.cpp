@@ -273,6 +273,11 @@ void FScene::ValidateSkyLightRealTimeCapture(
 #endif
 }
 
+BEGIN_SHADER_PARAMETER_STRUCT(FCaptureSkyMeshReflectionPassParameters, )
+	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FOpaqueBasePassUniformParameters, BasePass)
+	RENDER_TARGET_BINDING_SLOTS()
+END_SHADER_PARAMETER_STRUCT()
+
 
 void FScene::AllocateAndCaptureFrameSkyEnvMap(
 	FRDGBuilder& GraphBuilder, FSceneRenderer& SceneRenderer, FViewInfo& MainView,
@@ -523,20 +528,21 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 				{
 					if (MainView.bSceneHasSkyMaterial)
 					{
-						FRenderTargetParameters* RenderTargetPassParameter = GraphBuilder.AllocParameters<FRenderTargetParameters>();
-						RenderTargetPassParameter->RenderTargets = SkyRC.RenderTargets;
+						auto* PassParameters = GraphBuilder.AllocParameters<FCaptureSkyMeshReflectionPassParameters>();
+						PassParameters->RenderTargets = SkyRC.RenderTargets;
+						PassParameters->BasePass = CreateOpaqueBasePassUniformBuffer(GraphBuilder, MainView, nullptr, nullptr, 0);
 
 						// Setup the depth buffer
 						if (bUseDepthBuffer)
 						{
 							FRDGTextureDesc CubeDepthTextureDesc = FRDGTextureDesc::Create2D(FIntPoint(CubeWidth, CubeWidth), PF_DepthStencil, SceneContext.GetDefaultDepthClear(), TexCreate_DepthStencilTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead);
 							CubeDepthTexture = GraphBuilder.CreateTexture(CubeDepthTextureDesc, TEXT("CubeDepthTexture"));
-							RenderTargetPassParameter->RenderTargets.DepthStencil = FDepthStencilBinding(CubeDepthTexture, ERenderTargetLoadAction::EClear, FExclusiveDepthStencil::DepthWrite_StencilNop);
+							PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(CubeDepthTexture, ERenderTargetLoadAction::EClear, FExclusiveDepthStencil::DepthWrite_StencilNop);
 						}
 
 						GraphBuilder.AddPass(
 							RDG_EVENT_NAME("CaptureSkyMeshReflection"),
-							RenderTargetPassParameter,
+							PassParameters,
 							ERDGPassFlags::Raster,
 							[&MainView, CubeViewUniformBuffer, bUseDepthBuffer](FRHICommandListImmediate& RHICmdList)
 							{

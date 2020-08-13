@@ -1343,15 +1343,9 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		if (bRealTimeReflectionCaptureSkyAtmosphereViewLutTexture)
 		{
 			FIntVector SkyViewLutSize = View.SkyAtmosphereViewLutTexture->GetDesc().GetSize();
-
-			FPooledRenderTargetDesc RealTimeReflectionCaptureSkyAtmosphereViewLutTextureDesc = FPooledRenderTargetDesc::Create2DDesc(
-				FIntPoint(SkyViewLutSize.X, SkyViewLutSize.Y), GetSkyLutTextureFormat(Scene->GetFeatureLevel()), FClearValueBinding::None,
-				TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false);
-			if (!Scene->RealTimeReflectionCaptureSkyAtmosphereViewLutTexture.IsValid() || Scene->RealTimeReflectionCaptureSkyAtmosphereViewLutTexture->GetDesc().GetSize() != SkyViewLutSize)
-			{
-				GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, RealTimeReflectionCaptureSkyAtmosphereViewLutTextureDesc, Scene->RealTimeReflectionCaptureSkyAtmosphereViewLutTexture, TEXT("Scene.RealTimeReflectionCaptureSkyAtmosphereViewLutTexture"), ERenderTargetTransience::NonTransient);
-			}
-			FRDGTextureRef RealTimeReflectionCaptureSkyAtmosphereViewLutTexture = GraphBuilder.RegisterExternalTexture(Scene->RealTimeReflectionCaptureSkyAtmosphereViewLutTexture);
+			FRDGTextureRef RealTimeReflectionCaptureSkyAtmosphereViewLutTexture = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(FIntPoint(SkyViewLutSize.X, SkyViewLutSize.Y), GetSkyLutTextureFormat(Scene->GetFeatureLevel()), FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV), TEXT("RealTimeReflectionSkyViewLutTexture"));
 			FRDGTextureUAVRef RealTimeReflectionCaptureSkyAtmosphereViewLutTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(RealTimeReflectionCaptureSkyAtmosphereViewLutTexture, 0));
 
 			FRenderSkyViewLutCS::FPermutationDomain PermutationVector;
@@ -1389,7 +1383,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 			const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderSkyViewLutCS::GroupSize);
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RealTimeCaptureSkyViewLut"), ComputeShader, PassParameters, NumGroups);
 
-			GraphBuilder.QueueTextureExtraction(RealTimeReflectionCaptureSkyAtmosphereViewLutTexture, &Scene->RealTimeReflectionCaptureSkyAtmosphereViewLutTexture);
+			ConvertToExternalTexture(GraphBuilder, RealTimeReflectionCaptureSkyAtmosphereViewLutTexture, Scene->RealTimeReflectionCaptureSkyAtmosphereViewLutTexture);
 		}
 		else
 		{
@@ -1400,15 +1394,9 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		{
 			FIntVector CameraAPLutSize = View.SkyAtmosphereCameraAerialPerspectiveVolume->GetDesc().GetSize();
 			EPixelFormat TextureAerialLUTFormat = (CVarSkyAtmosphereLUT32.GetValueOnAnyThread() != 0) ? PF_A32B32G32R32F : PF_FloatRGBA;
-
-			FPooledRenderTargetDesc RealTimeReflectionCaptureCamera360APLutTextureDesc = FPooledRenderTargetDesc::CreateVolumeDesc(
-				CameraAPLutSize.X, CameraAPLutSize.Y, CameraAPLutSize.Z, GetSkyLutTextureFormat(Scene->GetFeatureLevel()), FClearValueBinding::None,
-				TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false);
-			if (!Scene->RealTimeReflectionCaptureCamera360APLutTexture.IsValid() || Scene->RealTimeReflectionCaptureCamera360APLutTexture->GetDesc().GetSize() != CameraAPLutSize)
-			{
-				GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, RealTimeReflectionCaptureCamera360APLutTextureDesc, Scene->RealTimeReflectionCaptureCamera360APLutTexture, TEXT("Scene.RealTimeReflectionCaptureCamera360APLutTexture"), ERenderTargetTransience::NonTransient);
-			}
-			FRDGTextureRef RealTimeReflectionCaptureCamera360APLutTexture = GraphBuilder.RegisterExternalTexture(Scene->RealTimeReflectionCaptureCamera360APLutTexture);
+			FRDGTextureRef RealTimeReflectionCaptureCamera360APLutTexture = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create3D(FIntVector(CameraAPLutSize.X, CameraAPLutSize.Y, CameraAPLutSize.Z), TextureAerialLUTFormat, FClearValueBinding::None, 
+					TexCreate_HideInVisualizeTexture | TexCreate_ShaderResource | TexCreate_UAV), TEXT("RealTimeReflectionCamera360APLutTexture"));
 			FRDGTextureUAVRef RealTimeReflectionCaptureSkyAtmosphereViewLutTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(RealTimeReflectionCaptureCamera360APLutTexture, 0));
 
 			FRenderCameraAerialPerspectiveVolumeCS::FPermutationDomain PermutationVector;
@@ -1446,7 +1434,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 			const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderCameraAerialPerspectiveVolumeCS::GroupSize);
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RealTimeCaptureCamera360VolumeLut"), ComputeShader, PassParameters, NumGroups);
 
-			GraphBuilder.QueueTextureExtraction(RealTimeReflectionCaptureCamera360APLutTexture, &Scene->RealTimeReflectionCaptureCamera360APLutTexture);
+			ConvertToExternalTexture(GraphBuilder, RealTimeReflectionCaptureCamera360APLutTexture, Scene->RealTimeReflectionCaptureCamera360APLutTexture);
 		}
 		else
 		{
