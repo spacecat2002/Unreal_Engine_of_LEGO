@@ -1925,7 +1925,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		// Render the velocities of movable objects
 		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_Velocity));
-		RenderVelocities(GraphBuilder, SceneDepthTexture.Target, VelocityTexture, nullptr, EVelocityPass::Opaque);
+		RenderVelocities(GraphBuilder, SceneDepthTexture.Resolve, VelocityTexture, nullptr, EVelocityPass::Opaque);
 		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_AfterVelocity));
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
