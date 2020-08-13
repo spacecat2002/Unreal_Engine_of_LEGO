@@ -30,7 +30,6 @@ struct FWeakObjectPtr;
 
 struct FWeakObjectPtr;
 
-template <typename ObjectPtrType>
 class FMulticastDelegateBase;
 
 ALIAS_TEMPLATE_TYPE_LAYOUT(template<typename ElementType>, FDelegateAllocatorType::ForElementType<ElementType>, void*);
@@ -40,7 +39,7 @@ ALIAS_TEMPLATE_TYPE_LAYOUT(template<typename ElementType>, FDelegateAllocatorTyp
  */
 class FDelegateBase
 {
-	friend class FMulticastDelegateBase<FWeakObjectPtr>;
+	friend class FMulticastDelegateBase;
 
 public:
 

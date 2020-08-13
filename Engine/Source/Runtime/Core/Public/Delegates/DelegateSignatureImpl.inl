@@ -23,7 +23,7 @@ class FDelegateHandle;
 class IDelegateInstance;
 struct FWeakObjectPtr;
 template <typename FuncType> struct IBaseDelegateInstance;
-template<typename ObjectPtrType> class FMulticastDelegateBase;
+class FMulticastDelegateBase;
 
 /**
  * Unicast delegate base object.
@@ -614,9 +614,9 @@ class TMulticastDelegate<RetValType(ParamTypes...)>
 };
 
 template <typename... ParamTypes>
-class TMulticastDelegate<void(ParamTypes...)> : public FMulticastDelegateBase<FWeakObjectPtr>
+class TMulticastDelegate<void(ParamTypes...)> : public FMulticastDelegateBase
 {
-	typedef FMulticastDelegateBase<FWeakObjectPtr> Super;
+	typedef FMulticastDelegateBase Super;
 
 public:
 	/** Type definition for unicast delegate classes whose delegate instances are compatible with this delegate. */

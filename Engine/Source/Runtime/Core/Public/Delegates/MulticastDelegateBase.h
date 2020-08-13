@@ -22,7 +22,6 @@ typedef TArray<FDelegateBase, FMulticastInvocationListAllocatorType> TInvocation
 /**
  * Abstract base class for multicast delegates.
  */
-template<typename ObjectPtrType>
 class FMulticastDelegateBase
 {
 public:
