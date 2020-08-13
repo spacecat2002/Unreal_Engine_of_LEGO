@@ -13,8 +13,6 @@
 #include "HAL/PlatformAtomics.h"
 #include "Engine/RendererSettings.h"
 
-extern FVulkanCommandBufferManager* GVulkanCommandBufferManager;
-
 struct FRHICommandProcessDeferredDeletionQueue final : public FRHICommand<FRHICommandProcessDeferredDeletionQueue>
 {
 	FVulkanDevice* Device;
@@ -840,8 +838,8 @@ bool FVulkanViewport::Present(FVulkanCommandListContext* Context, FVulkanCmdBuff
 	}
 
 	CmdBuffer->End();
-	GVulkanCommandBufferManager->FlushResetQueryPools();
 	FVulkanCommandBufferManager* ImmediateCmdBufMgr = Device->GetImmediateContext().GetCommandBufferManager();
+	ImmediateCmdBufMgr->FlushResetQueryPools();
 	checkf(ImmediateCmdBufMgr->GetActiveCmdBufferDirect() == CmdBuffer, TEXT("Present() is submitting something else than the active command buffer"));
 	if (FVulkanPlatform::SupportsStandardSwapchain())
 	{

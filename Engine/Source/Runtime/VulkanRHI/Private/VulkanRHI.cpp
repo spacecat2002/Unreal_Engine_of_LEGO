@@ -32,9 +32,6 @@ TAtomic<uint64> GVulkanImageViewHandleIdCounter{ 0 };
 TAtomic<uint64> GVulkanSamplerHandleIdCounter{ 0 };
 TAtomic<uint64> GVulkanDSetLayoutHandleIdCounter{ 0 };
 
-// FIXME: get rid of this
-FVulkanCommandBufferManager* GVulkanCommandBufferManager = nullptr;
-
 #if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
 #include "Runtime/HeadMountedDisplay/Public/IHeadMountedDisplayModule.h"
 #endif
@@ -129,11 +126,6 @@ FVulkanCommandListContext::FVulkanCommandListContext(FVulkanDynamicRHI* InRHI, F
 
 	// Create CommandBufferManager, contain all active buffers
 	CommandBufferManager = new FVulkanCommandBufferManager(InDevice, this);
-	// FIXME: get rid of this
-	if (!GVulkanCommandBufferManager)
-	{
-		GVulkanCommandBufferManager = CommandBufferManager;
-	}
 	FrameTiming->Initialize();
 	if (IsImmediate())
 	{
@@ -167,7 +159,6 @@ FVulkanCommandListContext::~FVulkanCommandListContext()
 	check(CommandBufferManager != nullptr);
 	delete CommandBufferManager;
 	CommandBufferManager = nullptr;
-	GVulkanCommandBufferManager = nullptr;
 
 	LayoutManager.Destroy(*Device, Immediate ? &LayoutManager : nullptr);
 

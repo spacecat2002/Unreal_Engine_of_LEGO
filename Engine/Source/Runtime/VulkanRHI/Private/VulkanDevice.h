@@ -371,7 +371,7 @@ public:
 
 	void SubmitCommandsAndFlushGPU();
 
-	FVulkanOcclusionQueryPool* AcquireOcclusionQueryPool(uint32 NumQueries);
+	FVulkanOcclusionQueryPool* AcquireOcclusionQueryPool(FVulkanCommandBufferManager* CommandBufferManager, uint32 NumQueries);
 	void ReleaseUnusedOcclusionQueryPools();
 
 	inline class FVulkanPipelineStateCacheManager* GetPipelineStateCache()
