@@ -155,7 +155,6 @@ void FXRTrackingSystemBase::GetMotionControllerData(UObject* WorldContext, const
 			break;
 		}
 	}
-	MotionControllerData.bValid = false;
 }
 
 
