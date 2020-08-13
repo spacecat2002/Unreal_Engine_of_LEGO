@@ -462,14 +462,11 @@ void EngineShowFlagOverride(EShowFlagInitMode ShowFlagInitMode, EViewModeIndex V
 			EngineShowFlags.SetBrushes(true);
 		}
 
-		if (ViewModeIndex == VMI_Unlit)
-		{
-			EngineShowFlags.SetLighting(false);
-			EngineShowFlags.Atmosphere = 0;
-		}
-
-		if( ViewModeIndex == VMI_Wireframe ||
+		if( ViewModeIndex == VMI_Unlit ||
+			ViewModeIndex == VMI_Wireframe ||
 			ViewModeIndex == VMI_BrushWireframe ||
+			ViewModeIndex == VMI_CollisionPawn ||
+			ViewModeIndex == VMI_CollisionVisibility ||
 			ViewModeIndex == VMI_StationaryLightOverlap ||
 			ViewModeIndex == VMI_ShaderComplexity ||
 			ViewModeIndex == VMI_QuadOverdraw ||
