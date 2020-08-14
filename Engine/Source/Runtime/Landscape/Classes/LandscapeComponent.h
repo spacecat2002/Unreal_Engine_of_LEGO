@@ -389,39 +389,32 @@ class ULandscapeLODStreamingProxy : public UStreamableRenderAsset
 {
 	GENERATED_UCLASS_BODY()
 
-	//~ Begin UObject Interface
-	virtual bool IsReadyForFinishDestroy() final override;
-	//~ End UObject Interface
-
 	//~ Begin UStreamableRenderAsset Interface
-	virtual int32 GetLODGroupForStreaming() const final override;
-	virtual LANDSCAPE_API int32 GetNumMipsForStreaming() const final override;
-	virtual int32 GetNumNonStreamingMips() const final override;
-	virtual int32 CalcNumOptionalMips() const final override;
 	virtual LANDSCAPE_API int32 CalcCumulativeLODSize(int32 NumLODs) const final override;
 	virtual LANDSCAPE_API FIoFilenameHash GetMipIoFilenameHash(const int32 MipIndex) const  final override;
-	virtual bool IsReadyForStreaming() const final override;
-	virtual int32 GetNumResidentMips() const final override;
+	virtual LANDSCAPE_API bool HasPendingRenderResourceInitialization() const final override;
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets = nullptr) final override;
+	virtual EStreamableRenderAssetType GetRenderAssetType() const final override { return EStreamableRenderAssetType::LandscapeMeshMobile; }
 	//~ End UStreamableRenderAsset Interface
 
 	LANDSCAPE_API bool GetMipDataFilename(const int32 MipIndex, FString& OutBulkDataFilename) const;
 
-	LANDSCAPE_API void LinkStreaming();
-	void UnlinkStreaming();
 
 	LANDSCAPE_API TArray<float> GetLODScreenSizeArray() const;
 	LANDSCAPE_API TSharedPtr<FLandscapeMobileRenderData, ESPMode::ThreadSafe> GetRenderData() const;
 
 	typedef typename TChooseClass<LANDSCAPE_LOD_STREAMING_USE_TOKEN, FBulkDataStreamingToken, FByteBulkData>::Result BulkDataType;
-	LANDSCAPE_API BulkDataType& GetStreamingLODBulkData(int32 LODIdx);
+	LANDSCAPE_API BulkDataType& GetStreamingLODBulkData(int32 LODIdx) const;
 
 	static LANDSCAPE_API void CancelAllPendingStreamingActions();
 
+	void ClearStreamingResourceState();
+	void InitResourceStateForMobileStreaming();
+
 private:
-	ULandscapeComponent* LandscapeComponent;
+
+	ULandscapeComponent* LandscapeComponent = nullptr;
 };
 
 UCLASS(hidecategories=(Display, Attachment, Physics, Debug, Collision, Movement, Rendering, PrimitiveComponent, Object, Transform, Mobility, VirtualTexture), showcategories=("Rendering|Material"), MinimalAPI, Within=LandscapeProxy)
@@ -1061,8 +1054,6 @@ public:
 	friend class ULandscapeLODStreamingProxy;
 
 	void SetLOD(bool bForced, int32 InLODValue);
-
-	void SetReadyForLODStreaming(bool bReady);
 
 protected:
 

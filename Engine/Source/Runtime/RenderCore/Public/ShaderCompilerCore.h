@@ -350,6 +350,22 @@ struct FShaderCompilerError
 		, HighlightedLineMarker(TEXT(""))
 	{}
 
+	FShaderCompilerError(FString&& InStrippedErrorMessage)
+		: ErrorVirtualFilePath(TEXT(""))
+		, ErrorLineString(TEXT(""))
+		, StrippedErrorMessage(MoveTemp(InStrippedErrorMessage))
+		, HighlightedLine(TEXT(""))
+		, HighlightedLineMarker(TEXT(""))
+	{}
+
+	FShaderCompilerError(FString&& InStrippedErrorMessage, FString&& InHighlightedLine, FString&& InHighlightedLineMarker)
+		: ErrorVirtualFilePath(TEXT(""))
+		, ErrorLineString(TEXT(""))
+		, StrippedErrorMessage(MoveTemp(InStrippedErrorMessage))
+		, HighlightedLine(MoveTemp(InHighlightedLine))
+		, HighlightedLineMarker(MoveTemp(InHighlightedLineMarker))
+	{}
+
 	FString ErrorVirtualFilePath;
 	FString ErrorLineString;
 	FString StrippedErrorMessage;
@@ -369,7 +385,7 @@ struct FShaderCompilerError
 		}
 	}
 
-	/** Returns the error message with source file and source line (if present), as well as a line marker seperated with a LINE_TERMINATOR. */
+	/** Returns the error message with source file and source line (if present), as well as a line marker separated with a LINE_TERMINATOR. */
 	FString GetErrorStringWithLineMarker() const
 	{
 		if (HasLineMarker())

@@ -271,7 +271,7 @@ void SetupTranslucencyDepthPassUniformBuffer(
 	// This is incorrect when rendering a shadowmap as it's not from the camera's POV
 	// Set the scene depth texture to something safe when rendering shadow depths
 	FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
-	SetupSceneTextureUniformParameters(SceneRenderTargets, View, ESceneTextureSetupMode::None, TranslucencyDepthPassParameters.SceneTextures);
+	SetupSceneTextureUniformParameters(SceneRenderTargets, View.FeatureLevel, ESceneTextureSetupMode::None, TranslucencyDepthPassParameters.SceneTextures);
 
 	TranslucencyDepthPassParameters.ProjectionMatrix = FTranslationMatrix(ShadowInfo->PreShadowTranslation - View.ViewMatrices.GetPreViewTranslation()) * ShadowInfo->SubjectAndReceiverMatrix;
 
@@ -874,8 +874,8 @@ public:
 		{
 			FVolumetricCloudRenderSceneInfo* CloudInfo = LightSceneInfo->Scene->GetVolumetricCloudSceneInfo();
 
-			const bool bLight0CloudPerPixelTransmittance = CloudInfo && View.VolumetricCloudShadowMap[0].IsValid() && AtmosphereLight0Proxy == LightSceneInfo->Proxy;
-			const bool bLight1CloudPerPixelTransmittance = CloudInfo && View.VolumetricCloudShadowMap[1].IsValid() && AtmosphereLight1Proxy == LightSceneInfo->Proxy;
+			const bool bLight0CloudPerPixelTransmittance = CloudInfo && View.ViewState && View.ViewState->VolumetricCloudShadowRenderTarget[0].CurrentIsValid() && AtmosphereLight0Proxy == LightSceneInfo->Proxy;
+			const bool bLight1CloudPerPixelTransmittance = CloudInfo && View.ViewState && View.ViewState->VolumetricCloudShadowRenderTarget[1].CurrentIsValid() && AtmosphereLight1Proxy == LightSceneInfo->Proxy;
 
 			if (bLight0CloudPerPixelTransmittance || bLight1CloudPerPixelTransmittance)
 			{
@@ -889,7 +889,7 @@ public:
 					VolumetricCloudShadowmapTexture,
 					VolumetricCloudShadowmapTextureSampler,
 					TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
-					View.VolumetricCloudShadowMap[LightIndex]->GetRenderTargetItem().ShaderResourceTexture);
+					View.ViewState->VolumetricCloudShadowRenderTarget[LightIndex].CurrentRenderTarget()->GetRenderTargetItem().ShaderResourceTexture);
 			}
 			else
 			{
@@ -1049,8 +1049,8 @@ void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLightingAsyncCompute(F
 	TArray<FRHITransitionInfo, SceneRenderingAllocator> SRVTransitions;
 	for (FRHIUnorderedAccessView* UAV : VolumeUAVs)
 	{
-		UAVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
-		SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+		UAVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+		SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
 	}
 
 	// Transition should have already been ended before
@@ -1477,10 +1477,40 @@ static void AddLightForInjection(
 	}
 }
 
-/** Injects all the lights in LightInjectionData into the translucent lighting volume textures. */
-static void InjectTranslucentLightArray(FRDGBuilder& GraphBuilder, const FViewInfo& View, const TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>& LightInjectionData, int32 ViewIndex)
+static FRDGTextureRef GetSkyTransmittanceLutTexture(FRDGBuilder& GraphBuilder, FScene* Scene, const FViewInfo& View)
 {
-	AddUntrackedAccessPass(GraphBuilder, RDG_EVENT_NAME("InjectTranslucentLightArray"), [&View, &LightInjectionData, ViewIndex](FRHICommandListImmediate& RHICmdList)
+	FRDGTextureRef TransmittanceLutTexture = nullptr;
+	if (ShouldRenderSkyAtmosphere(Scene, View.Family->EngineShowFlags))
+	{
+		if (FSkyAtmosphereRenderSceneInfo* SkyInfo = Scene->GetSkyAtmosphereSceneInfo())
+		{
+			TRefCountPtr<IPooledRenderTarget>& TransmittanceLutTarget = SkyInfo->GetTransmittanceLutTexture();
+			TransmittanceLutTexture = GraphBuilder.RegisterExternalTexture(TransmittanceLutTarget, TEXT("TransmittanceLutTexture"));
+		}
+	}
+	return TransmittanceLutTexture;
+}
+
+BEGIN_SHADER_PARAMETER_STRUCT(FInjectTranslucentLightArrayParameters, )
+	RDG_TEXTURE_ACCESS(TransmittanceLutTexture, ERHIAccess::SRVGraphics)
+END_SHADER_PARAMETER_STRUCT()
+
+/** Injects all the lights in LightInjectionData into the translucent lighting volume textures. */
+static void InjectTranslucentLightArray(
+	FRDGBuilder& GraphBuilder,
+	FScene* Scene,
+	const FViewInfo& View,
+	const TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>& LightInjectionData,
+	int32 ViewIndex)
+{
+ 	FInjectTranslucentLightArrayParameters* PassParameters = GraphBuilder.AllocParameters<FInjectTranslucentLightArrayParameters>();
+ 	PassParameters->TransmittanceLutTexture = GetSkyTransmittanceLutTexture(GraphBuilder, Scene, View);
+
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("InjectTranslucentLightArray"),
+		PassParameters,
+		ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass | ERDGPassFlags::UntrackedAccess | ERDGPassFlags::NeverCull,
+		[&View, &LightInjectionData, ViewIndex](FRHICommandListImmediate& RHICmdList)
 	{
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 		INC_DWORD_STAT_BY(STAT_NumLightsInjectedIntoTranslucency, LightInjectionData.Num());
@@ -1597,7 +1627,7 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLighting(FRDGBuilder&
 		AddLightForInjection(*this, LightSceneInfo, InProjectedShadowInfo, LightInjectionData);
 
 		// shadowed or unshadowed (InProjectedShadowInfo==0)
-		InjectTranslucentLightArray(GraphBuilder, View, LightInjectionData, ViewIndex);
+		InjectTranslucentLightArray(GraphBuilder, Scene, View, LightInjectionData, ViewIndex);
 	}
 }
 
@@ -1630,7 +1660,7 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLightingArray(FRDGBui
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		// non-shadowed, non-light function lights
-		InjectTranslucentLightArray(GraphBuilder, Views[ViewIndex], LightInjectionData[ViewIndex], ViewIndex);
+		InjectTranslucentLightArray(GraphBuilder, Scene, Views[ViewIndex], LightInjectionData[ViewIndex], ViewIndex);
 	}
 }
 

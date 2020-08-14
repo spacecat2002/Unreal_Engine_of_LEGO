@@ -554,6 +554,13 @@ void AddClearDepthStencilPass(
 	});
 }
 
+void AddClearStencilPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture)
+{
+	auto* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
+	PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(Texture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::EClear, FExclusiveDepthStencil::DepthRead_StencilWrite);
+	GraphBuilder.AddPass(RDG_EVENT_NAME("ClearStencil (%s)", Texture->Name), PassParameters, ERDGPassFlags::Raster, [](FRHICommandList&) {});
+}
+
 BEGIN_SHADER_PARAMETER_STRUCT(FEnqueueCopyTexturePass, )
 	RDG_TEXTURE_ACCESS(Texture, ERHIAccess::CopySrc)
 END_SHADER_PARAMETER_STRUCT()

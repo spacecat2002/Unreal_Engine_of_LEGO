@@ -304,8 +304,8 @@ void MobileDeferredShadingPass(FRHICommandListImmediate& RHICmdList, const FScen
 	SCOPED_DRAW_EVENT(RHICmdList, MobileDeferredShading);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	FUniformBufferRHIRef SceneTexturesBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View);
-	FUniformBufferStaticBindings GlobalUniformBuffers(SceneTexturesBuffer);
+	FUniformBufferRHIRef PassUniformBuffer = CreateMobileSceneTextureUniformBuffer(RHICmdList);
+	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
 	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 	RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 

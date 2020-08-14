@@ -292,6 +292,36 @@ struct FRenderTargetBinding
 			ArraySlice == Other.ArraySlice;
 	}
 
+	void SetTexture(FRDGTexture* InTexture)
+	{
+		Texture = InTexture;
+		check(Validate());
+	}
+
+	void SetResolveTexture(FRDGTexture* InTexture)
+	{
+		ResolveTexture = InTexture;
+		check(Validate());
+	}
+
+	void SetLoadAction(ERenderTargetLoadAction InLoadAction)
+	{
+		LoadAction = InLoadAction;
+		check(Validate());
+	}
+
+	void GetMipIndex(uint8 InMipIndex)
+	{
+		MipIndex = InMipIndex;
+		check(Validate());
+	}
+
+	void SetArraySlice(int16 InArraySlice)
+	{
+		ArraySlice = InArraySlice;
+		check(Validate());
+	}
+
 private:
 	/** Intentionally kept private to force setting the load action in the constructor. */
 	TAlignedShaderParameterPtr<FRDGTexture*> Texture		= nullptr;
@@ -366,6 +396,30 @@ struct FDepthStencilBinding
 			DepthStencilAccess == Other.DepthStencilAccess;
 	}
 
+	void SetTexture(FRDGTexture* InTexture)
+	{
+		Texture = InTexture;
+		check(Validate());
+	}
+
+	void SetDepthStencilAccess(FExclusiveDepthStencil InAccess)
+	{
+		DepthStencilAccess = InAccess;
+		check(Validate());
+	}
+
+	void SetDepthLoadAction(ERenderTargetLoadAction InAction)
+	{
+		DepthLoadAction = InAction;
+		check(Validate());
+	}
+
+	void SetStencilLoadAction(ERenderTargetLoadAction InAction)
+	{
+		StencilLoadAction = InAction;
+		check(Validate());
+	}
+
 private:
 	/** 
 	 * All parameters required to bind a depth render target deferred. This are purposefully private to
@@ -379,13 +433,13 @@ private:
 	RENDERCORE_API bool Validate() const;
 };
 
-
 /** Special shader parameters type for a pass parameter to setup render targets. */
 struct alignas(SHADER_PARAMETER_STRUCT_ALIGNMENT) FRenderTargetBindingSlots
 {
 	TStaticArray<FRenderTargetBinding, MaxSimultaneousRenderTargets> Output;
 	FDepthStencilBinding DepthStencil;
 	FResolveRect ResolveRect;
+	uint32 NumOcclusionQueries = 0;
 
 	/** Accessors for regular output to simplify the syntax to:
 	 *
@@ -404,6 +458,22 @@ struct alignas(SHADER_PARAMETER_STRUCT_ALIGNMENT) FRenderTargetBindingSlots
 	}
 
 	template <typename TFunction>
+	void Enumerate(TFunction Function)
+	{
+		for (int32 Index = 0; Index < Output.Num(); Index++)
+		{
+			if (Output[Index].GetTexture())
+			{
+				Function(Output[Index]);
+			}
+			else
+			{
+				break;
+			}
+		}
+	}
+
+	template <typename TFunction>
 	void Enumerate(TFunction Function) const
 	{
 		for (int32 Index = 0; Index < Output.Num(); Index++)
@@ -417,6 +487,13 @@ struct alignas(SHADER_PARAMETER_STRUCT_ALIGNMENT) FRenderTargetBindingSlots
 				break;
 			}
 		}
+	}
+
+	uint32 GetActiveCount() const
+	{
+		uint32 Count = 0;
+		for (; Output[Count].GetTexture() != nullptr; ++Count) {};
+		return Count;
 	}
 
 	bool CanMergeBefore(const FRenderTargetBindingSlots& Other) const
@@ -456,7 +533,7 @@ struct alignas(SHADER_PARAMETER_STRUCT_ALIGNMENT) FRenderTargetBindingSlots
 	};
 };
 
-static_assert(sizeof(FRenderTargetBindingSlots) == 224, "FRenderTargetBindingSlots needs to be same size on all platforms.");
+static_assert(sizeof(FRenderTargetBindingSlots) == 240, "FRenderTargetBindingSlots needs to be same size on all platforms.");
 
 /** Static array of shader resource shader that is initialized to nullptr. */
 template<typename TElement, uint32 NumElements>

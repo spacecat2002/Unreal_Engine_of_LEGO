@@ -158,7 +158,10 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FODSCapturePS, "/Engine/Private/ODSCapture.usf", "MainPS", SF_Pixel);
 
-void FDeferredShadingSceneRenderer::CopySceneCaptureComponentToTarget(FRDGBuilder& GraphBuilder, FRDGTextureRef ViewFamilyTexture)
+void FDeferredShadingSceneRenderer::CopySceneCaptureComponentToTarget(
+	FRDGBuilder& GraphBuilder,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+	FRDGTextureRef ViewFamilyTexture)
 {
 	ESceneCaptureSource SceneCaptureSource = ViewFamily.SceneCaptureSource;
 
@@ -192,13 +195,15 @@ void FDeferredShadingSceneRenderer::CopySceneCaptureComponentToTarget(FRDGBuilde
 
 		const FSceneCapturePS::FPermutationDomain PixelPermutationVector = FSceneCapturePS::GetPermutationVector(SceneCaptureSource);
 
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneColor | ESceneTextureSetupMode::SceneDepth);
+
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
 			FViewInfo& View = Views[ViewIndex];
 
 			FSceneCapturePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSceneCapturePS::FParameters>();
 			PassParameters->View = View.ViewUniformBuffer;
-			PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View, ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneColor | ESceneTextureSetupMode::SceneDepth);
+			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(ViewFamilyTexture, ERenderTargetLoadAction::ENoAction);
 
 			TShaderMapRef<FScreenVS> VertexShader(View.ShaderMap);

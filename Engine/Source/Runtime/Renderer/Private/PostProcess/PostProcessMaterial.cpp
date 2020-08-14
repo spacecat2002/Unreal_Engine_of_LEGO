@@ -19,6 +19,7 @@
 #include "PostProcessing.h"
 #include "PostProcessMobile.h"
 #include "BufferVisualizationData.h"
+#include "SceneTextureParameters.h"
 
 namespace
 {
@@ -463,10 +464,19 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	const uint32 MaterialStencilRef = Material->GetStencilRefValue();
 
-	FPostProcessMaterialParameters* PostProcessMaterialParameters = GraphBuilder.AllocParameters<FPostProcessMaterialParameters>();
+	const bool bMobilePlatform = IsMobilePlatform(View.GetShaderPlatform());
 
-	PostProcessMaterialParameters->SceneTextures = CreateSceneTextureShaderParameters(GraphBuilder, View, ESceneTextureSetupMode::All);
+	FPostProcessMaterialParameters* PostProcessMaterialParameters = GraphBuilder.AllocParameters<FPostProcessMaterialParameters>();
+	PostProcessMaterialParameters->SceneTextures = Inputs.SceneTextures;
 	PostProcessMaterialParameters->View = View.ViewUniformBuffer;
+	if (bMobilePlatform)
+	{
+		PostProcessMaterialParameters->EyeAdaptationBuffer = GetEyeAdaptationBuffer(View);
+	}
+	else
+	{
+		PostProcessMaterialParameters->EyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
+	}
 	PostProcessMaterialParameters->PostProcessOutput = GetScreenPassTextureViewportParameters(OutputViewport);
 	PostProcessMaterialParameters->MobileCustomStencilTexture = DepthStencilTexture;
 	PostProcessMaterialParameters->MobileCustomStencilTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -475,8 +485,6 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	// The target color will be decoded if bForceIntermediateTarget is true in any case, but we might still need to decode the input color
 	PostProcessMaterialParameters->bMetalMSAAHDRDecode = Inputs.bMetalMSAAHDRDecode ? 1 : 0;
-
-	const bool bMobilePlatform = IsMobilePlatform(View.GetShaderPlatform());
 
 	if (DepthStencilTexture && !bMobilePlatform)
 	{
@@ -746,6 +754,7 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 		FPostProcessMaterialInputs PassInputs;
 		PassSequence.AcceptOverrideIfLastPass(EPass::Material, PassInputs.OverrideOutput);
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		Output = AddPostProcessMaterialPass(GraphBuilder, View, PassInputs, Inputs.Material);
 	}
@@ -756,6 +765,7 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 
 		FPostProcessMaterialInputs PassInputs;
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		// Disallow the scene color input as output optimization since we need to not pollute the scene texture.
 		PassInputs.bAllowSceneColorInputAsOutput = false;
@@ -779,9 +789,39 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 		FPostProcessMaterialInputs PassInputs;
 		PassSequence.AcceptOverrideIfLastPass(EPass::CaptureRegionMaterial, PassInputs.OverrideOutput);
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		Output = AddPostProcessMaterialPass(GraphBuilder, View, PassInputs, Inputs.CaptureRegionMaterial);
 	}
 
 	return Output;
+}
+
+void AddHighResScreenshotMask(FPostprocessContext& Context)
+{
+	FRenderingCompositePass* Pass = Context.Graph.RegisterPass(
+		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
+			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
+	{
+		FRDGBuilder GraphBuilder(InContext.RHICmdList);
+
+		FHighResolutionScreenshotMaskInputs PassInputs;
+		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
+		PassInputs.SceneColor.ViewRect = InContext.SceneColorViewRect;
+
+		if (FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer")))
+		{
+			PassInputs.OverrideOutput.Texture = OverrideOutputTexture;
+			PassInputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass);
+			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
+		}
+
+		FScreenPassTexture PassOutput = AddHighResolutionScreenshotMaskPass(GraphBuilder, InContext.View, PassInputs);
+
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
+
+		GraphBuilder.Execute();
+	}));
+	Pass->SetInput(ePId_Input0, Context.FinalOutput);
+	Context.FinalOutput = Pass;
 }

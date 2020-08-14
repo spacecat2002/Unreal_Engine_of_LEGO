@@ -96,7 +96,6 @@ static bool RequireClosestDepthHZB(const FViewInfo& View)
 	return ShouldRenderScreenSpaceDiffuseIndirect(View);
 }
 
-
 void BuildHZB(FRDGBuilder& GraphBuilder, const FSceneTextureParameters& SceneTextures, FViewInfo& View)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_BuildHZB);
@@ -261,8 +260,10 @@ void BuildHZB(FRDGBuilder& GraphBuilder, const FSceneTextureParameters& SceneTex
 	// Update the view.
 	View.HZBMipmap0Size = HZBSize;
 
-	GraphBuilder.QueueTextureExtraction(FurthestHZBTexture, &View.HZB);
+	ConvertToExternalTexture(GraphBuilder, FurthestHZBTexture, View.HZB);
 
 	if (ClosestHZBTexture)
-		GraphBuilder.QueueTextureExtraction(ClosestHZBTexture, &View.ClosestHZB);
-} // BuildHZB()
+	{
+		ConvertToExternalTexture(GraphBuilder, ClosestHZBTexture, View.ClosestHZB);
+	}
+}

@@ -176,49 +176,7 @@ EMeshPass::Type GetMeshPassFromVelocityPass(EVelocityPass VelocityPass)
 	return EMeshPass::Velocity;
 }
 
-static void SetVelocitiesState(
-	FRHICommandList& RHICmdList,
-	const FSceneRenderer& SceneRenderer,
-	const FViewInfo& View,
-	EVelocityPass VelocityPass)
-{
-	SceneRenderer.SetStereoViewport(RHICmdList, View);
-}
-
 DECLARE_CYCLE_STAT(TEXT("Velocity"), STAT_CLP_Velocity, STATGROUP_ParallelCommandListMarkers);
-
-class FVelocityPassParallelCommandListSet : public FParallelCommandListSet
-{
-public:
-	FVelocityPassParallelCommandListSet(
-		FRHICommandListImmediate& InRHICmdList,
-		const FSceneRenderer& InSceneRenderer,
-		const FViewInfo& InView,
-		const FParallelCommandListBindings& InBindings,
-		EVelocityPass InVelocityPass)
-		: FParallelCommandListSet(GET_STATID(STAT_CLP_Velocity), InView, InRHICmdList, false)
-		, SceneRenderer(InSceneRenderer)
-		, Bindings(InBindings)
-		, VelocityPass(InVelocityPass)
-	{}
-
-	virtual ~FVelocityPassParallelCommandListSet()
-	{
-		Dispatch();
-	}
-
-	virtual void SetStateOnCommandList(FRHICommandList& RHICmdList) override
-	{
-		FParallelCommandListSet::SetStateOnCommandList(RHICmdList);
-		Bindings.SetOnCommandList(RHICmdList);
-		SceneRenderer.SetStereoViewport(RHICmdList, View);
-	}
-
-private:
-	const FSceneRenderer& SceneRenderer;
-	FParallelCommandListBindings Bindings;
-	EVelocityPass VelocityPass;
-};
 
 bool FDeferredShadingSceneRenderer::ShouldRenderVelocities() const
 {
@@ -258,7 +216,7 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureRef DepthTexture,
 	FRDGTextureRef& VelocityTexture,
-	ERenderTargetLoadAction VelocityLoadAction,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	EVelocityPass VelocityPass)
 {
 	check(FeatureLevel >= ERHIFeatureLevel::SM5);
@@ -272,17 +230,15 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderVelocities, FColor::Emerald);
 	SCOPE_CYCLE_COUNTER(STAT_RenderVelocities);
 
+	ERenderTargetLoadAction VelocityLoadAction = ERenderTargetLoadAction::ELoad;
+
 	if (!VelocityTexture)
 	{
+		VelocityTexture = GraphBuilder.CreateTexture(FVelocityRendering::GetRenderTargetDesc(ShaderPlatform), TEXT("Velocity"));
+
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-		if (!SceneContext.SceneVelocity)
-		{
-			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, FVelocityRendering::GetRenderTargetDesc(ShaderPlatform), SceneContext.SceneVelocity, TEXT("Velocity"));
-		}
-		VelocityTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneVelocity);
-	}
-	else
-	{
+		ConvertToExternalTexture(GraphBuilder, VelocityTexture, SceneContext.SceneVelocity);
+
 		VelocityLoadAction = ERenderTargetLoadAction::EClear;
 	}
 
@@ -299,14 +255,20 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 		{
 			const FParallelMeshDrawCommandPass& ParallelMeshPass = View.ParallelMeshDrawCommandPasses[MeshPass];
 
+			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+
+			if (View.DecayLoadAction(VelocityLoadAction) == ERenderTargetLoadAction::EClear)
+			{
+				AddClearRenderTargetPass(GraphBuilder, VelocityTexture);
+			}
+
 			if (!ParallelMeshPass.HasAnyDraw())
 			{
 				continue;
 			}
 
-			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
-
 			FVelocityPassParameters* PassParameters = GraphBuilder.AllocParameters<FVelocityPassParameters>();
+			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
 				DepthTexture,
 				ERenderTargetLoadAction::ELoad,
@@ -315,24 +277,10 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 				? FExclusiveDepthStencil::DepthRead_StencilWrite
 				: FExclusiveDepthStencil::DepthWrite_StencilWrite);
 
-			// Only translucency can access scene textures.
-			if (VelocityPass == EVelocityPass::Translucent)
-			{
-				ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All;
-				// We can't expose velocity or scene depth because we're writing to them.
-				EnumRemoveFlags(SetupMode, ESceneTextureSetupMode::SceneVelocity | ESceneTextureSetupMode::SceneDepth);
-				PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], SetupMode);
-			}
-
 			if (IsParallelVelocity())
 			{
 				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, ERenderTargetLoadAction::ELoad);
 
-				if (VelocityLoadAction == ERenderTargetLoadAction::EClear)
-				{
-					AddClearRenderTargetPass(GraphBuilder, VelocityTexture);
-				}
-				
 				GraphBuilder.AddPass(
 					RDG_EVENT_NAME("VelocityParallel"),
 					PassParameters,
@@ -340,14 +288,13 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 					[this, &View, &ParallelMeshPass, VelocityPass, PassParameters](FRHICommandListImmediate& RHICmdList)
 				{
 					Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-					FVelocityPassParallelCommandListSet ParallelCommandListSet(RHICmdList, *this, View, FParallelCommandListBindings(PassParameters), VelocityPass);
-					
+					FRDGParallelCommandListSet ParallelCommandListSet(RHICmdList, GET_STATID(STAT_CLP_Velocity), *this, View, FParallelCommandListBindings(PassParameters));
 					ParallelMeshPass.DispatchDraw(&ParallelCommandListSet, RHICmdList);
 				});
 			}
 			else
 			{
-				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, VelocityLoadAction);
+				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, ERenderTargetLoadAction::ELoad);
 
 				GraphBuilder.AddPass(
 					RDG_EVENT_NAME("Velocity"),
@@ -361,11 +308,6 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 					ParallelMeshPass.DispatchDraw(nullptr, RHICmdList);
 				});
 			}
-
-			if (!View.Family->bMultiGPUForkAndJoin)
-			{
-				VelocityLoadAction = ERenderTargetLoadAction::ELoad;
-			}
 		}
 	}
 }
@@ -375,10 +317,10 @@ EPixelFormat FVelocityRendering::GetFormat(EShaderPlatform ShaderPlatform)
 	return FDataDrivenShaderPlatformInfo::GetSupportsRayTracing(ShaderPlatform) ? PF_A16B16G16R16 : PF_G16R16;
 }
 
-FPooledRenderTargetDesc FVelocityRendering::GetRenderTargetDesc(EShaderPlatform ShaderPlatform)
+FRDGTextureDesc FVelocityRendering::GetRenderTargetDesc(EShaderPlatform ShaderPlatform)
 {
 	const FIntPoint BufferSize = FSceneRenderTargets::Get_FrameConstantsOnly().GetBufferSizeXY();
-	return FPooledRenderTargetDesc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetFormat(ShaderPlatform), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource, false));
+	return FRDGTextureDesc::Create2D(BufferSize, GetFormat(ShaderPlatform), FClearValueBinding::Transparent, TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource);
 }
 
 bool FVelocityRendering::IsSeparateVelocityPassSupported(EShaderPlatform ShaderPlatform)

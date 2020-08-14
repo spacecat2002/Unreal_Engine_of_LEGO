@@ -109,6 +109,10 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FTranslucentBasePassUniformParameters,)
 	SHADER_PARAMETER_SAMPLER(SamplerState, TranslucencyLightingVolumeDirectionalOuterSampler)
 	SHADER_PARAMETER_TEXTURE(Texture2D, PreIntegratedGFTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, PreIntegratedGFSampler)
+	// Misc
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorCopyTexture)
+	SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorCopySampler)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 extern void SetupSharedBasePassParameters(
@@ -595,8 +599,6 @@ void GetBasePassShaders<FUniformLightMapPolicy>(
 	TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>& PixelShader
 	);
 
-void SetupBasePassView(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer* SceneRenderer, const bool bIsEditorPrimitivePass = false);
-	
 class FBasePassMeshProcessor : public FMeshPassProcessor
 {
 public:

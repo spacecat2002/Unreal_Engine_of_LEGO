@@ -19,7 +19,6 @@ struct FComputedBSS;
 struct FComputedGraphicsPipelineState;
 struct FComputedUniformBuffer;
 struct FMemory;
-struct FRHICommandAutomaticCacheFlushAfterComputeShader;
 struct FRHICommandBeginDrawingViewport;
 struct FRHICommandBeginFrame;
 struct FRHICommandBeginOcclusionQueryBatch;
@@ -40,7 +39,6 @@ struct FRHICommandEndFrame;
 struct FRHICommandEndOcclusionQueryBatch;
 struct FRHICommandEndRenderQuery;
 struct FRHICommandEndScene;
-struct FRHICommandFlushComputeShaderCache;
 struct FRHICommandSetBlendFactor;
 struct FRHICommandSetBoundShaderState;
 struct FRHICommandSetLocalGraphicsPipelineState;
@@ -298,16 +296,16 @@ void FRHICommandEndUAVOverlap::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHIEndUAVOverlap)();
 }
 
-void FRHICommandAutomaticCacheFlushAfterComputeShader::Execute(FRHICommandListBase& CmdList)
+void FRHICommandBeginSpecificUAVOverlap::Execute(FRHICommandListBase& CmdList)
 {
-	RHISTAT(AutomaticCacheFlushAfterComputeShader);
-	INTERNAL_DECORATOR(RHIAutomaticCacheFlushAfterComputeShader)(bEnable);
+	RHISTAT(BeginSpecificUAVOverlap);
+	INTERNAL_DECORATOR(RHIBeginUAVOverlap)(UAVs);
 }
 
-void FRHICommandFlushComputeShaderCache::Execute(FRHICommandListBase& CmdList)
+void FRHICommandEndSpecificUAVOverlap::Execute(FRHICommandListBase& CmdList)
 {
-	RHISTAT(FlushComputeShaderCache);
-	INTERNAL_DECORATOR(RHIFlushComputeShaderCache)();
+	RHISTAT(EndSpecificUAVOverlap);
+	INTERNAL_DECORATOR(RHIEndUAVOverlap)(UAVs);
 }
 
 void FRHICommandDrawPrimitiveIndirect::Execute(FRHICommandListBase& CmdList)

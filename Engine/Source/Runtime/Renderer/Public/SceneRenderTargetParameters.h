@@ -29,8 +29,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FSceneTextureUniformParameters, RENDERER_AP
 	SHADER_PARAMETER_SRV(Texture2D<uint2>, CustomStencilTexture)
 
 	// Misc
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorCopyTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
@@ -40,37 +38,42 @@ enum class ESceneTextureSetupMode : uint32
 	SceneColor		= 1 << 0,
 	SceneDepth		= 1 << 1,
 	SceneVelocity	= 1 << 2,
-	GBuffers		= 1 << 3,
-	SSAO			= 1 << 4,
-	CustomDepth		= 1 << 5,
-	EyeAdaptation	= 1 << 6,
-	All = SceneColor | SceneDepth | SceneVelocity | GBuffers | SSAO | CustomDepth | EyeAdaptation
+	GBufferA		= 1 << 3,
+	GBufferB		= 1 << 4,
+	GBufferC		= 1 << 5,
+	GBufferD		= 1 << 6,
+	GBufferE		= 1 << 7,
+	GBufferF		= 1 << 8,
+	SSAO			= 1 << 9,
+	CustomDepth		= 1 << 10,
+	GBuffers		= GBufferA | GBufferB | GBufferC | GBufferD | GBufferE | GBufferF,
+	All				= SceneColor | SceneDepth | SceneVelocity | GBuffers | SSAO | CustomDepth
 };
 ENUM_CLASS_FLAGS(ESceneTextureSetupMode);
 
 /** Fills the shader parameter struct. */
 extern RENDERER_API void SetupSceneTextureUniformParameters(
 	const FSceneRenderTargets& SceneContext,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode,
 	FSceneTextureUniformParameters& OutParameters);
 
 extern RENDERER_API void SetupSceneTextureUniformParameters(
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode,
 	FSceneTextureUniformParameters& OutParameters);
 
 /** Returns RHI scene texture uniform buffer with passthrough RDG resources. */
 extern RENDERER_API TUniformBufferRef<FSceneTextureUniformParameters> CreateSceneTextureUniformBuffer(
 	FRHIComputeCommandList& RHICmdList,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All);
 
 /** Returns RDG scene texture uniform buffer. */
 extern RENDERER_API TRDGUniformBufferRef<FSceneTextureUniformParameters> CreateSceneTextureUniformBuffer(
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All);
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileSceneTextureUniformParameters, RENDERER_API)
@@ -83,7 +86,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileSceneTextureUniformParameters, RENDE
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MobileCustomStencilTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, MobileCustomStencilTextureSampler)
 	SHADER_PARAMETER_UAV(RWBuffer<uint>, VirtualTextureFeedbackUAV)
-	SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
 	// GBuffer
 	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferATexture)
 	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferBTexture)
@@ -102,34 +104,24 @@ enum class EMobileSceneTextureSetupMode : uint32
 	None			= 0,
 	SceneColor		= 1 << 0,
 	CustomDepth		= 1 << 1,
-	EyeAdaptation	= 1 << 2,
-	All = SceneColor | CustomDepth | EyeAdaptation
+	All = SceneColor | CustomDepth
 };
 ENUM_CLASS_FLAGS(EMobileSceneTextureSetupMode);
 
 /** Fills the scene texture uniform buffer struct. */
 extern RENDERER_API void SetupMobileSceneTextureUniformParameters(
 	const FSceneRenderTargets& SceneContext,
-	const FSceneView& View,
-	EMobileSceneTextureSetupMode SetupMode,
-	FMobileSceneTextureUniformParameters& SceneTextureParameters);
-
-extern RENDERER_API void SetupMobileSceneTextureUniformParameters(
-	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
 	EMobileSceneTextureSetupMode SetupMode,
 	FMobileSceneTextureUniformParameters& SceneTextureParameters);
 
 /** Creates the RHI mobile scene texture uniform buffer with passthrough RDG resources. */
 extern RENDERER_API TUniformBufferRef<FMobileSceneTextureUniformParameters> CreateMobileSceneTextureUniformBuffer(
 	FRHIComputeCommandList& RHICmdList,
-	const FSceneView& View,
 	EMobileSceneTextureSetupMode SetupMode = EMobileSceneTextureSetupMode::All);
 
 /** Creates the RDG mobile scene texture uniform buffer. */
 extern RENDERER_API TRDGUniformBufferRef<FMobileSceneTextureUniformParameters> CreateMobileSceneTextureUniformBuffer(
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
 	EMobileSceneTextureSetupMode SetupMode = EMobileSceneTextureSetupMode::All);
 
 BEGIN_SHADER_PARAMETER_STRUCT(FSceneTextureShaderParameters, RENDERER_API)
@@ -154,13 +146,13 @@ FORCEINLINE FSceneTextureShaderParameters GetSceneTextureShaderParameters(TRDGUn
 /** Returns scene texture shader parameters containing the RDG uniform buffer for either mobile or deferred shading. */
 extern RENDERER_API FSceneTextureShaderParameters CreateSceneTextureShaderParameters(
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All);
 
 /** Returns appropriate scene textures RHI uniform buffer for deferred or mobile path. */
 extern RENDERER_API TRefCountPtr<FRHIUniformBuffer> CreateSceneTextureUniformBufferDependentOnShadingPath(
 	FRHIComputeCommandList& RHICmdList,
-	const FSceneView& View,
+	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All);
 
 
@@ -173,27 +165,13 @@ extern RENDERER_API bool IsSceneTexturesValid(FRHICommandListImmediate& RHICmdLi
 UE_DEPRECATED(4.26, "FSceneTexturesUniformParameters has been renamed to FSceneTextureUniformParameters.")
 typedef FSceneTextureUniformParameters FSceneTexturesUniformParameters;
 
-UE_DEPRECATED(4.26, "SetupSceneTextureUniformParameters has been refactored to use a view instead.")
-extern RENDERER_API void SetupSceneTextureUniformParameters(
-	FSceneRenderTargets& SceneContext,
-	ERHIFeatureLevel::Type FeatureLevel,
-	ESceneTextureSetupMode SetupMode,
-	FSceneTextureUniformParameters& OutParameters);
-
-UE_DEPRECATED(4.26, "CreateSceneTextureUniformBuffer has been refactored to use a view instead.")
-extern RENDERER_API TUniformBufferRef<FSceneTextureUniformParameters> CreateSceneTextureUniformBuffer(
-	FSceneRenderTargets& SceneContext,
-	ERHIFeatureLevel::Type FeatureLevel,
-	ESceneTextureSetupMode SetupMode,
-	EUniformBufferUsage Usage);
-
 UE_DEPRECATED(4.26, "BindSceneTextureUniformBufferDependentOnShadingPath has been removed.")
 inline void BindSceneTextureUniformBufferDependentOnShadingPath(
 	const FShader::CompiledShaderInitializerType& Initializer,
 	FShaderUniformBufferParameter& SceneTexturesUniformBuffer)
 {}
 
-UE_DEPRECATED(4.26, "SetupMobileSceneTextureUniformParameters has been refactored to use a view instead.")
+UE_DEPRECATED(4.26, "SetupMobileSceneTextureUniformParameters has been refactored to EMobileSceneTextureSetupMode.")
 extern void SetupMobileSceneTextureUniformParameters(
 	FSceneRenderTargets& SceneContext,
 	ERHIFeatureLevel::Type FeatureLevel,

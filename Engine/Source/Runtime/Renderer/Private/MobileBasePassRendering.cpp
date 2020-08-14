@@ -7,6 +7,7 @@
 #include "MobileBasePassRendering.h"
 #include "DynamicPrimitiveDrawing.h"
 #include "ScenePrivate.h"
+#include "SceneTextureParameters.h"
 #include "ShaderPlatformQualitySettings.h"
 #include "MaterialShaderQualitySettings.h"
 #include "PrimitiveSceneInfo.h"
@@ -161,7 +162,7 @@ void SetupMobileBasePassUniformParameters(
 	}
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	SetupMobileSceneTextureUniformParameters(SceneContext, View, SetupMode, BasePassParameters.SceneTextures);
+	SetupMobileSceneTextureUniformParameters(SceneContext, SetupMode, BasePassParameters.SceneTextures);
 
 	BasePassParameters.PreIntegratedGFTexture = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
 	BasePassParameters.PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -184,6 +185,8 @@ void SetupMobileBasePassUniformParameters(
 	{
 		BasePassParameters.PlanarReflection.ReflectionPlane.Set(0.0f, 0.0f, 0.0f, 0.0f);
 	}
+
+	BasePassParameters.EyeAdaptationBuffer = GetEyeAdaptationBuffer(View);
 
 	if (!bTranslucentPass && GAmbientOcclusionMobileOutputs.IsValid())
 	{

@@ -91,6 +91,8 @@ FRHIRenderPassInfo FRDGParameterStruct::GetRenderPassInfo() const
 	RenderPassInfo.ResolveParameters = RenderTargets.ResolveRect;
 	RenderPassInfo.ResolveParameters.SourceAccessFinal = ERHIAccess::RTV;
 	RenderPassInfo.ResolveParameters.DestAccessFinal = ERHIAccess::ResolveDst;
+	RenderPassInfo.NumOcclusionQueries = RenderTargets.NumOcclusionQueries;
+	RenderPassInfo.bOcclusionQueries = RenderTargets.NumOcclusionQueries > 0;
 
 	return RenderPassInfo;
 }

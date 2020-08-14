@@ -48,11 +48,11 @@ TRDGUniformBufferRef<FMobileDistortionPassUniformParameters> CreateMobileDistort
 		SetupMode |= EMobileSceneTextureSetupMode::CustomDepth;
 	}
 
-	SetupMobileSceneTextureUniformParameters(GraphBuilder, View, SetupMode, Parameters->SceneTextures);
+	SetupMobileSceneTextureUniformParameters(SceneContext, SetupMode, Parameters->SceneTextures);
 
 	SetupDistortionParams(Parameters->DistortionParams, View);
 
-	return GraphBuilder.CreateUniformBuffer(Parameters, TEXT("MobileDistortionPass"));
+	return GraphBuilder.CreateUniformBuffer(Parameters);
 }
 
 FMobileDistortionAccumulateOutputs AddMobileDistortionAccumulatePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileDistortionAccumulateInputs& Inputs)

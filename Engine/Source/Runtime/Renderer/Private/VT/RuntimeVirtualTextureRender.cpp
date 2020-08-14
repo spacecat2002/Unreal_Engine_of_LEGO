@@ -807,9 +807,9 @@ namespace RuntimeVirtualTexture
 			{
 				InputTexture->MarkResourceAsUsed();
 
-				RHICmdList.Transition(FRHITransitionInfo(OutputTexture, ERHIAccess::SRVGraphics, ERHIAccess::CopyDest));
+				RHICmdList.Transition(FRHITransitionInfo(OutputTexture, ERHIAccess::SRVMask, ERHIAccess::CopyDest));
 				RHICmdList.CopyTexture(InputTexture->GetRHI(), OutputTexture, CopyInfo);
-				RHICmdList.Transition(FRHITransitionInfo(OutputTexture, ERHIAccess::CopyDest, ERHIAccess::SRVGraphics));
+				RHICmdList.Transition(FRHITransitionInfo(OutputTexture, ERHIAccess::CopyDest, ERHIAccess::SRVMask));
 			});
 	}
 

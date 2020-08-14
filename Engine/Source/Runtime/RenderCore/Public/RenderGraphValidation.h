@@ -151,6 +151,9 @@ private:
 	FString GetNodeName(const FRDGTexture* Texture);
 	FString GetNodeName(const FRDGBuffer* Buffer);
 
+	bool IncludeTransitionEdgeInGraph(FRDGPassHandle PassBefore, FRDGPassHandle PassAfter) const;
+	bool IncludeTransitionEdgeInGraph(FRDGPassHandle Pass) const;
+
 	bool bOpen = false;
 
 	TSet<FRDGPassHandle> PassesReferenced;

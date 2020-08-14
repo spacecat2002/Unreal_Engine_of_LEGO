@@ -43,6 +43,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialParameters, )
 	SHADER_PARAMETER_SAMPLER(SamplerState, PostProcessInput_BilinearSampler)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MobileCustomStencilTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, MobileCustomStencilTextureSampler)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
+	SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
 	SHADER_PARAMETER(int32, MobileStencilValueRef)
 	SHADER_PARAMETER(uint32, bFlipYAxis)
 	SHADER_PARAMETER(uint32, bMetalMSAAHDRDecode)
@@ -75,13 +77,14 @@ struct FPostProcessMaterialInputs
 		{
 			check(OutputFormat == PF_Unknown);
 		}
+
+		check(SceneTextures.SceneTextures || SceneTextures.MobileSceneTextures);
 	}
 
 	inline void ValidateInputExists(EPostProcessMaterialInput Input) const
 	{
 		const FScreenPassTexture Texture = GetInput(EPostProcessMaterialInput::SceneColor);
-		check(Texture.Texture);
-		check(!Texture.ViewRect.IsEmpty());
+		check(Texture.IsValid());
 	}
 
 	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
@@ -97,6 +100,9 @@ struct FPostProcessMaterialInputs
 
 	/** Custom stencil texture used for stencil operations. */
 	FRDGTextureRef CustomDepthTexture = nullptr;
+
+	/** The uniform buffer containing all scene textures. */
+	FSceneTextureShaderParameters SceneTextures;
 
 	/** Performs a vertical axis flip if the RHI allows it. */
 	bool bFlipYAxis = false;
@@ -129,6 +135,8 @@ struct FHighResolutionScreenshotMaskInputs
 	FScreenPassRenderTarget OverrideOutput;
 
 	FScreenPassTexture SceneColor;
+
+	FSceneTextureShaderParameters SceneTextures;
 
 	UMaterialInterface* Material = nullptr;
 	UMaterialInterface* MaskMaterial = nullptr;

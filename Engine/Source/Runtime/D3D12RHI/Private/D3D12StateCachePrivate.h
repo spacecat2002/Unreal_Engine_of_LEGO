@@ -352,7 +352,6 @@ protected:
 	bool bNeedSetStencilRef;
 	bool bNeedSetDepthBounds;
 	bool bNeedSetShadingRate;
-	bool bAutoFlushComputeShaderCache;
 	D3D12_RESOURCE_BINDING_TIER ResourceBindingTier;
 
 	struct
@@ -481,7 +480,7 @@ protected:
 			PipelineState.Common.CurrentShaderUAVCounts[Traits::Frequency]     = (Shader) ? Shader->ResourceCounts.NumUAVs     : 0;
 		
 			// Shader changed so its resource table is dirty
-			this->CmdContext->DirtyUniformBuffers[Traits::Frequency] = 0xffff;
+			SetDirtyUniformBuffers(this->CmdContext, Traits::Frequency);
 		}
 	}
 
@@ -523,11 +522,28 @@ protected:
 #endif // #if USE_D3D12RHI_PRE_PSO_SET_WORKAROUND
 
 			check(CurrentPSO);
-			this->CmdContext->CommandListHandle->SetPipelineState(CurrentPSO);
+			SetPipelineState(this->CmdContext, CurrentPSO);
 			PipelineState.Common.bNeedSetPSO = false;
 		}
 	}
 
+private:
+
+	// SetDirtyUniformBuffers and SetPipelineState helper functions are required
+	// to allow using FD3D12CommandContext type which is not defined at this point.
+	// Making ContextType a template parameter delays instantiation of these functions.
+
+	template <typename ContextType>
+	static void SetDirtyUniformBuffers(ContextType* Context, EShaderFrequency Frequency)
+	{
+		Context->DirtyUniformBuffers[Frequency] = 0xffff;
+	}
+
+	template <typename ContextType>
+	static void SetPipelineState(ContextType* Context, ID3D12PipelineState* State)
+	{
+		Context->CommandListHandle->SetPipelineState(State);
+	}
 
 public:
 
@@ -998,11 +1014,6 @@ public:
 	void SetComputeBudget(EAsyncComputeBudget ComputeBudget)
 	{
 		PipelineState.Compute.ComputeBudget = ComputeBudget;
-	}
-
-	D3D12_STATE_CACHE_INLINE void AutoFlushComputeShaderCache(bool bEnable)
-	{
-		bAutoFlushComputeShaderCache = bEnable;
 	}
 
 	void FlushComputeShaderCache(bool bForce = false);
