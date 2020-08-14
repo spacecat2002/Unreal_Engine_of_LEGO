@@ -1444,6 +1444,9 @@ public:
 	bool Split(const FString& InS, FString* LeftS, FString* RightS, ESearchCase::Type SearchCase = ESearchCase::IgnoreCase,
 		ESearchDir::Type SearchDir = ESearchDir::FromStart) const
 	{
+		check(this != LeftS);
+		check(this != RightS);
+
 		int32 InPos = Find(InS, SearchCase, SearchDir);
 
 		if (InPos < 0)	{ return false; }
