@@ -1923,6 +1923,8 @@ FShaderCompilingManager::FShaderCompilingManager() :
 #endif
 	SuppressedShaderPlatforms(0)
 {
+	bool bForceUseSCWMemoryPressureLimits = false;
+
 	WorkersBusyTime = 0;
 
 	// Threads must use absolute paths on Windows in case the current directory is changed on another thread!
@@ -1961,6 +1963,7 @@ FShaderCompilingManager::FShaderCompilingManager() :
 	verify(GConfig->GetBool( TEXT("DevOptions.Shaders"), TEXT("bLogJobCompletionTimes"), bLogJobCompletionTimes, GEngineIni ));
 	GConfig->GetFloat(TEXT("DevOptions.Shaders"), TEXT("WorkerTimeToLive"), GRegularWorkerTimeToLive, GEngineIni);
 	GConfig->GetFloat(TEXT("DevOptions.Shaders"), TEXT("BuildWorkerTimeToLive"), GBuildWorkerTimeToLive, GEngineIni);
+	GConfig->GetBool(TEXT("DevOptions.Shaders"), TEXT("bForceUseSCWMemoryPressureLimits"), bForceUseSCWMemoryPressureLimits, GEngineIni);
 
 	GRetryShaderCompilation = bPromptToRetryFailedShaderCompiles;
 
@@ -2022,7 +2025,7 @@ FShaderCompilingManager::FShaderCompilingManager() :
 		NumShaderCompilingThreadsDuringGame = NumVirtualCores - 1;
 	}
 #if PLATFORM_DESKTOP
-	else if (GIsBuildMachine)
+	else if (GIsBuildMachine || bForceUseSCWMemoryPressureLimits)
 	{
 		// Cooker ends up running OOM so use a simple heuristic based on some INI values
 		float CookerMemoryUsedInGB = 0.0f;
@@ -2060,7 +2063,12 @@ FShaderCompilingManager::FShaderCompilingManager() :
 				GConfig->GetBool(TEXT("DevOptions.Shaders"), TEXT("bUseVirtualCores"), bUseVirtualCores, GEngineIni);
 				uint32 MaxNumCoresToUse = bUseVirtualCores ? NumVirtualCores : FPlatformMisc::NumberOfCores();
 				NumShaderCompilingThreads = FMath::Clamp<uint32>(NumShaderCompilingThreads, 1, MaxNumCoresToUse - 1);
+				NumShaderCompilingThreadsDuringGame = FMath::Min<int32>(NumShaderCompilingThreads, NumShaderCompilingThreadsDuringGame);
 			}
+		}
+		else if (bForceUseSCWMemoryPressureLimits)
+		{
+			UE_LOG(LogShaderCompilers, Warning, TEXT("bForceUseSCWMemoryPressureLimits was set but missing one or more prerequisite setting(s): CookerMemoryUsedInGB, MemoryToLeaveForTheOSInGB, MemoryUsedPerSCWProcessInGB.  Ignoring bForceUseSCWMemoryPressureLimits") );
 		}
 	}
 #endif
@@ -2088,7 +2096,7 @@ FShaderCompilingManager::FShaderCompilingManager() :
 		}
 	}
 
-	
+
 	if (FShaderCompileXGEThreadRunnable_InterceptionInterface::IsSupported() && bCanUseXGE)
 	{
 		UE_LOG(LogShaderCompilers, Display, TEXT("Using XGE Shader Compiler (Interception Interface)."));
