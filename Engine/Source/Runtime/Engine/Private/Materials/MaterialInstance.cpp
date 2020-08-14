@@ -1488,7 +1488,7 @@ void UMaterialInstance::OverrideTexture(const UTexture* InTextureToOverride, UTe
 			if (Texture != NULL && Texture == InTextureToOverride)
 			{
 				// Override this texture!
-				SourceMaterialResource->TransientOverrides.SetTextureOverride((EMaterialTextureParameterType)TypeIndex, i, OverrideTexture);
+				SourceMaterialResource->TransientOverrides.SetTextureOverride((EMaterialTextureParameterType)TypeIndex, Parameter.ParameterInfo, OverrideTexture);
 				bShouldRecacheMaterialExpressions = true;
 			}
 		}
@@ -1508,6 +1508,7 @@ void UMaterialInstance::OverrideVectorParameterDefault(const FHashedMaterialPara
 	if (bHasStaticPermutationResource)
 	{
 		FMaterialResource* SourceMaterialResource = GetMaterialResource(InFeatureLevel);
+		SourceMaterialResource->TransientOverrides.SetVectorOverride(ParameterInfo, Value, bOverride);
 		const TArrayView<const FMaterialVectorParameterInfo> Parameters = SourceMaterialResource->GetUniformVectorParameterExpressions();
 
 		for (int32 i = 0; i < Parameters.Num(); ++i)
@@ -1515,7 +1516,6 @@ void UMaterialInstance::OverrideVectorParameterDefault(const FHashedMaterialPara
 			const FMaterialVectorParameterInfo& Parameter = Parameters[i];
 			if (Parameter.ParameterInfo == ParameterInfo)
 			{
-				SourceMaterialResource->TransientOverrides.SetVectorOverride(i, Value, bOverride);
 				bShouldRecacheMaterialExpressions = true;
 			}
 		}
@@ -1535,6 +1535,7 @@ void UMaterialInstance::OverrideScalarParameterDefault(const FHashedMaterialPara
 	if (bHasStaticPermutationResource)
 	{
 		FMaterialResource* SourceMaterialResource = GetMaterialResource(InFeatureLevel);
+		SourceMaterialResource->TransientOverrides.SetScalarOverride(ParameterInfo, Value, bOverride);
 		const TArrayView<const FMaterialScalarParameterInfo> Parameters = SourceMaterialResource->GetUniformScalarParameterExpressions();
 
 		for (int32 i = 0; i < Parameters.Num(); ++i)
@@ -1542,7 +1543,6 @@ void UMaterialInstance::OverrideScalarParameterDefault(const FHashedMaterialPara
 			const FMaterialScalarParameterInfo& Parameter = Parameters[i];
 			if (Parameter.ParameterInfo == ParameterInfo)
 			{
-				SourceMaterialResource->TransientOverrides.SetScalarOverride(i, Value, bOverride);
 				bShouldRecacheMaterialExpressions = true;
 			}
 		}
