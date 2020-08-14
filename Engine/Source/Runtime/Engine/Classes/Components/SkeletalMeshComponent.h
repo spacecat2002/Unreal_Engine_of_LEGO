@@ -25,6 +25,7 @@
 #include "ClothingSimulationFactory.h"
 #include "ClothCollisionPrim.h"
 #include "PhysicsEngine/PhysicsAsset.h"
+#include "Animation/CustomAttributesRuntime.h"
 
 #include "SkeletalMeshComponent.generated.h"
 
@@ -80,6 +81,18 @@ enum class EClothMassMode : uint8
 	MaxClothMassMode UMETA(Hidden)
 };
 
+/** Method used when retrieving a Custom Attribute value*/
+UENUM()
+enum class ECustomBoneAttributeLookup : uint8
+{
+	/** Only look for the attribute using the provided bone (name) */
+	BoneOnly,
+	/** Look for the attribute using the provided bone (name) and its direct parent bone */
+	ImmediateParent,
+	/** Look for the attribute using the provided bone (name) and its direct bone parent hierarchy up and until the root bone */
+	ParentHierarchy
+};
+
 struct FAnimationEvaluationContext
 {
 	// The anim instance we are evaluating
@@ -114,6 +127,9 @@ struct FAnimationEvaluationContext
 	FBlendedHeapCurve	Curve;
 	FBlendedHeapCurve	CachedCurve;
 
+	// Custom attribute data, swapped in from the component when we are running parallel eval
+	FHeapCustomAttributes CustomAttributes;
+
 	FAnimationEvaluationContext()
 	{
 		Clear();
@@ -139,6 +155,8 @@ struct FAnimationEvaluationContext
 		bDoEvaluation = Other.bDoEvaluation;
 		bDuplicateToCacheBones = Other.bDuplicateToCacheBones;
 		bDuplicateToCacheCurve = Other.bDuplicateToCacheCurve;
+
+		CustomAttributes.CopyFrom(Other.CustomAttributes);
 	}
 
 	void Clear()
@@ -406,6 +424,90 @@ private:
 
 	/** Cached Curve result for Update Rate optimization */
 	FBlendedHeapCurve CachedCurve;
+public:
+	/** 
+	 * Get float type custom attribute value.
+
+	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
+	 * @param AttributeName Name of the attribute to retrieve
+	 * @param DefaultValue In case the attribute could not be found
+     * @param OutValue (reference) Retrieved attribute value if found, otherwise is set to DefaultValue
+	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
+	 * @return Whether or not the atttribute was successfully retrieved
+	*/
+	UFUNCTION(BlueprintCallable, Category=CustomAttributes)
+	bool GetFloatAttribute_Ref(const FName& BoneName, const FName& AttributeName, UPARAM(ref) float& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
+
+	/** 
+	 * Get integer type custom attribute value.
+
+	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
+	 * @param AttributeName Name of the attribute to retrieve
+	 * @param DefaultValue In case the attribute could not be found
+     * @param OutValue (reference) Retrieved attribute value if found, otherwise is set to DefaultValue
+	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
+	 * @return Whether or not the atttribute was successfully retrieved
+	*/
+	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
+	bool GetIntegerAttribute_Ref(const FName& BoneName, const FName& AttributeName, UPARAM(ref) int32& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
+
+	/** 
+	 * Get string type custom attribute value.
+
+	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
+	 * @param AttributeName Name of the attribute to retrieve
+	 * @param DefaultValue In case the attribute could not be found
+     * @param OutValue (reference) Retrieved attribute value if found, otherwise is set to DefaultValue
+	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
+	 * @return Whether or not the atttribute was successfully retrieved
+	*/
+	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
+	bool GetStringAttribute_Ref(const FName& BoneName, const FName& AttributeName, UPARAM(ref) FString& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
+
+
+	/** 
+	 * Get float type custom attribute value.
+
+	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
+	 * @param AttributeName Name of the attribute to retrieve
+	 * @param DefaultValue In case the attribute could not be found
+     * @param OutValue Retrieved attribute value if found, otherwise is set to DefaultValue
+	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
+	 * @return Whether or not the atttribute was successfully retrieved
+	*/
+	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
+	bool GetFloatAttribute(const FName& BoneName, const FName& AttributeName, float DefaultValue, float& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
+
+	/** 
+	 * Get integer type custom attribute value.
+
+	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
+	 * @param AttributeName Name of the attribute to retrieve
+	 * @param DefaultValue In case the attribute could not be found
+     * @param OutValue Retrieved attribute value if found, otherwise is set to DefaultValue
+	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
+	 * @return Whether or not the atttribute was successfully retrieved
+	*/
+	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
+	bool GetIntegerAttribute(const FName& BoneName, const FName& AttributeName, int32 DefaultValue, int32& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
+
+	/** 
+	 * Get string type custom attribute value.
+
+	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
+	 * @param AttributeName Name of the attribute to retrieve
+	 * @param DefaultValue In case the attribute could not be found
+     * @param OutValue Retrieved attribute value if found, otherwise is set to DefaultValue
+	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
+	 * @return Whether or not the atttribute was successfully retrieved
+	*/
+	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
+	bool GetStringAttribute(const FName& BoneName, const FName& AttributeName, FString DefaultValue, FString& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
+
+protected:
+	/** Templated version to try and retrieve a typed bone attribute's value */
+	template<typename DataType>
+	bool GetBoneAttribute(const FName& BoneName, const FName& AttributeName, DataType DefaultValue, DataType& OutValue, ECustomBoneAttributeLookup LookupType);
 
 public:
 	/** Used to scale speed of all animations on this skeletal mesh. */
@@ -1759,13 +1861,22 @@ public:
 	* @param	OutCurves				Blended Curve
 	*/
 #if WITH_EDITOR
+	void PerformAnimationEvaluation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FHeapCustomAttributes& OutAttributes);
+
+	UE_DEPRECATED(4.26, "Please use PerformAnimationEvaluation with different signature")
 	void PerformAnimationEvaluation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve);
 #endif
+	void PerformAnimationProcessing(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, bool bInDoEvaluation, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FHeapCustomAttributes& OutAttributes);
+
+	UE_DEPRECATED(4.26, "Please use PerformAnimationEvaluation with different signature")
 	void PerformAnimationProcessing(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, bool bInDoEvaluation, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve);
 
 	/**
 	 * Evaluates the post process instance from the skeletal mesh this component is using.
 	 */
+	void EvaluatePostProcessMeshInstance(TArray<FTransform>& OutBoneSpaceTransforms, FCompactPose& InOutPose, FBlendedHeapCurve& OutCurve, const USkeletalMesh* InSkeletalMesh, FVector& OutRootBoneTranslation, FHeapCustomAttributes& OutAttributes) const;
+
+	UE_DEPRECATED(4.26, "Please use EvaluatePostProcessMeshInstance with different signature")
 	void EvaluatePostProcessMeshInstance(TArray<FTransform>& OutBoneSpaceTransforms, FCompactPose& InOutPose, FBlendedHeapCurve& OutCurve, const USkeletalMesh* InSkeletalMesh, FVector& OutRootBoneTranslation) const;
 
 	void PostAnimEvaluation(FAnimationEvaluationContext& EvaluationContext);
@@ -2083,7 +2194,7 @@ private:
 	void EndPhysicsTickComponent(FSkeletalMeshComponentEndPhysicsTickFunction& ThisTickFunction);
 
 	/** Evaluate Anim System **/
-	void EvaluateAnimation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FCompactPose& OutPose) const;
+	void EvaluateAnimation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FCompactPose& OutPose, FHeapCustomAttributes& OutAttributes) const;
 
 	/** Queues up tasks for parallel update/evaluation, as well as the chained game thread completion task */
 	void DispatchParallelEvaluationTasks(FActorComponentTickFunction* TickFunction);
@@ -2256,6 +2367,15 @@ public:
 	const FBlendedHeapCurve& GetEditableAnimationCurves() const { return CurvesArray[CurrentEditableComponentTransforms]; }
 #endif 
 
+
+private:
+	/** Temporary array of custom attributes that are active on this component - keeps same buffer index as SpaceBases - Please check SkinnedMeshComponent*/
+	FHeapCustomAttributes AttributesArray[2];
+
+	FHeapCustomAttributes& GetEditableCustomAttributes() { return AttributesArray[CurrentEditableComponentTransforms]; }
+
+public:
+	const FHeapCustomAttributes& GetCustomAttributes() const { return AttributesArray[CurrentReadComponentTransforms]; }
 public:
 	/** Skeletal mesh component should not be able to have its mobility set to static */
 	virtual const bool CanHaveStaticMobility() const override { return false; }

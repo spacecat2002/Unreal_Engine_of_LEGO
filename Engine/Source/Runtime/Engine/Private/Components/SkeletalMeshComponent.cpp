@@ -1765,7 +1765,7 @@ bool USkeletalMeshComponent::AreRequiredCurvesUpToDate() const
 	return (!SkeletalMesh || !SkeletalMesh->Skeleton || CachedAnimCurveUidVersion == SkeletalMesh->Skeleton->GetAnimCurveUidVersion());
 }
 
-void USkeletalMeshComponent::EvaluateAnimation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FCompactPose& OutPose) const
+void USkeletalMeshComponent::EvaluateAnimation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FCompactPose& OutPose, FHeapCustomAttributes& OutAttributes) const
 {
 	ANIM_MT_SCOPE_CYCLE_COUNTER(SkeletalComponentAnimEvaluate, !IsInGameThread());
 
@@ -1779,7 +1779,8 @@ void USkeletalMeshComponent::EvaluateAnimation(const USkeletalMesh* InSkeletalMe
 		InAnimInstance &&
 		InAnimInstance->ParallelCanEvaluate(InSkeletalMesh))
 	{
-		InAnimInstance->ParallelEvaluateAnimation(bForceRefpose, InSkeletalMesh, OutCurve, OutPose);
+		FParallelEvaluationData EvaluationData = { OutCurve, OutPose, OutAttributes };
+		InAnimInstance->ParallelEvaluateAnimation(bForceRefpose, InSkeletalMesh, EvaluationData);
 	}
 	else
 	{
@@ -1826,14 +1827,20 @@ void USkeletalMeshComponent::UpdateSlaveComponent()
 
 #if WITH_EDITOR
 
+void USkeletalMeshComponent::PerformAnimationEvaluation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FHeapCustomAttributes& OutAttributes)
+{
+	PerformAnimationProcessing(InSkeletalMesh, InAnimInstance, true, OutSpaceBases, OutBoneSpaceTransforms, OutRootBoneTranslation, OutCurve, OutAttributes);
+}
+
 void USkeletalMeshComponent::PerformAnimationEvaluation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve)
 {
-	PerformAnimationProcessing(InSkeletalMesh, InAnimInstance, true, OutSpaceBases, OutBoneSpaceTransforms, OutRootBoneTranslation, OutCurve);
+	FHeapCustomAttributes Attributes;
+	PerformAnimationEvaluation(InSkeletalMesh, InAnimInstance, OutSpaceBases, OutBoneSpaceTransforms, OutRootBoneTranslation, OutCurve, Attributes);
 }
 
 #endif
 
-void USkeletalMeshComponent::PerformAnimationProcessing(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, bool bInDoEvaluation, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve)
+void USkeletalMeshComponent::PerformAnimationProcessing(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, bool bInDoEvaluation, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FHeapCustomAttributes& OutAttributes)
 {
 	CSV_SCOPED_TIMING_STAT(Animation, WorkerThreadTickTime);
 	ANIM_MT_SCOPE_CYCLE_COUNTER(PerformAnimEvaluation, !IsInGameThread());
@@ -1863,8 +1870,8 @@ void USkeletalMeshComponent::PerformAnimationProcessing(const USkeletalMesh* InS
 		FCompactPose EvaluatedPose;
 
 		// evaluate pure animations, and fill up BoneSpaceTransforms
-		EvaluateAnimation(InSkeletalMesh, InAnimInstance, OutRootBoneTranslation, OutCurve, EvaluatedPose);
-		EvaluatePostProcessMeshInstance(OutBoneSpaceTransforms, EvaluatedPose, OutCurve, InSkeletalMesh, OutRootBoneTranslation);
+		EvaluateAnimation(InSkeletalMesh, InAnimInstance, OutRootBoneTranslation, OutCurve, EvaluatedPose, OutAttributes);
+		EvaluatePostProcessMeshInstance(OutBoneSpaceTransforms, EvaluatedPose, OutCurve, InSkeletalMesh, OutRootBoneTranslation, OutAttributes);
 
 		// Finalize the transforms from the evaluation
 		FinalizePoseEvaluationResult(InSkeletalMesh, OutBoneSpaceTransforms, OutRootBoneTranslation, EvaluatedPose);
@@ -1875,7 +1882,19 @@ void USkeletalMeshComponent::PerformAnimationProcessing(const USkeletalMesh* InS
 }
 
 
+void USkeletalMeshComponent::PerformAnimationProcessing(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, bool bInDoEvaluation, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve)
+{
+	FHeapCustomAttributes Attributes;	
+	PerformAnimationProcessing(InSkeletalMesh, InAnimInstance, bInDoEvaluation, OutSpaceBases, OutBoneSpaceTransforms, OutRootBoneTranslation, OutCurve, Attributes);
+}
+
 void USkeletalMeshComponent::EvaluatePostProcessMeshInstance(TArray<FTransform>& OutBoneSpaceTransforms, FCompactPose& InOutPose, FBlendedHeapCurve& OutCurve, const USkeletalMesh* InSkeletalMesh, FVector& OutRootBoneTranslation) const
+{
+	FHeapCustomAttributes Attributes;
+	EvaluatePostProcessMeshInstance(OutBoneSpaceTransforms, InOutPose, OutCurve, InSkeletalMesh, OutRootBoneTranslation, Attributes);
+}
+
+void USkeletalMeshComponent::EvaluatePostProcessMeshInstance(TArray<FTransform>& OutBoneSpaceTransforms, FCompactPose& InOutPose, FBlendedHeapCurve& OutCurve, const USkeletalMesh* InSkeletalMesh, FVector& OutRootBoneTranslation, FHeapCustomAttributes& OutAttributes) const
 {
 	if (ShouldEvaluatePostProcessInstance())
 	{
@@ -1886,6 +1905,7 @@ void USkeletalMeshComponent::EvaluatePostProcessMeshInstance(TArray<FTransform>&
 			{
 				InputNode->CachedInputPose.CopyBonesFrom(InOutPose);
 				InputNode->CachedInputCurve.CopyFrom(OutCurve);
+				InputNode->CachedAttributes.CopyFrom(OutAttributes);
 			}
 			else
 			{
@@ -1895,7 +1915,7 @@ void USkeletalMeshComponent::EvaluatePostProcessMeshInstance(TArray<FTransform>&
 			}
 		}
 
-		EvaluateAnimation(InSkeletalMesh, PostProcessAnimInstance, OutRootBoneTranslation, OutCurve, InOutPose);
+		EvaluateAnimation(InSkeletalMesh, PostProcessAnimInstance, OutRootBoneTranslation, OutCurve, InOutPose, OutAttributes);
 	}
 }
 
@@ -2096,6 +2116,8 @@ void USkeletalMeshComponent::RefreshBoneTransforms(FActorComponentTickFunction* 
 		AnimCurves.Empty();
 	}
 
+	GetEditableCustomAttributes().Empty();
+
 	AnimEvaluationContext.bDoEvaluation = bShouldDoEvaluation;
 	AnimEvaluationContext.bDoInterpolation = bShouldDoInterpolation;
 	AnimEvaluationContext.bDuplicateToCacheBones = bInvalidCachedBones || (bDoEvaluationRateOptimization && AnimEvaluationContext.bDoEvaluation && !AnimEvaluationContext.bDoInterpolation);
@@ -2218,6 +2240,7 @@ void USkeletalMeshComponent::SwapEvaluationContextBuffers()
 	Exchange(AnimEvaluationContext.Curve, AnimCurves);
 	Exchange(AnimEvaluationContext.CachedCurve, CachedCurve);
 	Exchange(AnimEvaluationContext.RootBoneTranslation, RootBoneTranslation);
+	Exchange(AnimEvaluationContext.CustomAttributes, GetEditableCustomAttributes());
 }
 
 void USkeletalMeshComponent::DispatchParallelEvaluationTasks(FActorComponentTickFunction* TickFunction)
@@ -2283,6 +2306,8 @@ void USkeletalMeshComponent::DispatchParallelTickPose(FActorComponentTickFunctio
 
 				// We dont set up the Curve here, as we dont use it in Update()
 				AnimCurves.Empty();
+
+				GetEditableCustomAttributes().Empty();
 
 				// Set us up to NOT perform evaluation
 				AnimEvaluationContext.bDoEvaluation = false;
@@ -3589,11 +3614,11 @@ void USkeletalMeshComponent::ParallelAnimationEvaluation()
 {
 	if (AnimEvaluationContext.bDoInterpolation)
 	{
-		PerformAnimationProcessing(AnimEvaluationContext.SkeletalMesh, AnimEvaluationContext.AnimInstance, AnimEvaluationContext.bDoEvaluation, AnimEvaluationContext.CachedComponentSpaceTransforms, AnimEvaluationContext.CachedBoneSpaceTransforms, AnimEvaluationContext.RootBoneTranslation, AnimEvaluationContext.CachedCurve);
+		PerformAnimationProcessing(AnimEvaluationContext.SkeletalMesh, AnimEvaluationContext.AnimInstance, AnimEvaluationContext.bDoEvaluation, AnimEvaluationContext.CachedComponentSpaceTransforms, AnimEvaluationContext.CachedBoneSpaceTransforms, AnimEvaluationContext.RootBoneTranslation, AnimEvaluationContext.CachedCurve, AnimEvaluationContext.CustomAttributes);
 	}
 	else
 	{
-		PerformAnimationProcessing(AnimEvaluationContext.SkeletalMesh, AnimEvaluationContext.AnimInstance, AnimEvaluationContext.bDoEvaluation, AnimEvaluationContext.ComponentSpaceTransforms, AnimEvaluationContext.BoneSpaceTransforms, AnimEvaluationContext.RootBoneTranslation, AnimEvaluationContext.Curve);
+		PerformAnimationProcessing(AnimEvaluationContext.SkeletalMesh, AnimEvaluationContext.AnimInstance, AnimEvaluationContext.bDoEvaluation, AnimEvaluationContext.ComponentSpaceTransforms, AnimEvaluationContext.BoneSpaceTransforms, AnimEvaluationContext.RootBoneTranslation, AnimEvaluationContext.Curve, AnimEvaluationContext.CustomAttributes);
 	}
 
 	ParallelDuplicateAndInterpolate(AnimEvaluationContext);
@@ -4118,6 +4143,80 @@ const TArray<FTransform>& USkeletalMeshComponent::GetCachedComponentSpaceTransfo
 {
 	return CachedComponentSpaceTransforms;
 }
+
+
+bool USkeletalMeshComponent::GetFloatAttribute_Ref(const FName& BoneName, const FName& AttributeName, float& OutValue, ECustomBoneAttributeLookup LookupType /*= ECustomBoneAttributeLookup::BoneOnly*/)
+{
+	return GetBoneAttribute<float>(BoneName, AttributeName, OutValue, OutValue, LookupType);
+}
+
+bool USkeletalMeshComponent::GetIntegerAttribute_Ref(const FName& BoneName, const FName& AttributeName, int32& OutValue, ECustomBoneAttributeLookup LookupType /*= ECustomBoneAttributeLookup::BoneOnly*/)
+{
+	return GetBoneAttribute<int32>(BoneName, AttributeName, OutValue, OutValue, LookupType);
+}
+
+bool USkeletalMeshComponent::GetStringAttribute_Ref(const FName& BoneName, const FName& AttributeName, FString& OutValue, ECustomBoneAttributeLookup LookupType /*= ECustomBoneAttributeLookup::BoneOnly*/)
+{
+	return GetBoneAttribute<FString>(BoneName, AttributeName, OutValue, OutValue, LookupType);
+}
+
+bool USkeletalMeshComponent::GetFloatAttribute(const FName& BoneName, const FName& AttributeName, float DefaultValue, float& OutValue, ECustomBoneAttributeLookup LookupType /*= ECustomBoneAttributeLookup::BoneOnly*/)
+{
+	return GetBoneAttribute<float>(BoneName, AttributeName, DefaultValue, OutValue, LookupType);
+}
+
+bool USkeletalMeshComponent::GetIntegerAttribute(const FName& BoneName, const FName& AttributeName, int32 DefaultValue, int32& OutValue, ECustomBoneAttributeLookup LookupType /*= ECustomBoneAttributeLookup::BoneOnly*/)
+{
+	return GetBoneAttribute<int32>(BoneName, AttributeName, DefaultValue, OutValue, LookupType);
+}
+
+bool USkeletalMeshComponent::GetStringAttribute(const FName& BoneName, const FName& AttributeName, FString DefaultValue, FString& OutValue, ECustomBoneAttributeLookup LookupType /*= ECustomBoneAttributeLookup::BoneOnly*/)
+{
+	return GetBoneAttribute<FString>(BoneName, AttributeName, DefaultValue, OutValue, LookupType);
+}
+
+template<typename DataType>
+bool USkeletalMeshComponent::GetBoneAttribute(const FName& BoneName, const FName& AttributeName, DataType DefaultValue, DataType& OutValue, ECustomBoneAttributeLookup LookupType)
+{
+	OutValue = DefaultValue;
+
+	const FHeapCustomAttributes& Attributes = GetCustomAttributes();
+	const int32 BoneIndex = SkeletalMesh->RefSkeleton.FindBoneIndex(BoneName);
+
+	bool bFound = Attributes.GetBoneAttribute(FCompactPoseBoneIndex(BoneIndex), AttributeName, OutValue);
+
+	if (!bFound && LookupType != ECustomBoneAttributeLookup::BoneOnly)
+	{
+		if (LookupType == ECustomBoneAttributeLookup::ImmediateParent)
+		{
+			const int32 ParentIndex = SkeletalMesh->RefSkeleton.GetParentIndex(BoneIndex);
+			if (ParentIndex != INDEX_NONE)
+			{
+				bFound = Attributes.GetBoneAttribute(FCompactPoseBoneIndex(ParentIndex), AttributeName, OutValue);
+			}
+		}
+		else if (LookupType == ECustomBoneAttributeLookup::ParentHierarchy)
+		{
+			int32 SearchBoneIndex = BoneIndex;
+			int32 ParentIndex = SkeletalMesh->RefSkeleton.GetParentIndex(SearchBoneIndex);
+
+			while (ParentIndex != INDEX_NONE)
+			{
+				bFound = Attributes.GetBoneAttribute(FCompactPoseBoneIndex(ParentIndex), AttributeName, OutValue);
+				if (bFound)
+				{
+					break;
+				}
+
+				SearchBoneIndex = ParentIndex;
+				ParentIndex = SkeletalMesh->RefSkeleton.GetParentIndex(SearchBoneIndex);
+			}
+		}
+	}
+
+	return bFound;
+}
+
 
 TArray<FTransform> USkeletalMeshComponent::GetBoneSpaceTransforms() 
 {

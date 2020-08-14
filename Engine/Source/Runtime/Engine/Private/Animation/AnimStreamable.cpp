@@ -19,6 +19,8 @@
 #include "BonePose.h"
 #include "ContentStreaming.h"
 #include "ProfilingDebugging/CookStats.h"
+#include "Animation/AnimationPoseData.h"
+#include "Animation/CustomAttributesRuntime.h"
 
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(ENGINE_API, Animation);
 
@@ -195,10 +197,20 @@ FORCEINLINE int32 PreviousChunkIndex(int32 ChunkIndex, int32 NumChunks)
 
 void UAnimStreamable::GetAnimationPose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const
 {
-	OutPose.ResetToRefPose();
+	FStackCustomAttributes TempAttributes;
+	FAnimationPoseData OutAnimationPoseData(OutPose, OutCurve, TempAttributes);
+	GetAnimationPose(OutAnimationPoseData, ExtractionContext);
+}
 
+void UAnimStreamable::GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const
+{
 	SCOPE_CYCLE_COUNTER(STAT_AnimStreamable_GetAnimationPose);
 	CSV_SCOPED_TIMING_STAT(Animation, AnimStreamable_GetAnimationPose);
+
+	FCompactPose& OutPose = OutAnimationPoseData.GetPose();
+	FBlendedCurve& OutCurve = OutAnimationPoseData.GetCurve();
+
+	OutPose.ResetToRefPose();
 
 	const FBoneContainer& RequiredBones = OutPose.GetBoneContainer();
 	//const bool bUseRawDataForPoseExtraction = bForceUseRawData || UseRawDataForPoseExtraction(RequiredBones);

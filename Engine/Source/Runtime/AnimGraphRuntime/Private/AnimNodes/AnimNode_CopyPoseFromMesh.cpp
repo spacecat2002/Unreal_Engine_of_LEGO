@@ -11,6 +11,7 @@ FAnimNode_CopyPoseFromMesh::FAnimNode_CopyPoseFromMesh()
 	: SourceMeshComponent(nullptr)
 	, bUseAttachedParent (false)
 	, bCopyCurves (false)
+	, bCopyCustomAttributes(false)
 {
 }
 
@@ -139,6 +140,11 @@ void FAnimNode_CopyPoseFromMesh::PreUpdate(const UAnimInstance* InAnimInstance)
 					SourceCurveList.Reset();
 				}
 			}
+
+			if (bCopyCustomAttributes)
+			{
+				SourceCustomAttributes.CopyFrom(CurrentMeshComponent->GetCustomAttributes());
+			}
 		}
 		else
 		{
@@ -204,6 +210,12 @@ void FAnimNode_CopyPoseFromMesh::Evaluate_AnyThread(FPoseContext& Output)
 				Output.Curve.Set(*UID, Iter.Value());
 			}
 		}
+	}
+
+	if (bCopyCustomAttributes)
+	{	
+		const FBoneContainer& RequiredBones = OutPose.GetBoneContainer();
+		FCustomAttributesRuntime::CopyAndRemapAttributes(SourceCustomAttributes, Output.CustomAttributes, BoneMapToSource, RequiredBones);		
 	}
 }
 

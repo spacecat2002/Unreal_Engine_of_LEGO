@@ -23,6 +23,8 @@ class USkeletalMeshComponent;
 struct FA2CSPose;
 struct FA2Pose;
 struct FInputBlendPose;
+struct FAnimationPoseData;
+struct FStackCustomAttributes;
 
 typedef TArray<FTransform> FTransformArrayA2;
 
@@ -100,12 +102,20 @@ public:
 	*
 	* @param	ResultPose		Output pose of relative bone transforms.
 	*/
+	UE_DEPRECATED(4.26, "Use BlendPosesTogether with other signature")
 	static void BlendPosesTogether(
 		TArrayView<const FCompactPose> SourcePoses,
 		TArrayView<const FBlendedCurve> SourceCurves,
 		TArrayView<const float> SourceWeights,
 		/*out*/ FCompactPose& ResultPose, 
 		/*out*/ FBlendedCurve& ResultCurve);
+
+	static void BlendPosesTogether(
+		TArrayView<const FCompactPose> SourcePoses,
+		TArrayView<const FBlendedCurve> SourceCurves,
+		TArrayView<const FStackCustomAttributes> SourceAttributes,
+		TArrayView<const float> SourceWeights,
+		FAnimationPoseData& OutAnimationPoseData);
 
 	/**
 	* Blends together a set of poses, each with a given weight.
@@ -118,6 +128,7 @@ public:
 	*
 	* @param	ResultPose		Output pose of relative bone transforms.
 	*/
+	UE_DEPRECATED(4.26, "Use BlendPosesTogether with other signature")
 	static void BlendPosesTogether(
 		TArrayView<const FCompactPose> SourcePoses,
 		TArrayView<const FBlendedCurve> SourceCurves,
@@ -125,6 +136,15 @@ public:
 		TArrayView<const int32> SourceWeightsIndices,
 		/*out*/ FCompactPose& ResultPose,
 		/*out*/ FBlendedCurve& ResultCurve);
+
+	static void BlendPosesTogether(
+		TArrayView<const FCompactPose> SourcePoses,
+		TArrayView<const FBlendedCurve> SourceCurves,
+		TArrayView<const FStackCustomAttributes> SourceAttributes,
+		TArrayView<const float> SourceWeights,
+		TArrayView<const int32> SourceWeightsIndices,
+		/*out*/ FAnimationPoseData& OutPoseData
+		);
 
 	/**
 	* Blends together a set of poses, each with a given weight.
@@ -135,12 +155,20 @@ public:
 	*
 	* @param	ResultPose		Output pose of relative bone transforms.
 	*/
+	UE_DEPRECATED(4.26, "Use BlendPosesTogetherIndirect with other signature")
 	static void BlendPosesTogetherIndirect(
 		TArrayView<const FCompactPose* const> SourcePoses,
 		TArrayView<const FBlendedCurve* const> SourceCurves,
 		TArrayView<const float> SourceWeights,
 		/*out*/ FCompactPose& ResultPose,
 		/*out*/ FBlendedCurve& ResultCurve);
+
+	static void BlendPosesTogetherIndirect(
+		TArrayView<const FCompactPose* const> SourcePoses,
+		TArrayView<const FBlendedCurve* const> SourceCurves,
+		TArrayView<const FStackCustomAttributes* const> SourceAttributes,
+		TArrayView<const float> SourceWeights,
+		FAnimationPoseData& OutPoseData);
 
 	/**
 	* Blends together two poses.
@@ -150,6 +178,7 @@ public:
 	*
 	* @param	ResultPose		Output pose of relative bone transforms.
 	*/
+	UE_DEPRECATED(4.26, "Use BlendTwoPosesTogether with other signature")
 	static void BlendTwoPosesTogether(
 		const FCompactPose& SourcePose1,
 		const FCompactPose& SourcePose2,
@@ -158,6 +187,12 @@ public:
 		const float WeightOfPose1,
 		/*out*/ FCompactPose& ResultPose,
 		/*out*/ FBlendedCurve& ResultCurve);
+			   
+	static void BlendTwoPosesTogether(
+		const FAnimationPoseData& SourcePoseOneData,
+		const FAnimationPoseData& SourcePoseTwoData,
+		const float WeightOfPoseOne,
+		/*out*/ FAnimationPoseData& OutAnimationPoseData);
 
 	/**
 	* Blends together a set of poses, each with a given weight.
@@ -167,6 +202,7 @@ public:
 	*
 	* @param	ResultPose		Output pose of relative bone transforms.
 	*/
+	UE_DEPRECATED(4.26, "Use BlendTwoPosesTogether with other signature")
 	static void BlendTwoPosesTogetherPerBone(
 		const FCompactPose& SourcePose1,
 		const FCompactPose& SourcePose2,
@@ -175,8 +211,13 @@ public:
 		const TArray<float>& WeightsOfSource2,
 		/*out*/ FCompactPose& ResultPose,
 		/*out*/ FBlendedCurve& ResultCurve);
-
-
+		
+	static void BlendTwoPosesTogetherPerBone(
+		const FAnimationPoseData& SourcePoseOneData,
+		const FAnimationPoseData& SourcePoseTwoData,
+		const TArray<float>& WeightsOfSource2,
+		/*out*/ FAnimationPoseData& OutAnimationPoseData);
+		
 	/**
 	* Blends together a set of poses, each with a given weight.
 	* This function is for BlendSpace per bone blending. BlendSampleDataCache contains the weight information
@@ -185,6 +226,7 @@ public:
 	*
 	* @param	ResultPose		Output pose of relative bone transforms.
 	*/
+	UE_DEPRECATED(4.26, "Use BlendPosesTogetherPerBone with other signature")
 	static void BlendPosesTogetherPerBone(
 		TArrayView<const FCompactPose> SourcePoses,
 		TArrayView<const FBlendedCurve> SourceCurves,
@@ -192,6 +234,14 @@ public:
 		TArrayView<const FBlendSampleData> BlendSampleDataCache,
 		/*out*/ FCompactPose& ResultPose,
 		/*out*/ FBlendedCurve& ResultCurve);
+
+	static void BlendPosesTogetherPerBone(
+		TArrayView<const FCompactPose> SourcePoses,
+		TArrayView<const FBlendedCurve> SourceCurves,
+		TArrayView<const FStackCustomAttributes> SourceAttributes,
+		const IInterpolationIndexProvider* InterpolationIndexProvider,
+		TArrayView<const FBlendSampleData> BlendSampleDataCache,
+		/*out*/ FAnimationPoseData& OutAnimationPoseData);
 
 	/**
 	* Blends together a set of poses, each with a given weight.
@@ -201,6 +251,7 @@ public:
 	*
 	* @param	ResultPose		Output pose of relative bone transforms.
 	*/
+	UE_DEPRECATED(4.26, "Use BlendPosesTogetherPerBone with other signature")
 	static void BlendPosesTogetherPerBone(
 		TArrayView<const FCompactPose> SourcePoses,
 		TArrayView<const FBlendedCurve> SourceCurves,
@@ -210,6 +261,15 @@ public:
 		/*out*/ FCompactPose& ResultPose,
 		/*out*/ FBlendedCurve& ResultCurve);
 
+	static void BlendPosesTogetherPerBone(
+		TArrayView<const FCompactPose> SourcePoses,
+		TArrayView<const FBlendedCurve> SourceCurves,
+		TArrayView<const FStackCustomAttributes> SourceAttributes,
+		const IInterpolationIndexProvider* InterpolationIndexProvider,
+		TArrayView<const FBlendSampleData> BlendSampleDataCache,
+		TArrayView<const int32> BlendSampleDataCacheIndices,
+		/*out*/ FAnimationPoseData& OutAnimationPoseData);
+
 	/**
 	* Blends together a set of poses, each with a given weight.
 	* This function is for BlendSpace per bone blending. BlendSampleDataCache contains the weight information
@@ -218,6 +278,7 @@ public:
 	*
 	* @param	ResultPose		Output pose of relative bone transforms.
 	*/
+	UE_DEPRECATED(4.26, "Use BlendPosesTogetherPerBone with other signature")
 	static void BlendPosesTogetherPerBoneInMeshSpace(
 		TArrayView<FCompactPose> SourcePoses,
 		TArrayView<const FBlendedCurve> SourceCurves,
@@ -226,6 +287,13 @@ public:
 		/*out*/ FCompactPose& ResultPose,
 		/*out*/ FBlendedCurve& ResultCurve);
 
+	static void BlendPosesTogetherPerBoneInMeshSpace(
+		TArrayView< FCompactPose> SourcePoses,
+		TArrayView<const FBlendedCurve> SourceCurves,
+		TArrayView<const FStackCustomAttributes> SourceAttributes,	
+		const UBlendSpaceBase* BlendSpace,
+		TArrayView<const FBlendSampleData> BlendSampleDataCache,
+		/*out*/ FAnimationPoseData& OutAnimationPoseData);
 
 	/** Blending flags for BlendPosesPerBoneFilter */
 	enum class EBlendPosesPerBoneFilterFlags : uint32
@@ -248,6 +316,7 @@ public:
 	* having multiple bone names with multiple weights, and filtering through which one is correct one
 	* I assume all those things should be determined before coming here and this only cares about weights
 	**/
+	UE_DEPRECATED(4.26, "Please use the BlendPosesPerBoneFilterwith different signature.")
 	static void BlendPosesPerBoneFilter(
 		FCompactPose& BasePose,
 		const TArray<FCompactPose>& BlendPoses,
@@ -259,16 +328,16 @@ public:
 		EBlendPosesPerBoneFilterFlags blendFlags,
 		enum ECurveBlendOption::Type CurveBlendOption);
 
-	UE_DEPRECATED(4.23, "Please use the BlendPosesPerBoneFilter function that accepts EBlendPosesPerBoneFilterFlags.")
 	static void BlendPosesPerBoneFilter(
 		FCompactPose& BasePose,
 		const TArray<FCompactPose>& BlendPoses,
 		FBlendedCurve& BaseCurve,
 		const TArray<FBlendedCurve>& BlendCurves,
-		FCompactPose& OutPose,
-		FBlendedCurve& OutCurve,
+		FStackCustomAttributes& CustomAttributes,
+		const TArray<FStackCustomAttributes>& BlendAttributes,
+		FAnimationPoseData& OutAnimationPoseData,
 		TArray<FPerBoneBlendWeight>& BoneBlendWeights,
-		bool bMeshSpaceRotationBlend,
+		EBlendPosesPerBoneFilterFlags blendFlags,
 		enum ECurveBlendOption::Type CurveBlendOption);
 
 	static void UpdateDesiredBoneWeight(const TArray<FPerBoneBlendWeight>& SrcBoneBlendWeights, TArray<FPerBoneBlendWeight>& TargetBoneBlendWeights, const TArray<float>& BlendWeights);
@@ -318,7 +387,10 @@ public:
 	static void ConvertMeshRotationPoseToLocalSpace(FCompactPose& Pose);
 
 	/** Accumulate Additive Pose based on AdditiveType*/
+	UE_DEPRECATED(4.26, "Use AccumulateAdditivePose with other signature")
 	static void AccumulateAdditivePose(FCompactPose& BasePose, const FCompactPose& AdditivePose, FBlendedCurve& BaseCurve, const FBlendedCurve& AdditiveCurve, float Weight, enum EAdditiveAnimationType AdditiveType);
+	
+	static void AccumulateAdditivePose(FAnimationPoseData& BaseAnimationPoseData, const FAnimationPoseData& AdditiveAnimationPoseData, float Weight, enum EAdditiveAnimationType AdditiveType);
 
 private:
 	/** Accumulates weighted AdditivePose to BasePose. Rotations are NOT normalized. */
@@ -329,10 +401,16 @@ private:
 public:
 
 	/** Accumulates weighted AdditivePose to BasePose. Rotations are NOT normalized. */
-	static void AccumulateLocalSpaceAdditivePose(FCompactPose& BasePose, const FCompactPose& AdditivePose, FBlendedCurve& BaseCurve, const FBlendedCurve& AdditiveCurve, float Weight) { AccumulateAdditivePose(BasePose, AdditivePose, BaseCurve, AdditiveCurve, Weight, EAdditiveAnimationType::AAT_LocalSpaceBase); }
+	UE_DEPRECATED(4.26, "Use AccumulateAdditivePose with other signature")
+	static void AccumulateLocalSpaceAdditivePose(FCompactPose& BasePose, const FCompactPose& AdditivePose, FBlendedCurve& BaseCurve, const FBlendedCurve& AdditiveCurve, float Weight);
+
+	static void AccumulateLocalSpaceAdditivePose(FAnimationPoseData& BaseAnimationPoseData, const FAnimationPoseData& AdditiveAnimationPoseData, float Weight);
 
 	/** Accumulate a MeshSpaceRotation Additive pose to a local pose. Rotations are NOT normalized */
-	static void AccumulateMeshSpaceRotationAdditiveToLocalPose(FCompactPose& BasePose, const FCompactPose& MeshSpaceRotationAdditive, FBlendedCurve& BaseCurve, const FBlendedCurve& AdditiveCurve, float Weight) { AccumulateAdditivePose(BasePose, MeshSpaceRotationAdditive, BaseCurve, AdditiveCurve, Weight, EAdditiveAnimationType::AAT_RotationOffsetMeshSpace); }
+	UE_DEPRECATED(4.26, "Use AccumulateAdditivePose with other signature")
+	static void AccumulateMeshSpaceRotationAdditiveToLocalPose(FCompactPose& BasePose, const FCompactPose& MeshSpaceRotationAdditive, FBlendedCurve& BaseCurve, const FBlendedCurve& AdditiveCurve, float Weight);
+
+	static void AccumulateMeshSpaceRotationAdditiveToLocalPose(FAnimationPoseData& BaseAnimationPoseData, const FAnimationPoseData& MeshSpaceRotationAdditiveAnimationPoseData, float Weight);
 
 
 	/** Lerp for FCompactPose. Stores results in PoseA. Performs PoseA = Lerp(PoseA, PoseB, Alpha); */

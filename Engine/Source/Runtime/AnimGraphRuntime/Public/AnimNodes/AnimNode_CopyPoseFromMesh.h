@@ -31,6 +31,9 @@ struct ANIMGRAPHRUNTIME_API FAnimNode_CopyPoseFromMesh : public FAnimNode_Base
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Copy, meta = (NeverAsPin))
 	bool bCopyCurves;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Copy, meta = (NeverAsPin))
+	bool bCopyCustomAttributes;
+
 	FAnimNode_CopyPoseFromMesh();
 
 	// FAnimNode_Base interface
@@ -60,6 +63,9 @@ private:
 
 	// Cached curves, copied on the game thread
 	TMap<FName, float> SourceCurveList;
+
+	// Cached attributes, copied on the game thread
+	FHeapCustomAttributes SourceCustomAttributes;
 
 	// reinitialize mesh component 
 	void ReinitializeMeshComponent(USkeletalMeshComponent* NewSkeletalMeshComponent, USkeletalMeshComponent* TargetMeshComponent);
