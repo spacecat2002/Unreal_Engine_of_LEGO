@@ -2703,3 +2703,12 @@ void SetupMobileSceneTextureUniformParameters(
 	}
 	SetupMobileSceneTextureUniformParameters(nullptr, SceneContext, SetupMode, SceneTextureParameters);
 }
+
+void SetupMobileSceneTextureUniformParameters(
+	FRDGBuilder& GraphBuilder,
+	EMobileSceneTextureSetupMode SetupMode,
+	FMobileSceneTextureUniformParameters& SceneTextureParameters)
+{
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+	SetupMobileSceneTextureUniformParameters(&GraphBuilder, SceneContext, SetupMode, SceneTextureParameters);
+}

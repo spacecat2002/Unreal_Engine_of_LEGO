@@ -48,7 +48,7 @@ TRDGUniformBufferRef<FMobileDistortionPassUniformParameters> CreateMobileDistort
 		SetupMode |= EMobileSceneTextureSetupMode::CustomDepth;
 	}
 
-	SetupMobileSceneTextureUniformParameters(SceneContext, SetupMode, Parameters->SceneTextures);
+	SetupMobileSceneTextureUniformParameters(GraphBuilder, SetupMode, Parameters->SceneTextures);
 
 	SetupDistortionParams(Parameters->DistortionParams, View);
 
