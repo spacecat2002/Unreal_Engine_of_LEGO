@@ -610,7 +610,8 @@ FORCEINLINE void AddEndUAVOverlapPass(FRDGBuilder& GraphBuilder, TArrayView<FRHI
 	});
 }
 
-// Converts a buffer created with 'CreateBuffer' into an externally registered buffer and fills the pooled buffer reference.
+// Forces the graph to make the resource immediately available as if it were registered. Returns the pooled resource.
+
 inline void ConvertToExternalBuffer(FRDGBuilder& GraphBuilder, FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>& OutPooledBuffer)
 {
 	check(Buffer);
@@ -624,6 +625,14 @@ inline void ConvertToExternalTexture(FRDGBuilder& GraphBuilder, FRDGTextureRef T
 	GraphBuilder.PreallocateTexture(Texture);
 	OutPooledRenderTarget = GraphBuilder.GetPooledTexture(Texture);
 }
+
+// Performs the same steps as ConvertToExternalX but forces the resource into the final state. Assuming the resource isn't used again
+// after this pass, the graph will leave it in that state and it's technically safe to read from the raw RHI resource.
+RENDERCORE_API void ConvertToUntrackedExternalTexture(
+	FRDGBuilder& GraphBuilder,
+	FRDGTextureRef Texture,
+	TRefCountPtr<IPooledRenderTarget>& OutPooledRenderTarget,
+	ERHIAccess AccessFinal);
 
 // Used to help port code over to RDG. If the graph builder is null, creates a passthrough RDG texture instead. Will be removed once port is complete.
 RENDERCORE_API FRDGTextureRef RegisterExternalOrPassthroughTexture(
