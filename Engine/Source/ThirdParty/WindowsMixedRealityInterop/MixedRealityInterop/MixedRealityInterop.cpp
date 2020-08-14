@@ -3923,6 +3923,9 @@ namespace WindowsMixedReality
 
 	void MixedRealityInterop::DisconnectFromDevice()
 	{
+		//make sure to set to empty
+		wcsncpy_s(failureString, L"", std::size(failureString));
+
 #if HOLO_STREAMING_RENDERING
 		if (m_isHL1Remoting)
 		{
