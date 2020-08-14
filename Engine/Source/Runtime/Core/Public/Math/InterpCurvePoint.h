@@ -51,9 +51,6 @@ template< class T > class FInterpCurvePoint
 {
 public:
 
-	/** Interpolation mode between this point and the next one. @see EInterpCurveMode */
-	TEnumAsByte<EInterpCurveMode> InterpMode;
-
 	/** Float input value that corresponds to this key (eg. time). */
 	float InVal;
 
@@ -65,6 +62,9 @@ public:
 
 	/** Tangent of curve leaving this point. */
 	T LeaveTangent; 
+
+	/** Interpolation mode between this point and the next one. @see EInterpCurveMode */
+	TEnumAsByte<EInterpCurveMode> InterpMode; 
 
 public:
 
@@ -155,11 +155,11 @@ FORCEINLINE FInterpCurvePoint<T>::FInterpCurvePoint( const float In, const T &Ou
 
 template< class T > 
 FORCEINLINE FInterpCurvePoint<T>::FInterpCurvePoint( const float In, const T &Out, const T &InArriveTangent, const T &InLeaveTangent, const EInterpCurveMode InInterpMode)
-	: InterpMode(InInterpMode)
-	, InVal(In)
+	: InVal(In)
 	, OutVal(Out)
 	, ArriveTangent(InArriveTangent)
 	, LeaveTangent(InLeaveTangent)
+	, InterpMode(InInterpMode)
 { }
 
 
