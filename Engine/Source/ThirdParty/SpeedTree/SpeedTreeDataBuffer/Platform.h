@@ -20,32 +20,8 @@
 #pragma once
 #include <stddef.h>
 #include <assert.h>
-
-
-///////////////////////////////////////////////////////////////////////
-// Storage-class specification
-
-#ifndef ST_DLL_LINK
-	#if (defined(_WIN32) || defined(_XBOX)) && defined(_USRDLL)
-		#define ST_DLL_LINK __declspec(dllexport)
-		#define ST_DLL_LINK_STATIC_MEMVAR __declspec(dllexport)
-	#elif defined(ST_USE_SDK_AS_DLLS)
-		#define ST_DLL_LINK
-		#define ST_DLL_LINK_STATIC_MEMVAR __declspec(dllimport)
-	#else
-		#define ST_DLL_LINK
-		#define ST_DLL_LINK_STATIC_MEMVAR
-	#endif
-#endif
-
-// specify calling convention
-#ifndef ST_CALL_CONV
-	#if (defined(_WIN32) || defined(_XBOX)) && !defined(ST_CALL_CONV)
-		#define ST_CALL_CONV   __cdecl
-	#else
-		#define ST_CALL_CONV
-	#endif
-#endif
+#include <stdio.h>
+#include <string.h>
 
 
 ///////////////////////////////////////////////////////////////////////
@@ -99,9 +75,9 @@
 
 
 ///////////////////////////////////////////////////////////////////////
-//  All SpeedTree SDK classes and variables are under the namespace "SpeedTree"
+//  All SpeedTree DataBuffer classes and variables are under the namespace "SpeedTreeDataBuffer"
 
-namespace SpeedTree8
+namespace SpeedTreeDataBuffer
 {
 	///////////////////////////////////////////////////////////////////////
 	//  Types
@@ -109,6 +85,7 @@ namespace SpeedTree8
 	typedef bool            st_bool;
 	typedef char            st_int8;
 	typedef char            st_char;
+	typedef wchar_t			st_wchar;
 	typedef short           st_int16;
 	typedef int             st_int32;
 	typedef long long       st_int64;
@@ -163,28 +140,6 @@ namespace SpeedTree8
 	#endif
 
 
-	// chris says: I'm getting:
-	//	error: C2244: 'glm::min' : unable to match function definition to an existing declaration
-	//
-	// for both st_min() and st_max() because I have them defined elsewhere; I don't see where the new
-	// SpeedTreeFormat stuff is using these, so temporarily commenting them out
-
-#if 0
-	///////////////////////////////////////////////////////////////////////
-	//  Function equivalents of __min and __max macros
-
-	template <class T> inline T st_min(const T& a, const T& b)
-	{
-		return (a < b) ? a : b;
-	}
-
-	template <class T> inline T st_max(const T& a, const T& b)
-	{
-		return (a > b) ? a : b;
-	}
-#endif
-
-
 	///////////////////////////////////////////////////////////////////////
 	//  SDK-wide constants
 
@@ -201,7 +156,7 @@ namespace SpeedTree8
 	// include inline functions
 	#include "Platform_inl.h"
 
-} // end namespace SpeedTree
+} // end namespace SpeedTreeDataBuffer
 
 #ifdef ST_SETS_PACKING_INTERNALLY
 	#pragma pack(pop)

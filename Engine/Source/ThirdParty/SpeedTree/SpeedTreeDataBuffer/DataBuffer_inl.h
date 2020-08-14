@@ -70,6 +70,66 @@ ST_INLINE const T& CArray<T>::operator[](st_uint32 uiIndex) const
 
 
 ///////////////////////////////////////////////////////////////////////
+//	CUntypedArray::CUntypedArray
+
+ST_INLINE CUntypedArray::CUntypedArray(void) :
+	m_pData(NULL)
+{
+}
+
+
+///////////////////////////////////////////////////////////////////////
+//	CUntypedArray::IsEmpty
+
+ST_INLINE st_bool CUntypedArray::IsEmpty(void) const
+{
+	st_assert(m_pData != NULL, "Data is NULL");
+	return (reinterpret_cast<st_uint32*>(m_pData)[0] > 0);
+}
+
+
+///////////////////////////////////////////////////////////////////////
+//	CUntypedArray::Count
+
+ST_INLINE st_uint32 CUntypedArray::Count(void) const
+{
+	st_assert(m_pData != NULL, "Data is NULL");
+	return reinterpret_cast<st_uint32*>(m_pData)[0];
+}
+
+
+///////////////////////////////////////////////////////////////////////
+//	CUntypedArray::ElementSize
+
+ST_INLINE st_uint32 CUntypedArray::ElementSize(void) const
+{
+	st_assert(m_pData != NULL, "Data is NULL");
+	return reinterpret_cast<st_uint32*>(m_pData)[1];
+}
+
+
+///////////////////////////////////////////////////////////////////////
+//	CUntypedArray::Data
+
+ST_INLINE const st_byte* CUntypedArray::Data(void) const
+{
+	st_assert(m_pData != NULL, "Data is NULL");
+	return (m_pData + 2 * sizeof(st_uint32));
+}
+
+
+///////////////////////////////////////////////////////////////////////
+//	CUntypedArray::operator[]
+
+ST_INLINE const st_byte* CUntypedArray::operator[](st_uint32 uiIndex) const
+{
+	st_assert(m_pData != NULL, "Data is NULL");
+	st_assert(uiIndex < Count( ), "Index out of range");
+	return (Data( ) + uiIndex * ElementSize( ));
+}
+
+
+///////////////////////////////////////////////////////////////////////
 //	CString::IsEmpty
 
 ST_INLINE st_bool CString::IsEmpty(void) const
@@ -191,14 +251,23 @@ ST_INLINE void CReader::Clear(void)
 ///////////////////////////////////////////////////////////////////////
 //	CReader::LoadFile
 
-ST_INLINE st_bool CReader::LoadFile(st_char* pFilename)
+ST_INLINE st_bool CReader::LoadFile(const st_char* pFilename)
 {
 	st_bool bReturn = false;
 	Clear( );
 
 	FILE* pFile = NULL;
-	#ifdef WIN32
+	#if defined(MultiByteToWideChar)
 		fopen_s(&pFile, pFilename, "rb");
+		if (pFile == NULL)
+		{
+			// try utf-8
+			int iLength = MultiByteToWideChar(CP_UTF8, 0, pFilename, -1, NULL , 0);
+			wchar_t* pWideString = new wchar_t[iLength];
+			MultiByteToWideChar(CP_UTF8, 0 , pFilename, -1, pWideString, iLength);
+			pFile = _wfopen(pWideString, L"rb");
+			delete[] pWideString;
+		}
 	#else
 		pFile = fopen(pFilename, "rb");
 	#endif
@@ -211,6 +280,7 @@ ST_INLINE st_bool CReader::LoadFile(st_char* pFilename)
 		if (iNumBytes > 0 && iErrorCode >= 0)
 		{
 			m_pFileData = new st_byte[iNumBytes];
+			m_bOwnsData = true;
 			st_int32 iNumBytesRead = st_int32(fread(m_pFileData, 1, iNumBytes, pFile));
 			if (iNumBytesRead == iNumBytes)
 			{
@@ -275,5 +345,43 @@ ST_INLINE st_bool CReader::LoadFromData(const st_byte* pData, st_int32 iSize)
 	}
 
 	return bReturn;
+}
+
+
+///////////////////////////////////////////////////////////////////////
+//	CReader::ClearAfter
+
+ST_INLINE st_bool CReader::ClearAfter(st_uint32 uiIndex)
+{
+	if (!m_bOwnsData)
+	{
+		return false;
+	}
+
+	// copy data
+	const st_uint32 uiZeroPadding = 10;
+	st_uint32 uiDataIndex = *(reinterpret_cast<st_uint32*>(m_pData) + uiIndex + 2);
+	st_byte* pEnd = reinterpret_cast<st_byte*>(m_pData + uiDataIndex);
+	st_uint32 uiDataSize = static_cast<st_uint32>(pEnd - m_pFileData) + uiZeroPadding;
+	st_byte* pNewData = new st_byte[uiDataSize];
+	memcpy(pNewData, m_pFileData, uiDataSize);
+	memset(pNewData + uiDataSize - uiZeroPadding, 0, uiZeroPadding);
+
+	// use new data
+	delete [] m_pFileData;
+	m_pFileData = pNewData;
+	const st_char* pToken = FileToken( );
+	st_int32 iTokenLength = st_int32(strlen(pToken));
+	m_pData = m_pFileData + iTokenLength;
+
+	// zero out the rest of the table
+	st_uint32 uiCount = Count( );
+	st_uint32 uiLastDataIndex = uiDataSize - uiZeroPadding;
+	for (st_uint32 i = uiIndex + 1; i < uiCount; ++i)
+	{
+		*(reinterpret_cast<st_uint32*>(m_pData) + i + 1) = uiLastDataIndex;
+	}
+
+	return true;
 }
 
