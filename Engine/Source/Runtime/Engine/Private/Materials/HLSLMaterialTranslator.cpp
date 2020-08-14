@@ -4363,8 +4363,11 @@ int32 FHLSLMaterialTranslator::TextureSample(
 			break;
 
 		case SAMPLERTYPE_Color:
-		case SAMPLERTYPE_VirtualColor:
 			SampleCode = FString::Printf( TEXT("ProcessMaterialColorTextureLookup(%s)"), *SampleCode );
+			break;
+		case SAMPLERTYPE_VirtualColor:
+			// has a mobile specific workaround
+			SampleCode = FString::Printf( TEXT("ProcessMaterialVirtualColorTextureLookup(%s)"), *SampleCode );
 			break;
 
 		case SAMPLERTYPE_LinearColor:

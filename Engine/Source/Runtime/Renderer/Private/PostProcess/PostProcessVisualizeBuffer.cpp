@@ -10,6 +10,7 @@
 #include "ImageWriteQueue.h"
 #include "HighResScreenshot.h"
 #include "BufferVisualizationData.h"
+#include "UnrealEngine.h"
 
 class FVisualizeBufferPS : public FGlobalShader
 {

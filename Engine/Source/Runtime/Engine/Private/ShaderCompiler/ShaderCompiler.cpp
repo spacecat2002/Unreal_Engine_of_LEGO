@@ -3564,6 +3564,10 @@ void GlobalBeginCompileShader(
 	if (bUsingMobileRenderer)
 	{
 		Input.Environment.SetDefine(TEXT("SHADING_PATH_MOBILE"), 1);
+		if (IsMobileDeferredShading())
+		{
+			Input.Environment.SetDefine(TEXT("MOBILE_DEFERRED_SHADING"), 1);
+		}
 	}
 
 	// Set VR definitions

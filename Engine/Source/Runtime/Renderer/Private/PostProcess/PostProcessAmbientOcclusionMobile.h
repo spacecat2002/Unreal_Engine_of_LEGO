@@ -22,3 +22,5 @@ struct FAmbientOcclusionMobileOutputs
 		AmbientOcclusionTexture.SafeRelease();
 	}
 };
+
+extern FAmbientOcclusionMobileOutputs GAmbientOcclusionMobileOutputs;

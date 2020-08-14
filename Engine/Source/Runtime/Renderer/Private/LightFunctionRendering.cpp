@@ -195,7 +195,7 @@ static float GetLightFunctionFadeFraction(const FViewInfo& View, FSphere LightBo
 * @param LightSceneInfo Represents the current light
 * @return true if anything got rendered
 */
-bool FDeferredShadingSceneRenderer::CheckForLightFunction( const FLightSceneInfo* LightSceneInfo ) const
+bool FSceneRenderer::CheckForLightFunction( const FLightSceneInfo* LightSceneInfo ) const
 {
 	// NOTE: The extra check is necessary because there could be something wrong with the material.
 	if( LightSceneInfo->Proxy->GetLightFunctionMaterial() && 

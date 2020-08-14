@@ -2,6 +2,8 @@
 
 #include "PostProcess/PostProcessCombineLUTs.h"
 #include "PostProcess/PostProcessTonemap.h"
+#include "ScenePrivate.h"
+#include "VolumeRendering.h"
 
 namespace
 {
@@ -522,21 +524,4 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vie
 	}
 
 	return OutputTexture;
-}
-
-FRenderingCompositeOutputRef AddCombineLUTPass(FRenderingCompositionGraph& Graph)
-{
-	FRenderingCompositePass* Pass = Graph.RegisterPass(
-		new(FMemStack::Get()) TRCPassForRDG<0, 1>(
-			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-
-		FRDGTextureRef OutputTexture = AddCombineLUTPass(GraphBuilder, InContext.View);
-
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
-
-		GraphBuilder.Execute();
-	}));
-	return Pass;
 }
