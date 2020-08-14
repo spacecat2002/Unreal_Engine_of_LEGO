@@ -195,7 +195,7 @@ static void CreateD3D11ShaderResourceViewOnBuffer(ID3D11Device* Direct3DDevice, 
 	Buffer->GetDesc(&BufferDesc);
 
 	const uint32 FormatStride = GPixelFormats[Format].BlockBytes;
-	const uint32 NumRequestedBytes = NumElements / FormatStride;
+	const uint32 NumRequestedBytes = NumElements * FormatStride;
 	const uint32 OffsetBytes = FMath::Min(StartOffsetBytes, BufferDesc.ByteWidth);
 	const uint32 NumBytes = FMath::Min(NumRequestedBytes, BufferDesc.ByteWidth - OffsetBytes);
 

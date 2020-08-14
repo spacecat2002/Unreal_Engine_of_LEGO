@@ -13,7 +13,7 @@ static FORCEINLINE D3D12_SHADER_RESOURCE_VIEW_DESC GetVertexBufferSRVDesc(FD3D12
 
 	const uint32 FormatStride = GPixelFormats[Format].BlockBytes;
 
-	const uint32 NumRequestedBytes = NumElements / FormatStride;
+	const uint32 NumRequestedBytes = NumElements * FormatStride;
 	const uint32 OffsetBytes = FMath::Min(StartOffsetBytes, BufferSize);
 	const uint32 NumBytes = FMath::Min(NumRequestedBytes, BufferSize - OffsetBytes);
 
