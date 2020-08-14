@@ -1130,10 +1130,10 @@ void GetRenderLightParameters(
 	}
 }
 
-void FDeferredShadingSceneRenderer::RenderLights(
+FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 	FRDGBuilder& GraphBuilder,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	FRDGTextureRef& SceneColorTexture,
+	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef SceneDepthTexture,
 	FRDGTextureRef LightingChannelsTexture,
 	FSortedLightSetSceneInfo &SortedLightSet,
@@ -1973,6 +1973,8 @@ void FDeferredShadingSceneRenderer::RenderLights(
 			}
 		}
 	}
+
+	return SceneColorTexture;
 }
 
 void FDeferredShadingSceneRenderer::RenderLightArrayForOverlapViewmode(

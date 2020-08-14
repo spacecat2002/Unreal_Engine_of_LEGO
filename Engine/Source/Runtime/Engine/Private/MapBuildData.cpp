@@ -24,6 +24,10 @@ MapBuildData.cpp
 #include "ContentStreaming.h"
 #include "Components/ReflectionCaptureComponent.h"
 #include "Interfaces/ITargetPlatform.h"
+#if WITH_EDITOR
+#include "Factories/TextureFactory.h"
+#endif
+#include "Engine/TextureCube.h"
 
 DECLARE_MEMORY_STAT(TEXT("Stationary Light Static Shadowmap"),STAT_StationaryLightBuildData,STATGROUP_MapBuildData);
 DECLARE_MEMORY_STAT(TEXT("Reflection Captures"),STAT_ReflectionCaptureBuildData,STATGROUP_MapBuildData);
@@ -307,7 +311,15 @@ FArchive& operator<<(FArchive& Ar, FReflectionCaptureMapBuildData& ReflectionCap
 
 	if (Ar.CustomVer(FMobileObjectVersion::GUID) >= FMobileObjectVersion::StoreReflectionCaptureCompressedMobile)
 	{
-		Ar << ReflectionCaptureMapBuildData.EncodedCaptureData;
+		if (Ar.IsCooking() && !Ar.CookingTarget()->SupportsFeature(ETargetPlatformFeatures::MobileRendering))
+		{
+			UTextureCube* Dummy = NULL;
+			Ar << Dummy;
+		}
+		else
+		{
+			Ar << ReflectionCaptureMapBuildData.EncodedCaptureData;
+		}
 	}
 	else
 	{
@@ -389,19 +401,40 @@ void UMapBuildDataRegistry::Serialize(FArchive& Ar)
 void UMapBuildDataRegistry::PostLoad()
 {
 	Super::PostLoad();
+	bool bFullDataRequired = GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5;
+	bool bEncodedDataRequired = GIsEditor || GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1;
 
-	if (ReflectionCaptureBuildData.Num() > 0 
-		// Only strip in PostLoad for cooked platforms.  Uncooked may need to generate encoded HDR data in UReflectionCaptureComponent::OnRegister().
-		&& FPlatformProperties::RequiresCookedData()
-		&& GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5)
+#if WITH_EDITOR
+	if (ReflectionCaptureBuildData.Num() > 0 && bEncodedDataRequired)
 	{
 		for (TMap<FGuid, FReflectionCaptureMapBuildData>::TIterator It(ReflectionCaptureBuildData); It; ++It)
 		{
 			FReflectionCaptureMapBuildData& CaptureBuildData = It.Value();
+			if (CaptureBuildData.EncodedCaptureData == nullptr && CaptureBuildData.FullHDRCapturedData.Num() != 0)
+			{
+				FString TextureName = TEXT("DeprecatedTexture");
+				TextureName += LexToString(It.Key());
+				GenerateEncodedHDRTextureCube(this, CaptureBuildData, TextureName, 16.0f);
+			}
+		}
+	}
+#endif
 
-			CaptureBuildData.FullHDRCapturedData.Empty();
+	if (ReflectionCaptureBuildData.Num() > 0 
+		// Only strip in PostLoad for cooked platforms.  Uncooked may need to generate encoded HDR data in UReflectionCaptureComponent::OnRegister().
+		&& FPlatformProperties::RequiresCookedData())
+	{
 
-			check(CaptureBuildData.FullHDRCapturedData.Num() > 0  || FApp::CanEverRender() == false);
+		for (TMap<FGuid, FReflectionCaptureMapBuildData>::TIterator It(ReflectionCaptureBuildData); It; ++It)
+		{
+			FReflectionCaptureMapBuildData& CaptureBuildData = It.Value();
+
+			if (!bFullDataRequired)
+			{
+				CaptureBuildData.FullHDRCapturedData.Empty();
+			}
+
+			check(CaptureBuildData.EncodedCaptureData != nullptr || CaptureBuildData.FullHDRCapturedData.Num() > 0  || FApp::CanEverRender() == false);
 		}
 	}
 

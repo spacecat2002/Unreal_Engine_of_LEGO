@@ -872,11 +872,17 @@ FMobileSunMaskOutputs AddMobileSunMaskPass(FRDGBuilder& GraphBuilder, const FVie
 
 		if (!Inputs.bUseDepthTexture)
 		{
-			SceneColorOutput = FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, TEXT("SceneColor")), ERenderTargetLoadAction::ENoAction);
+			SceneColorOutput = FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, TEXT("SceneColor")), Inputs.SceneColor.ViewRect, ERenderTargetLoadAction::ENoAction);
 		}
 
 		OutputDesc.Format = PF_R16F;
-		SunMaskOutput = FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, TEXT("SunMask")), ERenderTargetLoadAction::ENoAction);
+		SunMaskOutput = FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, TEXT("SunMask")), Inputs.SceneColor.ViewRect, ERenderTargetLoadAction::ENoAction);
+	}
+
+	FMobileLightShaftInfo MobileLightShaft;
+	if (View.MobileLightShaft)
+	{
+		MobileLightShaft = *View.MobileLightShaft;
 	}
 
 	FMobileSunMaskPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FMobileSunMaskPS::FParameters>();
@@ -888,9 +894,9 @@ FMobileSunMaskOutputs AddMobileSunMaskPass(FRDGBuilder& GraphBuilder, const FVie
 	PassParameters->SceneColorTexture = Inputs.SceneColor.Texture;
 	PassParameters->SceneColorSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
-	PassParameters->SunColorApertureDiv2.X = View.MobileLightShaft->ColorMask.R;
-	PassParameters->SunColorApertureDiv2.Y = View.MobileLightShaft->ColorMask.G;
-	PassParameters->SunColorApertureDiv2.Z = View.MobileLightShaft->ColorMask.B;
+	PassParameters->SunColorApertureDiv2.X = MobileLightShaft.ColorMask.R;
+	PassParameters->SunColorApertureDiv2.Y = MobileLightShaft.ColorMask.G;
+	PassParameters->SunColorApertureDiv2.Z = MobileLightShaft.ColorMask.B;
 	PassParameters->SunColorApertureDiv2.W = GetMobileDepthOfFieldScale(View) * 0.5f;
 
 	FMobileSunMaskPS::FPermutationDomain PermutationVector = FMobileSunMaskPS::BuildPermutationVector(Inputs.bUseSun, Inputs.bUseDepthOfField, Inputs.bUseDepthTexture, Inputs.bUseMetalMSAAHDRDecode);

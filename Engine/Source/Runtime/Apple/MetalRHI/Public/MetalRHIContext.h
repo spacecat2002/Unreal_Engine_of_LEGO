@@ -8,6 +8,10 @@
 #include "MetalResources.h"
 #include "MetalViewport.h"
 
+// The UAV structured buffer clear is experimental.  It is know to work for
+// RHITests, but has not yet been widely tested (especially cross-platform).
+#define UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER (PLATFORM_MAC && !UE_BUILD_SHIPPING)
+
 class FMetalContext;
 struct FMetalCommandBufferFence;
 
@@ -111,7 +115,7 @@ public:
 	// @param MaxY excluding like Win32 RECT
 	virtual void RHISetScissorRect(bool bEnable, uint32 MinX, uint32 MinY, uint32 MaxX, uint32 MaxY) final override;
 	
-	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState) final override;
+	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState, bool bApplyAdditionalState) final override;
 	
 	virtual void RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers) final override;
 
@@ -237,6 +241,9 @@ protected:
 	TArray<FRHIUniformBuffer*> GlobalUniformBuffers;
 
 private:
+#if UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+	void ClearUAVStructuredBuffer(FRHIUnorderedAccessView* UnorderedAccessViewRHI, uint32 Pattern);
+#endif // UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
 	void RHIClearMRT(bool bClearColor, int32 NumClearColors, const FLinearColor* ColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil);
 };
 

@@ -45,7 +45,6 @@ struct FLuminOpenGL : public FOpenGLES
 	// Optional:
 	static FORCEINLINE void QueryTimestampCounter(GLuint QueryID)
 	{
-		glQueryCounter(QueryID, GL_TIMESTAMP_EXT);
 	}
 
 	static FORCEINLINE void GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint *OutResult)
@@ -56,9 +55,8 @@ struct FLuminOpenGL : public FOpenGLES
 
 	static FORCEINLINE void GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint64* OutResult)
 	{
-		GLenum QueryName = (QueryMode == QM_Result) ? GL_QUERY_RESULT_EXT : GL_QUERY_RESULT_AVAILABLE_EXT;
-		GLuint64 Result = 0;
-		glGetQueryObjectui64v(QueryId, QueryName, &Result);
+		GLuint Result = 0;
+		GetQueryObject(QueryId, QueryMode, &Result);
 		*OutResult = Result;
 	}
 

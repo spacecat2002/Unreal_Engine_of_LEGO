@@ -4521,7 +4521,7 @@ void FSceneRenderer::UpdateSkyIrradianceGpuBuffer(FRHICommandListImmediate& RHIC
 		FPlatformMemory::Memcpy(DataPtr, &OutSkyIrradianceEnvironmentMap, sizeof(OutSkyIrradianceEnvironmentMap));
 		FRHICommandListExecutor::GetImmediateCommandList().UnlockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer);
 	}
-	else if(Scene->SkyIrradianceEnvironmentMap.NumBytes == 0)
+	else if (Scene->SkyIrradianceEnvironmentMap.NumBytes == 0)
 	{
 		Scene->SkyIrradianceEnvironmentMap.Initialize(sizeof(FVector4), 7, 0, TEXT("SkyIrradianceEnvironmentMap"));
 	}

@@ -41,6 +41,10 @@
 #include "ComponentRecreateRenderStateContext.h"
 #include "Engine/TextureCube.h"
 
+#if WITH_EDITOR
+#include "Factories/TextureFactory.h"
+#endif
+
 // ES3.0+ devices support seamless cubemap filtering, averaging edges will produce artifacts on those devices
 #define MOBILE_AVERAGE_CUBEMAP_EDGES 0 
 
@@ -487,7 +491,7 @@ float GetMaxValueRGBM(const TArray<uint8>& FullHDRData, int32 CubemapSize, float
 	const int32 NumMips = FMath::CeilLogTwo(CubemapSize) + 1;
 	// get MaxValue from Mip0
 	float MaxValue = 0;
-	if (MaxValueRGBM > 1.0f)
+	if (MaxValueRGBM > 0.0f)
 	{
 		MaxValue = MaxValueRGBM;
 	}
@@ -651,6 +655,55 @@ void GenerateEncodedHDRData(const TArray<uint8>& FullHDRData, int32 CubemapSize,
 		SourceMipBaseIndex += SourceCubeFaceBytes * CubeFace_MAX;
 		DestMipBaseIndex += DestCubeFaceBytes * CubeFace_MAX;
 	}
+}
+
+
+void GenerateEncodedHDRTextureCube(UMapBuildDataRegistry* Registry, FReflectionCaptureMapBuildData& CaptureBuildData, FString& TextureName, float MaxValueRGBM, UReflectionCaptureComponent* CaptureComponent, bool bIsReflectionCaptureCompressionProjectSetting)
+{
+#if WITH_EDITOR
+	UTextureFactory* TextureFactory = NewObject<UTextureFactory>();
+	TextureFactory->SuppressImportOverwriteDialog();
+
+	TextureFactory->CompressionSettings = TC_ReflectionCapture;
+	UTextureCube* TextureCube = TextureFactory->CreateTextureCube(Registry, FName(TextureName), RF_Standalone | RF_Public);
+
+	if (TextureCube)
+	{
+		TArray<uint8> TemporaryEncodedHDRCapturedData;
+
+		GenerateEncodedHDRData(CaptureBuildData.FullHDRCapturedData, CaptureBuildData.CubemapSize, CaptureBuildData.Brightness, MaxValueRGBM, TemporaryEncodedHDRCapturedData);
+		const int32 NumMips = FMath::CeilLogTwo(CaptureBuildData.CubemapSize) + 1;
+		TextureCube->Source.Init(
+			CaptureBuildData.CubemapSize,
+			CaptureBuildData.CubemapSize,
+			6,
+			NumMips,
+			TSF_BGRA8,
+			TemporaryEncodedHDRCapturedData.GetData()
+		);
+		// the loader can suggest a compression setting
+		TextureCube->LODGroup = TEXTUREGROUP_World;
+
+		bool bIsCompressed = false;
+		if (CaptureComponent != nullptr)
+		{
+			bIsCompressed = CaptureComponent->MobileReflectionCompression == EMobileReflectionCompression::Default ? bIsReflectionCaptureCompressionProjectSetting : CaptureComponent->MobileReflectionCompression == EMobileReflectionCompression::On;
+		}
+
+		TextureCube->CompressionSettings = TC_ReflectionCapture;
+		TextureCube->CompressionNone = !bIsCompressed;
+		TextureCube->CompressionQuality = TCQ_Highest;
+		TextureCube->Filter = TF_Trilinear;
+		TextureCube->SRGB = 0;
+
+		// for now we don't support mip map generation on cubemaps
+		TextureCube->MipGenSettings = TMGS_LeaveExistingMips;
+
+		TextureCube->UpdateResource();
+		TextureCube->MarkPackageDirty();
+	}
+	CaptureBuildData.EncodedCaptureData = TextureCube;
+#endif
 }
 
 TArray<UReflectionCaptureComponent*> UReflectionCaptureComponent::ReflectionCapturesToUpdate;
@@ -1217,7 +1270,7 @@ void FReflectionCaptureProxy::UpdateMobileUniformBuffer()
 		
 	FMobileReflectionCaptureShaderParameters Parameters;
 	//To keep ImageBasedReflectionLighting coherence with PC, use AverageBrightness instead of InvAverageBrightness to calculate the IBL contribution
-	Parameters.Params = FVector4(EncodedHDRAverageBrightness, 0.f, MaxValueRGBM, 0.f);
+	Parameters.Params = FVector4(EncodedHDRAverageBrightness, 0.f, MaxValueRGBM <= 0.0f ? 16.0f: MaxValueRGBM, 0.f);
 	Parameters.Texture = CaptureTexture->TextureRHI;
 	Parameters.TextureSampler = CaptureTexture->SamplerStateRHI;
 

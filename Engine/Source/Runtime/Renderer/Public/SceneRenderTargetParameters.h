@@ -153,6 +153,10 @@ extern RENDERER_API TRefCountPtr<FRHIUniformBuffer> CreateSceneTextureUniformBuf
 	ERHIFeatureLevel::Type FeatureLevel,
 	ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All);
 
+
+extern RENDERER_API bool IsSceneTexturesValid(FRHICommandListImmediate& RHICmdList);
+
+
 /** Deprecated APIs. */
 
 /** This was renamed to remove the extraneous 's' for consistency. */

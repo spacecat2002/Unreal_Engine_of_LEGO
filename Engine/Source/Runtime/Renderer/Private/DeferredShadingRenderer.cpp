@@ -2045,7 +2045,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 #endif
 
 		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_Lighting));
-		RenderLights(GraphBuilder, SceneTextures, SceneColorTexture.Target, SceneDepthTexture.Target, LightingChannelsTexture, SortedLightSet, HairDatas);
+		SceneColorTexture = FRDGTextureMSAA(RenderLights(GraphBuilder, SceneTextures, SceneColorTexture.Target, SceneDepthTexture.Target, LightingChannelsTexture, SortedLightSet, HairDatas));
 		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_AfterLighting));
 		AddServiceLocalQueuePass(GraphBuilder);
 
