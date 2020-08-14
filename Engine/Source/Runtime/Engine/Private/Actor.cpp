@@ -44,6 +44,7 @@
 #include "Net/Core/PushModel/PushModel.h"
 #include "Engine/AutoDestroySubsystem.h"
 #include "LevelUtils.h"
+#include "GameFramework/GameModeBase.h"
 
 DEFINE_LOG_CATEGORY(LogActor);
 
@@ -3625,7 +3626,7 @@ void AActor::EnableInput(APlayerController* PlayerController)
 		// If it doesn't exist create it and bind delegates
 		if (!InputComponent)
 		{
-			InputComponent = NewObject<UInputComponent>(this);
+			InputComponent = NewObject<UInputComponent>(this, GetWorld()->GetAuthGameMode()->DefaultInputComponentClass);
 			InputComponent->RegisterComponent();
 			InputComponent->bBlockInput = bBlockInput;
 			InputComponent->Priority = InputPriority;

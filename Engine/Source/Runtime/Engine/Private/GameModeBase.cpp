@@ -26,6 +26,7 @@
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/LevelStreaming.h"
+#include "Components/InputComponent.h"
 
 #if WITH_EDITOR
 	#include "IMovieSceneCapture.h"
@@ -58,6 +59,7 @@ AGameModeBase::AGameModeBase(const FObjectInitializer& ObjectInitializer)
 	SpectatorClass = ASpectatorPawn::StaticClass();
 	ReplaySpectatorPlayerControllerClass = APlayerController::StaticClass();
 	ServerStatReplicatorClass = AServerStatReplicator::StaticClass();
+	DefaultInputComponentClass = UInputComponent::StaticClass();
 }
 
 void AGameModeBase::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)

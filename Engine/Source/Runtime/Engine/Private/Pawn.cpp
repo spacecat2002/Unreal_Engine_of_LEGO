@@ -29,6 +29,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Components/PawnNoiseEmitterComponent.h"
 #include "GameFramework/GameNetworkManager.h"
+#include "GameFramework/GameModeBase.h"
 
 DEFINE_LOG_CATEGORY(LogDamage);
 DEFINE_LOG_CATEGORY_STATIC(LogPawn, Warning, All);
@@ -607,7 +608,7 @@ class UPlayer* APawn::GetNetOwningPlayer()
 UInputComponent* APawn::CreatePlayerInputComponent()
 {
 	static const FName InputComponentName(TEXT("PawnInputComponent0"));
-	return NewObject<UInputComponent>(this, InputComponentName);
+	return NewObject<UInputComponent>(this, GetWorld()->GetAuthGameMode()->DefaultInputComponentClass, InputComponentName);
 }
 
 void APawn::DestroyPlayerInputComponent()
