@@ -782,7 +782,33 @@ FRDGBufferRef CreateVertexBuffer(
 	return Buffer;
 }
 
-RENDERCORE_API FRDGTextureRef RegisterExternalOrPassthroughTexture(
+BEGIN_SHADER_PARAMETER_STRUCT(FTextureAccessDynamicPassParameters, )
+	RDG_TEXTURE_ACCESS_DYNAMIC(Texture)
+END_SHADER_PARAMETER_STRUCT()
+
+void ConvertToUntrackedExternalTexture(
+	FRDGBuilder& GraphBuilder,
+	FRDGTextureRef Texture,
+	TRefCountPtr<IPooledRenderTarget>& OutPooledRenderTarget,
+	ERHIAccess AccessFinal)
+{
+	ConvertToExternalTexture(GraphBuilder, Texture, OutPooledRenderTarget);
+	GraphBuilder.SetTextureAccessFinal(Texture, AccessFinal);
+
+	auto* PassParameters = GraphBuilder.AllocParameters<FTextureAccessDynamicPassParameters>();
+	PassParameters->Texture = FRDGTextureAccess(Texture, AccessFinal);
+	GraphBuilder.AddPass({}, PassParameters,
+		// Use all of the work flags so that any access is valid.
+		ERDGPassFlags::Copy |
+		ERDGPassFlags::Compute |
+		ERDGPassFlags::Raster |
+		ERDGPassFlags::SkipRenderPass |
+		// We're not writing to anything, so we have to tell the pass not to cull.
+		ERDGPassFlags::NeverCull,
+		[](FRHICommandList&) {});
+}
+
+FRDGTextureRef RegisterExternalOrPassthroughTexture(
 	FRDGBuilder* GraphBuilder,
 	const TRefCountPtr<IPooledRenderTarget>& PooledRenderTarget,
 	ERDGTextureFlags Flags)
