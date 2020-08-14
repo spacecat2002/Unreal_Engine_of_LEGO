@@ -148,7 +148,7 @@ void FVulkanGPUTiming::Initialize()
 	if (FVulkanPlatform::SupportsTimestampRenderQueries() && GIsSupported)
 	{
 		check(!Pool);
-		Pool = new FVulkanTimingQueryPool(Device, 8);
+		Pool = new FVulkanTimingQueryPool(Device, CmdContext->GetCommandBufferManager(), 8);
 		Pool->ResultsBuffer = Device->GetStagingManager().AcquireBuffer(Pool->GetMaxQueries() * sizeof(uint64), VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	}
 }
@@ -393,7 +393,7 @@ void FVulkanGPUProfiler::BeginFrame()
 		// Use local tracepoints if no extension is available
 		if (!Device->GetOptionalExtensions().HasGPUCrashDumpExtensions() && LocalTracePointsQueryPool == nullptr)
 		{
-			LocalTracePointsQueryPool = new FVulkanTimingQueryPool(Device, GMaxCrashBufferEntries);
+			LocalTracePointsQueryPool = new FVulkanTimingQueryPool(Device, CmdContext->GetCommandBufferManager(), GMaxCrashBufferEntries);
 		}
 	}
 #endif

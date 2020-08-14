@@ -203,13 +203,9 @@ void FRendererModule::DrawTileMesh(FRHICommandListImmediate& RHICmdList, FMeshPa
 			// is this path used on mobile?
 			if (ShadingPath == EShadingPath::Deferred)
 			{
-				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-				FDebugViewModePassPassUniformParameters PassParameters;
-				SetupDebugViewModePassUniformBuffer(SceneContext, View, PassParameters);
-				TUniformBufferRef<FDebugViewModePassPassUniformParameters> DebugViewModePassUniformBuffer = TUniformBufferRef<FDebugViewModePassPassUniformParameters>::CreateUniformBufferImmediate(
-					PassParameters,
-					UniformBuffer_SingleFrame
-				);
+				TUniformBufferRef<FDebugViewModePassUniformParameters> DebugViewModePassUniformBuffer = CreateDebugViewModePassUniformBuffer(RHICmdList, View);
+				FUniformBufferStaticBindings GlobalUniformBuffers(DebugViewModePassUniformBuffer);
+				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 				DrawDynamicMeshPass(View, RHICmdList,
 					[Scene, &View, &DrawRenderState, &DebugViewModePassUniformBuffer, &Mesh](FMeshPassDrawListContext* InDrawListContext)
@@ -430,16 +426,16 @@ static bool RendererExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		VisualizeTextureExec(Cmd, Ar);
 		return true;
 	}
-	else if (FParse::Command(&Cmd, TEXT("ShowMipLevels")))
-	{
-		extern bool GVisualizeMipLevels;
-		GVisualizeMipLevels = !GVisualizeMipLevels;
-		Ar.Logf( TEXT( "Showing mip levels: %s" ), GVisualizeMipLevels ? TEXT("ENABLED") : TEXT("DISABLED") );
-		return true;
-	}
 	else if(FParse::Command(&Cmd,TEXT("DumpUnbuiltLightInteractions")))
 	{
 		InWorld->Scene->DumpUnbuiltLightInteractions(Ar);
+		return true;
+	}
+	else if(FParse::Command(&Cmd, TEXT("r.RHI.Name")))
+	{
+		Ar.Logf( TEXT( "Running on the %s RHI" ), GDynamicRHI 
+			? (GDynamicRHI->GetName() ? GDynamicRHI->GetName() : TEXT("<NULL Name>"))
+			: TEXT("<NULL DynamicRHI>"));
 		return true;
 	}
 #endif

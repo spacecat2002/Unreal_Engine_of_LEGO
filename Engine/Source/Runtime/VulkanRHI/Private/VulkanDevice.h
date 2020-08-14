@@ -39,6 +39,7 @@ struct FOptionalVulkanDeviceExtensions
 			uint32 HasEXTValidationCache : 1;
 			uint32 HasAMDBufferMarker : 1;
 			uint32 HasNVDiagnosticCheckpoints : 1;
+			uint32 HasNVDeviceDiagnosticConfig : 1;
 			uint32 HasGoogleDisplayTiming : 1;
 			uint32 HasYcbcrSampler : 1;
 			uint32 HasMemoryPriority : 1;
@@ -370,7 +371,7 @@ public:
 
 	void SubmitCommandsAndFlushGPU();
 
-	FVulkanOcclusionQueryPool* AcquireOcclusionQueryPool(uint32 NumQueries);
+	FVulkanOcclusionQueryPool* AcquireOcclusionQueryPool(FVulkanCommandBufferManager* CommandBufferManager, uint32 NumQueries);
 	void ReleaseUnusedOcclusionQueryPools();
 
 	inline class FVulkanPipelineStateCacheManager* GetPipelineStateCache()

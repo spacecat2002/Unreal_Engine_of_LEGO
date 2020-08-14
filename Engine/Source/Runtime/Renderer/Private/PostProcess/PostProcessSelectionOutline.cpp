@@ -191,7 +191,7 @@ FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph&
 		Inputs.SceneColor.ViewRect = SceneColorViewRect;
 		Inputs.SceneDepth.Texture = SceneDepthTexture;
 		Inputs.SceneDepth.ViewRect = InContext.View.ViewRect;
-		Inputs.SceneTextures.MobileSceneTextures = CreateMobileSceneTextureUniformBuffer(GraphBuilder, InContext.View, EMobileSceneTextureSetupMode::All);
+		Inputs.SceneTextures.MobileSceneTextures = CreateMobileSceneTextureUniformBuffer(GraphBuilder);
 
 		if (FRDGTextureRef OutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("BackBuffer")))
 		{

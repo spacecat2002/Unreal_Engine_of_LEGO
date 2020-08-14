@@ -378,7 +378,7 @@ void FSkeletalMeshRenderData::SyncUVChannelData(const TArray<FSkeletalMaterial>&
 FSkeletalMeshRenderData::FSkeletalMeshRenderData()
 	: bReadyForStreaming(false)
 	, NumInlinedLODs(0)
-	, NumOptionalLODs(0)
+	, NumNonOptionalLODs(0)
 	, CurrentFirstLODIdx(0)
 	, PendingFirstLODIdx(0)
 	, bInitialized(false)
@@ -397,6 +397,57 @@ FSkeletalMeshRenderData::~FSkeletalMeshRenderData()
 	LODRenderData.Empty();
 }
 
+int32 FSkeletalMeshRenderData::GetNumNonStreamingLODs() const
+{
+	int LODCount = 0;
+	for (int32 Idx = LODRenderData.Num() - 1; Idx >= 0; --Idx)
+	{
+		if (LODRenderData[Idx].bStreamedDataInlined)
+		{
+			++LODCount;
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	if (LODCount == 0 && LODRenderData.Num())
+	{
+		return 1;
+	}
+	else
+	{
+		return LODCount;
+	}
+}
+
+int32 FSkeletalMeshRenderData::GetNumNonOptionalLODs() const
+{
+	int LODCount = 0;
+	for (int32 Idx = LODRenderData.Num() - 1; Idx >= 0; --Idx)
+	{
+		// Make sure GetNumNonOptionalLODs() is bigger than GetNumNonStreamingLODs().
+		if (LODRenderData[Idx].bStreamedDataInlined || !LODRenderData[Idx].bIsLODOptional)
+		{
+			++LODCount;
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	if (LODCount == 0 && LODRenderData.Num())
+	{
+		return 1;
+	}
+	else
+	{
+		return LODCount;
+	}
+}
+
 void FSkeletalMeshRenderData::Serialize(FArchive& Ar, USkeletalMesh* Owner)
 {
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FSkeletalMeshRenderData::Serialize"), STAT_SkeletalMeshRenderData_Serialize, STATGROUP_LoadTime);
@@ -406,26 +457,22 @@ void FSkeletalMeshRenderData::Serialize(FArchive& Ar, USkeletalMesh* Owner)
 #if WITH_EDITOR
 	if (Ar.IsSaving())
 	{
-		NumInlinedLODs = 0;
-		NumOptionalLODs = 0;
-		for (int32 Idx = LODRenderData.Num() - 1; Idx >= 0; --Idx)
-		{
-			if (LODRenderData[Idx].bStreamedDataInlined)
-			{
-				++NumInlinedLODs;
-			}
-			if (LODRenderData[Idx].bIsLODOptional)
-			{
-				++NumOptionalLODs;
-			}
-		}
+		NumInlinedLODs = GetNumNonStreamingLODs();
+		NumNonOptionalLODs = GetNumNonOptionalLODs();
 	}
 #endif
-	Ar << NumInlinedLODs << NumOptionalLODs;
+	Ar << NumInlinedLODs << NumNonOptionalLODs;
+#if WITH_EDITOR
+	//Recompute on load because previously we were storing NumOptionalLODs, which is less convenient because it includes first LODs (and can be stripped by MinMip).
+	if (Ar.IsLoading())
+	{
+		NumInlinedLODs = GetNumNonStreamingLODs();
+		NumNonOptionalLODs = GetNumNonOptionalLODs();
+	}
+#endif
 	
 	CurrentFirstLODIdx = LODRenderData.Num() - NumInlinedLODs;
 	PendingFirstLODIdx = CurrentFirstLODIdx;
-	Owner->SetCachedNumResidentLODs(NumInlinedLODs);
 }
 
 void FSkeletalMeshRenderData::InitResources(bool bNeedsVertexColors, TArray<UMorphTarget*>& InMorphTargets, USkeletalMesh* Owner)
@@ -447,7 +494,6 @@ void FSkeletalMeshRenderData::InitResources(bool bNeedsVertexColors, TArray<UMor
 			[this, Owner](FRHICommandListImmediate&)
 		{
 			bReadyForStreaming = true;
-			Owner->SetCachedReadyForStreaming(true);
 		});
 
 		bInitialized = true;

@@ -27,6 +27,7 @@ class FVulkanResourceMultiBuffer;
 class FVulkanLayout;
 class FVulkanOcclusionQuery;
 class FVulkanShaderResourceView;
+class FVulkanCommandBufferManager;
 
 namespace VulkanRHI
 {
@@ -702,7 +703,7 @@ public:
 class FVulkanQueryPool : public VulkanRHI::FDeviceChild 
 {
 public:
-	FVulkanQueryPool(FVulkanDevice* InDevice, uint32 InMaxQueries, VkQueryType InQueryType);
+	FVulkanQueryPool(FVulkanDevice* InDevice, FVulkanCommandBufferManager* CommandBufferManager, uint32 InMaxQueries, VkQueryType InQueryType);
 	virtual ~FVulkanQueryPool();
 
 	inline uint32 GetMaxQueries() const
@@ -731,8 +732,8 @@ protected:
 class FVulkanOcclusionQueryPool : public FVulkanQueryPool
 {
 public:
-	FVulkanOcclusionQueryPool(FVulkanDevice* InDevice, uint32 InMaxQueries)
-		: FVulkanQueryPool(InDevice, InMaxQueries, VK_QUERY_TYPE_OCCLUSION)
+	FVulkanOcclusionQueryPool(FVulkanDevice* InDevice, FVulkanCommandBufferManager* CommandBufferManager, uint32 InMaxQueries)
+		: FVulkanQueryPool(InDevice, CommandBufferManager, InMaxQueries, VK_QUERY_TYPE_OCCLUSION)
 	{
 		AcquiredIndices.AddZeroed(Align(InMaxQueries, 64) / 64);
 		AllocatedQueries.AddZeroed(InMaxQueries);
@@ -821,8 +822,8 @@ protected:
 class FVulkanTimingQueryPool : public FVulkanQueryPool
 {
 public:
-	FVulkanTimingQueryPool(FVulkanDevice* InDevice, uint32 InBufferSize)
-		: FVulkanQueryPool(InDevice, InBufferSize * 2, VK_QUERY_TYPE_TIMESTAMP)
+	FVulkanTimingQueryPool(FVulkanDevice* InDevice, FVulkanCommandBufferManager* CommandBufferManager, uint32 InBufferSize)
+		: FVulkanQueryPool(InDevice, CommandBufferManager, InBufferSize * 2, VK_QUERY_TYPE_TIMESTAMP)
 		, BufferSize(InBufferSize)
 	{
 		TimestampListHandles.AddZeroed(InBufferSize * 2);
@@ -883,10 +884,10 @@ public:
 class FVulkanTimingQuery : public FVulkanRenderQuery
 {
 public:
-	FVulkanTimingQuery(FVulkanDevice* InDevice);
+	FVulkanTimingQuery();
 	virtual ~FVulkanTimingQuery();
 
-	FVulkanTimingQueryPool Pool;
+	FVulkanTimingQueryPool* Pool = nullptr;
 };
 
 struct FVulkanBufferView : public FRHIResource, public VulkanRHI::FDeviceChild

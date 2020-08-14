@@ -546,7 +546,9 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	const bool bShouldRenderSkyAtmosphere = ShouldRenderSkyAtmosphere(Scene, ViewFamily.EngineShowFlags);
 	if (bShouldRenderSkyAtmosphere)
 	{
-		RenderSkyAtmosphereLookUpTables(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderSkyAtmosphereLookUpTables(GraphBuilder);
+		GraphBuilder.Execute();
 	}
 
 	if (bUseVirtualTexturing)
@@ -588,7 +590,9 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// bShouldRenderCustomDepth has been initialized in InitViews on mobile platform
 	if (bShouldRenderCustomDepth)
 	{
-		RenderCustomDepthPass(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderCustomDepthPass(GraphBuilder);
+		GraphBuilder.Execute();
 	}
 	
 	FRHITexture* SceneColor = nullptr;
@@ -1175,26 +1179,14 @@ void FMobileSceneRenderer::RenderMobileDebugView(FRHICommandListImmediate& RHICm
 			continue;
 		}
 
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		FDebugViewModePassPassUniformParameters PassParameters;
-		SetupDebugViewModePassUniformBuffer(SceneContext, View, PassParameters);
-		Scene->UniformBuffers.DebugViewModePassUniformBuffer.UpdateUniformBufferImmediate(PassParameters);
-		
+		TUniformBufferRef<FDebugViewModePassUniformParameters> DebugViewModePassUniformBuffer = CreateDebugViewModePassUniformBuffer(RHICmdList, View);
+		FUniformBufferStaticBindings GlobalUniformBuffers(DebugViewModePassUniformBuffer);
+		SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
+
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
 		View.ParallelMeshDrawCommandPasses[EMeshPass::DebugViewMode].DispatchDraw(nullptr, RHICmdList);
 	}
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void FMobileSceneRenderer::RenderOcclusion(FRHICommandListImmediate& RHICmdList)
-{
-	if (!DoOcclusionQueries(FeatureLevel))
-	{
-		return;
-	}
-
-	BeginOcclusionTests(RHICmdList, true);
-	FenceOcclusionTests(RHICmdList);
 }
 
 int32 FMobileSceneRenderer::ComputeNumOcclusionQueriesToBatch() const
@@ -1371,6 +1363,7 @@ void FMobileSceneRenderer::UpdateSkyReflectionUniformBuffer()
 	FSkyLightSceneProxy* SkyLight = nullptr;
 	if (Scene->ReflectionSceneData.RegisteredReflectionCapturePositions.Num() == 0
 		&& Scene->SkyLight
+		&& Scene->SkyLight->ProcessedTexture
 		&& Scene->SkyLight->ProcessedTexture->TextureRHI
 		// Don't use skylight reflection if it is a static sky light for keeping coherence with PC.
 		&& !Scene->SkyLight->bHasStaticLighting)

@@ -541,7 +541,7 @@ struct FRDGTextureSubresourceLayout
 	FRDGTextureSubresourceLayout() = default;
 
 	FRDGTextureSubresourceLayout(const FRDGTextureDesc& Desc)
-		: FRDGTextureSubresourceLayout(Desc.NumMips, Desc.ArraySize, IsStencilFormat(Desc.Format) ? 2 : 1)
+		: FRDGTextureSubresourceLayout(Desc.NumMips, Desc.ArraySize * (Desc.IsTextureCube() ? 6 : 1), IsStencilFormat(Desc.Format) ? 2 : 1)
 	{}
 
 	FRDGTextureSubresourceLayout(uint32 InNumMips, uint32 InNumArraySlices, uint32 InNumPlaneSlices)
@@ -604,6 +604,14 @@ struct FRDGTextureSubresourceRange : FRDGTextureSubresourceLayout
 
 	template <typename TFunction>
 	inline void EnumerateSubresources(TFunction Function) const;
+
+	bool IsWholeResource(const FRDGTextureSubresourceLayout& Other) const
+	{
+		return MipIndex == 0
+			&& ArraySlice == 0
+			&& PlaneSlice == 0
+			&& FRDGTextureSubresourceLayout::operator==(Other);
+	}
 
 	uint32 MipIndex = 0;
 	uint32 ArraySlice = 0;

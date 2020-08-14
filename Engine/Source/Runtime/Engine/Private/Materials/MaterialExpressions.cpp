@@ -17778,7 +17778,6 @@ UMaterialExpressionVolumetricAdvancedMaterialOutput::UMaterialExpressionVolumetr
 	ConstPhaseG2 = 0.0f;
 	ConstPhaseBlend = 0.0f;
 	PerSamplePhaseEvaluation = false;
-	bGrayScaleMaterial = false;
 
 	MultiScatteringApproximationOctaveCount = 0;
 	ConstMultiScatteringContribution = 0.5f;
@@ -17786,6 +17785,8 @@ UMaterialExpressionVolumetricAdvancedMaterialOutput::UMaterialExpressionVolumetr
 	ConstMultiScatteringEccentricity = 0.5f;
 
 	bGroundContribution = false;
+	bGrayScaleMaterial = false;
+	bRayMarchVolumeShadow = true;
 
 #if WITH_EDITORONLY_DATA
 	MenuCategories.Add(ConstructorStatics.NAME_VolumetricAdvancedOutput);
@@ -17829,7 +17830,7 @@ int32 UMaterialExpressionVolumetricAdvancedMaterialOutput::Compile(class FMateri
 	}
 	else if (OutputIndex == 6)
 	{
-		CodeInput = ConservativeDensity.IsConnected() ? ConservativeDensity.Compile(Compiler) : Compiler->Constant(1.0f);
+		CodeInput = ConservativeDensity.IsConnected() ? ConservativeDensity.Compile(Compiler) : Compiler->Constant3(1.0f, 1.0f, 1.0f);
 	}
 
 	return Compiler->CustomOutput(this, OutputIndex, CodeInput);

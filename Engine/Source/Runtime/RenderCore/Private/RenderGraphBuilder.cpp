@@ -7,10 +7,13 @@
 #include "VisualizeTexture.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 
-inline bool IsSubresourceTrackingRequired(ERHIAccess Access, EResourceTransitionFlags Flags)
+inline ERHIAccess MakeValidAccess(ERHIAccess Access)
 {
-	// Aggressively merge into a whole union state if possible. Otherwise, revert to subresource tracking.
-	return !IsValidAccess(Access) || Flags != EResourceTransitionFlags::None;
+	// If we find any write states in the access mask, remove all read-only states. This mainly exists
+	// to allow RDG uniform buffers to contain read-only parameters which are also bound for write on the
+	// pass. Often times these uniform buffers are created and only relevant things are accessed. If an
+	// invalid access does occur, the RHI validation layer will catch it.
+	return IsWritableAccess(Access) ? (Access & ~ERHIAccess::ReadOnlyExclusiveMask) : Access;
 }
 
 inline void GetPassAccess(ERDGPassFlags PassFlags, ERHIAccess& SRVAccess, ERHIAccess& UAVAccess)
@@ -20,11 +23,17 @@ inline void GetPassAccess(ERDGPassFlags PassFlags, ERHIAccess& SRVAccess, ERHIAc
 
 	if (EnumHasAnyFlags(PassFlags, ERDGPassFlags::Raster))
 	{
-		SRVAccess |= ERHIAccess::SRVGraphics;
+		SRVAccess |= ERHIAccess::SRVCompute | ERHIAccess::SRVGraphics;
 		UAVAccess |= ERHIAccess::UAVGraphics;
 	}
 
-	if (EnumHasAnyFlags(PassFlags, ERDGPassFlags::Compute | ERDGPassFlags::AsyncCompute))
+	if (EnumHasAnyFlags(PassFlags, ERDGPassFlags::Compute))
+	{
+		SRVAccess |= ERHIAccess::SRVCompute | ERHIAccess::SRVGraphics;
+		UAVAccess |= ERHIAccess::UAVCompute;
+	}
+
+	if (EnumHasAnyFlags(PassFlags, ERDGPassFlags::AsyncCompute))
 	{
 		SRVAccess |= ERHIAccess::SRVCompute;
 		UAVAccess |= ERHIAccess::UAVCompute;
@@ -443,7 +452,7 @@ FRDGTextureRef FRDGBuilder::RegisterExternalTexture(
 	Texture->bExternal = true;
 	Texture->AccessInitial = AccessInitial;
 	Texture->AccessFinal = kDefaultAccessFinal;
-	Texture->FirstPass = Texture->AcquirePass = GetProloguePassHandle();
+	Texture->AcquirePass = GetProloguePassHandle();
 
 	FRDGTextureState& TextureState = Texture->GetState();
 
@@ -506,7 +515,7 @@ FRDGBufferRef FRDGBuilder::RegisterExternalBuffer(
 	Buffer->bExternal = true;
 	Buffer->AccessInitial = AccessInitial;
 	Buffer->AccessFinal = kDefaultAccessFinal;
-	Buffer->FirstPass = Buffer->AcquirePass = GetProloguePassHandle();
+	Buffer->AcquirePass = GetProloguePassHandle();
 
 	FRDGSubresourceState& BufferState = Buffer->GetState();
 	checkf(BufferState.Access == ERHIAccess::Unknown,
@@ -1068,7 +1077,7 @@ void FRDGBuilder::Execute()
 				auto* NextOwner = Registry[Resource->NextOwner];
 				LogFile.AddAliasEdge(Resource, Resource->LastPass, NextOwner, NextOwner->AcquirePass);
 			}
-			LogFile.AddFirstEdge(Resource, Resource->AcquirePass);
+			LogFile.AddFirstEdge(Resource, Resource->FirstPass);
 		}
 	};
 #endif
@@ -1182,32 +1191,25 @@ void FRDGBuilder::SetupPass(FRDGPass* Pass)
 	const ERHIPipeline PassPipeline = Pass->GetPipeline();
 
 	bool bPassUAVAccess = false;
+	bool bPassSubresourceTrackingRequired = false;
 
 	// Reserve and generate the texture access map; track one reference for each subresource.
 	Pass->TextureAccessMap.Reserve(PassParameters.GetTextureParameterCount() + (PassParameters.HasRenderTargets() ? (MaxSimultaneousRenderTargets + 1) : 0));
 	EnumerateTextureAccess(PassParameters, PassFlags, [&](FRDGViewRef TextureView, FRDGTextureRef Texture, ERHIAccess Access, FRDGTextureSubresourceRange Range)
 	{
+		const bool bIsPartialResourceRange = !Range.IsWholeResource(Texture->GetSubresourceLayout());
+
 		check(Access != ERHIAccess::Unknown);
 		auto& AccessInfo = Pass->TextureAccessMap.FindOrAdd(Texture);
 		AccessInfo.AccessUnion |= Access;
 		AccessInfo.ReferenceCount += Range.GetSubresourceCount();
 		AccessInfo.NoUAVBarrierFilter.AddHandle(GetHandleIfNoUAVBarrier(TextureView));
 		AccessInfo.FlagsUnion |= GetTextureViewTransitionFlags(TextureView);
+		AccessInfo.bSubresourceTrackingRequired |= bIsPartialResourceRange;
+
 		bPassUAVAccess |= EnumHasAnyFlags(Access, ERHIAccess::UAVMask);
+		bPassSubresourceTrackingRequired |= bIsPartialResourceRange;
 	});
-
-	// Build the pass and texture subresource tracking policy.
-	bool bPassSubresourceTrackingRequired = false;
-	for (auto& TextureAccessPair : Pass->TextureAccessMap)
-	{
-		FRDGTextureRef Texture = TextureAccessPair.Key;
-		auto& AccessInfo = TextureAccessPair.Value;
-
-		const bool bSubresourceTrackingRequired = IsSubresourceTrackingRequired(AccessInfo.AccessUnion, AccessInfo.FlagsUnion);
-		AccessInfo.bSubresourceTrackingRequired |= bSubresourceTrackingRequired;
-		bPassSubresourceTrackingRequired |= bSubresourceTrackingRequired;
-	}
-	Pass->bSubresourceTrackingRequired = bPassSubresourceTrackingRequired;
 
 	// Reserve and generate the buffer access map.
 	Pass->BufferAccessMap.Reserve(PassParameters.GetBufferParameterCount());
@@ -1222,6 +1224,7 @@ void FRDGBuilder::SetupPass(FRDGPass* Pass)
 	});
 
 	Pass->bUAVAccess = bPassUAVAccess;
+	Pass->bSubresourceTrackingRequired = bPassSubresourceTrackingRequired;
 
 	const bool bEmptyParameters = !Pass->TextureAccessMap.Num() && !Pass->BufferAccessMap.Num();
 	PassesWithEmptyParameters.Add(bEmptyParameters);
@@ -1476,7 +1479,7 @@ void FRDGBuilder::CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle&
 			Texture->StatePending.InitAsWholeResource(FRDGSubresourceState(
 				PassHandle,
 				PassPipeline,
-				AccessInfo.AccessUnion,
+				MakeValidAccess(AccessInfo.AccessUnion),
 				AccessInfo.FlagsUnion,
 				AccessInfo.NoUAVBarrierFilter.GetUniqueHandle()));
 
@@ -1507,7 +1510,7 @@ void FRDGBuilder::CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle&
 				StatePending.InitAsWholeResource(FRDGSubresourceState(
 					PassHandle,
 					PassPipeline,
-					AccessInfo.AccessUnion,
+					MakeValidAccess(AccessInfo.AccessUnion),
 					AccessInfo.FlagsUnion,
 					AccessInfo.NoUAVBarrierFilter.GetUniqueHandle()));
 			}
@@ -1521,7 +1524,7 @@ void FRDGBuilder::CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle&
 					FRDGSubresourceState& State = StatePending.GetSubresourceState(MipIndex, ArraySlice, PlaneSlice);
 					State.PassHandle = PassHandle;
 					State.Pipeline = PassPipeline;
-					State.Access |= Access;
+					State.Access = MakeValidAccess(State.Access | Access);
 					State.Flags |= TransitionFlags;
 					State.NoUAVBarrierFilter.AddHandle(NoUAVBarrierHandle);
 				});
@@ -1543,7 +1546,7 @@ void FRDGBuilder::CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle&
 		AddTransition(PassHandle, Buffer, FRDGSubresourceState(
 			PassHandle,
 			PassPipeline,
-			AccessInfo.AccessUnion,
+			MakeValidAccess(AccessInfo.AccessUnion),
 			AccessInfo.FlagsUnion,
 			AccessInfo.NoUAVBarrierFilter.GetUniqueHandle()),
 			LastUntrackedPassHandle);
@@ -1848,6 +1851,11 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Tex
 {
 	check(Texture);
 
+	if (!Texture->FirstPass.IsValid())
+	{
+		Texture->FirstPass = PassHandle;
+	}
+
 	if (Texture->PooledTexture)
 	{
 		return;
@@ -1870,7 +1878,6 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Tex
 
 	FRDGTextureRef PreviousOwner = nullptr;
 	Texture->SetRHI(PooledRenderTarget, PreviousOwner);
-	Texture->FirstPass = PassHandle;
 	Texture->bTransient = PooledRenderTarget->IsTransient();
 
 	check(!IsResourceLifetimeExtended() || !PreviousOwner);
@@ -1909,6 +1916,11 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGTextureSRVRef 
 	FRDGTextureRef Texture = SRV->Desc.Texture;
 	FRDGPooledTexture* PooledTexture = Texture->PooledTexture;
 	check(PooledTexture);
+
+	if (!Texture->FirstPass.IsValid())
+	{
+		Texture->FirstPass = PassHandle;
+	}
 
 	if (SRV->Desc.MetaData == ERDGTextureMetaDataAccess::HTile)
 	{
@@ -1993,6 +2005,11 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGBufferRef Buff
 {
 	check(Buffer);
 
+	if (!Buffer->FirstPass.IsValid())
+	{
+		Buffer->FirstPass = PassHandle;
+	}
+
 	if (Buffer->PooledBuffer)
 	{
 		return;
@@ -2026,6 +2043,11 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGBufferSRVRef S
 	FRDGBufferRef Buffer = SRV->Desc.Buffer;
 
 	check(Buffer->PooledBuffer);
+
+	if (!Buffer->FirstPass.IsValid())
+	{
+		Buffer->FirstPass = PassHandle;
+	}
 
 	if (Buffer->PooledBuffer->SRVs.Contains(SRV->Desc))
 	{

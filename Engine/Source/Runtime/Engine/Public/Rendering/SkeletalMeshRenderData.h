@@ -25,7 +25,7 @@ public:
 	uint8 NumInlinedLODs;
 
 	/** Const after serialization. */
-	uint8 NumOptionalLODs;
+	uint8 NumNonOptionalLODs;
 
 	/** [RenderThread] Index of the most detailed valid LOD. */
 	uint8 CurrentFirstLODIdx;
@@ -91,6 +91,12 @@ public:
 	}
 
 private:
+
+	/** Count the number of LODs that are inlined and not streamable. Starting from the last LOD and stopping at the first non inlined LOD. */
+	int32 GetNumNonStreamingLODs() const;
+	/** Count the number of LODs that not optional and guarantied to be installed. Starting from the last LOD and stopping at the first optional LOD. */
+	int32 GetNumNonOptionalLODs() const;
+
 	/** True if the resource has been initialized. */
 	bool bInitialized = false;
 };

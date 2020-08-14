@@ -270,36 +270,6 @@ class FWaterRefractionCopyPS : public FGlobalShader
 
 IMPLEMENT_GLOBAL_SHADER(FWaterRefractionCopyPS, "/Engine/Private/SingleLayerWaterComposite.usf", "WaterRefractionCopyPS", SF_Pixel);
 
-class FSingleLayerWaterPassParallelCommandListSet : public FParallelCommandListSet
-{
-public:
-	FSingleLayerWaterPassParallelCommandListSet(
-		FRHICommandListImmediate& InParentCmdList,
-		const FSceneRenderer& InSceneRenderer,
-		const FViewInfo& InView,
-		const FParallelCommandListBindings& InBindings)
-		: FParallelCommandListSet(GET_STATID(STAT_CLP_WaterSingleLayerPass), InView, InParentCmdList, false)
-		, SceneRenderer(InSceneRenderer)
-		, Bindings(InBindings)
-	{}
-
-	virtual ~FSingleLayerWaterPassParallelCommandListSet()
-	{
-		Dispatch();
-	}
-
-	virtual void SetStateOnCommandList(FRHICommandList& RHICmdList) override
-	{
-		FParallelCommandListSet::SetStateOnCommandList(RHICmdList);
-		Bindings.SetOnCommandList(RHICmdList);
-		SceneRenderer.SetStereoViewport(RHICmdList, View);
-	}
-
-private:
-	const FSceneRenderer& SceneRenderer;
-	FParallelCommandListBindings Bindings;
-};
-
 static FSceneWithoutWaterTextures AddCopySceneWithoutWaterPass(
 	FRDGBuilder& GraphBuilder,
 	TArrayView<const FViewInfo> Views,
@@ -330,6 +300,7 @@ static FSceneWithoutWaterTextures AddCopySceneWithoutWaterPass(
 	FRDGTextureRef SceneDepthWithoutSingleLayerWaterTexture = GraphBuilder.CreateTexture(DepthDesc, TEXT("SceneDepthWithoutSingleLayerWater"));
 
 	FSceneWithoutWaterTextures Textures;
+	Textures.RefractionDownsampleFactor = float(RefractionDownsampleFactor);
 	Textures.Views.SetNum(Views.Num());
 
 	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::ENoAction;
@@ -684,7 +655,8 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWater(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureMSAA SceneColorTexture,
 	FRDGTextureMSAA SceneDepthTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthOnlySceneTextures)
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthOnlySceneTextures,
+	bool bShouldRenderVolumetricCloud)
 {
 	RDG_EVENT_SCOPE(GraphBuilder, "SingleLayerWater");
 	RDG_GPU_STAT_SCOPE(GraphBuilder, SingleLayerWater);
@@ -696,6 +668,11 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWater(
 	if (SceneWithoutWaterTextures.ColorTexture && ShouldRenderFog(ViewFamily))
 	{
 		RenderUnderWaterFog(GraphBuilder, SceneWithoutWaterTextures, DepthOnlySceneTextures);
+	}
+	if (SceneWithoutWaterTextures.ColorTexture && bShouldRenderVolumetricCloud)
+	{
+		// This path is only taken when rendering the clouds in a render target that can be composited
+		ComposeVolumetricRenderTargetOverSceneUnderWater(GraphBuilder, SceneWithoutWaterTextures);
 	}
 
 	RenderSingleLayerWaterInner(GraphBuilder, SceneColorTexture, SceneDepthTexture, SceneWithoutWaterTextures);
@@ -735,8 +712,6 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 
 	FRDGTextureRef WhiteForwardScreenSpaceShadowMask = GraphBuilder.RegisterExternalTexture(GSystemTextures.WhiteDummy);
 
-	AddBeginUAVOverlapPass(GraphBuilder);
-
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 	{
 		const FViewInfo& View = Views[ViewIndex];
@@ -762,7 +737,7 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 				[this, &View, PassParameters](FRHICommandListImmediate& RHICmdList)
 			{
 				Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-				FSingleLayerWaterPassParallelCommandListSet ParallelCommandListSet(RHICmdList, *this, View, FParallelCommandListBindings(PassParameters));
+				FRDGParallelCommandListSet ParallelCommandListSet(RHICmdList, GET_STATID(STAT_CLP_WaterSingleLayerPass), *this, View, FParallelCommandListBindings(PassParameters));
 				View.ParallelMeshDrawCommandPasses[EMeshPass::SingleLayerWaterPass].DispatchDraw(&ParallelCommandListSet, RHICmdList);
 			});
 		}
@@ -775,13 +750,11 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 				[this, &View](FRHICommandListImmediate& RHICmdList)
 			{
 				Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-				SetupBasePassView(RHICmdList, View, this);
+				SetStereoViewport(RHICmdList, View, 1.0f);
 				View.ParallelMeshDrawCommandPasses[EMeshPass::SingleLayerWaterPass].DispatchDraw(nullptr, RHICmdList);
 			});
 		}
 	}
-
-	AddEndUAVOverlapPass(GraphBuilder);
 
 	AddResolveSceneDepthPass(GraphBuilder, Views, SceneDepthTexture);
 }

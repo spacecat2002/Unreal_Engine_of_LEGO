@@ -2995,7 +2995,7 @@ void FD3D12RayTracingScene::BuildAccelerationStructure(FD3D12CommandContext& Com
 
 			FD3D12DynamicRHI::TransitionResource(CommandContext.CommandListHandle, InstanceBuffer.GetReference()->GetResource(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 0);
 
-			RHICmdList.BeginUAVOverlap();
+			RHICmdList.BeginUAVOverlap(InstancesDescUAV);
 
 			uint32 DescOffset = 0;
 			for (uint32 InstanceIndex = 0; InstanceIndex < NumSceneInstances; ++InstanceIndex)
@@ -3015,7 +3015,7 @@ void FD3D12RayTracingScene::BuildAccelerationStructure(FD3D12CommandContext& Com
 				DescOffset += NumTransforms;
 			}
 
-			RHICmdList.EndUAVOverlap();	
+			RHICmdList.EndUAVOverlap(InstancesDescUAV);
 		}
 
 		FD3D12DynamicRHI::TransitionResource(CommandContext.CommandListHandle, InstanceBuffer.GetReference()->GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 0);

@@ -11,6 +11,30 @@
 
 class FGlobalShaderMap;
 
+/** Fetches the RHI texture from an RDG texture or null if the RDG texture is null. */
+inline FRHITexture* TryGetRHI(FRDGTextureRef Texture)
+{
+	return Texture ? Texture->GetRHI() : nullptr;
+}
+
+inline IPooledRenderTarget* TryGetPooledRenderTarget(FRDGTextureRef Texture)
+{
+	return Texture ? Texture->GetPooledRenderTarget() : nullptr;
+}
+
+inline FRenderTargetBindingSlots GetRenderTargetBindings(ERenderTargetLoadAction ColorLoadAction, TArrayView<FRDGTextureRef> ColorTextures)
+{
+	check(ColorTextures.Num() <= MaxSimultaneousRenderTargets);
+
+	FRenderTargetBindingSlots BindingSlots;
+	for (int32 Index = 0, Count = ColorTextures.Num(); Index < Count; ++Index)
+	{
+		check(ColorTextures[Index]);
+		BindingSlots[Index] = FRenderTargetBinding(ColorTextures[Index], ColorLoadAction);
+	}
+	return BindingSlots;
+}
+
 /**
  * Clears all render graph tracked resources that are not bound by a shader.
  * Excludes any resources on the ExcludeList from being cleared regardless of whether the 
@@ -419,6 +443,9 @@ RENDERCORE_API void AddClearDepthStencilPass(
 	bool bClearStencil,
 	uint8 Stencil);
 
+/** Adds a render graph pass to clear the stencil portion of a depth / stencil target to its fast clear value. */
+RENDERCORE_API void AddClearStencilPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture);
+
 /** Adds a pass to readback contents of an RDG texture. */
 RENDERCORE_API void AddEnqueueCopyPass(FRDGBuilder& GraphBuilder, FRHIGPUTextureReadback* Readback, FRDGTextureRef SourceTexture, FResolveRect Rect = FResolveRect());
 
@@ -521,21 +548,65 @@ FORCEINLINE void AddSetCurrentStatPass(FRDGBuilder& GraphBuilder, TStatId StatId
 	});
 }
 
-// TODO(RDG): RDG will ultimately be handling these automatically. They will soon become no-ops.
-
+UE_DEPRECATED(4.26, "This version of AddBeginUAVOverlapPass() is deprecated. Use the overload which takes a UAV or array of UAVs to explicitly mark as safe for overlapped access.")
 FORCEINLINE void AddBeginUAVOverlapPass(FRDGBuilder& GraphBuilder)
 {
 	AddPass(GraphBuilder, [](FRHICommandListImmediate& RHICmdList)
 	{
+		PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		RHICmdList.BeginUAVOverlap();
+		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	});
 }
 
+UE_DEPRECATED(4.26, "This version of AddEndUAVOverlapPass() is deprecated. Use the overload which takes a UAV or array of UAVs to explicitly mark as safe for overlapped access.")
 FORCEINLINE void AddEndUAVOverlapPass(FRDGBuilder& GraphBuilder)
 {
 	AddPass(GraphBuilder, [](FRHICommandListImmediate& RHICmdList)
 	{
+		PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		RHICmdList.EndUAVOverlap();
+		PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	});
+}
+
+FORCEINLINE void AddBeginUAVOverlapPass(FRDGBuilder& GraphBuilder, FRHIUnorderedAccessView* UAV)
+{
+	AddPass(GraphBuilder, [UAV](FRHICommandListImmediate& RHICmdList)
+	{
+		RHICmdList.BeginUAVOverlap(UAV);
+	});
+}
+
+FORCEINLINE void AddEndUAVOverlapPass(FRDGBuilder& GraphBuilder, FRHIUnorderedAccessView* UAV)
+{
+	AddPass(GraphBuilder, [UAV](FRHICommandListImmediate& RHICmdList)
+	{
+		RHICmdList.EndUAVOverlap(UAV);
+	});
+}
+
+FORCEINLINE void AddBeginUAVOverlapPass(FRDGBuilder& GraphBuilder, TArrayView<FRHIUnorderedAccessView*> UAVs)
+{
+	uint32 AllocSize = UAVs.Num() * sizeof(FRHIUnorderedAccessView*);
+	FRHIUnorderedAccessView** LocalUAVs = (FRHIUnorderedAccessView**)GraphBuilder.Alloc(AllocSize, alignof(FRHIUnorderedAccessView*));
+	FMemory::Memcpy(LocalUAVs, UAVs.GetData(), AllocSize);
+	TArrayView<FRHIUnorderedAccessView*> LocalView(LocalUAVs, UAVs.Num());
+	AddPass(GraphBuilder, [LocalView](FRHICommandListImmediate& RHICmdList)
+	{
+		RHICmdList.BeginUAVOverlap(LocalView);
+	});
+}
+
+FORCEINLINE void AddEndUAVOverlapPass(FRDGBuilder& GraphBuilder, TArrayView<FRHIUnorderedAccessView*> UAVs)
+{
+	uint32 AllocSize = UAVs.Num() * sizeof(FRHIUnorderedAccessView*);
+	FRHIUnorderedAccessView** LocalUAVs = (FRHIUnorderedAccessView**)GraphBuilder.Alloc(AllocSize, alignof(FRHIUnorderedAccessView*));
+	FMemory::Memcpy(LocalUAVs, UAVs.GetData(), AllocSize);
+	TArrayView<FRHIUnorderedAccessView*> LocalView(LocalUAVs, UAVs.Num());
+	AddPass(GraphBuilder, [LocalView](FRHICommandListImmediate& RHICmdList)
+	{
+		RHICmdList.EndUAVOverlap(LocalView);
 	});
 }
 

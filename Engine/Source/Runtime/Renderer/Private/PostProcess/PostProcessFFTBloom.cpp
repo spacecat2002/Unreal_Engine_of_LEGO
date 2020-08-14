@@ -673,8 +673,7 @@ FSceneRenderTargetItem* InitDomainAndGetKernel(FRHICommandList& RHICmdList, cons
 		const bool bSameKernelSize = FMath::IsNearlyEqual(CachedKernelScale, BloomConvolutionSize, float(1.e-6) /*tol*/);
 		const bool bSameImageSize = (ImageSize == CachedImageSize);
 		const bool bSameKernelCenterUV = CachedKernelCenterUV.Equals(CenterUV, float(1.e-6) /*tol*/);
-		const bool bSameMipLevel = bSameTexture && (
-			FFTKernel.PhysicalMipLevel == static_cast<FTexture2DResource*>(BloomConvolutionTexture->Resource)->GetCurrentFirstMip());
+		const bool bSameMipLevel = bSameTexture && FFTKernel.PhysicalMipLevel == BloomConvolutionTexture->Resource->GetCurrentMipCount();
 
 		if (bSameTexture && bSameSpectralBuffer && bSameKernelSize && bSameImageSize && bSameKernelCenterUV && bSameMipLevel)
 		{
@@ -732,7 +731,7 @@ FSceneRenderTargetItem* InitDomainAndGetKernel(FRHICommandList& RHICmdList, cons
 		ViewState->BloomFFTKernel.ImageSize = ImageSize;
 		ViewState->BloomFFTKernel.Physical = BloomConvolutionTexture;
 		ViewState->BloomFFTKernel.CenterUV = CenterUV;
-		ViewState->BloomFFTKernel.PhysicalMipLevel = static_cast<FTexture2DResource*>(BloomConvolutionTexture->Resource)->GetCurrentFirstMip();
+		ViewState->BloomFFTKernel.PhysicalMipLevel = BloomConvolutionTexture->Resource->GetCurrentMipCount();
 	}
 
 	// Return pointer to the transformed kernel.

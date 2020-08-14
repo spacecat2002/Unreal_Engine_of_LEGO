@@ -973,16 +973,12 @@ void FLandscapeRenderSystem::FetchHeightmapLODBiases()
 	for (int32 EntityIndex = 0; EntityIndex < SceneProxies.Num(); EntityIndex++)
 	{
 		FLandscapeComponentSceneProxy* SceneProxy = SceneProxies[EntityIndex];
-		if (SceneProxy)
+		if (SceneProxy && SceneProxy->HeightmapTexture)
 		{
-			if (SceneProxy->HeightmapTexture)
-			{
-				float SectionLODBias = ((FTexture2DResource*)SceneProxy->HeightmapTexture->Resource)->GetCurrentFirstMip();
-				SectionLODBiases[EntityIndex] = SectionLODBias;
+			SectionLODBiases[EntityIndex] = SceneProxy->HeightmapTexture->GetNumMips() - SceneProxy->HeightmapTexture->GetNumResidentMips();
 
-				// TODO: support mipmap LOD bias of XY offset map
-				//XYOffsetmapTexture ? ((FTexture2DResource*)XYOffsetmapTexture->Resource)->GetCurrentFirstMip() : 0.0f);
-			}
+			// TODO: support mipmap LOD bias of XY offset map
+			//XYOffsetmapTexture ? ((FTexture2DResource*)XYOffsetmapTexture->Resource)->GetCurrentFirstMip() : 0.0f);
 		}
 	}
 }
@@ -1310,7 +1306,7 @@ FLandscapeComponentSceneProxy::FLandscapeComponentSceneProxy(ULandscapeComponent
 	LastLOD = MaxLOD;	// we always need to go to MaxLOD regardless of LODBias as we could need the lowest LODs due to streaming.
 
 	// Make sure out LastLOD is > of MinStreamedLOD otherwise we would not be using the right LOD->MIP, the only drawback is a possible minor memory usage for overallocating static mesh element batch
-	const int32 MinStreamedLOD = (HeightmapTexture != nullptr && HeightmapTexture->Resource != nullptr) ? FMath::Min<int32>(((FTexture2DResource*)HeightmapTexture->Resource)->GetCurrentFirstMip(), FMath::CeilLogTwo(SubsectionSizeVerts) - 1) : 0;
+	const int32 MinStreamedLOD = HeightmapTexture ? FMath::Min<int32>(HeightmapTexture->GetNumMips() - HeightmapTexture->GetNumResidentMips(), FMath::CeilLogTwo(SubsectionSizeVerts) - 1) : 0;
 	LastLOD = FMath::Max(MinStreamedLOD, LastLOD);
 
 	// Clamp to MaxLODLevel
@@ -4248,10 +4244,10 @@ void ULandscapeComponent::GetStreamingRenderAssetInfo(FStreamingTextureLevelCont
 	}
 #endif
 
-	if (IsStreamingRenderAsset(LODStreamingProxy))
+	if (LODStreamingProxy && LODStreamingProxy->IsStreamable())
 	{
 		const float MeshTexelFactor = ForcedLOD >= 0 ?
-			-FMath::Max(LODStreamingProxy->GetNumMipsForStreaming() - ForcedLOD, 1) :
+			-FMath::Max<int32>(LODStreamingProxy->GetStreamableResourceState().MaxNumLODs - ForcedLOD, 1) :
 			(IsRegistered() ? Bounds.SphereRadius * 2.f : 0.f);
 		new (OutStreamingRenderAssets) FStreamingRenderAssetPrimitiveInfo(LODStreamingProxy, Bounds, MeshTexelFactor, PackedRelativeBox_Identity, true);
 	}

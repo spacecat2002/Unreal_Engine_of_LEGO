@@ -45,7 +45,7 @@ TRDGUniformBufferRef<FVoxelizeVolumePassUniformParameters> CreateVoxelizeVolumeP
 	FVector2D Jitter)
 {
 	auto* Parameters = GraphBuilder.AllocParameters<FVoxelizeVolumePassUniformParameters>();
-	SetupSceneTextureUniformParameters(GraphBuilder, View, ESceneTextureSetupMode::None, Parameters->SceneTextures);
+	SetupSceneTextureUniformParameters(GraphBuilder, View.FeatureLevel, ESceneTextureSetupMode::None, Parameters->SceneTextures);
 
 	Parameters->ViewToVolumeClip = View.ViewMatrices.ComputeProjectionNoAAMatrix();
 	Parameters->ViewToVolumeClip.M[2][0] += Jitter.X;
@@ -54,7 +54,7 @@ TRDGUniformBufferRef<FVoxelizeVolumePassUniformParameters> CreateVoxelizeVolumeP
 	Parameters->FrameJitterOffset0 = IntegrationData.FrameJitterOffsetValues[0];
 
 	SetupVolumetricFogGlobalData(View, Parameters->VolumetricFog);
-	return GraphBuilder.CreateUniformBuffer(Parameters, TEXT("VoxelizeVolumePass"));
+	return GraphBuilder.CreateUniformBuffer(Parameters);
 }
 
 class FQuadMeshVertexBuffer : public FRenderResource

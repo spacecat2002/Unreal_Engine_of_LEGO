@@ -4,7 +4,7 @@
 	VulkanConfiguration.h: Control compilation of the runtime RHI.
 =============================================================================*/
 
-// Compiled with 1.1.82.1
+// Compiled with 1.2.141.2
 
 #pragma once
 
@@ -171,8 +171,12 @@
 	#define VULKAN_SUPPORTS_NV_DIAGNOSTIC_CHECKPOINT			0
 #endif
 
+#ifndef VULKAN_SUPPORTS_NV_DEVICE_DIAGNOSTIC_CONFIG
+	#define VULKAN_SUPPORTS_NV_DEVICE_DIAGNOSTIC_CONFIG			0
+#endif
+
 #ifndef VULKAN_SUPPORTS_GPU_CRASH_DUMPS
-	#define VULKAN_SUPPORTS_GPU_CRASH_DUMPS						(VULKAN_SUPPORTS_AMD_BUFFER_MARKER || VULKAN_SUPPORTS_NV_DIAGNOSTIC_CHECKPOINT)
+	#define VULKAN_SUPPORTS_GPU_CRASH_DUMPS						(VULKAN_SUPPORTS_AMD_BUFFER_MARKER || VULKAN_SUPPORTS_NV_DIAGNOSTIC_CHECKPOINT || VULKAN_SUPPORTS_NV_DEVICE_DIAGNOSTIC_CONFIG)
 #endif
 
 #ifndef VULKAN_SUPPORTS_DEBUG_UTILS
@@ -215,28 +219,9 @@
 	#endif
 #endif
 
-/* VK_QCOM_render_pass_transform */
-#ifndef VK_QCOM_render_pass_transform
-#define VK_QCOM_render_pass_transform 1
-#define VK_QCOM_RENDER_PASS_TRANSFORM_SPEC_VERSION 1
-#define VK_QCOM_RENDER_PASS_TRANSFORM_EXTENSION_NAME "VK_QCOM_render_pass_transform"
-#define VK_STRUCTURE_TYPE_RENDER_PASS_TRANSFORM_BEGIN_INFO_QCOM 1000282000
-#define VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDER_PASS_TRANSFORM_INFO_QCOM 1000282001
-#define VK_RENDER_PASS_CREATE_TRANSFORM_BIT_QCOM 0x00000002
-typedef struct VkRenderPassTransformBeginInfoQCOM {
-	VkStructureType sType;
-	void* pNext;
-	VkSurfaceTransformFlagBitsKHR transform;
-} VkRenderPassTransformBeginInfoQCOM;
-
-typedef struct VkCommandBufferInheritanceRenderPassTransformInfoQCOM {
-	VkStructureType sType;
-	void* pNext;
-	VkSurfaceTransformFlagBitsKHR transform;
-	VkRect2D renderArea;
-} VkCommandBufferInheritanceRenderPassTransformInfoQCOM;
-
-#endif //VK_QCOM_render_pass_transform
+#ifndef VULKAN_SUPPORTS_QCOM_RENDERPASS_TRANSFORM
+	#define VULKAN_SUPPORTS_QCOM_RENDERPASS_TRANSFORM			0
+#endif
 
 #ifndef VULKAN_SUPPORTS_FULLSCREEN_EXCLUSIVE
 	#ifdef VK_EXT_full_screen_exclusive

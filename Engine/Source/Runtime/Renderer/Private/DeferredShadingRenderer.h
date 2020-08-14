@@ -52,11 +52,8 @@ public:
 	/** Clears a view */
 	void ClearView(FRHICommandListImmediate& RHICmdList);
 
-	/** Clears gbuffer where Z is still at the maximum value (ie no geometry rendered) */
-	void ClearGBufferAtMaxZ(FRHICommandList& RHICmdList);
-
 	/** Clears LPVs for all views */
-	void ClearLPVs(FRHICommandListImmediate& RHICmdList);
+	void ClearLPVs(FRDGBuilder& GraphBuilder);
 
 	/** Propagates LPVs for all views */
 	void UpdateLPVs(FRHICommandListImmediate& RHICmdList);
@@ -77,45 +74,37 @@ public:
 	 * Culls local lights and reflection probes to a grid in frustum space, builds one light list and grid per view in the current Views.  
 	 * Needed for forward shading or translucency using the Surface lighting mode, and clustered deferred shading. 
 	 */
-	void ComputeLightGrid(FRHICommandListImmediate& RHICmdList, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet);
+	void ComputeLightGrid(FRDGBuilder& GraphBuilder, bool bNeedLightGrid, FSortedLightSetSceneInfo &SortedLightSet);
 
-	/** Renders the basepass for a given View, in parallel */
-	void RenderBasePassViewParallel(const FViewInfo& View, FRHICommandListImmediate& ParentCmdList, FRHIUniformBuffer* PassUniformBuffer, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
+	void RenderBasePass(
+		FRDGBuilder& GraphBuilder,
+		FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture,
+		ERenderTargetLoadAction SceneDepthLoadAction,
+		FRDGTextureRef ForwardShadowMaskTexture);
 
-	/** Renders the basepass for a given View. */
-	bool RenderBasePassView(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
-
-	/** Renders the sky pass for a given View, in parallel */
-	void RenderSkyPassViewParallel(FRHICommandListImmediate& ParentCmdList, const FViewInfo& View, FRHIUniformBuffer* PassUniformBuffer, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
-
-	/** Renders the sky pass for a given View. */
-	bool RenderSkyPassView(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess);
-
-	/** Renders editor primitives for a given View. */
-	void RenderEditorPrimitives(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& DrawRenderState, bool& bOutDirty);
-
-	/** Renders editor primitives for a given View. */
-	void RenderEditorPrimitivesForDPG(FRHICommandList& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& DrawRenderState, ESceneDepthPriorityGroup DepthPriorityGroup, bool& bOutDirty);
-
-	/** 
-	* Renders the scene's base pass 
-	* @return true if anything was rendered
-	*/
-	bool RenderBasePass(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, IPooledRenderTarget* ForwardScreenSpaceShadowMask, bool bParallelBasePass, bool bRenderLightmapDensity);
+	void RenderBasePassInternal(
+		FRDGBuilder& GraphBuilder,
+		const FRenderTargetBindingSlots& BasePassRenderTargets,
+		FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
+		FRDGTextureRef ForwardScreenSpaceShadowMask,
+		bool bParallelBasePass,
+		bool bRenderLightmapDensity);
 
 	bool ShouldRenderAnisotropyPass() const;
 
 	void RenderAnisotropyPass(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SceneDepthTexture,
-		bool bDoParallelPass
-		);
+		bool bDoParallelPass);
 
 	void RenderSingleLayerWater(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureMSAA SceneColorTexture,
 		FRDGTextureMSAA SceneDepthTexture,
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> DepthOnlySceneTextures);
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		bool bShouldRenderVolumetricCloud);
 	
 	void RenderSingleLayerWaterInner(
 		FRDGBuilder& GraphBuilder,
@@ -128,11 +117,16 @@ public:
 		FRDGTextureRef SceneColorTexture,
 		const FSceneWithoutWaterTextures& SceneWithoutWaterTextures);
 
-	bool RenderHzb(FRHICommandListImmediate& RHICmdList);
+	void RenderOcclusion(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef SmallDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		bool bIsOcclusionTesting);
 
-	void RenderOcclusion(FRHICommandListImmediate& RHICmdList);
-
-	void FinishOcclusion(FRHICommandListImmediate& RHICmdList);
+	bool RenderHzb(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 
 	/** Renders the view family. */
 	virtual void Render(FRHICommandListImmediate& RHICmdList) override;
@@ -273,12 +267,18 @@ private:
 	void RenderDistanceFieldAOScreenGrid(
 		FRDGBuilder& GraphBuilder,
 		const FViewInfo& View,
-		const FDistanceFieldAOParameters& Parameters, 
+		const FDistanceFieldAOParameters& Parameters,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureRef VelocityTexture,
 		FRDGTextureRef DistanceFieldNormal,
 		FRDGTextureRef& OutDynamicBentNormalAO);
 
-	void RenderMeshDistanceFieldVisualization(FRDGBuilder& GraphBuilder, const FDistanceFieldAOParameters& Parameters);
+	void RenderMeshDistanceFieldVisualization(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		const FDistanceFieldAOParameters& Parameters);
 
 	/** Whether tiled deferred is supported and can be used at all. */
 	bool CanUseTiledDeferred() const;
@@ -327,12 +327,14 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureRef SceneColorTexture,
 		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef LightingChannelsTexture,
 		FSortedLightSetSceneInfo& SortedLightSet,
 		const FHairStrandsRenderingData* HairDatas);
 
 	/** Renders an array of lights for the stationary light overlap viewmode. */
 	void RenderLightArrayForOverlapViewmode(
 		FRHICommandList& RHICmdList,
+		FRHITexture* LightingChannelsTexture,
 		const TSparseArray<FLightSceneInfoCompact>& LightArray);
 
 	/** Render stationary light overlap as complexity to scene color. */
@@ -340,6 +342,7 @@ private:
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SceneColorTexture,
 		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef LightingChannelsTexture,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 	
 	/** Renders the scene's translucency passes. */
@@ -363,12 +366,12 @@ private:
 	/** Renders the scene's light shafts */
 	FRDGTextureRef RenderLightShaftOcclusion(
 		FRDGBuilder& GraphBuilder,
-		TArrayView<TRDGUniformBufferRef<FSceneTextureUniformParameters>> SceneTexturesPerView,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FIntPoint SceneTextureExtent);
 
 	void RenderLightShaftBloom(
 		FRDGBuilder& GraphBuilder,
-		TArrayView<TRDGUniformBufferRef<FSceneTextureUniformParameters>> SceneTexturesPerView,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FIntPoint SceneTextureExtent,
 		FRDGTextureRef SceneColorTexture,
 		FSeparateTranslucencyTextures& OutSeparateTranslucencyTextures);
@@ -379,19 +382,19 @@ private:
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SceneDepthTexture,
 		FRDGTextureRef& VelocityTexture,
-		ERenderTargetLoadAction VelocityLoadAction,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		EVelocityPass VelocityPass);
 
 	bool ShouldRenderDistortion() const;
 	void RenderDistortion(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture);
 
 	/** Renders world-space lightmap density instead of the normal color. */
-	bool RenderLightMapDensities(FRHICommandListImmediate& RHICmdList);
+	void RenderLightMapDensities(FRDGBuilder& GraphBuilder, const FRenderTargetBindingSlots& RenderTargets);
 
 	/** Renders one of the EDebugViewShaderMode instead of the normal color. */
-	bool RenderDebugViewMode(FRHICommandListImmediate& RHICmdList);
+	void RenderDebugViewMode(FRDGBuilder& GraphBuilder, const FRenderTargetBindingSlots& RenderTargets);
 
-	void CopyStencilToLightingChannelTexture(FRHICommandList& RHICmdList);
+	FRDGTextureRef CopyStencilToLightingChannelTexture(FRDGBuilder& GraphBuilder, FRDGTextureSRVRef SceneStencilTexture);
 
 	/** Injects reflective shadowmaps into LPVs */
 	bool InjectReflectiveShadowMaps(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo);
@@ -448,17 +451,9 @@ private:
 		const FHairStrandsRenderingData* HairDatas,
 		bool& bInjectedTranslucentVolume);
 
-	/** Render shadow projections when forward rendering. */
-	void RenderForwardShadowProjections(
-		FRDGBuilder& GraphBuilder,
-		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask,
-		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
-		const FHairStrandsRenderingData* InHairDatas);
-
 	void RenderForwardShadowProjections(
 		FRDGBuilder& GraphBuilder,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-		FRDGTextureRef SceneColorTexture,
 		FRDGTextureRef SceneDepthTexture,
 		FRDGTextureRef& ForwardScreenSpaceShadowMask,
 		FRDGTextureRef& ForwardScreenSpaceShadowMaskSubPixel,
@@ -500,6 +495,7 @@ private:
 		FRHICommandList& RHICmdList,
 		const FLightSceneInfo* LightSceneInfo,
 		FRHITexture* ScreenShadowMaskTexture,
+		FRHITexture* LightingChannelTexture,
 		const struct FHairStrandsVisibilityViews* InHairVisibilityViews,
 		bool bRenderOverlap,
 		bool bIssueDrawEvent);
@@ -511,6 +507,7 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FLightSceneInfo* LightSceneInfo,
 		FRDGTextureRef ScreenShadowMaskTexture,
+		FRDGTextureRef LightingChannelsTexture,
 		const FHairStrandsVisibilityViews* InHairVisibilityViews,
 		bool bRenderOverlap);
 
@@ -519,7 +516,8 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FSortedLightSetSceneInfo& SortedLightSet,
 		const FHairStrandsRenderingData* HairDatas,
-		FRDGTextureRef InScreenShadowMaskSubPixelTexture);
+		FRDGTextureRef InScreenShadowMaskSubPixelTexture,
+		FRDGTextureRef LightingChannelsTexture);
 
 	/** Specialized version of RenderLight for hair (run lighting evaluation on at sub-pixel rate, without depth bound) */
 	void RenderLightForHair(
@@ -527,6 +525,7 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FLightSceneInfo* LightSceneInfo,
 		FRDGTextureRef ScreenShadowMaskSubPixelTexture,
+		FRDGTextureRef LightingChannelsTexture,
 		const FHairStrandsTransmittanceMaskData& InTransmittanceMaskData,
 		const struct FHairStrandsVisibilityViews* InHairVisibilityViews);
 
@@ -597,9 +596,12 @@ private:
 		FVector GridZParams,
 		float VolumetricFogDistance);
 
-	void ComputeVolumetricFog(FRHICommandListImmediate& RHICmdList);
+	void ComputeVolumetricFog(FRDGBuilder& GraphBuilder);
 
-	void VisualizeVolumetricLightmap(FRHICommandListImmediate& RHICmdList);
+	void VisualizeVolumetricLightmap(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture);
 
 	/** Render image based reflections (SSR, Env, SkyLight) without compute shaders */
 	void RenderStandardDeferredImageBasedReflections(FRHICommandListImmediate& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, bool bReflectionEnv, const TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO, TRefCountPtr<IPooledRenderTarget>& VelocityRT);
@@ -625,7 +627,10 @@ private:
 	void AddOrRemoveSceneHeightFieldPrimitives(bool bSkipAdd = false);
 	void PrepareDistanceFieldScene(FRHICommandListImmediate& RHICmdList, bool bSplitDispatch);
 
-	void CopySceneCaptureComponentToTarget(FRDGBuilder& GraphBuilder, FRDGTextureRef ViewFamilyTexture);
+	void CopySceneCaptureComponentToTarget(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef ViewFamilyTexture);
 
 	void SetupImaginaryReflectionTextureParameters(
 		FRDGBuilder& GraphBuilder,
@@ -656,6 +661,7 @@ private:
 		const IScreenSpaceDenoiser::FShadowRayTracingConfig& RayTracingConfig,
 		const IScreenSpaceDenoiser::EShadowRequirements DenoiserRequirements,
 		const struct FHairStrandsOcclusionResources* HairResources,
+		FRDGTextureRef LightingChannelsTexture,
 		FRDGTextureUAV* OutShadowMaskUAV,
 		FRDGTextureUAV* OutRayHitDistanceUAV,
 		FRDGTextureUAV* SubPixelRayTracingShadowMaskUAV);
@@ -727,7 +733,13 @@ private:
 
 	void GenerateSkyLightVisibilityRays(FRDGBuilder& GraphBuilder, FRDGBufferRef& SkyLightVisibilityRays, FIntVector& Dimensions);
 	void VisualizeSkyLightMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRWBuffer& SkyLightMipTreePosX, FRWBuffer& SkyLightMipTreePosY, FRWBuffer& SkyLightMipTreePosZ, FRWBuffer& SkyLightMipTreeNegX, FRWBuffer& SkyLightMipTreeNegY, FRWBuffer& SkyLightMipTreeNegZ, const FIntVector& SkyLightMipDimensions);
-	void RenderRayTracingSkyLight(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& SkyLightRT, TRefCountPtr<IPooledRenderTarget>& HitDistanceRT, const struct FHairStrandsRenderingData* HairDatas);
+
+	void RenderRayTracingSkyLight(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef& OutSkyLightTexture,
+		FRDGTextureRef& OutHitDistanceTexture,
+		const FHairStrandsRenderingData* HairDatas);
 
 	void RenderRayTracingPrimaryRaysView(
 		FRDGBuilder& GraphBuilder,
@@ -754,7 +766,11 @@ private:
 	void SetupRayTracingLightingMissShader(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 
 	/** Path tracing functions. */
-	void RenderPathTracing(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColorOutputTexture);
+	void RenderPathTracing(
+		FRDGBuilder& GraphBuilder,
+		const FViewInfo& View,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef SceneColorOutputTexture);
 
 	void BuildVarianceMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FTextureRHIRef MeanAndDeviationTexture,
 		FRWBuffer& VarianceMipTree, FIntVector& VarianceMipTreeDimensions);
@@ -766,7 +782,7 @@ private:
 
 	void ComputeRayCount(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRHITexture* RayCountPerPixelTexture);
 
-	void WaitForRayTracingScene(FRHICommandListImmediate& RHICmdList);
+	void WaitForRayTracingScene(FRDGBuilder& GraphBuilder);
 
 	/** Debug ray tracing functions. */
 	void RenderRayTracingDebug(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColorOutputTexture);
