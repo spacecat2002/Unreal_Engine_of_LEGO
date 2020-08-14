@@ -217,7 +217,7 @@ protected:
 	FTextureRHIRef AliasingSourceTexture;
 };
 
-#if PLATFORM_WINDOWS
+#if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 struct FD3D12TextureLayout {};
 #endif
 

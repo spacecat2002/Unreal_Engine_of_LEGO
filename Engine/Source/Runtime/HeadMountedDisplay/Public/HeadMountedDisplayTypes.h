@@ -63,7 +63,8 @@ namespace EHMDTrackingOrigin
 	{
 		Floor UMETA(DisplayName = "Floor Level"),
 		Eye UMETA(DisplayName = "Eye Level"),
-		Stage UMETA(DisplayName = "Stage (Centered Around Play Area)")
+		Stage UMETA(DisplayName = "Stage (Centered Around Play Area)"),
+		Unbounded UMETA(DisplayName = "Unbounded (Centered Around Viewer)")
 	};
 }
 
@@ -81,6 +82,23 @@ namespace EHMDWornState
 	};
 }
 
+
+/**
+* Enumeration of results from Connecting to Remote XR device
+*/
+UENUM(BlueprintType)
+namespace EXRDeviceConnectionResult
+{
+	enum Type
+	{
+		NoTrackingSystem,
+		FeatureNotSupported,
+		NoValidViewport,
+		MiscFailure,
+		Success
+	};
+}
+
 /**
 * Flags to better inform the user about specifics of the underlying XR system
 */
@@ -93,6 +111,7 @@ namespace EXRSystemFlags
 		IsAR          = 0x01,
 		IsTablet      = 0x02,
 		IsHeadMounted = 0x04,
+		SupportsHandTracking = 0x08,
 	};
 }
 /**
@@ -308,6 +327,8 @@ struct HEADMOUNTEDDISPLAY_API FXRMotionControllerData
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	TArray<struct FVector> HandKeyPositions;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	TArray<struct FQuat> HandKeyRotations;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	TArray<float> HandKeyRadii;
 

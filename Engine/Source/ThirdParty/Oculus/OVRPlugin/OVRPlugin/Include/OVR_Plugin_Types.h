@@ -2,14 +2,14 @@
 
 Copyright (c) Facebook Technologies, LLC and its affiliates.  All rights reserved.
 
-Licensed under the Oculus SDK License Version 3.5 (the "License");
+Licensed under the Oculus Master SDK License Version 1.0 (the "License");
 you may not use the Oculus SDK except in compliance with the License,
 which is provided at the time of installation or download, or which
 otherwise accompanies this software in either electronic or hard copy form.
 
 You may obtain a copy of the License at
 
-https://developer.oculus.com/licenses/sdk-3.5/
+https://developer.oculus.com/licenses/oculusmastersdk-1.0/
 
 Unless required by applicable law or agreed to in writing, the Oculus SDK
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,7 +28,7 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 49
+#define OVRP_MINOR_VERSION 51
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
@@ -106,6 +106,7 @@ typedef enum {
   ovrpFailure_OperationFailed = -1006,
   ovrpFailure_InsufficientSize = -1007,
   ovrpFailure_DataIsInvalid = -1008,
+  ovrpFailure_DeprecatedOperation = -1009,
 } ovrpResult;
 
 #define OVRP_SUCCESS(result) ((result) >= 0)
@@ -277,8 +278,8 @@ typedef enum {
   ovrpSystemHeadset_GearVR_R325,  // GearVR Commercial 4 (USB Type C)
   ovrpSystemHeadset_Oculus_Go,    // Oculus Go Commercial 1
   ovrpSystemHeadset_Oculus_Quest, // Oculus Quest
-  ovrpSystemHeadset_Placeholder_9, 
-  ovrpSystemHeadset_Placeholder_10, 
+  ovrpSystemHeadset_Placeholder_9,
+  ovrpSystemHeadset_Placeholder_10,
   ovrpSystemHeadset_Placeholder_11,
   ovrpSystemHeadset_Placeholder_12,
   ovrpSystemHeadset_Placeholder_13,
@@ -291,12 +292,12 @@ typedef enum {
   ovrpSystemHeadset_Rift_CB,
   ovrpSystemHeadset_Rift_S,
   ovrpSystemHeadset_Oculus_Link_Quest,    // Quest connected through Oculus Link
-  ovrpSystemHeadset_PC_Placeholder_4102, 
-  ovrpSystemHeadset_PC_Placeholder_4103, 
-  ovrpSystemHeadset_PC_Placeholder_4104, 
-  ovrpSystemHeadset_PC_Placeholder_4105, 
-  ovrpSystemHeadset_PC_Placeholder_4106, 
-  ovrpSystemHeadset_PC_Placeholder_4107, 
+  ovrpSystemHeadset_PC_Placeholder_4102,
+  ovrpSystemHeadset_PC_Placeholder_4103,
+  ovrpSystemHeadset_PC_Placeholder_4104,
+  ovrpSystemHeadset_PC_Placeholder_4105,
+  ovrpSystemHeadset_PC_Placeholder_4106,
+  ovrpSystemHeadset_PC_Placeholder_4107,
   ovrpSystemHeadset_EnumSize = 0x7fffffff
 } ovrpSystemHeadset;
 
@@ -800,6 +801,8 @@ typedef enum {
   ovrpDistortionWindowFlag_Protected = 0x00000001,
   /// If true, the compositor's graphics device skips error checking to improve performance.
   ovrpDistortionWindowFlag_NoErrorContext = 0x00000002,
+  /// Reserved 0x00000004 in ovrp_SetupDistortionWindow3
+
   ovrpDistortionWindowFlag_EnumSize = 0x7fffffff
 } ovrpDistortionWindowFlag;
 
@@ -877,6 +880,10 @@ typedef enum {
   /// Allocate SpaceWarp data with m_textureSwapChain together
   ovrpLayerFlag_SpaceWarpDataAllocation = (1 << 8),
   ovrpLayerFlag_SpaceWarpDedicatedDepth = (1 << 9),
+  /// VrApi flag: VRAPI_ANDROID_SURFACE_SWAP_CHAIN_FLAG_SYNCHRONOUS
+  ovrpLayerFlag_Synchronous = (1 << 10),
+  /// VrApi flag:VRAPI_ANDROID_SURFACE_SWAP_CHAIN_FLAG_USE_TIMESTAMPS
+  ovrpLayerFlag_UseTimestamps = (1 << 11),
 } ovrpLayerFlags;
 
 /// Layer description used by ovrp_SetupLayer to create the layer

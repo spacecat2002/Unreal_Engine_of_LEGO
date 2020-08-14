@@ -147,13 +147,6 @@ static FAutoConsoleVariableRef CVarVirtualTextureFeedbackFactor(
 	ECVF_RenderThreadSafe | ECVF_ReadOnly /*Read-only as shaders are compiled with this value*/
 );
 
-static TAutoConsoleVariable<int32> CVarMobileClearSceneColorWithMaxAlpha(
-	TEXT("r.MobileClearSceneColorWithMaxAlpha"),
-	0,
-	TEXT("Whether the scene color alpha channel on mobile should be cleared with MAX_FLT.\n")
-    TEXT(" 0: disabled (default)\n"),
-	ECVF_RenderThreadSafe);
-
 /** The global render targets used for scene rendering. */
 static TGlobalResource<FSceneRenderTargets> SceneRenderTargetsSingleton;
 

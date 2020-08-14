@@ -59,6 +59,14 @@ public:
 	/** \see UARBlueprintLibrary::IsSessionTypeSupported() */
 	bool IsSessionTypeSupported(EARSessionType SessionType) const;
 
+	/** \see UARBlueprintLibrary::ToggleARCapture() */
+	bool ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType);
+
+	/** \see UARBlueprintLibrary::ToggleARCapture() */
+	void SetEnabledXRCamera(bool bOnOff);
+	/** \see UARBlueprintLibrary::ToggleARCapture() */
+	FIntPoint ResizeXRCamera(const FIntPoint& InSize);
+
 	/**
 	 * \see UARBlueprintLibrary::SetAlignmentTransform()
 	 * \see IARSystemSupport
@@ -94,6 +102,7 @@ public:
 	UARPin* PinComponent(USceneComponent* ComponentToPin, const FARTraceResult& HitResult, const FName DebugName = NAME_None);
 	/** \see UARBlueprintLibrary::RemovePin() */
 	void RemovePin(UARPin* PinToRemove);
+	bool TryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InAnchorName, UARPin*& OutAnchor);
 
 	/** \see UARBlueprintLibrary::GetSupportedVideoFormats() */
 	TArray<FARVideoFormat> GetSupportedVideoFormats(EARSessionType SessionType = EARSessionType::World) const;
@@ -127,6 +136,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::GetCameraIntrinsics() */
 	bool GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const;
+	
+	/** \see UARBlueprintLibrary::IsARSupported() */
+	bool IsARAvailable() const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

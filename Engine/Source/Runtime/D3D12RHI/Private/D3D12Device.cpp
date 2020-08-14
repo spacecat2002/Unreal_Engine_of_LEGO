@@ -150,7 +150,7 @@ bool FD3D12Device::IsGPUIdle()
 	return Fence.IsFenceComplete(Fence.GetLastSignaledFence());
 }
 
-#if PLATFORM_WINDOWS
+#if (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
 typedef HRESULT(WINAPI *FDXGIGetDebugInterface1)(UINT, REFIID, void **);
 #endif
 
@@ -160,7 +160,9 @@ void FD3D12Device::SetupAfterDeviceCreation()
 {
 	ID3D12Device* Direct3DDevice = GetParentAdapter()->GetD3DDevice();
 
-#if PLATFORM_WINDOWS
+	GRHISupportsArrayIndexFromAnyShader = true;
+
+#if (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
 	// Check if we're running under GPU capture
 	bool bUnderGPUCapture = false;
 
@@ -233,7 +235,7 @@ void FD3D12Device::SetupAfterDeviceCreation()
 	{
 		GDynamicRHI->EnableIdealGPUCaptureOptions(true);
 	}
-#endif
+#endif // (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
 
 	// Init offline descriptor allocators
 	RTVAllocator.Init(Direct3DDevice);

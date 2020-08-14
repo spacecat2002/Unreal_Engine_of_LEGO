@@ -81,10 +81,10 @@ namespace EOculusMobileDevice
 {
 	enum Type
 	{
-		/** Package for Oculus Go */
-		Go UMETA(DisplayName = "Oculus Go"),
+		// 0 was the deprecated OculusGo
+
 		/** Package for Oculus Quest */
-		Quest UMETA(DisplayName = "Oculus Quest"),
+		Quest = 1 UMETA(DisplayName = "Oculus Quest"),
 	};
 }
 

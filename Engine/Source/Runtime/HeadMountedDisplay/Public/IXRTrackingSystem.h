@@ -38,6 +38,7 @@ struct FXRSensorProperties
 };
 
 
+
 /**
  * Main access point to an XR tracking system. Use it to enumerate devices and query their poses.
  */
@@ -424,4 +425,10 @@ public:
 	virtual void GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData) = 0;
 
 	virtual bool ConfigureGestures(const FXRGestureConfig& GestureConfig) = 0;
+
+	virtual EXRDeviceConnectionResult::Type ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate, FString& OutDetails)
+	{ 
+		return EXRDeviceConnectionResult::FeatureNotSupported;
+	};
+	virtual void DisconnectRemoteXRDevice() {};
 };

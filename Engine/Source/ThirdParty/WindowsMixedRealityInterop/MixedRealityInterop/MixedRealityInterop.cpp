@@ -62,8 +62,6 @@
 #include <sstream>
 #include "HandMeshObserver.h"
 
-#include <winrt/Windows.UI.ViewManagement.h>
-
 //https://docs.microsoft.com/en-us/cpp/preprocessor/predefined-macros?view=vs-2019
 //_M_ARM64 Defined as 1 for compilations that target 64-bit ARM processors. Otherwise, undefined.
 #if !PLATFORM_HOLOLENS || (PLATFORM_HOLOLENS && defined(_M_ARM64))
@@ -1128,6 +1126,9 @@ namespace WindowsMixedReality
 #if PLATFORM_HOLOLENS || HOLO_STREAMING_RENDERING
 		supportsEyeTracking = is19H1;//This code was hanging sometime -> EyesPose::IsSupported();
 #endif
+
+		//make sure to set to empty
+		wcsncpy_s(failureString, L"", std::size(failureString));
 	}
 
 	bool CreateInteropDevice(ID3D11Device* device)
@@ -1691,7 +1692,11 @@ namespace WindowsMixedReality
 
 	bool MixedRealityInterop::IsDisplayOpaque()
 	{
-		return HolographicDisplay::GetDefault().IsOpaque();
+		if (HolographicDisplay::GetDefault())
+		{
+			return HolographicDisplay::GetDefault().IsOpaque();
+		}
+		return false;
 	}
 
 	bool MixedRealityInterop::GetDisplayDimensions(int& width, int& height)
@@ -3761,8 +3766,11 @@ namespace WindowsMixedReality
 					ReportConnectionStatus(MixedRealityInterop::ConnectionEvent::Listening);
 				});
 
+				//emptry failure reason as we are trying to connect
+				wcsncpy_s(failureString, L"", std::size(failureString));
+
 				m_onDisconnectedEventRevoker =
-					m_remoteContext.OnDisconnected(winrt::auto_revoke, [this](winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason failureReason) 
+					m_remoteContext.OnDisconnected(winrt::auto_revoke, [this](winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason failureReason)
 				{
 					const wchar_t ConnectFailureReasonString[static_cast<int32>(winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason::DisconnectRequest) + 1][32] =
 					{
@@ -3787,6 +3795,9 @@ namespace WindowsMixedReality
 						L"DeviceLost",
 						L"DisconnectRequest"
 					}; 
+
+					//copy reason for future retrieval
+					wcsncpy_s(failureString, ConnectFailureReasonString[static_cast<int32>(failureReason)], std::size(failureString));
 
 					{ std::wstringstream string; string << L"RemotingDisconnectedEvent: Reason: " << static_cast<int>(failureReason) << " " << ConnectFailureReasonString[static_cast<int32>(failureReason)]; Log(string); }
 
@@ -4024,6 +4035,10 @@ namespace WindowsMixedReality
 #endif
 	}
 
+	wchar_t* MixedRealityInterop::GetFailureString()
+	{
+		return failureString;
+	}
 
 	void MixedRealityInterop::StartSpatialMapping(
 		float InTriangleDensity,
@@ -4096,36 +4111,6 @@ namespace WindowsMixedReality
 	void MixedRealityInterop::StopQRCodeTracking()
 	{
 		StopQRCodeObserver();
-	}
-	
-	bool MixedRealityInterop::ShowSystemKeyboard()
-	{
-		try
-		{
-			auto inputPane{ winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView() };
-			return inputPane.TryShow();
-		}
-		catch (winrt::hresult_error const&)
-		{
-			return false;
-		}
-
-		return false;
-	}
-
-	bool MixedRealityInterop::HideSystemKeyboard()
-	{
-		try
-		{
-			auto inputPane{ winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView() };
-			return inputPane.TryHide();
-		}
-		catch (winrt::hresult_error const&) 
-		{
-			return false;
-		}
-
-		return false;
 	}
 
 	bool MixedRealityInterop::IsThirdCameraActive()

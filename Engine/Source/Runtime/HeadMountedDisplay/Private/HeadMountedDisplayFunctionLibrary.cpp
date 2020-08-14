@@ -487,3 +487,25 @@ bool UHeadMountedDisplayFunctionLibrary::ConfigureGestures(const FXRGestureConfi
 	return false;
 }
 
+
+/** Connect to a remote device for Remote Debugging */
+EXRDeviceConnectionResult::Type UHeadMountedDisplayFunctionLibrary::ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate, FString& OutDetails)
+{
+	OutDetails.Empty();
+
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		return TrackingSys->ConnectRemoteXRDevice(IpAddress, BitRate, OutDetails);
+	}
+	return EXRDeviceConnectionResult::NoTrackingSystem;
+}
+
+void UHeadMountedDisplayFunctionLibrary::DisconnectRemoteXRDevice()
+{
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		TrackingSys->DisconnectRemoteXRDevice();
+	}
+}
