@@ -9,14 +9,17 @@ class FVulkanSurface;
 
 struct FVulkanPipelineBarrier
 {
-	FVulkanPipelineBarrier() : SrcStageMask(0), DstStageMask(0)
+	FVulkanPipelineBarrier() : SrcStageMask(0), DstStageMask(0), Semaphore(nullptr)
 	{
 		ZeroVulkanStruct(MemoryBarrier, VK_STRUCTURE_TYPE_MEMORY_BARRIER);
 	}
 
+	ERHIPipeline SrcPipelines, DstPipelines;
 	VkPipelineStageFlags SrcStageMask, DstStageMask;
 	VkMemoryBarrier MemoryBarrier;
 	TArray<VkImageMemoryBarrier, TInlineAllocator<8>> ImageBarriers;
+	TArray<VkBufferMemoryBarrier, TInlineAllocator<8>> BufferBarriers;
+	VulkanRHI::FSemaphore* Semaphore;
 
 	// We need to keep the texture pointers around, because we need to call OnTransitionResource on them, and we need mip and layer counts for the tracking code.
 	TArray<FVulkanTextureBase*, TInlineAllocator<8>> Textures;
@@ -56,6 +59,11 @@ struct FVulkanImageLayout
 		if (SubresLayouts.Num() == 0)
 		{
 			return MainLayout;
+		}
+
+		if (Layer == (uint32)-1)
+		{
+			Layer = 0;
 		}
 
 		check(Layer < NumLayers && Mip < NumMips);
@@ -114,6 +122,12 @@ public:
 		FVulkanRenderPass* RenderPass = new FVulkanRenderPass(InDevice, RTLayout);
 		{
 			FScopeLock Lock(&RenderPassesCS);
+			FoundRenderPass = RenderPasses.Find(RenderPassHash);
+			if (FoundRenderPass)
+			{
+				delete RenderPass;
+				return *FoundRenderPass;
+			}
 			RenderPasses.Add(RenderPassHash, RenderPass);
 		}
 		return RenderPass;

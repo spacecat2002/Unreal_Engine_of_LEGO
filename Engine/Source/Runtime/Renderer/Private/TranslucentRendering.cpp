@@ -6,6 +6,7 @@
 #include "DynamicPrimitiveDrawing.h"
 #include "RendererModule.h"
 #include "ScenePrivate.h"
+#include "SceneTextureParameters.h"
 #include "ScreenRendering.h"
 #include "ScreenPass.h"
 #include "MeshPassProcessor.inl"
@@ -618,13 +619,13 @@ void SetupTranslucentBasePassUniformParameters(
 	const int32 ViewIndex,
 	FTranslucentBasePassUniformParameters& BasePassParameters)
 {
-	const auto GetRDG = [&](const TRefCountPtr<IPooledRenderTarget>& PooledRenderTarget)
+	const auto GetRDG = [&](const TRefCountPtr<IPooledRenderTarget>& PooledRenderTarget, ERDGTextureFlags Flags = ERDGTextureFlags::None)
 	{
-		return RegisterExternalOrPassthroughTexture(GraphBuilder, PooledRenderTarget);
+		return RegisterExternalOrPassthroughTexture(GraphBuilder, PooledRenderTarget, Flags);
 	};
 
 	SetupSharedBasePassParameters(RHICmdList, View, BasePassParameters.Shared);
-	SetupSceneTextureUniformParameters(GraphBuilder, &View, View.FeatureLevel, SceneRenderTargets, SceneTextureSetupMode, BasePassParameters.SceneTextures);
+	SetupSceneTextureUniformParameters(GraphBuilder, View.FeatureLevel, SceneRenderTargets, SceneTextureSetupMode, BasePassParameters.SceneTextures);
 
 	FRDGTextureRef BlackDummyTexture = GetRDG(GSystemTextures.BlackDummy);
 
@@ -724,16 +725,24 @@ void SetupTranslucentBasePassUniformParameters(
 		BasePassParameters.TranslucencyLightingVolumeDirectionalOuterSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	}
 
-	BasePassParameters.SceneTextures.SceneColorCopyTexture = BlackDummyTexture;
+	BasePassParameters.SceneColorCopyTexture = BlackDummyTexture;
+	BasePassParameters.SceneColorCopySampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	if (SceneColorCopyTexture)
 	{
-		BasePassParameters.SceneTextures.SceneColorCopyTexture = SceneColorCopyTexture;
+		BasePassParameters.SceneColorCopyTexture = SceneColorCopyTexture;
+	}
+
+	BasePassParameters.EyeAdaptationTexture = BlackDummyTexture;
+
+	// Setup by passes that support it
+	if (View.HasValidEyeAdaptationTexture())
+	{
+		BasePassParameters.EyeAdaptationTexture = GetRDG(View.GetEyeAdaptationTexture(), ERDGTextureFlags::MultiFrame);
 	}
 
 	BasePassParameters.PreIntegratedGFTexture = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
 	BasePassParameters.PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-
 }
 
 TRDGUniformBufferRef<FTranslucentBasePassUniformParameters> CreateTranslucentBasePassUniformBuffer(
@@ -746,7 +755,7 @@ TRDGUniformBufferRef<FTranslucentBasePassUniformParameters> CreateTranslucentBas
 	FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 	FTranslucentBasePassUniformParameters* BasePassParameters = GraphBuilder.AllocParameters<FTranslucentBasePassUniformParameters>();
 	SetupTranslucentBasePassUniformParameters(&GraphBuilder, GraphBuilder.RHICmdList, SceneRenderTargets, View, SceneColorCopyTexture, SceneTextureSetupMode, ViewIndex, *BasePassParameters);
-	return GraphBuilder.CreateUniformBuffer(BasePassParameters, TEXT("TranslucentPass"));
+	return GraphBuilder.CreateUniformBuffer(BasePassParameters);
 }
 
 TUniformBufferRef<FTranslucentBasePassUniformParameters> CreateTranslucentBasePassUniformBuffer(
@@ -760,39 +769,6 @@ TUniformBufferRef<FTranslucentBasePassUniformParameters> CreateTranslucentBasePa
 	SetupTranslucentBasePassUniformParameters(nullptr, RHICmdList, SceneRenderTargets, View, nullptr, SceneTextureSetupMode, ViewIndex, BasePassParameters);
 	return TUniformBufferRef<FTranslucentBasePassUniformParameters>::CreateUniformBufferImmediate(BasePassParameters, EUniformBufferUsage::UniformBuffer_SingleFrame);
 }
-
-class FTranslucencyPassParallelCommandListSet : public FParallelCommandListSet
-{
-public:
-	FTranslucencyPassParallelCommandListSet(
-		FRHICommandListImmediate& InParentCmdList,
-		const FSceneRenderer& InSceneRenderer,
-		const FViewInfo& InView,
-		const FParallelCommandListBindings& InBindings,
-		float InViewportScale)
-		: FParallelCommandListSet(GET_STATID(STAT_CLP_Translucency), InView, InParentCmdList, false)
-		, SceneRenderer(InSceneRenderer)
-		, Bindings(InBindings)
-		, ViewportScale(InViewportScale)
-	{}
-
-	~FTranslucencyPassParallelCommandListSet() override
-	{
-		Dispatch();
-	}
-
-	virtual void SetStateOnCommandList(FRHICommandList& RHICmdList) override
-	{
-		FParallelCommandListSet::SetStateOnCommandList(RHICmdList);
-		Bindings.SetOnCommandList(RHICmdList);
-		SceneRenderer.SetStereoViewport(RHICmdList, View, ViewportScale);
-	}
-
-private:
-	const FSceneRenderer& SceneRenderer;
-	FParallelCommandListBindings Bindings;
-	float ViewportScale;
-};
 
 static void UpdateSeparateTranslucencyViewState(FScene* Scene, const FViewInfo& View, const FScreenPassTextureViewport& SeparateTranslucencyViewport, FMeshPassProcessorRenderState& DrawRenderState)
 {
@@ -822,7 +798,7 @@ static void RenderViewTranslucencyInner(
 	const FScreenPassTextureViewport Viewport,
 	const float ViewportScale,
 	ETranslucencyPass::Type TranslucencyPass,
-	FTranslucencyPassParallelCommandListSet* ParallelCommandListSet)
+	FRDGParallelCommandListSet* ParallelCommandListSet)
 {
 	FMeshPassProcessorRenderState DrawRenderState(View);
 	DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
@@ -958,7 +934,7 @@ static void RenderTranslucencyViewInner(
 			ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass,
 			[&SceneRenderer, &View, PassParameters, ViewportScale, Viewport, TranslucencyPass](FRHICommandListImmediate& RHICmdList)
 		{
-			FTranslucencyPassParallelCommandListSet ParallelCommandListSet(RHICmdList, SceneRenderer, View, FParallelCommandListBindings(PassParameters), ViewportScale);
+			FRDGParallelCommandListSet ParallelCommandListSet(RHICmdList, GET_STATID(STAT_CLP_Translucency), SceneRenderer, View, FParallelCommandListBindings(PassParameters), ViewportScale);
 			RenderViewTranslucencyInner(RHICmdList, SceneRenderer, View, Viewport, ViewportScale, TranslucencyPass, &ParallelCommandListSet);
 		});
 	}
@@ -1157,8 +1133,6 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(
 		SceneColorCopyTexture = AddCopySceneColorPass(GraphBuilder, Views, SceneColorTexture);
 	}
 
-	AddBeginUAVOverlapPass(GraphBuilder);
-
 	if (ViewFamily.AllowTranslucencyAfterDOF())
 	{
 		RenderTranslucencyInner(GraphBuilder, SceneColorTexture, SceneDepthTexture, OutSeparateTranslucencyTextures, ViewsToRender, SceneColorCopyTexture, ETranslucencyPass::TPT_StandardTranslucency);
@@ -1169,6 +1143,4 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(
 	{
 		RenderTranslucencyInner(GraphBuilder, SceneColorTexture, SceneDepthTexture, OutSeparateTranslucencyTextures, ViewsToRender, SceneColorCopyTexture, ETranslucencyPass::TPT_AllTranslucency);
 	}
-
-	AddEndUAVOverlapPass(GraphBuilder);
 }

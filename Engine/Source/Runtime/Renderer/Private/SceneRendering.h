@@ -43,6 +43,7 @@ struct FILCUpdatePrimTaskData;
 class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
 struct FCloudRenderContext;
+struct FSceneWithoutWaterTextures;
 struct FHairStrandsVisibilityViews;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
@@ -388,7 +389,7 @@ public:
 	uint32 GetNum() const { return Primitives.Num(); }
 
 	uint32 AddBounds( const FVector& BoundsOrigin, const FVector& BoundsExtent );
-	void Submit(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+	void Submit(FRDGBuilder& GraphBuilder, const FViewInfo& View);
 
 	void MapResults(FRHICommandListImmediate& RHICmdList);
 	void UnmapResults(FRHICommandListImmediate& RHICmdList);
@@ -489,6 +490,35 @@ public:
 	static void WaitForTasks();
 private:
 	void WaitForTasksInternal();
+};
+
+class FRDGParallelCommandListSet final : public FParallelCommandListSet
+{
+public:
+	FRDGParallelCommandListSet(
+		FRHICommandListImmediate& InParentCmdList,
+		TStatId InStatId,
+		const FSceneRenderer& InSceneRenderer,
+		const FViewInfo& InView,
+		const FParallelCommandListBindings& InBindings,
+		float InViewportScale = 1.0f)
+		: FParallelCommandListSet(InStatId, InView, InParentCmdList, false)
+		, SceneRenderer(InSceneRenderer)
+		, Bindings(InBindings)
+		, ViewportScale(InViewportScale)
+	{}
+
+	~FRDGParallelCommandListSet() override
+	{
+		Dispatch();
+	}
+
+	void SetStateOnCommandList(FRHICommandList& RHICmdList) override;
+
+private:
+	const FSceneRenderer& SceneRenderer;
+	FParallelCommandListBindings Bindings;
+	float ViewportScale;
 };
 
 enum EVolumeUpdateType
@@ -659,6 +689,14 @@ struct FVolumetricMeshBatch
 	const FPrimitiveSceneProxy* Proxy;
 };
 
+struct FSkyMeshBatch
+{
+	const FMeshBatch* Mesh;
+	const FPrimitiveSceneProxy* Proxy;
+	bool bVisibleInMainPass : 1;
+	bool bVisibleInRealTimeSkyCapture : 1;
+};
+
 struct FMeshDecalBatch
 {
 	const FMeshBatch* Mesh;
@@ -747,17 +785,12 @@ struct FScreenSpaceDenoiserHistory
 
 
 
-// Structure in charge of storing all information about GTAO history.
+// Structure for storing a frame of GTAO history.
 struct FGTAOTAAHistory
 {
-	// Number of render target in the history.
-	static constexpr uint32 kRenderTargetCount = 2;
-
-	// Render targets holding's pixel history.
+	// Render targets holding a frame's pixel history.
 	//  scene color's RGBA are in RT[0].
-	TRefCountPtr<IPooledRenderTarget> RT[kRenderTargetCount];
-	TRefCountPtr<IPooledRenderTarget> Depth[kRenderTargetCount];
-	TRefCountPtr<IPooledRenderTarget> Velocity[kRenderTargetCount];
+	TRefCountPtr<IPooledRenderTarget> RT;
 
 	// Reference size of RT. Might be different than RT's actual size to handle down res.
 	FIntPoint ReferenceBufferSize;
@@ -767,16 +800,12 @@ struct FGTAOTAAHistory
 
 	void SafeRelease()
 	{
-		for (uint32 i = 0; i < kRenderTargetCount; i++)
-		{
-			RT[i].SafeRelease();
-			Depth[i].SafeRelease();
-		}
+		RT.SafeRelease();
 	}
 
 	bool IsValid() const
 	{
-		return RT[0].IsValid();
+		return RT.IsValid();
 	}
 };
 
@@ -983,7 +1012,7 @@ public:
 	TArray<FVolumetricMeshBatch, SceneRenderingAllocator> VolumetricMeshBatches;
 
 	/** Mesh batches with a sky material. */
-	TArray<FVolumetricMeshBatch, SceneRenderingAllocator> SkyMesheBatches;
+	TArray<FSkyMeshBatch, SceneRenderingAllocator> SkyMeshBatches;
 
 	/** A map from light ID to a boolean visibility value. */
 	TArray<FVisibleLightViewInfo,SceneRenderingAllocator> VisibleLightInfos;
@@ -1163,7 +1192,6 @@ public:
 	TRefCountPtr<IPooledRenderTarget> SkyAtmosphereViewLutTexture;
 	const FAtmosphereUniformShaderParameters* SkyAtmosphereUniformShaderParameters;
 
-	TRefCountPtr<IPooledRenderTarget> VolumetricCloudShadowMap[2];
 	TRefCountPtr<IPooledRenderTarget> VolumetricCloudSkyAO;
 	TUniformBufferRef<FViewUniformShaderParameters> VolumetricRenderTargetViewUniformBuffer;
 
@@ -1366,6 +1394,11 @@ public:
 	bool IsLastInFamily() const
 	{
 		return Family->Views.Last() == this;
+	}
+
+	ERenderTargetLoadAction DecayLoadAction(ERenderTargetLoadAction RequestedLoadAction) const
+	{
+		return IsFirstInFamily() || Family->bMultiGPUForkAndJoin ? RequestedLoadAction : ERenderTargetLoadAction::ELoad;
 	}
 
 	/** Instanced stereo and multi-view only need to render the left eye. */
@@ -1622,15 +1655,12 @@ public:
 	void DoCrossGPUTransfers(FRDGBuilder& GraphBuilder, FRHIGPUMask RenderTargetGPUMask, FRDGTextureRef ViewFamilyTexture);
 
 	bool DoOcclusionQueries(ERHIFeatureLevel::Type InFeatureLevel) const;
-	/** Issues occlusion queries. */
-	void BeginOcclusionTests(FRHICommandListImmediate& RHICmdList, bool bRenderQueries);
+
+	void FenceOcclusionTests(FRDGBuilder& GraphBuilder);
+	void WaitOcclusionTests(FRHICommandListImmediate& GraphBuilder);
 
 	// fences to make sure the rhi thread has digested the occlusion query renders before we attempt to read them back async
 	static FGraphEventRef OcclusionSubmittedFence[FOcclusionQueryHelpers::MaxBufferedOcclusionFrames];
-	/** Fences occlusion queries. */
-	void FenceOcclusionTests(FRHICommandListImmediate& RHICmdList);
-	/** Waits for the occlusion fence. */
-	void WaitOcclusionTests(FRHICommandListImmediate& RHICmdList);
 
 	bool ShouldDumpMeshDrawCommandInstancingStats() const { return bDumpMeshDrawCommandInstancingStats; }
 
@@ -1675,7 +1705,10 @@ public:
 	void UpdateSkyIrradianceGpuBuffer(FRHICommandListImmediate& RHICmdList);
 
 	/** Common function to render a sky using shared LUT resources from any view point (if not using the SkyView and AerialPerspective textures). */
-	void RenderSkyAtmosphereInternal(FRDGBuilder& GraphBuilder, FSkyAtmosphereRenderContext& SkyRenderContext);
+	void RenderSkyAtmosphereInternal(
+		FRDGBuilder& GraphBuilder,
+		const FSceneTextureShaderParameters& SceneTextures,
+		FSkyAtmosphereRenderContext& SkyRenderContext);
 
 	/** Common function to render a cloud layer using shared LUT resources. */
 	void  RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, FCloudRenderContext& CloudRC);
@@ -1835,8 +1868,8 @@ protected:
 	/** Updates state for the end of the frame. */
 	void RenderFinish(FRDGBuilder& GraphBuilder, FRDGTextureRef ViewFamilyTexture);
 
-	void RenderCustomDepthPassAtLocation(FRHICommandListImmediate& RHICmdList, int32 Location);
-	void RenderCustomDepthPass(FRHICommandListImmediate& RHICmdList);
+	void RenderCustomDepthPassAtLocation(FRDGBuilder& GraphBuilder, int32 Location);
+	void RenderCustomDepthPass(FRDGBuilder& GraphBuilder);
 
 	void OnStartRender(FRHICommandListImmediate& RHICmdList);
 
@@ -1849,27 +1882,43 @@ protected:
 
 	/** Initialise sky atmosphere resources.*/
 	void InitSkyAtmosphereForViews(FRHICommandListImmediate& RHICmdList);
+	
 	/** Render the sky atmosphere look up table needed for this frame.*/
-	void RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& RHICmdList);
+	void RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder);
+
 	/** Render the sky atmosphere over the scene.*/
-	void RenderSkyAtmosphere(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture);
+	void RenderSkyAtmosphere(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture);
 
 	/** Initialise volumetric cloud resources.*/
-	void InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList);
+	void InitVolumetricCloudsForViews(FRDGBuilder& GraphBuilder);
+
 	/** Render volumetric cloud. */
-	void RenderVolumetricCloud(FRDGBuilder& GraphBuilder, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture);
+	void RenderVolumetricCloud(
+		FRDGBuilder& GraphBuilder,
+		const FSceneTextureShaderParameters& SceneTextures,
+		bool bSkipVolumetricRenderTarget,
+		bool bSkipPerPixelTracing,
+		FRDGTextureMSAA SceneColorTexture,
+		FRDGTextureMSAA SceneDepthTexture);
 
 	/** Render notification to artist when a sky material is used but it might comtains the camera (and then the sky/background would look black).*/
-	void RenderSkyAtmosphereEditorNotifications(FRHICommandListImmediate& RHICmdList);
+	void RenderSkyAtmosphereEditorNotifications(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture);
+
 	/** We should render on screen notification only if any of the scene contains a mesh using a sky material.*/
 	bool ShouldRenderSkyAtmosphereEditorNotifications();
 
 	/** Initialise volumetric render target.*/
-	void InitVolumetricRenderTargetForViews(FRHICommandListImmediate& RHICmdList);
+	void InitVolumetricRenderTargetForViews(FRDGBuilder& GraphBuilder);
 	/** Process the volumetric render target, generating the high resolution version.*/
-	void ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture);
+	void ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder);
 	/** Compose the volumetric render target over the scene.*/
 	void ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture);
+	/** Compose the volumetric render target over the scene from a view under water, in the water render target.*/
+	void ComposeVolumetricRenderTargetOverSceneUnderWater(FRDGBuilder& GraphBuilder, const FSceneWithoutWaterTextures& WaterPassData);
 
 	void ResolveSceneColor(FRHICommandListImmediate& RHICmdList);
 	void ResolveSceneDepth(FRHICommandListImmediate& RHICmdList);

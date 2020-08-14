@@ -512,6 +512,7 @@ void UpdateHistory(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View, 
 	const TCHAR* BentNormalHistoryRTName,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureRef VelocityTexture,
 	FRDGTextureRef DistanceFieldNormal,
 	FRDGTextureRef BentNormalInterpolation,
@@ -551,11 +552,9 @@ void UpdateHistory(
 			FRDGTextureRef NewBentNormalHistory = nullptr;
 			AllocateOrReuseAORenderTarget(GraphBuilder, NewBentNormalHistory, BentNormalHistoryRTName, PF_FloatRGBA, HistoryPassOutputFlags);
 
-			TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View);
-
 			{
 				auto* PassParameters = GraphBuilder.AllocParameters<FUpdateHistoryDepthRejectionPS::FParameters>();
-				PassParameters->SceneTextures = SceneTextures;
+				PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 				PassParameters->DistanceFieldNormal = DistanceFieldNormal;
 				PassParameters->DistanceFieldAOBentNormal = BentNormalInterpolation;
 				PassParameters->BentNormalHistoryTexture = BentNormalHistoryTexture;
@@ -621,7 +620,7 @@ void UpdateHistory(
 				}
 
 				auto* PassParameters = GraphBuilder.AllocParameters<FUpdateHistoryDepthRejectionPS::FParameters>();
-				PassParameters->SceneTextures = SceneTextures;
+				PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 				PassParameters->DistanceFieldNormal = DistanceFieldNormal;
 				PassParameters->BentNormalHistoryTexture = NewBentNormalHistory;
 				PassParameters->RenderTargets[0] = FRenderTargetBinding(BentNormalHistoryTexture, ERenderTargetLoadAction::ELoad);
@@ -768,6 +767,7 @@ IMPLEMENT_GLOBAL_SHADER(FDistanceFieldAOUpsamplePS, "/Engine/Private/DistanceFie
 void UpsampleBentNormalAO(
 	FRDGBuilder& GraphBuilder,
 	const TArray<FViewInfo>& Views,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef DistanceFieldAOBentNormal,
 	bool bModulateSceneColor)
@@ -778,7 +778,7 @@ void UpsampleBentNormalAO(
 		RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 		auto* PassParameters = GraphBuilder.AllocParameters<FDistanceFieldAOUpsamplePS::FParameters>();
-		PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, View);
+		PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
 		PassParameters->DistanceFieldAOBentNormal = DistanceFieldAOBentNormal;
 

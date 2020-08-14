@@ -1287,18 +1287,6 @@ void FOpenGLDynamicRHI::UnregisterQuery( FOpenGLRenderQuery* Query )
 	Queries.RemoveSingleSwap(Query);
 }
 
-void FOpenGLDynamicRHI::RHIAutomaticCacheFlushAfterComputeShader(bool bEnable)
-{
-	// Nothing to do here...
-}
-
-void FOpenGLDynamicRHI::RHIFlushComputeShaderCache()
-{
-	// Nothing to do here...
-}
-
-
-
 void* FOpenGLDynamicRHI::RHIGetNativeDevice()
 {
 	return PlatformDevice;

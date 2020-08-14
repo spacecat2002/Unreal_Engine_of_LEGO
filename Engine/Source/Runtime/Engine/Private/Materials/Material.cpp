@@ -3988,7 +3988,7 @@ bool UMaterial::CanEditChange(const FProperty* InProperty) const
 
 		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bIsSky))
 		{
-			return MaterialDomain != MD_DeferredDecal && MaterialDomain != MD_RuntimeVirtualTexture && GetShadingModels().IsUnlit() && BlendMode==BLEND_Opaque;
+			return MaterialDomain != MD_DeferredDecal && MaterialDomain != MD_RuntimeVirtualTexture && GetShadingModels().IsUnlit() && (BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked);
 		}
 
 		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, TranslucencyLightingMode)
@@ -5860,7 +5860,8 @@ static bool IsPropertyActive_Internal(EMaterialProperty InProperty,
 	{
 		return InProperty == MP_EmissiveColor
 			|| InProperty == MP_SubsurfaceColor
-			|| InProperty == MP_BaseColor;
+			|| InProperty == MP_BaseColor
+			|| InProperty == MP_AmbientOcclusion;
 	}
 	else if (Domain == MD_UI)
 	{

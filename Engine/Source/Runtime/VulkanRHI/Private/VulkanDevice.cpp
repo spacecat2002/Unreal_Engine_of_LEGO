@@ -314,10 +314,21 @@ void FVulkanDevice::CreateDevice()
 
 	FVulkanPlatform::EnablePhysicalDeviceFeatureExtensions(DeviceInfo);
 
+#if VULKAN_SUPPORTS_NV_DEVICE_DIAGNOSTIC_CONFIG
+	VkDeviceDiagnosticsConfigCreateInfoNV DeviceDiagnosticsConfigCreateInfoNV;
+	if (OptionalDeviceExtensions.HasNVDeviceDiagnosticConfig)
+	{
+		ZeroVulkanStruct(DeviceDiagnosticsConfigCreateInfoNV, VK_STRUCTURE_TYPE_DEVICE_DIAGNOSTICS_CONFIG_CREATE_INFO_NV);
+		DeviceDiagnosticsConfigCreateInfoNV.flags = VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_SHADER_DEBUG_INFO_BIT_NV | VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_RESOURCE_TRACKING_BIT_NV | VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_AUTOMATIC_CHECKPOINTS_BIT_NV;
+		DeviceDiagnosticsConfigCreateInfoNV.pNext = const_cast<void*>(DeviceInfo.pNext);
+		DeviceInfo.pNext = &DeviceDiagnosticsConfigCreateInfoNV;
+	}
+#endif
+
 #if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+	VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
 	if (bHasSeparateDepthStencilLayouts)
 	{
-		VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
 		ZeroVulkanStruct(SeparateDepthStencilLayoutsFeatures, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
 		SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts = VK_TRUE;
 		SeparateDepthStencilLayoutsFeatures.pNext = const_cast<void*>(DeviceInfo.pNext);
@@ -1034,6 +1045,9 @@ void FVulkanDevice::Destroy()
 	}
 #endif
 
+	// Flush all pending deletes before destroying the device and any Vulkan context objects.
+	FRHIResource::FlushPendingDeletes();
+
 	VulkanRHI::vkDestroyImageView(GetInstanceHandle(), DefaultTextureView.View, VULKAN_CPU_ALLOCATOR);
 	DefaultTextureView = {};
 
@@ -1082,8 +1096,6 @@ void FVulkanDevice::Destroy()
 		delete Pool;
 	}
 	FreeOcclusionQueryPools.SetNum(0, false);
-
-	FRHIResource::FlushPendingDeletes();
 
 	delete PipelineStateCache;
 	PipelineStateCache = nullptr;

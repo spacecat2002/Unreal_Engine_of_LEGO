@@ -244,12 +244,7 @@ FVulkanDescriptorPoolSetContainer& FVulkanDescriptorPoolsManager::AcquirePoolSet
 
 	for (auto* PoolSet : PoolSets)
 	{
-		if (PoolSet->IsUnused()
-#if VULKAN_HAS_DEBUGGING_ENABLED
-			//todo-rco: Workaround for RenderDoc not supporting resetting descriptor pools
-			&& (!GRenderDocFound || (GFrameNumberRenderThread - PoolSet->GetLastFrameUsed() > NUM_FRAMES_TO_WAIT_BEFORE_RELEASING_TO_OS))
-#endif
-			)
+		if (PoolSet->IsUnused())
 		{
 			PoolSet->SetUsed(true);
 			return *PoolSet;

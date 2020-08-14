@@ -931,7 +931,7 @@ void USkinnedMeshComponent::SetCPUSkinningEnabled(bool bEnable, bool bRecreateRe
 		return;
 	}
 
-	if (bEnable && IStreamingManager::Get().IsRenderAssetStreamingEnabled())
+	if (bEnable && IStreamingManager::Get().IsRenderAssetStreamingEnabled(EStreamableRenderAssetType::SkeletalMesh))
 	{
 		UE_LOG(LogSkinnedMeshComp, Warning, TEXT("It is expensive to enable CPU skinning with LOD streaming on."));
 
@@ -942,11 +942,8 @@ void USkinnedMeshComponent::SetCPUSkinningEnabled(bool bEnable, bool bRecreateRe
 		SkeletalMesh->bForceMiplevelsToBeResident = true;
 		Manager.UpdateIndividualRenderAsset(SkeletalMesh);
 
-		while (SkeletalMesh->UpdateStreamingStatus())
-		{
-			FlushRenderingCommands();
-			FPlatformProcess::Sleep(RENDER_ASSET_STREAMING_SLEEP_DT);
-		}
+		SkeletalMesh->WaitForPendingInitOrStreaming();
+
 		check(SkeletalMesh->GetResourceForRendering()->CurrentFirstLODIdx <= SkeletalMesh->MinLod.Default);
 
 		SkeletalMesh->UnlinkStreaming();
@@ -986,7 +983,7 @@ void USkinnedMeshComponent::GetStreamingRenderAssetInfo(FStreamingTextureLevelCo
 {
 	GetStreamingTextureInfoInner(LevelContext, nullptr, GetComponentTransform().GetMaximumAxisScale() * StreamingDistanceMultiplier, OutStreamingRenderAssets);
 
-	if (IsStreamingRenderAsset(SkeletalMesh))
+	if (SkeletalMesh && SkeletalMesh->IsStreamable())
 	{
 		const int32 LocalForcedLodModel = GetForcedLOD();
 		const float TexelFactor = LocalForcedLodModel > 0 ? -(SkeletalMesh->GetLODNum() - LocalForcedLodModel + 1) : Bounds.SphereRadius * 2.f;
@@ -3008,7 +3005,7 @@ bool USkinnedMeshComponent::UpdateLODStatus_Internal(int32 InMasterPoseComponent
 			}
 		}
 
-		if (SkeletalMesh->bIsStreamable && MeshObject)
+		if (SkeletalMesh->IsStreamable() && MeshObject)
 		{
 			NewPredictedLODLevel = FMath::Max<int32>(NewPredictedLODLevel, MeshObject->GetSkeletalMeshRenderData().PendingFirstLODIdx);
 		}

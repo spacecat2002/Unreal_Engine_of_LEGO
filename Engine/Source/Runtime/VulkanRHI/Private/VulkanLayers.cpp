@@ -747,7 +747,15 @@ void FOptionalVulkanDeviceExtensions::Setup(const TArray<const ANSICHAR*>& Devic
 	if (GGPUCrashDebuggingEnabled)
 	{
 		HasAMDBufferMarker = HasExtension(DeviceExtensions, VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
-		bHasAnyCrashExtension = bHasAnyCrashExtension || !HasAMDBufferMarker;
+		bHasAnyCrashExtension = bHasAnyCrashExtension || HasAMDBufferMarker;
+	}
+#endif
+
+#if VULKAN_SUPPORTS_NV_DEVICE_DIAGNOSTIC_CONFIG
+	if (GGPUCrashDebuggingEnabled)
+	{
+		HasNVDeviceDiagnosticConfig = HasExtension(DeviceExtensions, VK_NV_DEVICE_DIAGNOSTICS_CONFIG_EXTENSION_NAME);
+		bHasAnyCrashExtension = bHasAnyCrashExtension || HasNVDeviceDiagnosticConfig;
 	}
 #endif
 
@@ -755,7 +763,7 @@ void FOptionalVulkanDeviceExtensions::Setup(const TArray<const ANSICHAR*>& Devic
 	if (GGPUCrashDebuggingEnabled)
 	{
 		HasNVDiagnosticCheckpoints = HasExtension(DeviceExtensions, VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
-		bHasAnyCrashExtension = bHasAnyCrashExtension || !HasNVDiagnosticCheckpoints;
+		bHasAnyCrashExtension = bHasAnyCrashExtension || HasNVDiagnosticCheckpoints;
 	}
 #endif
 
@@ -802,7 +810,9 @@ void FOptionalVulkanDeviceExtensions::Setup(const TArray<const ANSICHAR*>& Devic
 
 	HasKHRImageFormatList = HasExtension(DeviceExtensions, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
 
+#if VULKAN_SUPPORTS_QCOM_RENDERPASS_TRANSFORM
 	HasQcomRenderPassTransform = HasExtension(DeviceExtensions, VK_QCOM_RENDER_PASS_TRANSFORM_EXTENSION_NAME);
+#endif
 }
 
 void FVulkanDynamicRHI::SetupValidationRequests()

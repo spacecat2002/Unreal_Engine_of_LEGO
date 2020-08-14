@@ -169,6 +169,7 @@ public:
 	virtual void FlushMetadata(FRHITexture** InTextures, int32 NumTextures) {};
 
 	D3D12_RESOURCE_STATES SkipFastClearEliminateState;
+	D3D12_RESOURCE_STATES ValidResourceStates;
 
 #if PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
 	bool bNeedFlushTextureCache;
@@ -262,8 +263,6 @@ public:
 	virtual void RHISubmitCommandsHint() final override;
 
 	// IRHICommandContext interface
-	virtual void RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) final override;
-	virtual void RHIFlushComputeShaderCache() final override;
 	virtual void RHISetMultipleViewports(uint32 Count, const FViewportBounds* Data) final override;
 	virtual void RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values) final override;
 	virtual void RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values) final override;
@@ -540,14 +539,6 @@ public:
 	}
 
 	// IRHICommandContext interface
-	FORCEINLINE virtual void RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) final override
-	{
-		ContextRedirect(RHIAutomaticCacheFlushAfterComputeShader(bEnable));
-	}
-	FORCEINLINE virtual void RHIFlushComputeShaderCache() final override
-	{
-		ContextRedirect(RHIFlushComputeShaderCache());
-	}
 	FORCEINLINE virtual void RHISetMultipleViewports(uint32 Count, const FViewportBounds* Data) final override
 	{
 		ContextRedirect(RHISetMultipleViewports(Count, Data));

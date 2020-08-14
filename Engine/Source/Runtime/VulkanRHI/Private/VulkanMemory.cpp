@@ -3884,11 +3884,13 @@ FVulkanCustomMemManager::FVulkanCustomMemManager()
 
 inline FVulkanCustomMemManager::FType& FVulkanCustomMemManager::GetType(void* UserData, VkSystemAllocationScope AllocScope)
 {
+	check(AllocScope < VK_SYSTEM_ALLOCATION_SCOPE_RANGE_SIZE);
 	return GVulkanInstrumentedMemMgr.Types[AllocScope];
 }
 
 void* FVulkanCustomMemManager::Alloc(void* UserData, size_t Size, size_t Alignment, VkSystemAllocationScope AllocScope)
 {
+	check(AllocScope < VK_SYSTEM_ALLOCATION_SCOPE_RANGE_SIZE);
 	LLM_SCOPE_VULKAN(ELLMTagVulkan::VulkanDriverMemoryCPU);
 	FScopeLock Lock(&GMemMgrCS);
 	void* Data = FMemory::Malloc(Size, Alignment);
@@ -3918,6 +3920,7 @@ void FVulkanCustomMemManager::Free(void* UserData, void* Mem)
 
 void* FVulkanCustomMemManager::Realloc(void* UserData, void* Original, size_t Size, size_t Alignment, VkSystemAllocationScope AllocScope)
 {
+	check(AllocScope < VK_SYSTEM_ALLOCATION_SCOPE_RANGE_SIZE);
 	LLM_SCOPE_VULKAN(ELLMTagVulkan::VulkanDriverMemoryCPU);
 	FScopeLock Lock(&GMemMgrCS);
 	void* Data = FMemory::Realloc(Original, Size, Alignment);
@@ -3930,12 +3933,14 @@ void* FVulkanCustomMemManager::Realloc(void* UserData, void* Original, size_t Si
 	return Data;
 }
 
-void FVulkanCustomMemManager::InternalAllocationNotification(void* UserData, size_t Size, VkInternalAllocationType AllocationType, VkSystemAllocationScope AllocationScope)
+void FVulkanCustomMemManager::InternalAllocationNotification(void* UserData, size_t Size, VkInternalAllocationType AllocationType, VkSystemAllocationScope AllocScope)
 {
+	check(AllocScope < VK_SYSTEM_ALLOCATION_SCOPE_RANGE_SIZE);
 }
 
-void FVulkanCustomMemManager::InternalFreeNotification(void* UserData, size_t Size, VkInternalAllocationType AllocationType, VkSystemAllocationScope AllocationScope)
+void FVulkanCustomMemManager::InternalFreeNotification(void* UserData, size_t Size, VkInternalAllocationType AllocationType, VkSystemAllocationScope AllocScope)
 {
+	check(AllocScope < VK_SYSTEM_ALLOCATION_SCOPE_RANGE_SIZE);
 }
 #endif
 

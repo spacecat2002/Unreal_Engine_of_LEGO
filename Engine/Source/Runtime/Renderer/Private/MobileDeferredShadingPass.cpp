@@ -93,8 +93,8 @@ void MobileDeferredShadingPass(FRHICommandListImmediate& RHICmdList, const FScen
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
-	FUniformBufferRHIRef SceneTexturesBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View);
-	FUniformBufferStaticBindings GlobalUniformBuffers(SceneTexturesBuffer);
+	FUniformBufferRHIRef PassUniformBuffer = CreateMobileSceneTextureUniformBuffer(RHICmdList);
+	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
 	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 	
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;

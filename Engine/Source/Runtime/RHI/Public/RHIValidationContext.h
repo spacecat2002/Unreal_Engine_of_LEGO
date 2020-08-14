@@ -261,16 +261,6 @@ public:
 		RHIContext->RHISetAsyncComputeBudget(Budget);
 	}
 
-	virtual void RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) override final
-	{
-		RHIContext->RHIAutomaticCacheFlushAfterComputeShader(bEnable);
-	}
-
-	virtual void RHIFlushComputeShaderCache() override final
-	{
-		RHIContext->RHIFlushComputeShaderCache();
-	}
-
 	// Useful when used with geometry shader (emit polygons to different viewports), otherwise SetViewPort() is simpler
 	// @param Count >0
 	// @param Data must not be 0
@@ -295,14 +285,32 @@ public:
 
 	virtual void RHIBeginUAVOverlap() final override
 	{
-		Tracker->UAVOverlap(true);
+		Tracker->AllUAVsOverlap(true);
 		RHIContext->RHIBeginUAVOverlap();
 	}
 
 	virtual void RHIEndUAVOverlap() final override
 	{
-		Tracker->UAVOverlap(false);
+		Tracker->AllUAVsOverlap(false);
 		RHIContext->RHIEndUAVOverlap();
+	}
+
+	virtual void RHIBeginUAVOverlap(TArrayView<FRHIUnorderedAccessView*> UAVs) final override
+	{
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			Tracker->SpecificUAVOverlap(UAV->ViewIdentity, true);
+		}
+		RHIContext->RHIBeginUAVOverlap(UAVs);
+	}
+
+	virtual void RHIEndUAVOverlap(TArrayView<FRHIUnorderedAccessView*> UAVs) final override
+	{
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			Tracker->SpecificUAVOverlap(UAV->ViewIdentity, false);
+		}
+		RHIContext->RHIEndUAVOverlap(UAVs);
 	}
 
 	/**
@@ -340,7 +348,7 @@ public:
 
 	virtual void RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions) override final
 	{
-		checkf(!State.bInsideBeginRenderPass, TEXT("Beginning a transition within a renderpass is not supported!"));
+		ensureMsgf(!State.bInsideBeginRenderPass, TEXT("Beginning a transition within a renderpass is not supported!"));
 
 		for (const FRHITransition* Transition : Transitions)
 		{
@@ -352,7 +360,7 @@ public:
 
 	virtual void RHIEndTransitions(TArrayView<const FRHITransition*> Transitions) override final
 	{
-		checkf(!State.bInsideBeginRenderPass, TEXT("Ending a transition within a renderpass is not supported!"));
+		ensureMsgf(!State.bInsideBeginRenderPass, TEXT("Ending a transition within a renderpass is not supported!"));
 
 		for (const FRHITransition* Transition : Transitions)
 		{
@@ -531,7 +539,7 @@ public:
 	virtual void RHISetShaderTexture(FRHIGraphicsShader* Shader, uint32 TextureIndex, FRHITexture* NewTexture) override final
 	{
 		checkf(State.bGfxPSOSet, TEXT("A Graphics PSO has to be set to set resources into a shader!"));
-		Tracker->Assert(NewTexture->GetWholeResourceIdentity(), ERHIAccess::SRVGraphics);
+		Tracker->Assert(NewTexture->GetWholeResourceIdentitySRV(), ERHIAccess::SRVGraphics);
 		RHIContext->RHISetShaderTexture(Shader, TextureIndex, NewTexture);
 	}
 
@@ -539,7 +547,7 @@ public:
 	virtual void RHISetShaderTexture(FRHIComputeShader* Shader, uint32 TextureIndex, FRHITexture* NewTexture) override final
 	{
 		checkf(State.bComputeShaderSet, TEXT("A Compute shader has to be set to set resources into a shader!"));
-		Tracker->Assert(NewTexture->GetWholeResourceIdentity(), ERHIAccess::SRVCompute);
+		Tracker->Assert(NewTexture->GetWholeResourceIdentitySRV(), ERHIAccess::SRVCompute);
 		RHIContext->RHISetShaderTexture(Shader, TextureIndex, NewTexture);
 	}
 

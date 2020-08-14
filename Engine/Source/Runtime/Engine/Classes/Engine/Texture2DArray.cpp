@@ -14,7 +14,7 @@
 
 static TAutoConsoleVariable<int32> CVarAllowTexture2DArrayAssetCreation(
 	TEXT("r.AllowTexture2DArrayCreation"),
-	0,
+	1,
 	TEXT("Enable UTexture2DArray assets"),
 	ECVF_Default
 );

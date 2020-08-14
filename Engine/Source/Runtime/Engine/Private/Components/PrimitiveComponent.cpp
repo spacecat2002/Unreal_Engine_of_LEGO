@@ -338,6 +338,7 @@ UPrimitiveComponent::UPrimitiveComponent(const FObjectInitializer& ObjectInitial
 	SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
 	bAlwaysCreatePhysicsState = false;
 	bVisibleInReflectionCaptures = true;
+	bVisibleInRealTimeSkyCaptures = true;
 	bVisibleInRayTracing = true;
 	bRenderInMainPass = true;
 	bRenderInDepthPass = true;
@@ -471,7 +472,7 @@ void UPrimitiveComponent::GetStreamingRenderAssetInfoWithNULLRemoval(FStreamingT
 		for (int32 Index = 0; Index < OutStreamingRenderAssets.Num(); Index++)
 		{
 			const FStreamingRenderAssetPrimitiveInfo& Info = OutStreamingRenderAssets[Index];
-			if (!IsStreamingRenderAsset(Info.RenderAsset))
+			if (!Info.RenderAsset || !Info.RenderAsset->IsStreamable())
 			{
 				OutStreamingRenderAssets.RemoveAtSwap(Index--);
 			}

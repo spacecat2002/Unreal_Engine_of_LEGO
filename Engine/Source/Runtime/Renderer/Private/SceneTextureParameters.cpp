@@ -2,6 +2,7 @@
 
 #include "SceneTextureParameters.h"
 #include "SceneRendering.h"
+#include "ScenePrivate.h"
 #include "SceneRenderTargets.h"
 #include "SystemTextures.h"
 
@@ -46,16 +47,14 @@ FSceneTextureParameters GetSceneTextureParameters(FRDGBuilder& GraphBuilder, TRD
 	return Parameters;
 }
 
-FSceneLightingChannelParameters GetSceneLightingChannelParameters(FRDGBuilder& GraphBuilder)
+FSceneLightingChannelParameters GetSceneLightingChannelParameters(FRDGBuilder& GraphBuilder, FRDGTextureRef LightingChannelsTexture)
 {
-	const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-
 	FSceneLightingChannelParameters Parameters;
 
 	// Lighting channels might be disabled when all lights are on the same channel.
-	if (SceneContext.LightingChannels)
+	if (LightingChannelsTexture)
 	{
-		Parameters.SceneLightingChannels = GraphBuilder.RegisterExternalTexture(SceneContext.LightingChannels);
+		Parameters.SceneLightingChannels = LightingChannelsTexture;
 		Parameters.bSceneLightingChannelsValid = true;
 	}
 	else
@@ -76,5 +75,17 @@ FRDGTextureRef GetEyeAdaptationTexture(FRDGBuilder& GraphBuilder, const FSceneVi
 	else
 	{
 		return GraphBuilder.RegisterExternalTexture(GSystemTextures.WhiteDummy);
+	}
+}
+
+FRHIShaderResourceView* GetEyeAdaptationBuffer(const FSceneView& View)
+{
+	if (View.HasValidEyeAdaptationBuffer())
+	{
+		return View.GetEyeAdaptationBuffer()->SRV;
+	}
+	else
+	{
+		return GWhiteVertexBufferWithSRV->ShaderResourceViewRHI;
 	}
 }

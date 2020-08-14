@@ -1857,7 +1857,7 @@ void FMobileSceneRenderer::RenderModulatedShadowProjections(FRHICommandListImmed
 		return;
 	}
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	TRefCountPtr<FRHIUniformBuffer> SceneTexturesUniformBuffer = CreateMobileSceneTextureUniformBuffer(RHICmdList, Views[0], EMobileSceneTextureSetupMode::SceneColor);
+	TRefCountPtr<FRHIUniformBuffer> SceneTexturesUniformBuffer = CreateMobileSceneTextureUniformBuffer(RHICmdList, EMobileSceneTextureSetupMode::SceneColor);
 	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, SceneTexturesUniformBuffer);
 
 	// render shadowmaps for relevant lights.

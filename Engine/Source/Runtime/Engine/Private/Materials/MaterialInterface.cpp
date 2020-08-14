@@ -282,7 +282,7 @@ void UMaterialInterface::SetForceMipLevelsToBeResident( bool OverrideForceMiplev
 				static IConsoleVariable* CVarAllowFastForceResident = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Streaming.AllowFastForceResident"));
 
 				Texture->bIgnoreStreamingMipBias = CVarAllowFastForceResident && CVarAllowFastForceResident->GetInt();
-				if (IStreamingManager::Get().IsRenderAssetStreamingEnabled())
+				if (Texture->IsStreamable())
 				{
 					IStreamingManager::Get().GetRenderAssetStreamingManager().FastForceFullyResident(Texture);
 				}
@@ -779,7 +779,7 @@ bool UMaterialInterface::UseAnyStreamingTexture() const
 
 	for (UTexture* Texture : Textures)
 	{
-		if (IsStreamingRenderAsset(Texture))
+		if (Texture && Texture->IsStreamable())
 		{
 			return true;
 		}

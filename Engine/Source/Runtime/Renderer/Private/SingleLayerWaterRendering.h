@@ -17,6 +17,7 @@ struct FSceneWithoutWaterTextures
 	FRDGTextureRef ColorTexture = nullptr;
 	FRDGTextureRef DepthTexture = nullptr;
 	TArray<FView> Views;
+	float RefractionDownsampleFactor = 1.0f;
 };
 
 bool ShouldRenderSingleLayerWater(TArrayView<const FViewInfo> Views);
