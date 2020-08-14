@@ -4,6 +4,7 @@
 #include "PostProcess/PostProcessCombineLUTs.h"
 #include "CanvasTypes.h"
 #include "RenderTargetTemp.h"
+#include "UnrealEngine.h"
 
 class FTestImagePS : public FGlobalShader
 {

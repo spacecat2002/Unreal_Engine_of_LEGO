@@ -121,6 +121,10 @@ static const int32 NumTranslucencyShadowSurfaces = 2;
 
 #define STENCIL_LIGHTING_CHANNELS_MASK(Value) uint8((Value & 0x7) << STENCIL_LIGHTING_CHANNELS_BIT_ID)
 
+// Mobile specific
+// Store shading model into stencil [1-3] bits
+#define GET_STENCIL_MOBILE_SM_MASK(Value) uint8((Value & 0x7) << 1)
+
 #if !defined(PREVENT_RENDERTARGET_SIZE_THRASHING)
 	#define PREVENT_RENDERTARGET_SIZE_THRASHING (PLATFORM_DESKTOP || PLATFORM_PS4 || PLATFORM_ANDROID || PLATFORM_IOS || PLATFORM_SWITCH || PLATFORM_UNIX)
 #endif
@@ -430,6 +434,7 @@ public:
 	EPixelFormat GetGBufferEFormat() const;
 	EPixelFormat GetGBufferFFormat() const;
 	void AllocGBufferTargets(FRHICommandList& RHICmdList);
+	void AllocGBufferTargets(FRHICommandList& RHICmdList, ETextureCreateFlags AddTargetableFlags);
 
 	void AllocateReflectionTargets(FRHICommandList& RHICmdList, int32 TargetSize);
 
@@ -473,6 +478,9 @@ public:
 	TRefCountPtr<IPooledRenderTarget> GBufferD;
 	TRefCountPtr<IPooledRenderTarget> GBufferE;
 	TRefCountPtr<IPooledRenderTarget> GBufferF;
+
+	// Optional color attachment to store SceneDepth
+	TRefCountPtr<IPooledRenderTarget> SceneDepthAux;
 
 	// DBuffer: For decals before base pass (only temporarily available after early z pass and until base pass)
 	TRefCountPtr<IPooledRenderTarget> DBufferA;

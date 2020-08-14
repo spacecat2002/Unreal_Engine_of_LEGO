@@ -348,7 +348,6 @@ struct FOpenGLContextState : public FOpenGLCommonState
 	uint16							ClearStencil;
 	float							ClearDepth;
 	int32							FirstNonzeroRenderTarget;
-	GLenum							DrawFramebuffers[MaxSimultaneousRenderTargets];
 	bool							bAlphaToCoverageEnabled;
 	
 	FOpenGLVertexDeclaration*		VertexDecl;
@@ -403,7 +402,6 @@ struct FOpenGLContextState : public FOpenGLCommonState
 		Viewport.Min.X = Viewport.Min.Y = Viewport.Max.X = Viewport.Max.Y = 0;
 		FMemory::Memzero(UniformBuffers, sizeof(UniformBuffers));
 		FMemory::Memzero(UniformBufferOffsets, sizeof(UniformBufferOffsets));
-		FMemory::Memzero(DrawFramebuffers, sizeof(DrawFramebuffers));
 	}
 
 	virtual void InitializeResources(int32 NumCombinedTextures, int32 NumCombinedUAVUnits) override

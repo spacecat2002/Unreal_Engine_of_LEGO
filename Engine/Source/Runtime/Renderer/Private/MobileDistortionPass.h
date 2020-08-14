@@ -2,36 +2,27 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
-#include "PostProcess/RenderingCompositionGraph.h"
+#include "ScreenPass.h"
 
-class FRCDistortionAccumulatePassMobile : public TRenderingCompositePassBase<1, 1>
+struct FMobileDistortionAccumulateInputs
 {
-public:
-	FRCDistortionAccumulatePassMobile(FIntPoint InPrePostSourceViewportSize, FScene* InScene) 
-		: PrePostSourceViewportSize(InPrePostSourceViewportSize) 
-		, Scene(InScene)
-	{ }
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-	virtual void Release() override { delete this; }
-	virtual const TCHAR* GetDebugName() { return TEXT("FRCDistortionAccumulatePassMobile"); }
-private:
-	FIntPoint PrePostSourceViewportSize;
-	FScene* Scene; 
+	FScreenPassTexture SceneColor;
 };
 
-class FRCDistortionMergePassMobile : public TRenderingCompositePassBase<2, 1>
+struct FMobileDistortionAccumulateOutputs
 {
-public:
-	FRCDistortionMergePassMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-	virtual void Release() override { delete this; }
-	virtual const TCHAR* GetDebugName() { return TEXT("FRCDistortionMergePassMobile"); }
-private:
-	FIntPoint PrePostSourceViewportSize;
+	FScreenPassTexture DistortionAccumulate;
 };
+
+FMobileDistortionAccumulateOutputs AddMobileDistortionAccumulatePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileDistortionAccumulateInputs& Inputs);
+
+struct FMobileDistortionMergeInputs
+{
+	FScreenPassTexture SceneColor;
+	FScreenPassTexture DistortionAccumulate;
+};
+
+FScreenPassTexture AddMobileDistortionMergePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileDistortionMergeInputs& Inputs);
 
 // Returns whether distortion is enabled and there primitives to draw
 bool IsMobileDistortionActive(const FViewInfo& View);

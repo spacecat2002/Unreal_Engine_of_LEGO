@@ -253,6 +253,7 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, GBufferD(GRenderTargetPool.MakeSnapshot(SnapshotSource.GBufferD))
 	, GBufferE(GRenderTargetPool.MakeSnapshot(SnapshotSource.GBufferE))
 	, GBufferF(GRenderTargetPool.MakeSnapshot(SnapshotSource.GBufferF))
+	, SceneDepthAux(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneDepthAux))
 	, DBufferA(GRenderTargetPool.MakeSnapshot(SnapshotSource.DBufferA))
 	, DBufferB(GRenderTargetPool.MakeSnapshot(SnapshotSource.DBufferB))
 	, DBufferC(GRenderTargetPool.MakeSnapshot(SnapshotSource.DBufferC))
@@ -1126,6 +1127,11 @@ EPixelFormat FSceneRenderTargets::GetGBufferFFormat() const
 }
 
 void FSceneRenderTargets::AllocGBufferTargets(FRHICommandList& RHICmdList)
+{
+	AllocGBufferTargets(RHICmdList, TexCreate_None);
+}
+
+void FSceneRenderTargets::AllocGBufferTargets(FRHICommandList& RHICmdList, ETextureCreateFlags AddTargetableFlags)
 {	
 	// AdjustGBufferRefCount +1 doesn't match -1 (within the same frame)
 	ensure(GBufferRefCount == 0);
@@ -1144,28 +1150,28 @@ void FSceneRenderTargets::AllocGBufferTargets(FRHICommandList& RHICmdList)
 	{
 		// Create the world-space normal g-buffer.
 		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferAFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false));
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferAFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | AddTargetableFlags , false));
 			Desc.Flags |= GFastVRamConfig.GBufferA;
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferA, TEXT("GBufferA"));
 		}
 
 		// Create the specular color and power g-buffer.
 		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferBFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false));
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferBFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | AddTargetableFlags, false));
 			Desc.Flags |= GFastVRamConfig.GBufferB;
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferB, TEXT("GBufferB"));
 		}
 
 		// Create the diffuse color g-buffer.
 		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferCFormat(), FClearValueBinding::Transparent, TexCreate_SRGB, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false));
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferCFormat(), FClearValueBinding::Transparent, TexCreate_SRGB, TexCreate_RenderTargetable | TexCreate_ShaderResource | AddTargetableFlags, false));
 			Desc.Flags |= GFastVRamConfig.GBufferC;
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferC, TEXT("GBufferC"));
 		}
 
 		// Create the mask g-buffer (e.g. SSAO, subsurface scattering, wet surface mask, skylight mask, ...).
 		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferDFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false));
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferDFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | AddTargetableFlags, false));
 			Desc.Flags |= GFastVRamConfig.GBufferD;
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferD, TEXT("GBufferD"));
 		}
@@ -1409,6 +1415,13 @@ void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandListImmediate& 
 	AllocateVirtualTextureFeedbackBuffer(RHICmdList);
 
 	AllocateDebugViewModeTargets(RHICmdList);
+
+	if (IsMobileDeferredShading())
+	{
+		float FarDepth = (float)ERHIZBuffer::FarPlane;
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R32_FLOAT, FClearValueBinding(FLinearColor(FarDepth,FarDepth,FarDepth,FarDepth)), TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false));
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SceneDepthAux, TEXT("SceneDepthAux"));
+	}
 }
 
 // This is a helper class. It generates and provides N names with
@@ -1824,6 +1837,10 @@ EPixelFormat FSceneRenderTargets::GetDesiredMobileSceneColorFormat() const
 	const EPixelFormat defaultLowpFormat = FPlatformMisc::IsStandaloneStereoOnlyDevice() ? PF_R8G8B8A8 : PF_B8G8R8A8;
 
 	EPixelFormat DefaultColorFormat = (!IsMobileHDR() || !GSupportsRenderTargetFormat_PF_FloatRGBA) ? defaultLowpFormat : PF_FloatRGBA;
+	if (IsMobileDeferredShading())
+	{
+		DefaultColorFormat = PF_FloatR11G11B10;
+	}
 	check(GPixelFormats[DefaultColorFormat].Supported);
 
 	EPixelFormat MobileSceneColorBufferFormat = DefaultColorFormat;
@@ -2091,6 +2108,8 @@ void FSceneRenderTargets::ReleaseAllTargets()
 	EditorPrimitivesDepth.SafeRelease();
 
 	FoveationTexture.SafeRelease();
+
+	SceneDepthAux.SafeRelease();
 }
 
 void FSceneRenderTargets::ReleaseDynamicRHI()
@@ -2581,15 +2600,18 @@ static void SetupMobileSceneTextureUniformParameters(
 		const FSceneRenderTargetItem& GBufferBToUse = bCanReadGBufferUniforms && SceneContext.GBufferB ? SceneContext.GBufferB->GetRenderTargetItem() : GSystemTextures.BlackDummy->GetRenderTargetItem();
 		const FSceneRenderTargetItem& GBufferCToUse = bCanReadGBufferUniforms && SceneContext.GBufferC ? SceneContext.GBufferC->GetRenderTargetItem() : GSystemTextures.BlackDummy->GetRenderTargetItem();
 		const FSceneRenderTargetItem& GBufferDToUse = bCanReadGBufferUniforms && SceneContext.GBufferD ? SceneContext.GBufferD->GetRenderTargetItem() : GSystemTextures.BlackDummy->GetRenderTargetItem();
+		const FSceneRenderTargetItem& SceneDepthAuxToUse = bCanReadGBufferUniforms && SceneContext.SceneDepthAux ? SceneContext.SceneDepthAux->GetRenderTargetItem() : GSystemTextures.MaxFP16Depth->GetRenderTargetItem();
 
 		SceneTextureParameters.GBufferATexture = GBufferAToUse.ShaderResourceTexture;
 		SceneTextureParameters.GBufferBTexture = GBufferBToUse.ShaderResourceTexture;
 		SceneTextureParameters.GBufferCTexture = GBufferCToUse.ShaderResourceTexture;
 		SceneTextureParameters.GBufferDTexture = GBufferDToUse.ShaderResourceTexture;
+		SceneTextureParameters.SceneDepthAuxTexture = SceneDepthAuxToUse.ShaderResourceTexture;
 		SceneTextureParameters.GBufferATextureSampler = TStaticSamplerState<>::GetRHI();
 		SceneTextureParameters.GBufferBTextureSampler = TStaticSamplerState<>::GetRHI();
 		SceneTextureParameters.GBufferCTextureSampler = TStaticSamplerState<>::GetRHI();
 		SceneTextureParameters.GBufferDTextureSampler = TStaticSamplerState<>::GetRHI();
+		SceneTextureParameters.SceneDepthAuxTextureSampler = TStaticSamplerState<>::GetRHI();
 	}
 }
 
@@ -2663,7 +2685,6 @@ bool IsSceneTexturesValid(FRHICommandListImmediate& RHICmdList)
 	return SceneContext.IsShadingPathValid();
 }
 
-
 void SetupMobileSceneTextureUniformParameters(
 	FSceneRenderTargets& SceneContext,
 	ERHIFeatureLevel::Type FeatureLevel,
@@ -2681,4 +2702,13 @@ void SetupMobileSceneTextureUniformParameters(
 		SetupMode |= EMobileSceneTextureSetupMode::CustomDepth;
 	}
 	SetupMobileSceneTextureUniformParameters(nullptr, SceneContext, SetupMode, SceneTextureParameters);
+}
+
+void SetupMobileSceneTextureUniformParameters(
+	FRDGBuilder& GraphBuilder,
+	EMobileSceneTextureSetupMode SetupMode,
+	FMobileSceneTextureUniformParameters& SceneTextureParameters)
+{
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+	SetupMobileSceneTextureUniformParameters(&GraphBuilder, SceneContext, SetupMode, SceneTextureParameters);
 }

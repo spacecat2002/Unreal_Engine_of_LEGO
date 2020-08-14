@@ -545,6 +545,11 @@ static void GetBuildSettingsForRunningPlatform(
 			FTextureBuildSettings& OutSettings = OutSettingPerLayer.Add_GetRef(SourceBuildSettings);
 			OutSettings.TextureFormatName = PlatformFormats[0][LayerIndex];
 			FinalizeBuildSettingsForLayer(Texture, LayerIndex, OutSettings);
+
+			if (SourceBuildSettings.bVirtualStreamable)
+			{
+				OutSettings.TextureFormatName = CurrentPlatform->FinalizeVirtualTextureLayerFormat(OutSettings.TextureFormatName);
+			}
 		}
 	}
 }
@@ -567,6 +572,11 @@ static void GetBuildSettingsPerFormat(const UTexture& Texture, const FTextureBui
 			FTextureBuildSettings& OutSettings = OutSettingPerLayer.Add_GetRef(SourceBuildSettings);
 			OutSettings.TextureFormatName = PlatformFormatsPerLayer[LayerIndex];
 			FinalizeBuildSettingsForLayer(Texture, LayerIndex, OutSettings);
+
+			if (SourceBuildSettings.bVirtualStreamable)
+			{
+				OutSettings.TextureFormatName = TargetPlatform->FinalizeVirtualTextureLayerFormat(OutSettings.TextureFormatName);
+			}
 		}
 	}
 }

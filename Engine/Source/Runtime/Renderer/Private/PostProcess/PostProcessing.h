@@ -59,6 +59,23 @@ void AddVisualizeCalibrationMaterialPostProcessingPasses(FRDGBuilder& GraphBuild
 
 #endif
 
+
+struct FMobilePostProcessingInputs
+{
+	TRDGUniformBufferRef<FMobileSceneTextureUniformParameters> SceneTextures = nullptr;
+	FRDGTextureRef ViewFamilyTexture = nullptr;
+
+	void Validate() const
+	{
+		check(ViewFamilyTexture);
+		check(SceneTextures);
+	}
+};
+
+void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobilePostProcessingInputs& Inputs);
+
+void AddBasicPostProcessPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View);
+
 // For compatibility with composition graph passes until they are ported to Render Graph.
 class FPostProcessVS : public FScreenPassVS
 {
@@ -96,15 +113,7 @@ public:
 class FPostProcessing
 {
 public:
-	void ProcessMobile(FRHICommandListImmediate& RHICmdList, FScene* Scene, const FViewInfo& View);
-
 	void ProcessPlanarReflection(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, TRefCountPtr<IPooledRenderTarget>& OutFilteredSceneColor);
-
-#if WITH_EDITOR
-	void AddSelectionOutline(FPostprocessContext& Context);
-#endif // WITH_EDITOR
-
-	void AddGammaOnlyTonemapper(FPostprocessContext& Context);
 
 	void OverrideRenderTarget(FRenderingCompositeOutputRef It, TRefCountPtr<IPooledRenderTarget>& RT, FPooledRenderTargetDesc& Desc);
 };

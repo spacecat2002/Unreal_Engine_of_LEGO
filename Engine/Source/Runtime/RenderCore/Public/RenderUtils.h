@@ -515,7 +515,7 @@ inline bool IsUsingPerPixelDBufferMask(const FStaticShaderPlatform Platform)
 
 inline bool UseGPUScene(const FStaticShaderPlatform Platform, const FStaticFeatureLevel FeatureLevel)
 {
-	if (IsMobilePlatform(Platform))
+	if (FeatureLevel == ERHIFeatureLevel::ES3_1)
 	{
 		return MobileSupportsGPUScene(Platform);
 	}

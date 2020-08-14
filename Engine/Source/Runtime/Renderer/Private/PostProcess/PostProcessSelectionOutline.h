@@ -6,7 +6,6 @@
 
 #include "ScreenPass.h"
 #include "OverridePassSequence.h"
-#include "PostProcess/RenderingCompositionGraph.h"
 
 struct FSelectionOutlineInputs
 {
@@ -24,7 +23,5 @@ struct FSelectionOutlineInputs
 };
 
 FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FSelectionOutlineInputs& Inputs);
-
-FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input);
 
 #endif
