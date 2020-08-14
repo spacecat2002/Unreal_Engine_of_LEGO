@@ -112,6 +112,14 @@ class ENGINE_API UKismetArrayLibrary : public UBlueprintFunctionLibrary
 	*/
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Resize", CompactNodeTitle = "RESIZE", ArrayParm = "TargetArray"), Category="Utilities|Array")
 	static void Array_Resize(const TArray<int32>& TargetArray, int32 Size);
+	
+	/**
+	 * Reverse the elements of an array
+	 *
+	 *@param	TargetArray		The array to reverse
+	*/
+	UFUNCTION(BlueprintCallable, CustomThunk, meta = (DisplayName = "Reverse", CompactNodeTitle = "REVERSE", ArrayParm = "TargetArray"), Category = "Utilities|Array")
+	static void Array_Reverse(const TArray<int32>& TargetArray);
 
 	/* 
 	 *Get the number of items in an array
@@ -221,6 +229,7 @@ class ENGINE_API UKismetArrayLibrary : public UBlueprintFunctionLibrary
 	static bool GenericArray_RemoveItem(void* TargetArray, const FArrayProperty* ArrayProp, const void* Item);
 	static void GenericArray_Clear(void* TargetArray, const FArrayProperty* ArrayProp);
 	static void GenericArray_Resize(void* TargetArray, const FArrayProperty* ArrayProp, int32 Size);
+	static void GenericArray_Reverse(void* TargetArray, const FArrayProperty* ArrayProp);
 	static int32 GenericArray_Length(const void* TargetArray, const FArrayProperty* ArrayProp);
 	static int32 GenericArray_LastIndex(const void* TargetArray, const FArrayProperty* ArrayProp);
 	static void GenericArray_Get(void* TargetArray, const FArrayProperty* ArrayProp, int32 Index, void* Item);
@@ -494,6 +503,23 @@ public:
 		P_NATIVE_BEGIN;
 		MARK_PROPERTY_DIRTY(Stack.Object, ArrayProperty);
 		GenericArray_Resize(ArrayAddr, ArrayProperty, Size);
+		P_NATIVE_END;
+	}
+	
+	DECLARE_FUNCTION(execArray_Reverse)
+	{
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(NULL);
+		void* ArrayAddr = Stack.MostRecentPropertyAddress;
+		FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!ArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+		P_FINISH;
+		P_NATIVE_BEGIN;
+		GenericArray_Reverse(ArrayAddr, ArrayProperty);
 		P_NATIVE_END;
 	}
 

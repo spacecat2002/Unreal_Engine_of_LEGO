@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet/KismetArrayLibrary.h"
 #include "GameFramework/Actor.h"
@@ -251,6 +251,19 @@ void UKismetArrayLibrary::GenericArray_Resize(void* TargetArray, const FArrayPro
 		else
 		{
 			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Attempted to resize an array using negative size: Array = %s, Size = %d!"), *ArrayProp->GetName(), Size), ELogVerbosity::Warning, ResizeArrayNegativeWarning);
+		}
+	}
+}
+
+void UKismetArrayLibrary::GenericArray_Reverse(void* TargetArray, const FArrayProperty* ArrayProp)
+{
+	if (TargetArray)
+	{
+		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
+		const int32 ArraySize = ArrayHelper.Num();
+		for (int32 i = 0, i2 = ArraySize - 1; i < ArraySize / 2 /*rounding down*/; ++i, --i2)
+		{
+			ArrayHelper.SwapValues(i, i2);
 		}
 	}
 }

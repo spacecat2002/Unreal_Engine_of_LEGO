@@ -11,6 +11,7 @@
 #include "Blueprint/BlueprintSupport.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/UserDefinedStruct.h"
+#include "Algo/Reverse.h"
 
 // Common libraries
 #include "Kismet/KismetArrayLibrary.h"
@@ -285,6 +286,12 @@ public:
 		{
 			ExecutionMessage(*FString::Printf(TEXT("Attempted to resize an array using negative size: Size = %d!"), Size), ELogVerbosity::Warning);
 		}
+	}
+	
+	template<typename T>
+	static void Array_Reverse(const TArray<T>& TargetArray)
+	{
+		Algo::Reverse(*const_cast<TArray<T>*>(&TargetArray));
 	}
 
 	template<typename T>
