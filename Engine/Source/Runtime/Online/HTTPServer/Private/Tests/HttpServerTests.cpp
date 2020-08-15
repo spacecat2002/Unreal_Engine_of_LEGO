@@ -145,7 +145,7 @@ bool FHttpServerPathParametersTest::RunTest(const FString& Parameters)
 			(*RequestHandlerPtr)(*Request, Callback);
 		}
 
-		if (Test.bExpectedResult == ShouldMatch && !Test.bRouteQueried || Test.bExpectedResult == ShouldNotMatch && Test.bRouteQueried)
+		if ((Test.bExpectedResult == ShouldMatch && !Test.bRouteQueried) || (Test.bExpectedResult == ShouldNotMatch && Test.bRouteQueried))
 		{
 			AddError(FString::Printf(TEXT("Expected query %s to have result: %s when targeting route %s"), *Test.TestQuery, Test.bExpectedResult ? TEXT("true") : TEXT("false"), *Test.TargetRoute.GetPath()), 1);
 		}
