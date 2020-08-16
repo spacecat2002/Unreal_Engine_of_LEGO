@@ -120,6 +120,14 @@ void FHttpManager::UpdateConfigs()
 	// empty
 }
 
+void FHttpManager::AddGameThreadTask(TFunction<void()>&& Task)
+{
+	if (Task)
+	{
+		GameThreadQueue.Enqueue(MoveTemp(Task));
+	}
+}
+
 FHttpThread* FHttpManager::CreateHttpThread()
 {
 	return new FHttpThread();
@@ -135,6 +143,8 @@ void FHttpManager::Flush(bool bShutdown)
 
 	if (bShutdown)
 	{
+		GameThreadQueue.Empty();
+
 		if (Requests.Num())
 		{
 			UE_LOG(LogHttp, Display, TEXT("Http module shutting down, but needs to wait on %d outstanding Http requests:"), Requests.Num());
@@ -171,7 +181,7 @@ void FHttpManager::Flush(bool bShutdown)
 				Request->CancelRequest();
 			}
 		}
-		Tick(AppTime - LastTime);
+		FlushTick(AppTime - LastTime);
 		LastTime = AppTime;
 		if (Requests.Num() > 0)
 		{
@@ -204,6 +214,14 @@ bool FHttpManager::Tick(float DeltaSeconds)
 {
     QUICK_SCOPE_CYCLE_COUNTER(STAT_FHttpManager_Tick);
 
+	// Run GameThread tasks
+	TFunction<void()> Task = nullptr;
+	while (GameThreadQueue.Dequeue(Task))
+	{
+		check(Task);
+		Task();
+	}
+
 	FScopeLock ScopeLock(&RequestLock);
 
 	// Tick each active request
@@ -227,6 +245,11 @@ bool FHttpManager::Tick(float DeltaSeconds)
 	}
 	// keep ticking
 	return true;
+}
+
+void FHttpManager::FlushTick(float DeltaSeconds)
+{
+	Tick(DeltaSeconds);
 }
 
 void FHttpManager::AddRequest(const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>& Request)
