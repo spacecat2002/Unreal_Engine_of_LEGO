@@ -2714,12 +2714,8 @@ bool ALandscape::PrepareLayersHeightmapTextureResources(bool bInWaitForStreaming
 					{
 						LayerHeightmap->FinishCachePlatformData();
 
-						LayerHeightmap->Resource = LayerHeightmap->CreateResource();
-
-						if (LayerHeightmap->Resource != nullptr)
-						{
-							BeginInitResource(LayerHeightmap->Resource);
-						}
+						// Explicit call to base class to skip CachePlatormData of UTexture2D
+						LayerHeightmap->UTexture::UpdateResource();
 					}
 
 					IsReady &= IsTextureFullyStreamedIn(LayerHeightmap, bInWaitForStreaming);
@@ -3712,12 +3708,8 @@ bool ALandscape::PrepareLayersWeightmapTextureResources(bool bInWaitForStreaming
 						{
 							LayerWeightmap->FinishCachePlatformData();
 
-							LayerWeightmap->Resource = LayerWeightmap->CreateResource();
-
-							if (LayerWeightmap->Resource != nullptr)
-							{
-								BeginInitResource(LayerWeightmap->Resource);
-							}
+							// Explicit call to base class to skip CachePlatormData of UTexture2D
+							LayerWeightmap->UTexture::UpdateResource();
 						}
 
 						IsReady &= IsTextureFullyStreamedIn(LayerWeightmap, bInWaitForStreaming);
