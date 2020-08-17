@@ -547,21 +547,25 @@ struct TD3D12ResourceTraits<FRHITexture3D>
 {
 	typedef FD3D12Texture3D TConcreteType;
 };
+
 template<>
 struct TD3D12ResourceTraits<FRHITexture2D>
 {
 	typedef FD3D12Texture2D TConcreteType;
 };
+
 template<>
 struct TD3D12ResourceTraits<FRHITexture2DArray>
 {
 	typedef FD3D12Texture2DArray TConcreteType;
 };
+
 template<>
 struct TD3D12ResourceTraits<FRHITextureCube>
 {
 	typedef FD3D12TextureCube TConcreteType;
 };
+
 template<>
 struct TD3D12ResourceTraits<FRHITextureReference>
 {

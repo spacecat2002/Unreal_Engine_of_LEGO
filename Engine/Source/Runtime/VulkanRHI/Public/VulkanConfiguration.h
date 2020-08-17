@@ -251,7 +251,7 @@
 #define VULKAN_OBJECT_TRACKING 0 //Track objects created and memory used. use r.vulkan.dumpmemory to dump to console
 #endif
 
-DECLARE_LOG_CATEGORY_EXTERN(LogVulkanRHI, Log, All);
+VULKANRHI_API DECLARE_LOG_CATEGORY_EXTERN(LogVulkanRHI, Log, All);
 
 #if VULKAN_CUSTOM_MEMORY_MANAGER_ENABLED
 	#define VULKAN_CPU_ALLOCATOR								VulkanRHI::GetMemoryAllocator(nullptr)

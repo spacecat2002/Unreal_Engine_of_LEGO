@@ -175,7 +175,7 @@ struct FRHIFrameOffsetThread : public FRunnable
 
 			int32 SyncInterval = RHIGetSyncInterval();
 			double TargetFrameTimeInSeconds = double(SyncInterval) / 60.0;
-			double SlackInSeconds = CVarRHISyncSlackMS.GetValueOnAnyThread() / 1000.0;
+			double SlackInSeconds = RHIGetSyncSlackMS() / 1000.0;
 			double TargetFlipTime = (NewFlipFrame.VBlankTimeInSeconds + TargetFrameTimeInSeconds) - SlackInSeconds;
 
 			double Timeout = FMath::Max(0.0, TargetFlipTime - FPlatformTime::Seconds());
@@ -482,6 +482,16 @@ bool FRHIFrameFlipTrackingRunnable::bRun = false;
 RHI_API uint32 RHIGetSyncInterval()
 {
 	return CVarRHISyncInterval.GetValueOnAnyThread();
+}
+
+RHI_API float RHIGetSyncSlackMS()
+{
+#if USE_FRAME_OFFSET_THREAD
+	const float SyncSlackMS = CVarRHISyncSlackMS.GetValueOnAnyThread();
+#else // #if USE_FRAME_OFFSET_THREAD
+	const float SyncSlackMS = RHIGetSyncInterval() / 60.f * 1000.f;		// Sync slack is entire frame interval if we aren't using the frame offset system
+#endif // #else // #if USE_FRAME_OFFSET_THREAD
+	return SyncSlackMS;
 }
 
 RHI_API void RHIGetPresentThresholds(float& OutTopPercent, float& OutBottomPercent)

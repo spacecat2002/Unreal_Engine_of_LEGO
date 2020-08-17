@@ -643,9 +643,7 @@ public:
 
 	virtual void ReleaseRHI() override
 	{
-		Buffers.PositionVertexBuffer.ReleaseRHI();
 		Buffers.PositionVertexBuffer.ReleaseResource();
-		Buffers.StaticMeshVertexBuffer.ReleaseRHI();
 		Buffers.StaticMeshVertexBuffer.ReleaseResource();
 	}
 };
@@ -1077,7 +1075,6 @@ IMPLEMENT_GLOBAL_SHADER(FCloudShadowTemporalProcessCS, "/Engine/Private/Volumetr
 
 
 //////////////////////////////////////////////////////////////////////////
-
 
 
 void FSceneRenderer::InitVolumetricCloudsForViews(FRDGBuilder& GraphBuilder)

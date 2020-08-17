@@ -1054,8 +1054,6 @@ public:
 	FMaterialShaderMap();
 	virtual ~FMaterialShaderMap();
 
-	virtual void OnReleased() override;
-
 	// ShaderMap interface
 	TShaderRef<FShader> GetShader(FShaderType* ShaderType, int32 PermutationId = 0) const
 	{
@@ -1134,6 +1132,10 @@ public:
 
 	/** Registers a material shader map in the global map so it can be used by materials. */
 	void Register(EShaderPlatform InShaderPlatform);
+
+	// Reference counting.
+	ENGINE_API void AddRef();
+	ENGINE_API void Release();
 
 	/**
 	 * Removes all entries in the cache with exceptions based on a shader type
@@ -1230,6 +1232,9 @@ public:
 
 	const FUniformExpressionSet& GetUniformExpressionSet() const { return GetContent()->MaterialCompilationOutput.UniformExpressionSet; }
 
+	int32 GetNumRefs() const { return NumRefs; }
+	int32 GetRefCount() const { return NumRefs; }
+
 	void CountNumShaders(int32& NumShaders, int32& NumPipelines) const
 	{
 		NumShaders = GetContent()->GetNumShaders();
@@ -1278,6 +1283,8 @@ private:
 
 	/** Uniquely identifies this shader map during compilation, needed for deferred compilation where shaders from multiple shader maps are compiled together. */
 	uint32 CompilingId;
+
+	mutable int32 NumRefs;
 
 	/** Used to catch errors where the shader map is deleted directly. */
 	bool bDeletedThroughDeferredCleanup;
@@ -1450,9 +1457,8 @@ public:
 	 */
 	FMaterial():
 		RenderingThreadShaderMap(NULL),
-		QualityLevel(EMaterialQualityLevel::High),
+		QualityLevel(EMaterialQualityLevel::Num),
 		FeatureLevel(ERHIFeatureLevel::SM5),
-		bHasQualityLevelUsage(false),
 		bContainsInlineShaders(false),
 		bLoadedCookedShaderMapId(false)
 	{
@@ -1907,10 +1913,16 @@ protected:
 	virtual FString GetBaseMaterialPathName() const { return TEXT(""); }
 	virtual FString GetDebugName() const { return GetBaseMaterialPathName(); }
 
+	UE_DEPRECATED(4.26, "Parameter bInHasQualityLevelUsage is depreceated")
 	void SetQualityLevelProperties(EMaterialQualityLevel::Type InQualityLevel, bool bInHasQualityLevelUsage, ERHIFeatureLevel::Type InFeatureLevel)
 	{
 		QualityLevel = InQualityLevel;
-		bHasQualityLevelUsage = bInHasQualityLevelUsage;
+		FeatureLevel = InFeatureLevel;
+	}
+
+	void SetQualityLevelProperties(ERHIFeatureLevel::Type InFeatureLevel, EMaterialQualityLevel::Type InQualityLevel = EMaterialQualityLevel::Num)
+	{
+		QualityLevel = InQualityLevel;
 		FeatureLevel = InFeatureLevel;
 	}
 
@@ -1973,14 +1985,11 @@ private:
 	TArray<int32, TInlineAllocator<1> > OutstandingCompileShaderMapIds;
 #endif // WITH_EDITOR
 
-	/** Quality level that this material is representing. */
+	/** Quality level that this material is representing, may be EMaterialQualityLevel::Num if material doesn't depend on current quality level */
 	EMaterialQualityLevel::Type QualityLevel;
 
 	/** Feature level that this material is representing. */
 	ERHIFeatureLevel::Type FeatureLevel;
-
-	/** Whether this material has quality level specific nodes. */
-	uint32 bHasQualityLevelUsage : 1;
 
 	/** Whether tthis project uses stencil dither lod. */
 	uint32 bStencilDitheredLOD : 1;
@@ -2021,11 +2030,6 @@ private:
 	ENGINE_API TShaderRef<FShader> GetShader(class FMeshMaterialShaderType* ShaderType, FVertexFactoryType* VertexFactoryType, int32 PermutationId, bool bFatalIfMissing = true) const;
 
 	void GetReferencedTexturesHash(EShaderPlatform Platform, FSHAHash& OutHash) const;
-
-	EMaterialQualityLevel::Type GetQualityLevelForShaderMapId() const 
-	{
-		return bHasQualityLevelUsage ? QualityLevel : EMaterialQualityLevel::Num;
-	}
 
 	friend class FMaterialShaderMap;
 	friend class FShaderCompilingManager;
@@ -2323,11 +2327,17 @@ public:
 	ENGINE_API FMaterialResource();
 	ENGINE_API virtual ~FMaterialResource();
 
-	void SetMaterial(UMaterial* InMaterial, EMaterialQualityLevel::Type InQualityLevel, bool bInQualityLevelHasDifferentNodes, ERHIFeatureLevel::Type InFeatureLevel, UMaterialInstance* InInstance = NULL)
+	void SetMaterial(UMaterial* InMaterial, UMaterialInstance* InInstance, ERHIFeatureLevel::Type InFeatureLevel, EMaterialQualityLevel::Type InQualityLevel = EMaterialQualityLevel::Num)
 	{
 		Material = InMaterial;
 		MaterialInstance = InInstance;
-		SetQualityLevelProperties(InQualityLevel, bInQualityLevelHasDifferentNodes, InFeatureLevel);
+		SetQualityLevelProperties(InFeatureLevel, InQualityLevel);
+	}
+
+	UE_DEPRECATED(4.26, "Parameter bInHasQualityLevelUsage is depreceated")
+	void SetMaterial(UMaterial* InMaterial, EMaterialQualityLevel::Type InQualityLevel, bool bInHasQualityLevelUsage, ERHIFeatureLevel::Type InFeatureLevel, UMaterialInstance* InInstance = nullptr)
+	{
+		SetMaterial(InMaterial, InInstance, InFeatureLevel, InQualityLevel);
 	}
 
 #if WITH_EDITOR
@@ -2477,6 +2487,11 @@ public:
 	ENGINE_API virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
 
 	ENGINE_API virtual bool GetAllowDevelopmentShaderCompile() const override;
+
+	inline const UMaterial* GetMaterial() const { return Material; }
+	inline const UMaterialInstance* GetMaterialInstance() const { return MaterialInstance; }
+	inline void SetMaterial(UMaterial* InMaterial) { Material = InMaterial; }
+	inline void SetMaterialInstance(UMaterialInstance* InMaterialInstance) { MaterialInstance = InMaterialInstance; }
 
 protected:
 	UMaterial* Material;
@@ -2935,11 +2950,6 @@ extern ENGINE_API void SetShaderMapsOnMaterialResources(const TMap<FMaterial*, F
 ENGINE_API uint8 GetRayTracingMaskFromMaterial(const EBlendMode BlendMode);
 
 #if STORE_ONLY_ACTIVE_SHADERMAPS
-bool HasMaterialResource(
-	UMaterial* Material,
-	ERHIFeatureLevel::Type FeatureLevel,
-	EMaterialQualityLevel::Type QualityLevel);
-
 const FMaterialResourceLocOnDisk* FindMaterialResourceLocOnDisk(
 	const TArray<FMaterialResourceLocOnDisk>& DiskLocations,
 	ERHIFeatureLevel::Type FeatureLevel,
