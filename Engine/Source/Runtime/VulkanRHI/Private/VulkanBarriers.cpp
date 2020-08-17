@@ -518,6 +518,41 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		DstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	}
 
+	// Count the images and buffers to be able to pre-allocate the arrays.
+	int32 NumTextures = 0, NumBuffers = 0;
+	for (const FRHITransitionInfo& Info : Infos)
+	{
+		if (!Info.Resource)
+		{
+			continue;
+		}
+
+		if (Info.Type == FRHITransitionInfo::EType::Texture)
+		{
+			++NumTextures;
+			continue;
+		}
+
+		if (Info.Type == FRHITransitionInfo::EType::UAV)
+		{
+			FVulkanUnorderedAccessView* UAV = ResourceCast(Info.UAV);
+			if (UAV->SourceTexture)
+			{
+				++NumTextures;
+				continue;
+			}
+		}
+
+		++NumBuffers;
+	}
+
+	Data->ImageBarriers.Reserve(NumTextures);
+	Data->Textures.Reserve(NumTextures);
+	if (SrcPipelines != DstPipelines)
+	{
+		Data->BufferBarriers.Reserve(NumBuffers);
+	}
+
 	const ERHIAccess DepthStencilFlags = ERHIAccess::DSVRead | ERHIAccess::DSVWrite;
 
 	TArray<FDepthStencilSubresTransition, TInlineAllocator<4>> DSSubresTransitions;
