@@ -1669,7 +1669,7 @@ RHI_API FRenderQueryPoolRHIRef RHICreateRenderQueryPool(ERenderQueryType QueryTy
 FORCEINLINE const FRHITransition* RHICreateTransition(ERHIPipeline SrcPipelines, ERHIPipeline DstPipelines, ERHICreateTransitionFlags CreateFlags, TArrayView<const FRHITransitionInfo> Infos)
 {
 	// Placement create the transition on the heap.
-	FRHITransition* Transition = new (FMemory::Malloc(FRHITransition::GetTotalAllocationSize(), alignof(FRHITransition))) FRHITransition(SrcPipelines, DstPipelines);
+	FRHITransition* Transition = new (FMemory::Malloc(FRHITransition::GetTotalAllocationSize(), FRHITransition::GetAlignment())) FRHITransition(SrcPipelines, DstPipelines);
 	GDynamicRHI->RHICreateTransition(Transition, SrcPipelines, DstPipelines, CreateFlags, Infos);
 	return Transition;
 }
