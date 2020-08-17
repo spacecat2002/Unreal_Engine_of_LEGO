@@ -1136,7 +1136,7 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRDGBuilder& GraphBuild
 			});
 		}
 
-		ConvertToExternalTexture(GraphBuilder, IntegratedLightScattering, View.VolumetricFogResources.IntegratedLightScattering);
+		ConvertToUntrackedExternalTexture(GraphBuilder, IntegratedLightScattering, View.VolumetricFogResources.IntegratedLightScattering, ERHIAccess::SRVMask);
 
 		if (bUseTemporalReprojection)
 		{
