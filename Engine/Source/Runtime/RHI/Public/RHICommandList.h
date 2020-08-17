@@ -2465,7 +2465,9 @@ public:
 		if (Bypass())
 		{
 			// Stack allocate the transition
-			FRHITransition* Transition = new (Align(alloca(FRHITransition::GetTotalAllocationSizeForAlloca()), alignof(FRHITransition))) FRHITransition(Pipeline, Pipeline);
+			FMemStack& MemStack = FMemStack::Get();
+			FMemMark Mark(MemStack);
+			FRHITransition* Transition = new (MemStack.Alloc(FRHITransition::GetTotalAllocationSize(), FRHITransition::GetAlignment())) FRHITransition(Pipeline, Pipeline);
 			GDynamicRHI->RHICreateTransition(Transition, Pipeline, Pipeline, ERHICreateTransitionFlags::NoSplit, Infos);
 
 			GetComputeContext().RHIBeginTransitions(MakeArrayView((const FRHITransition**)&Transition, 1));
@@ -2478,7 +2480,7 @@ public:
 		else
 		{
 			// Allocate the transition in the command list
-			FRHITransition* Transition = new (Alloc(FRHITransition::GetTotalAllocationSize(), alignof(FRHITransition))) FRHITransition(Pipeline, Pipeline);
+			FRHITransition* Transition = new (Alloc(FRHITransition::GetTotalAllocationSize(), FRHITransition::GetAlignment())) FRHITransition(Pipeline, Pipeline);
 			GDynamicRHI->RHICreateTransition(Transition, Pipeline, Pipeline, ERHICreateTransitionFlags::NoSplit, Infos);
 
 			ALLOC_COMMAND(FRHICommandResourceTransition)(Transition);

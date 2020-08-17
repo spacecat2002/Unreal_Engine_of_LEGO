@@ -1900,10 +1900,9 @@ public:
 	template <typename T>
 	inline T* GetPrivateData()
 	{
-		checkSlow(sizeof(T) == GRHITransitionPrivateData_SizeInBytes);
-		checkSlow(GRHITransitionPrivateData_AlignInBytes != 0);
-
+		checkSlow(sizeof(T) == GRHITransitionPrivateData_SizeInBytes && GRHITransitionPrivateData_AlignInBytes != 0);
 		uintptr_t Addr = Align(uintptr_t(this + 1), GRHITransitionPrivateData_AlignInBytes);
+		checkSlow(Addr + GRHITransitionPrivateData_SizeInBytes - (uintptr_t)this == GetTotalAllocationSize());
 		return reinterpret_cast<T*>(Addr);
 	}
 
@@ -1943,10 +1942,9 @@ private:
 		return Align(sizeof(FRHITransition), FMath::Max(GRHITransitionPrivateData_AlignInBytes, 1ull)) + GRHITransitionPrivateData_SizeInBytes;
 	}
 
-	static uint64 GetTotalAllocationSizeForAlloca()
+	static uint64 GetAlignment()
 	{
-		// Return a slightly oversized amount to allow for manual alignment of FRHITransition on the stack.
-		return Align(GetTotalAllocationSize() + (sizeof(FRHITransition) - 1), alignof(FRHITransition));
+		return FMath::Max((uint64)alignof(FRHITransition), GRHITransitionPrivateData_AlignInBytes);
 	}
 
 	inline void MarkBegin(ERHIPipeline Pipeline) const
