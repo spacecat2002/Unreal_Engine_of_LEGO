@@ -647,7 +647,7 @@ void FRDGBuilder::Compile()
 		{
 			FRDGTextureRef Texture = Query.Key;
 			AddPassDependenciesForResource(EpiloguePassHandle, Texture, Texture->AccessFinal);
-			Texture->ReferenceCount += Texture->GetSubresourceRange().GetSubresourceCount();
+			Texture->ReferenceCount++;
 		}
 
 		for (const auto& Query : ExtractedBuffers)
@@ -859,9 +859,6 @@ void FRDGBuilder::Compile()
 
 				FRDGPass* AsyncComputePass = Passes[PassHandle];
 
-				const FRDGParameterStruct PassParameters = AsyncComputePass->GetParameters();
-				const ERHIPipeline Pipeline = AsyncComputePass->GetPipeline();
-
 				const FRDGPassHandle GraphicsForkPassHandle = FindCrossPipelineProducer(PassHandle);
 				const FRDGPassHandle GraphicsJoinPassHandle = FindCrossPipelineConsumer(PassHandle);
 
@@ -872,8 +869,8 @@ void FRDGBuilder::Compile()
 				FRDGPass* GraphicsJoinPass = Passes[GraphicsJoinPassHandle];
 
 				// Extend the lifetime of resources used on async compute to the fork / join graphics passes.
-				GraphicsForkPass->ResourcesToBegin.Add(PassParameters);
-				GraphicsJoinPass->ResourcesToEnd.Add(PassParameters);
+				GraphicsForkPass->ResourcesToBegin.Add(AsyncComputePass);
+				GraphicsJoinPass->ResourcesToEnd.Add(AsyncComputePass);
 
 				if (PrevGraphicsForkPass != GraphicsForkPass)
 				{
@@ -1045,12 +1042,12 @@ void FRDGBuilder::Execute()
 
 			for (const auto& Query : ExtractedTextures)
 			{
-				EndResourceRHI(EpiloguePassHandle, Query.Key, Query.Key->GetSubresourceRange());
+				EndResourceRHI(EpiloguePassHandle, Query.Key, 1);
 			}
 
 			for (const auto& Query : ExtractedBuffers)
 			{
-				EndResourceRHI(EpiloguePassHandle, Query.Key);
+				EndResourceRHI(EpiloguePassHandle, Query.Key, 1);
 			}
 		}
 
@@ -1202,7 +1199,7 @@ void FRDGBuilder::SetupPass(FRDGPass* Pass)
 		check(Access != ERHIAccess::Unknown);
 		auto& AccessInfo = Pass->TextureAccessMap.FindOrAdd(Texture);
 		AccessInfo.AccessUnion |= Access;
-		AccessInfo.ReferenceCount += Range.GetSubresourceCount();
+		AccessInfo.ReferenceCount++;
 		AccessInfo.NoUAVBarrierFilter.AddHandle(GetHandleIfNoUAVBarrier(TextureView));
 		AccessInfo.FlagsUnion |= GetTextureViewTransitionFlags(TextureView);
 		AccessInfo.bSubresourceTrackingRequired |= bIsPartialResourceRange;
@@ -1232,8 +1229,8 @@ void FRDGBuilder::SetupPass(FRDGPass* Pass)
 	// The pass can begin / end its own resources on the graphics pipe; async compute is scheduled during compilation.
 	if (PassPipeline == ERHIPipeline::Graphics && !bEmptyParameters)
 	{
-		Pass->ResourcesToBegin.Add(PassParameters);
-		Pass->ResourcesToEnd.Add(PassParameters);
+		Pass->ResourcesToBegin.Add(Pass);
+		Pass->ResourcesToEnd.Add(Pass);
 	}
 
 	SetupPassInternal(Pass, PassHandle, PassPipeline);
@@ -1413,8 +1410,10 @@ void FRDGBuilder::CollectPassResources(FRDGPassHandle PassHandle)
 	FRDGPass* Pass = Passes[PassHandle];
 	const ERDGPassFlags PassFlags = Pass->GetFlags();
 
-	for (FRDGParameterStruct PassParameters : Pass->ResourcesToBegin)
+	for (FRDGPass* PassToBegin : Pass->ResourcesToBegin)
 	{
+		const FRDGParameterStruct PassParameters = PassToBegin->GetParameters();
+
 		EnumerateTextureParameters(PassParameters, [&](auto Resource)
 		{
 			BeginResourceRHI(PassHandle, Resource);
@@ -1426,17 +1425,17 @@ void FRDGBuilder::CollectPassResources(FRDGPassHandle PassHandle)
 		});
 	}
 
-	for (FRDGParameterStruct PassParameters : Pass->ResourcesToEnd)
+	for (FRDGPass* PassToEnd : Pass->ResourcesToEnd)
 	{
-		EnumerateTextureAccess(PassParameters, PassFlags, [&](FRDGViewRef, FRDGTextureRef Texture, ERHIAccess, FRDGTextureSubresourceRange Range)
+		for (auto TextureAccessPair : PassToEnd->TextureAccessMap)
 		{
-			EndResourceRHI(PassHandle, Texture, Range);
-		});
+			EndResourceRHI(PassHandle, TextureAccessPair.Key, TextureAccessPair.Value.ReferenceCount);
+		}
 
-		EnumerateBufferAccess(PassParameters, PassFlags, [&](FRDGViewRef, FRDGBufferRef Buffer, ERHIAccess)
+		for (auto BufferAccessPair : PassToEnd->BufferAccessMap)
 		{
-			EndResourceRHI(PassHandle, Buffer);
-		});
+			EndResourceRHI(PassHandle, BufferAccessPair.Key, BufferAccessPair.Value.ReferenceCount);
+		}
 	}
 }
 
@@ -2114,13 +2113,12 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGBufferUAV* UAV
 	Buffer->PooledBuffer->UAVs.Add(UAV->Desc, RHIUnorderedAccessView);
 }
 
-void FRDGBuilder::EndResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Texture, const FRDGTextureSubresourceRange Range)
+void FRDGBuilder::EndResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Texture, uint32 ReferenceCount)
 {
 	check(Texture);
 
 	if (!IsResourceLifetimeExtended())
 	{
-		const uint32 ReferenceCount = Range.GetSubresourceCount();
 		check(Texture->ReferenceCount >= ReferenceCount);
 		Texture->ReferenceCount -= ReferenceCount;
 
@@ -2136,14 +2134,14 @@ void FRDGBuilder::EndResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Textu
 	}
 }
 
-void FRDGBuilder::EndResourceRHI(FRDGPassHandle PassHandle, FRDGBufferRef Buffer)
+void FRDGBuilder::EndResourceRHI(FRDGPassHandle PassHandle, FRDGBufferRef Buffer, uint32 ReferenceCount)
 {
 	check(Buffer);
 
 	if (!IsResourceLifetimeExtended())
 	{
-		check(Buffer->ReferenceCount > 0);
-		Buffer->ReferenceCount--;
+		check(Buffer->ReferenceCount >= ReferenceCount);
+		Buffer->ReferenceCount -= ReferenceCount;
 
 		if (Buffer->ReferenceCount == 0)
 		{

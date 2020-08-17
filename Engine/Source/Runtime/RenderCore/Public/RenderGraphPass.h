@@ -346,8 +346,8 @@ private:
 	TSortedMap<FRDGBuffer*, FAccessInfo, SceneRenderingAllocator> BufferAccessMap;
 
 	/** Lists of pass parameters scheduled for begin during execution of this pass. */
-	TArray<FRDGParameterStruct, TInlineAllocator<1, SceneRenderingAllocator>> ResourcesToBegin;
-	TArray<FRDGParameterStruct, TInlineAllocator<1, SceneRenderingAllocator>> ResourcesToEnd;
+	TArray<FRDGPass*, TInlineAllocator<1, SceneRenderingAllocator>> ResourcesToBegin;
+	TArray<FRDGPass*, TInlineAllocator<1, SceneRenderingAllocator>> ResourcesToEnd;
 
 	/** List of textures to acquire *after* the pass completes, *before* discards. Acquires apply to all allocated textures. */
 	TArray<FRHITexture*, TInlineAllocator<4, SceneRenderingAllocator>> TexturesToAcquire;

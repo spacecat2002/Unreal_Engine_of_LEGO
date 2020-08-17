@@ -261,8 +261,8 @@ private:
 	void BeginResourceRHI(FRDGPassHandle, FRDGBufferSRV* SRV);
 	void BeginResourceRHI(FRDGPassHandle, FRDGBufferUAV* UAV);
 
-	void EndResourceRHI(FRDGPassHandle, FRDGTexture* Texture, const FRDGTextureSubresourceRange Range);
-	void EndResourceRHI(FRDGPassHandle, FRDGBuffer* Buffer);
+	void EndResourceRHI(FRDGPassHandle, FRDGTexture* Texture, uint32 ReferenceCount);
+	void EndResourceRHI(FRDGPassHandle, FRDGBuffer* Buffer, uint32 ReferenceCount);
 
 	void SetupPassInternal(FRDGPass* Pass, FRDGPassHandle PassHandle, ERHIPipeline PassPipeline);
 	void SetupPass(FRDGPass* Pass);
