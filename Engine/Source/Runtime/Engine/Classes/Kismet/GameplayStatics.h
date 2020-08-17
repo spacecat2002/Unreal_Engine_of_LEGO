@@ -185,13 +185,21 @@ class ENGINE_API UGameplayStatics : public UBlueprintFunctionLibrary
 
 	// --- Level Streaming functions ------------------------
 	
-	/** Stream the level with the LevelName ; Calling again before it finishes has no effect */
-	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", Latent = "", LatentInfo = "LatentInfo"), Category="Game")
+	/** Stream the level (by Name); Calling again before it finishes has no effect */
+	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", Latent = "", LatentInfo = "LatentInfo", DisplayName = "Load Stream Level (by Name)"), Category="Game")
 	static void LoadStreamLevel(const UObject* WorldContextObject, FName LevelName, bool bMakeVisibleAfterLoad, bool bShouldBlockOnLoad, FLatentActionInfo LatentInfo);
 
-	/** Unload a streamed in level */
-	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", Latent = "", LatentInfo = "LatentInfo"), Category="Game")
+	/** Stream the level (by Object Reference); Calling again before it finishes has no effect */
+	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", Latent = "", LatentInfo = "LatentInfo", DisplayName = "Load Stream Level (by Object Reference)"), Category="Game")
+	static void LoadStreamLevelBySoftObjectPtr(const UObject* WorldContextObject, const TSoftObjectPtr<UWorld> Level, bool bMakeVisibleAfterLoad, bool bShouldBlockOnLoad, FLatentActionInfo LatentInfo);
+	
+	/** Unload a streamed in level (by Name)*/
+	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", Latent = "", LatentInfo = "LatentInfo", DisplayName = "Unload Stream Level (by Name)"), Category="Game")
 	static void UnloadStreamLevel(const UObject* WorldContextObject, FName LevelName, FLatentActionInfo LatentInfo, bool bShouldBlockOnUnload);
+
+	/** Unload a streamed in level (by Object Reference)*/
+	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", Latent = "", LatentInfo = "LatentInfo", DisplayName = "Unload Stream Level (by Object Reference)"), Category="Game")
+	static void UnloadStreamLevelBySoftObjectPtr(const UObject* WorldContextObject, const TSoftObjectPtr<UWorld> Level, FLatentActionInfo LatentInfo, bool bShouldBlockOnUnload);
 	
 	/** Returns level streaming object with specified level package name */
 	UFUNCTION(BlueprintPure, meta=(WorldContext="WorldContextObject"), Category="Game")

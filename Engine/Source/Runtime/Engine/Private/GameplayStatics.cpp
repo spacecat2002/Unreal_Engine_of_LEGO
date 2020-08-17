@@ -696,7 +696,7 @@ AActor* UGameplayStatics::FinishSpawningActor(AActor* Actor, const FTransform& S
 	return Actor;
 }
 
-void UGameplayStatics::LoadStreamLevel(const UObject* WorldContextObject, FName LevelName,bool bMakeVisibleAfterLoad,bool bShouldBlockOnLoad,FLatentActionInfo LatentInfo)
+void UGameplayStatics::LoadStreamLevel(const UObject* WorldContextObject, FName LevelName, bool bMakeVisibleAfterLoad, bool bShouldBlockOnLoad, FLatentActionInfo LatentInfo)
 {
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
 	{
@@ -709,7 +709,13 @@ void UGameplayStatics::LoadStreamLevel(const UObject* WorldContextObject, FName 
 	}
 }
 
-void UGameplayStatics::UnloadStreamLevel(const UObject* WorldContextObject, FName LevelName,FLatentActionInfo LatentInfo,bool bShouldBlockOnUnload)
+void UGameplayStatics::LoadStreamLevelBySoftObjectPtr(const UObject* WorldContextObject, const TSoftObjectPtr<UWorld> Level, bool bMakeVisibleAfterLoad, bool bShouldBlockOnLoad, FLatentActionInfo LatentInfo)
+{
+	const FName LevelName = FName(*FPackageName::ObjectPathToPackageName(Level.ToString()));
+	LoadStreamLevel(WorldContextObject, LevelName, bMakeVisibleAfterLoad, bShouldBlockOnLoad, LatentInfo);
+}
+
+void UGameplayStatics::UnloadStreamLevel(const UObject* WorldContextObject, FName LevelName, FLatentActionInfo LatentInfo, bool bShouldBlockOnUnload)
 {
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
 	{
@@ -720,6 +726,12 @@ void UGameplayStatics::UnloadStreamLevel(const UObject* WorldContextObject, FNam
 			LatentManager.AddNewAction(LatentInfo.CallbackTarget, LatentInfo.UUID, NewAction );
 		}
 	}
+}
+
+void UGameplayStatics::UnloadStreamLevelBySoftObjectPtr(const UObject* WorldContextObject, const TSoftObjectPtr<UWorld> Level, FLatentActionInfo LatentInfo, bool bShouldBlockOnUnload)
+{
+	const FName LevelName = FName(*FPackageName::ObjectPathToPackageName(Level.ToString()));
+	UnloadStreamLevel(WorldContextObject, LevelName, LatentInfo, bShouldBlockOnUnload);
 }
 
 ULevelStreaming* UGameplayStatics::GetStreamingLevel(const UObject* WorldContextObject, FName InPackageName)
