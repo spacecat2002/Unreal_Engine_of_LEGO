@@ -396,10 +396,7 @@ void InitDebugViewModeInterfaces()
 
 #else // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
-bool FDeferredShadingSceneRenderer::RenderDebugViewMode(FRHICommandListImmediate& RHICmdList)
-{
-	return false;
-}
+void FDeferredShadingSceneRenderer::RenderDebugViewMode(FRDGBuilder& GraphBuilder, const FRenderTargetBindingSlots& RenderTargets) {}
 
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
