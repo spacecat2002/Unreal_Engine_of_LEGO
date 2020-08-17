@@ -286,7 +286,7 @@ static void DoRenderHitProxies(FRHICommandListImmediate& RHICmdList, const FScen
 
 	const bool bNeedToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(GShaderPlatformForFeatureLevel[SceneRenderer->FeatureLevel]);
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-
+	
 	TUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(RHICmdList, SceneRenderer->FeatureLevel, ESceneTextureSetupMode::None);
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -550,6 +550,8 @@ void FMobileSceneRenderer::RenderHitProxies(FRHICommandListImmediate& RHICmdList
 		DynamicReadBuffer.Commit();
 
 		::DoRenderHitProxies(RHICmdList, this, HitProxyRT, HitProxyDepthRT);
+
+		GEngine->GetPostRenderDelegate().Broadcast();
 	}
 
 	check(RHICmdList.IsOutsideRenderPass());
@@ -624,6 +626,8 @@ void FDeferredShadingSceneRenderer::RenderHitProxies(FRHICommandListImmediate& R
 		}
 
 		::DoRenderHitProxies(RHICmdList, this, HitProxyRT, HitProxyDepthRT);
+
+		GEngine->GetPostRenderDelegate().Broadcast();
 	}
 	check(RHICmdList.IsOutsideRenderPass());
 #endif

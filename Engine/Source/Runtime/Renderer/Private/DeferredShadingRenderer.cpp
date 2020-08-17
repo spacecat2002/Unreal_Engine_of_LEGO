@@ -220,7 +220,7 @@ DECLARE_GPU_STAT(GPUSceneUpdate);
 DECLARE_GPU_STAT_NAMED(Unaccounted, TEXT("[unaccounted]"));
 DECLARE_GPU_DRAWCALL_STAT(WaterRendering);
 DECLARE_GPU_STAT(HairRendering);
-DECLARE_GPU_DRAWCALL_STAT(VirtualTextureUpdate);
+DEFINE_GPU_DRAWCALL_STAT(VirtualTextureUpdate);
 DECLARE_GPU_STAT(UploadDynamicBuffers);
 DECLARE_GPU_STAT(PostOpaqueExtensions);
 
@@ -2445,6 +2445,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			ShaderPrint::EndView(Views[ViewIndex]);
 			ShaderDrawDebug::EndView(Views[ViewIndex]);
 		}
+
+		GEngine->GetPostRenderDelegate().Broadcast();
 
 		SceneContext.AdjustGBufferRefCount(InRHICmdList, -1);
 		SceneContext.SceneVelocity.SafeRelease();

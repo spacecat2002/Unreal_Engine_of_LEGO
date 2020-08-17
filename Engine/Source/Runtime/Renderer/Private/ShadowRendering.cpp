@@ -1856,6 +1856,12 @@ void FMobileSceneRenderer::RenderModulatedShadowProjections(FRHICommandListImmed
 	{
 		return;
 	}
+
+	SCOPED_NAMED_EVENT(FMobileSceneRenderer_RenderModulatedShadowProjections, FColor::Emerald);
+	SCOPE_CYCLE_COUNTER(STAT_ProjectedShadowDrawTime);
+	SCOPED_DRAW_EVENT(RHICmdList, ShadowProjectionOnOpaque);
+	SCOPED_GPU_STAT(RHICmdList, ShadowProjection);
+
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	TRefCountPtr<FRHIUniformBuffer> SceneTexturesUniformBuffer = CreateMobileSceneTextureUniformBuffer(RHICmdList, EMobileSceneTextureSetupMode::SceneColor);
 	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, SceneTexturesUniformBuffer);
@@ -1869,7 +1875,6 @@ void FMobileSceneRenderer::RenderModulatedShadowProjections(FRHICommandListImmed
 
 		if(LightSceneInfo->ShouldRenderLightViewIndependent() && LightSceneProxy && LightSceneProxy->CastsModulatedShadows())
 		{
-			SCOPE_CYCLE_COUNTER(STAT_ProjectedShadowDrawTime);
 
 			const FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightSceneInfo->Id];
 

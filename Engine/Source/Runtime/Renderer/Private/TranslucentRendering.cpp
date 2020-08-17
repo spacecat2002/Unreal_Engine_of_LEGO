@@ -15,7 +15,7 @@ DECLARE_CYCLE_STAT(TEXT("TranslucencyTimestampQueryFence Wait"), STAT_Translucen
 DECLARE_CYCLE_STAT(TEXT("TranslucencyTimestampQuery Wait"), STAT_TranslucencyTimestampQuery_Wait, STATGROUP_SceneRendering);
 DECLARE_CYCLE_STAT(TEXT("Translucency"), STAT_CLP_Translucency, STATGROUP_ParallelCommandListMarkers);
 DECLARE_FLOAT_COUNTER_STAT(TEXT("Translucency GPU Time (MS)"), STAT_TranslucencyGPU, STATGROUP_SceneRendering);
-DECLARE_GPU_DRAWCALL_STAT(Translucency);
+DEFINE_GPU_DRAWCALL_STAT(Translucency);
 
 static TAutoConsoleVariable<float> CVarSeparateTranslucencyScreenPercentage(
 	TEXT("r.SeparateTranslucencyScreenPercentage"),

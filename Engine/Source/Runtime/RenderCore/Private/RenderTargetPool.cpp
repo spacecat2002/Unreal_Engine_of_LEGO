@@ -1151,15 +1151,17 @@ void FRenderTargetPool::FreeUnusedResource(TRefCountPtr<IPooledRenderTarget>& In
 	{
 		FPooledRenderTarget* Element = PooledRenderTargets[Index];
 
-		if (Element && Element->IsFree())
+		// Ref count will always be at least 2
+		ensure(Element->GetRefCount() >= 2);
+		In = nullptr;
+
+		if (Element->IsFree())
 		{
 			check(!Element->IsSnapshot());
 			AllocationLevelInKB -= ComputeSizeInKB(*Element);
 			// we assume because of reference counting the resource gets released when not needed any more
 			DeferredDeleteArray.Add(PooledRenderTargets[Index]);
 			FreeElementAtIndex(Index);
-
-			In.SafeRelease();
 
 			VerifyAllocationLevel();
 		}

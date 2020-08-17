@@ -99,6 +99,13 @@ static TAutoConsoleVariable<int32> CVarRayTracingSkyLightEnableHairVoxel(
 	ECVF_RenderThreadSafe
 );
 
+static TAutoConsoleVariable<float> CVarRayTracingSkyLightScreenPercentage(
+	TEXT("r.RayTracing.SkyLight.ScreenPercentage"),
+	100.0f,
+	TEXT("Screen percentage at which to evaluate sky occlusion"),
+	ECVF_RenderThreadSafe
+);
+
 int32 GetRayTracingSkyLightDecoupleSampleGenerationCVarValue()
 {
 	return CVarRayTracingSkyLightDecoupleSampleGeneration.GetValueOnRenderThread();
@@ -329,6 +336,7 @@ class FRayTracingSkyLightRGS : public FGlobalShader
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(uint32, UpscaleFactor)
 		SHADER_PARAMETER_SRV(RaytracingAccelerationStructure, TLAS)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWOcclusionMaskUAV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWRayDistanceUAV)
@@ -463,10 +471,21 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 	check(SkyLight->ProcessedTexture);
 	check((SkyLight->ImportanceSamplingData != nullptr) && SkyLight->ImportanceSamplingData->bIsValid);
 
+	float ResolutionFraction = 1.0f;
+	if (GRayTracingSkyLightDenoiser != 0)
+	{
+		ResolutionFraction = FMath::Clamp(CVarRayTracingSkyLightScreenPercentage.GetValueOnRenderThread() / 100.0f, 0.25f, 1.0f);
+	}
+
+	int32 UpscaleFactor = int32(1.0 / ResolutionFraction);
+	ResolutionFraction = 1.0f / UpscaleFactor;
+
+
 	{
 		FRDGTextureDesc Desc = SceneColorTexture->Desc;
 		Desc.Format = PF_FloatRGBA;
 		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
+		Desc.Extent /= UpscaleFactor;
 		OutSkyLightTexture = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingSkylight"));
 
 		Desc.Format = PF_G16R16;
@@ -494,6 +513,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 		FRDGTextureDesc Desc = SceneColorDesc;
 		Desc.Format = PF_FloatRGBA;
 		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
+		Desc.Extent /= UpscaleFactor;
 		SkyLightTexture = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingSkylight"));
 	}
 
@@ -502,6 +522,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 		FRDGTextureDesc Desc = SceneColorDesc;
 		Desc.Format = PF_G16R16;
 		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
+		Desc.Extent /= UpscaleFactor;
 		RayDistanceTexture = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingSkyLightHitDistance"));
 	}
 
@@ -546,6 +567,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 		PassParameters->SSProfilesTexture = SubsurfaceProfileTexture;
 		PassParameters->TransmissionProfilesLinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 		PassParameters->SceneTextures = SceneTextures;
+		PassParameters->UpscaleFactor = UpscaleFactor;
 
 		PassParameters->TLAS = View.RayTracingScene.RayTracingSceneRHI->GetShaderResourceView();
 		PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
@@ -567,7 +589,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 		TShaderMapRef<FRayTracingSkyLightRGS> RayGenerationShader(GetGlobalShaderMap(FeatureLevel), PermutationVector);
 		ClearUnusedGraphResources(RayGenerationShader, PassParameters);
 
-		FIntPoint RayTracingResolution = View.ViewRect.Size();
+		FIntPoint RayTracingResolution = View.ViewRect.Size() / UpscaleFactor;
 		GraphBuilder.AddPass(
 			RDG_EVENT_NAME("SkyLightRayTracing %dx%d", RayTracingResolution.X, RayTracingResolution.Y),
 			PassParameters,
@@ -609,7 +631,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 
 			{
 				IScreenSpaceDenoiser::FAmbientOcclusionRayTracingConfig RayTracingConfig;
-				RayTracingConfig.ResolutionFraction = 1.0;
+				RayTracingConfig.ResolutionFraction = ResolutionFraction;
 				RayTracingConfig.RayCountPerPixel = GetSkyLightSamplesPerPixel(SkyLight);
 
 				RDG_EVENT_SCOPE(GraphBuilder, "%s%s(SkyLight) %dx%d",
