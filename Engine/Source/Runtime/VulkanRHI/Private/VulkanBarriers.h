@@ -17,12 +17,12 @@ struct FVulkanPipelineBarrier
 	ERHIPipeline SrcPipelines, DstPipelines;
 	VkPipelineStageFlags SrcStageMask, DstStageMask;
 	VkMemoryBarrier MemoryBarrier;
-	TArray<VkImageMemoryBarrier, TInlineAllocator<8>> ImageBarriers;
-	TArray<VkBufferMemoryBarrier, TInlineAllocator<8>> BufferBarriers;
+	TArray<VkImageMemoryBarrier, TInlineAllocator<2>> ImageBarriers;
+	TArray<VkBufferMemoryBarrier> BufferBarriers;
 	VulkanRHI::FSemaphore* Semaphore;
 
 	// We need to keep the texture pointers around, because we need to call OnTransitionResource on them, and we need mip and layer counts for the tracking code.
-	TArray<FVulkanTextureBase*, TInlineAllocator<8>> Textures;
+	TArray<FVulkanTextureBase*, TInlineAllocator<2>> Textures;
 
 	void AddImageLayoutTransition(VkImage Image, VkImageLayout SrcLayout, VkImageLayout DstLayout, const VkImageSubresourceRange& SubresourceRange);
 	void AddImageAccessTransition(const FVulkanSurface& Surface, ERHIAccess SrcAccess, ERHIAccess DstAccess, const VkImageSubresourceRange& SubresourceRange, VkImageLayout& InOutLayout);
