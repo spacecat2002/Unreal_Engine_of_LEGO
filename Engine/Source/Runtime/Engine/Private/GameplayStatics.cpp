@@ -803,6 +803,12 @@ void UGameplayStatics::OpenLevel(const UObject* WorldContextObject, FName LevelN
 	GEngine->SetClientTravel( World, *Cmd, TravelType );
 }
 
+void UGameplayStatics::OpenLevelBySoftObjectPtr(const UObject* WorldContextObject, const TSoftObjectPtr<UWorld> Level, bool bAbsolute, FString Options)
+{
+	const FName LevelName = FName(*FPackageName::ObjectPathToPackageName(Level.ToString()));
+	UGameplayStatics::OpenLevel(WorldContextObject, LevelName, bAbsolute, Options);
+}
+
 FString UGameplayStatics::GetCurrentLevelName(const UObject* WorldContextObject, bool bRemovePrefixString)
 {
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))

@@ -221,9 +221,19 @@ class ENGINE_API UGameplayStatics : public UBlueprintFunctionLibrary
 	 * @param	bAbsolute			if true options are reset, if false options are carried over from current level
 	 * @param	Options				a string of options to use for the travel URL
 	 */
-	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", AdvancedDisplay = "2"), Category="Game")
+	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", AdvancedDisplay = "2", DisplayName = "Open Level (by Name)"), Category="Game")
 	static void OpenLevel(const UObject* WorldContextObject, FName LevelName, bool bAbsolute = true, FString Options = FString(TEXT("")));
 
+	/**
+	 * Travel to another level
+	 *
+	 * @param	Level				the level to open
+	 * @param	bAbsolute			if true options are reset, if false options are carried over from current level
+	 * @param	Options				a string of options to use for the travel URL
+	 */
+	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", AdvancedDisplay = "2", DisplayName = "Open Level (by Object Reference)"), Category="Game")
+	static void OpenLevelBySoftObjectPtr(const UObject* WorldContextObject, const TSoftObjectPtr<UWorld> Level, bool bAbsolute = true, FString Options = FString(TEXT("")));
+	
 	/**
 	* Get the name of the currently-open level.
 	*
