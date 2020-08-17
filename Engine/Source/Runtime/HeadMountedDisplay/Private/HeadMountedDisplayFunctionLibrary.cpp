@@ -17,6 +17,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogUHeadMountedDisplay, Log, All);
 /* UHeadMountedDisplayFunctionLibrary
  *****************************************************************************/
 
+FXRDeviceOnDisconnectDelegate UHeadMountedDisplayFunctionLibrary::OnXRDeviceOnDisconnectDelegate;
+
 UHeadMountedDisplayFunctionLibrary::UHeadMountedDisplayFunctionLibrary(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -489,14 +491,12 @@ bool UHeadMountedDisplayFunctionLibrary::ConfigureGestures(const FXRGestureConfi
 
 
 /** Connect to a remote device for Remote Debugging */
-EXRDeviceConnectionResult::Type UHeadMountedDisplayFunctionLibrary::ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate, FString& OutDetails)
+EXRDeviceConnectionResult::Type UHeadMountedDisplayFunctionLibrary::ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate)
 {
-	OutDetails.Empty();
-
 	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
 	if (TrackingSys)
 	{
-		return TrackingSys->ConnectRemoteXRDevice(IpAddress, BitRate, OutDetails);
+		return TrackingSys->ConnectRemoteXRDevice(IpAddress, BitRate);
 	}
 	return EXRDeviceConnectionResult::NoTrackingSystem;
 }
@@ -508,4 +508,9 @@ void UHeadMountedDisplayFunctionLibrary::DisconnectRemoteXRDevice()
 	{
 		TrackingSys->DisconnectRemoteXRDevice();
 	}
+}
+
+void UHeadMountedDisplayFunctionLibrary::SetXRDisconnectDelegate(const FXRDeviceOnDisconnectDelegate& InDisconnectedDelegate)
+{
+	OnXRDeviceOnDisconnectDelegate = InDisconnectedDelegate;
 }

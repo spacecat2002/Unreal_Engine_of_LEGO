@@ -426,7 +426,7 @@ public:
 
 	virtual bool ConfigureGestures(const FXRGestureConfig& GestureConfig) = 0;
 
-	virtual EXRDeviceConnectionResult::Type ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate, FString& OutDetails)
+	virtual EXRDeviceConnectionResult::Type ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate)
 	{ 
 		return EXRDeviceConnectionResult::FeatureNotSupported;
 	};
