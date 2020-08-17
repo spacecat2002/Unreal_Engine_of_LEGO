@@ -1297,6 +1297,8 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		FIntVector TextureSize = FIntVector(1, 1, 1);
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderDistantSkyLightLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("DistantSkyLightLut"), ComputeShader, PassParameters, NumGroups);
+
+		ConvertToUntrackedExternalTexture(GraphBuilder, DistantSkyLightLut, SkyInfo.GetDistantSkyLightLutTexture(), ERHIAccess::SRVMask);
 	}
 
 	SkyAtmosphereLightShadowData LightShadowData;
@@ -1543,6 +1545,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("CameraVolumeLut"), ComputeShader, PassParameters, NumGroups);
 		}
 
+		ConvertToUntrackedExternalTexture(GraphBuilder, SkyAtmosphereViewLutTexture, View.SkyAtmosphereViewLutTexture, ERHIAccess::SRVMask);
 		ConvertToUntrackedExternalTexture(GraphBuilder, SkyAtmosphereCameraAerialPerspectiveVolume, View.SkyAtmosphereCameraAerialPerspectiveVolume, ERHIAccess::SRVMask);
 	}
 	
