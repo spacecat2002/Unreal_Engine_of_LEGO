@@ -975,6 +975,7 @@ void FD3D12Adapter::Cleanup()
 
 void FD3D12Adapter::CreateDXGIFactory(bool bWithDebug)
 {
+#if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 	uint32 Flags = bWithDebug ? DXGI_CREATE_FACTORY_DEBUG : 0;
 
 #if PLATFORM_WINDOWS
@@ -997,6 +998,7 @@ void FD3D12Adapter::CreateDXGIFactory(bool bWithDebug)
 #endif
 
 	VERIFYD3D12RESULT(DxgiFactory->QueryInterface(IID_PPV_ARGS(DxgiFactory2.GetInitReference())));
+#endif // #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 }
 
 #if D3D12_SUBMISSION_GAP_RECORDER
