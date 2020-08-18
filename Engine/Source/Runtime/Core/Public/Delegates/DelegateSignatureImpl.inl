@@ -67,6 +67,7 @@ private:
 public:
 	/** Type definition for return value type. */
 	typedef InRetValType RetValType;
+	typedef InRetValType TFuncType(ParamTypes...);
 
 	/** Declare the user's "fast" shared pointer-based delegate instance types. */
 	template <typename UserClass                                                                            > struct TSPMethodDelegate                 : TBaseSPMethodDelegateInstance<false, UserClass, ESPMode::Fast, FuncType, UserPolicy                                        > { typedef TBaseSPMethodDelegateInstance<false, UserClass, ESPMode::Fast, FuncType, UserPolicy                                        > Super; TSPMethodDelegate                (const TSharedRef< UserClass, ESPMode::Fast >& InUserObject, typename Super::FMethodPtr InMethodPtr                                                            ) : Super(InUserObject, InMethodPtr                        ) {} };
