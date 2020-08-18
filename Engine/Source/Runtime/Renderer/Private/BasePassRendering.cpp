@@ -525,20 +525,23 @@ void GetBasePassShaders<FUniformLightMapPolicy>(
 	}
 }
 
+extern void SetupFogUniformParameters(FRDGBuilder* GraphBuilder, const FViewInfo& View, FFogUniformParameters& OutParameters);
+
 void SetupSharedBasePassParameters(
+	FRDGBuilder* GraphBuilder,
 	FRHICommandListImmediate& RHICmdList,
 	const FViewInfo& View,
 	FSharedBasePassUniformParameters& SharedParameters)
 {
 	SharedParameters.Forward = View.ForwardLightingResources->ForwardLightData;
 
-	SetupFogUniformParameters(View, SharedParameters.Fog);
+	SetupFogUniformParameters(GraphBuilder, View, SharedParameters.Fog);
 
 	if (View.IsInstancedStereoPass())
 	{
 		const FSceneView& RightEye = *View.Family->Views[1];
 		SharedParameters.ForwardISR = RightEye.ForwardLightingResources->ForwardLightData;
-		SetupFogUniformParameters((FViewInfo&)RightEye, SharedParameters.FogISR);
+		SetupFogUniformParameters(GraphBuilder, (FViewInfo&)RightEye, SharedParameters.FogISR);
 	}
 	else
 	{
@@ -575,7 +578,7 @@ void SetupSharedOpaqueBasePassParameters(
 		return RegisterExternalOrPassthroughTexture(GraphBuilder, PooledRenderTarget, Flags);
 	};
 
-	SetupSharedBasePassParameters(RHICmdList, View, BasePassParameters.Shared);
+	SetupSharedBasePassParameters(GraphBuilder, RHICmdList, View, BasePassParameters.Shared);
 
 	FRDGTextureRef WhiteDummy = GetRDG(GSystemTextures.WhiteDummy);
 	FRDGTextureRef BlackDummy = GetRDG(GSystemTextures.BlackDummy);

@@ -11,6 +11,41 @@
 
 class FGlobalShaderMap;
 
+/** An FTexture variant that includes more efficient support for registering with RDG. */
+class FTextureWithRDG : public FTexture
+{
+public:
+	virtual ~FTextureWithRDG() = default;
+
+	FRDGTextureRef GetRDG(FRDGBuilder& GraphBuilder) const
+	{
+		checkf(RenderTarget, TEXT("InitRDG was not called before use."));
+		return GraphBuilder.RegisterExternalTexture(RenderTarget);
+	}
+
+	FRDGTextureRef GetPassthroughRDG() const
+	{
+		checkf(RenderTarget, TEXT("InitRDG was not called before use."));
+		return FRDGTexture::GetPassthrough(RenderTarget);
+	}
+
+	virtual void ReleaseRHI() override
+	{
+		RenderTarget = nullptr;
+		FTexture::ReleaseRHI();
+	}
+
+protected:
+	void InitRDG(const TCHAR* Name)
+	{
+		check(TextureRHI);
+		RenderTarget = CreateRenderTarget(TextureRHI, Name);
+	}
+
+private:
+	TRefCountPtr<IPooledRenderTarget> RenderTarget;
+};
+
 /** Fetches the RHI texture from an RDG texture or null if the RDG texture is null. */
 inline FRHITexture* TryGetRHI(FRDGTextureRef Texture)
 {
