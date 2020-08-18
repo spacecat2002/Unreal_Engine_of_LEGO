@@ -249,9 +249,7 @@ public:
 	};
 	
 	ETextureCreateFlags Flags;
-	// one per mip
-//	FMetalBuffer LockedMemory[16];
-//	uint32 WriteLock;
+
 	uint32 BufferLocks;
 
 	// how much memory is allocated for this texture
@@ -470,21 +468,6 @@ public:
 	 * Initialize the buffer contents from the render-thread.
 	 */
 	void Init_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 Size, uint32 InUsage, FRHIResourceCreateInfo& CreateInfo, FRHIResource* Resource);
-	
-	/**
-	 * Alias the buffer backing store allowing the memory to be reused by another resource.
-	 */
-	void Alias();
-
-	/**
-	 * Unalias the buffer backing store forcing the memory to be reserved for use by this resource.
-	 */
-	void Unalias();
-	
-	/**
-	 * Allocate the buffer backing store.
-	 */
-//	void Alloc(uint32 InSize, EResourceLockMode LockMode);
 	
 	/**
 	 * Get a linear texture for given format.

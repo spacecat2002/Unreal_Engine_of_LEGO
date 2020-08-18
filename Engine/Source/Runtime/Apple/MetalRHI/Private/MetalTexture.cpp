@@ -2545,69 +2545,24 @@ void FMetalDynamicRHI::RHIDiscardTransientResource_RenderThread(FRHITexture* Tex
 	}
 }
 
-struct FMetalRHICommandAliasBuffer final : public FRHICommand<FMetalRHICommandAliasBuffer>
-{
-	FMetalRHIBuffer* Buffer;
-	
-	FORCEINLINE_DEBUGGABLE FMetalRHICommandAliasBuffer(FMetalRHIBuffer* InBuffer)
-	{
-		check(InBuffer);
-		Buffer = InBuffer;
-	}
-	
-	void Execute(FRHICommandListBase& CmdList)
-	{
-		@autoreleasepool {
-		Buffer->Unalias();
-		}
-	}
-};
-
 void FMetalDynamicRHI::RHIAcquireTransientResource_RenderThread(FRHIVertexBuffer* Buffer)
 {
-	@autoreleasepool {
-	FMetalVertexBuffer* MetalBuffer = ResourceCast(Buffer);
-	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
-	if (RHICmdList.Bypass() || !IsRunningRHIInSeparateThread())
-	{
-		MetalBuffer->Unalias();
-	}
-	else
-	{
-		new (RHICmdList.AllocCommand<FMetalRHICommandAliasBuffer>()) FMetalRHICommandAliasBuffer(MetalBuffer);
-		RHICmdList.RHIThreadFence(true);
-	}
-	}
+	// This is a no-op for the Metal RHI.
 }
+
 void FMetalDynamicRHI::RHIDiscardTransientResource_RenderThread(FRHIVertexBuffer* Buffer)
 {
-	@autoreleasepool {
-	FMetalVertexBuffer* MetalBuffer = ResourceCast(Buffer);
-	MetalBuffer->Alias();
-	}
+	// This is a no-op for the Metal RHI.
 }
+
 void FMetalDynamicRHI::RHIAcquireTransientResource_RenderThread(FRHIStructuredBuffer* Buffer)
 {
-	@autoreleasepool {
-	FMetalStructuredBuffer* MetalBuffer = ResourceCast(Buffer);
-	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
-	if (RHICmdList.Bypass() || !IsRunningRHIInSeparateThread())
-	{
-		MetalBuffer->Unalias();
-	}
-	else
-	{
-		new (RHICmdList.AllocCommand<FMetalRHICommandAliasBuffer>()) FMetalRHICommandAliasBuffer(MetalBuffer);
-		RHICmdList.RHIThreadFence(true);
-	}
-	}
+	// This is a no-op for the Metal RHI.
 }
+
 void FMetalDynamicRHI::RHIDiscardTransientResource_RenderThread(FRHIStructuredBuffer* Buffer)
 {
-	@autoreleasepool {
-	FMetalStructuredBuffer* MetalBuffer = ResourceCast(Buffer);
-	MetalBuffer->Alias();
-	}
+	// This is a no-op for the Metal RHI.
 }
 
 struct FRHICopySubTextureRegion final : public FRHICommand<FRHICopySubTextureRegion>
