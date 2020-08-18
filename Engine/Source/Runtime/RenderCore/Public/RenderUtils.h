@@ -10,6 +10,27 @@
 #include "RHIDefinitions.h"
 
 class FTextureWithRDG;
+class FRDGTexture;
+class FRDGBuilder;
+struct IPooledRenderTarget;
+
+/** An FTexture variant that includes more efficient support for registering with RDG. */
+class RENDERCORE_API FTextureWithRDG : public FTexture
+{
+public:
+	virtual ~FTextureWithRDG() = default;
+
+	FRDGTexture* GetRDG(FRDGBuilder& GraphBuilder) const;
+	FRDGTexture* GetPassthroughRDG() const;
+
+	void ReleaseRHI() override;
+
+protected:
+	void InitRDG(const TCHAR* Name);
+
+private:
+	TRefCountPtr<IPooledRenderTarget> RenderTarget;
+};
 
 extern RENDERCORE_API void RenderUtilsInit();
 

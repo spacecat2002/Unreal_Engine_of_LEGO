@@ -15,6 +15,30 @@
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #endif
 
+FRDGTexture* FTextureWithRDG::GetRDG(FRDGBuilder& GraphBuilder) const
+{
+	checkf(RenderTarget, TEXT("InitRDG was not called before use."));
+	return GraphBuilder.RegisterExternalTexture(RenderTarget);
+}
+
+FRDGTexture* FTextureWithRDG::GetPassthroughRDG() const
+{
+	checkf(RenderTarget, TEXT("InitRDG was not called before use."));
+	return FRDGTexture::GetPassthrough(RenderTarget);
+}
+
+void FTextureWithRDG::ReleaseRHI()
+{
+	RenderTarget = nullptr;
+	FTexture::ReleaseRHI();
+}
+
+void FTextureWithRDG::InitRDG(const TCHAR* Name)
+{
+	check(TextureRHI);
+	RenderTarget = CreateRenderTarget(TextureRHI, Name);
+}
+
 const uint16 GCubeIndices[12*3] =
 {
 	0, 2, 3,
