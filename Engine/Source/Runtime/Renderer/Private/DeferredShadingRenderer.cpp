@@ -2134,7 +2134,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			EnumRemoveFlags(TranslucencyViewsToRender, ETranslucencyView::UnderWater);
 		}
 
-		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_WaterPass));
+		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_WaterPass));
 		RenderSingleLayerWater(GraphBuilder, SceneColorTexture, SceneDepthTexture, SceneTextures, bShouldRenderVolumetricCloud);
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
