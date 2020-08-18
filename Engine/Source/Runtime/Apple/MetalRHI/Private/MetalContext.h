@@ -179,9 +179,9 @@ template<typename T>
 void FMetalContext::TransitionRHIResource(T* InResource)
 {
 	auto Resource = ResourceCast(InResource);
-	if (Resource->Buffer)
+	if (Resource->GetCurrentBufferOrNil())
 	{
-		RenderPass.TransitionResources(Resource->Buffer);
+		RenderPass.TransitionResources(Resource->GetCurrentBuffer());
 	}
 }
 

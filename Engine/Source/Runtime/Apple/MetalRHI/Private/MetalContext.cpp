@@ -1182,17 +1182,15 @@ void FMetalContext::TransitionResource(FRHIUnorderedAccessView* InResource)
 
 	if (StructuredBuffer)
 	{
-		check(StructuredBuffer->Buffer);
-		RenderPass.TransitionResources(StructuredBuffer->Buffer);
+		RenderPass.TransitionResources(StructuredBuffer->GetCurrentBuffer());
 	}
-	else if (VertexBuffer && VertexBuffer->Buffer)
+	else if (VertexBuffer && VertexBuffer->GetCurrentBufferOrNil())
 	{
-		RenderPass.TransitionResources(VertexBuffer->Buffer);
+		RenderPass.TransitionResources(VertexBuffer->GetCurrentBuffer());
 	}
 	else if (IndexBuffer)
 	{
-		check(IndexBuffer->Buffer);
-		RenderPass.TransitionResources(IndexBuffer->Buffer);
+		RenderPass.TransitionResources(IndexBuffer->GetCurrentBuffer());
 	}
 	else if (Surface)
 	{
