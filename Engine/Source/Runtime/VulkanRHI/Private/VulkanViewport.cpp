@@ -52,7 +52,7 @@ void FVulkanBackBuffer::OnGetBackBufferImage(FRHICommandListImmediate& RHICmdLis
 	check(Viewport);
 	if (GVulkanDelayAcquireImage == EDelayAcquireImageType::None)
 	{
-		FVulkanCommandListContext& Context = (FVulkanCommandListContext&)RHICmdList.GetContext();
+		FVulkanCommandListContext& Context = (FVulkanCommandListContext&)RHICmdList.GetContext().GetLowestLevelContext();
 		AcquireBackBufferImage(Context);
 	}
 }

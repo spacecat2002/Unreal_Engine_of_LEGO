@@ -234,7 +234,7 @@ inline void FVulkanDynamicRHI::UpdateUniformBuffer(FVulkanUniformBuffer* Uniform
 			{
 				if(bUseUpload)
 				{			
-					FVulkanCommandListContext& Context = (FVulkanCommandListContext&)*Device->ImmediateContext;
+					FVulkanCommandListContext& Context = Device->GetImmediateContext();
 					UpdateUniformBufferHelper(Context, RealUniformBuffer, ConstantBufferSize, Contents);
 				}
 				else
@@ -272,7 +272,7 @@ inline void FVulkanDynamicRHI::UpdateUniformBuffer(FVulkanUniformBuffer* Uniform
 
 				RHICmdList.EnqueueLambda([UpdateUniformBufferHelper, RealUniformBuffer, CmdListResources, NumResources, ConstantBufferSize, CmdListConstantBufferData](FRHICommandList& CmdList)
 				{
-					FVulkanCommandListContext& Context = (FVulkanCommandListContext&)CmdList.GetContext();
+					FVulkanCommandListContext& Context = (FVulkanCommandListContext&)CmdList.GetContext().GetLowestLevelContext();
 					UpdateUniformBufferHelper(Context, RealUniformBuffer, ConstantBufferSize, CmdListConstantBufferData);
 					RealUniformBuffer->UpdateResourceTable(CmdListResources, NumResources);
 				});
