@@ -8,16 +8,12 @@
 
 class FDelegateBase;
 class IDelegateInstance;
-template <typename FuncType> struct IBaseDelegateInstance;
 
-template <typename FuncType>
+template <typename FuncType, typename UserPolicy>
 struct IBaseDelegateInstance;
 
-template <typename FuncType>
-struct IBaseDelegateInstance;
-
-template <typename RetType, typename... ArgTypes>
-struct IBaseDelegateInstance<RetType(ArgTypes...)> : public IDelegateInstance
+template <typename RetType, typename... ArgTypes, typename UserPolicy>
+struct IBaseDelegateInstance<RetType(ArgTypes...), UserPolicy> : public UserPolicy::FDelegateInstanceExtras
 {
 	/**
 	 * Emplaces a copy of the delegate instance into the FDelegateBase.

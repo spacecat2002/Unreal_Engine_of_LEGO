@@ -27,10 +27,10 @@ struct FWeakObjectPtr;
 	typedef FHeapAllocator FDelegateAllocatorType;
 #endif
 
-
 struct FWeakObjectPtr;
 
-class FMulticastDelegateBase;
+template <typename UserPolicy>
+class TMulticastDelegateBase;
 
 ALIAS_TEMPLATE_TYPE_LAYOUT(template<typename ElementType>, FDelegateAllocatorType::ForElementType<ElementType>, void*);
 
@@ -39,10 +39,13 @@ ALIAS_TEMPLATE_TYPE_LAYOUT(template<typename ElementType>, FDelegateAllocatorTyp
  */
 class FDelegateBase
 {
-	friend class FMulticastDelegateBase;
+	template <typename>
+	friend class TMulticastDelegateBase;
 
-public:
+	template <typename>
+	friend class TDelegateBase;
 
+protected:
 	/**
 	 * Creates and initializes a new instance.
 	 *
@@ -80,6 +83,99 @@ public:
 		return *this;
 	}
 
+	/**
+	 * Unbinds this delegate
+	 */
+	FORCEINLINE void Unbind()
+	{
+		if (IDelegateInstance* Ptr = GetDelegateInstanceProtected())
+		{
+			Ptr->~IDelegateInstance();
+			DelegateAllocator.ResizeAllocation(0, 0, sizeof(FAlignedInlineDelegateType));
+			DelegateSize = 0;
+		}
+	}
+
+	/**
+	 * Gets the delegate instance.  Not intended for use by user code.
+	 *
+	 * @return The delegate instance.
+	 * @see SetDelegateInstance
+	 */
+	FORCEINLINE IDelegateInstance* GetDelegateInstanceProtected() const
+	{
+		return DelegateSize ? (IDelegateInstance*)DelegateAllocator.GetAllocation() : nullptr;
+	}
+
+private:
+	friend void* operator new(size_t Size, FDelegateBase& Base);
+
+	void* Allocate(int32 Size)
+	{
+		if (IDelegateInstance* CurrentInstance = GetDelegateInstanceProtected())
+		{
+			CurrentInstance->~IDelegateInstance();
+		}
+
+		int32 NewDelegateSize = FMath::DivideAndRoundUp(Size, (int32)sizeof(FAlignedInlineDelegateType));
+		if (DelegateSize != NewDelegateSize)
+		{
+			DelegateAllocator.ResizeAllocation(0, NewDelegateSize, sizeof(FAlignedInlineDelegateType));
+			DelegateSize = NewDelegateSize;
+		}
+
+		return DelegateAllocator.GetAllocation();
+	}
+
+private:
+	FDelegateAllocatorType::ForElementType<FAlignedInlineDelegateType> DelegateAllocator;
+	int32 DelegateSize;
+};
+
+inline void* operator new(size_t Size, FDelegateBase& Base)
+{
+	return Base.Allocate((int32)Size);
+}
+
+struct FDefaultDelegateUserPolicy
+{
+	// To extend delegates, you should implement a policy struct like this and pass it as the second template
+	// argument to TDelegate and TMulticastDelegate.  This policy struct containing three classes called:
+	// 
+	// FDelegateInstanceExtras:
+	//   - Must publicly inherit IDelegateInstance.
+	//   - Should contain any extra data and functions injected into a binding (the object which holds and
+	//     is able to invoke the binding passed to FMyDelegate::CreateSP, FMyDelegate::CreateLambda etc.).
+	//   - This binding is not available through the public API of the delegate, but is accessible to FDelegateExtras.
+	//
+	// FDelegateExtras:
+	//   - Must publicly inherit FDelegateBase.
+	//   - Should contain any extra data and functions injected into a delegate (the object which holds an
+	//     FDelegateInstance-derived object, above).
+	//   - Public data members and member functions are accessible directly through the TDelegate object.
+	//   - Typically member functions in this class will forward calls to the inner FDelegateInstanceExtras,
+	//     by downcasting the result of a call to GetDelegateInstanceProtected().
+	//
+	// FMulticastDelegateExtras:
+	//   - Must publicly inherit TMulticastDelegateBase<FYourUserPolicyStruct>.
+	//   - Should contain any extra data and functions injected into a multicast delegate (the object which
+	//     holds an array of FDelegateExtras-derived objects which is the invocation list).
+	//   - Public data members and member functions are accessible directly through the TMulticastDelegate object.
+
+	using FDelegateInstanceExtras  = IDelegateInstance;
+	using FDelegateExtras          = FDelegateBase;
+	using FMulticastDelegateExtras = TMulticastDelegateBase<FDefaultDelegateUserPolicy>;
+};
+
+template <typename UserPolicy>
+class TDelegateBase : public UserPolicy::FDelegateExtras
+{
+	template <typename>
+	friend class TMulticastDelegateBase;
+
+	using Super = typename UserPolicy::FDelegateExtras;
+
+public:
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
 	/**
@@ -178,19 +274,6 @@ public:
 	}
 
 	/**
-	 * Unbinds this delegate
-	 */
-	FORCEINLINE void Unbind( )
-	{
-		if (IDelegateInstance* Ptr = GetDelegateInstanceProtected())
-		{
-			Ptr->~IDelegateInstance();
-			DelegateAllocator.ResizeAllocation(0, 0, sizeof(FAlignedInlineDelegateType));
-			DelegateSize = 0;
-		}
-	}
-
-	/**
 	 * Gets a handle to the delegate.
 	 *
 	 * @return The delegate instance.
@@ -205,45 +288,4 @@ public:
 
 		return Result;
 	}
-
-protected:
-	/**
-	 * Gets the delegate instance.  Not intended for use by user code.
-	 *
-	 * @return The delegate instance.
-	 * @see SetDelegateInstance
-	 */
-	FORCEINLINE IDelegateInstance* GetDelegateInstanceProtected( ) const
-	{
-		return DelegateSize ? (IDelegateInstance*)DelegateAllocator.GetAllocation() : nullptr;
-	}
-
-private:
-	friend void* operator new(size_t Size, FDelegateBase& Base);
-
-	void* Allocate(int32 Size)
-	{
-		if (IDelegateInstance* CurrentInstance = GetDelegateInstanceProtected())
-		{
-			CurrentInstance->~IDelegateInstance();
-		}
-
-		int32 NewDelegateSize = FMath::DivideAndRoundUp(Size, (int32)sizeof(FAlignedInlineDelegateType));
-		if (DelegateSize != NewDelegateSize)
-		{
-			DelegateAllocator.ResizeAllocation(0, NewDelegateSize, sizeof(FAlignedInlineDelegateType));
-			DelegateSize = NewDelegateSize;
-		}
-
-		return DelegateAllocator.GetAllocation();
-	}
-
-private:
-	FDelegateAllocatorType::ForElementType<FAlignedInlineDelegateType> DelegateAllocator;
-	int32 DelegateSize;
 };
-
-inline void* operator new(size_t Size, FDelegateBase& Base)
-{
-	return Base.Allocate((int32)Size);
-}

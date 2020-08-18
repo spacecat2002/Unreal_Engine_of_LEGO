@@ -65,12 +65,14 @@ private:
 };
 
 
-/**
- * Interface for delegate instances.
- */
 class IDelegateInstance
 {
 public:
+	/**
+	 * Virtual destructor.
+	 */
+	virtual ~IDelegateInstance() = default;
+
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
 	/**
@@ -142,11 +144,4 @@ public:
 	 * Returns a handle for the delegate.
 	 */
 	virtual FDelegateHandle GetHandle() const = 0;
-
-public:
-
-	/**
-	 * Virtual destructor.
-	 */
-	virtual ~IDelegateInstance( ) { }
 };
