@@ -360,6 +360,10 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 			const FRWBuffer* LastBuffer = nullptr;
 			for (FMeshComputeDispatchCommand& Cmd : DispatchCommands)
 			{
+				if (Cmd.TargetBuffer == nullptr)
+				{
+					continue;
+				}
 				FRHIUnorderedAccessView* UAV = Cmd.TargetBuffer->UAV.GetReference();
 
 				// The list is sorted by TargetBuffer, so we can remove duplicates by simply looking at the previous value we've processed.
