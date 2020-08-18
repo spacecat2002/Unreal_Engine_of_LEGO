@@ -1355,7 +1355,7 @@ void FSceneRenderer::InitVolumetricCloudsForViews(FRDGBuilder& GraphBuilder)
 					auto GenerateCloudTexture = [&](FLightSceneProxy* AtmosphericLight, int LightIndex)
 					{
 						FVolumetricCloudCommonShaderParameters& CloudGlobalShaderParams = CloudInfo.GetVolumetricCloudCommonShaderParameters();
-						if (ShouldRenderCloudShadowmap(AtmosphericLight))
+						if (ShouldRenderCloudShadowmap(AtmosphericLight) && ViewInfo.ViewState)
 						{
 							const uint32 Resolution1D = GetVolumetricCloudShadowMapResolution(AtmosphericLight);
 							FIntPoint Resolution2D = FIntPoint(Resolution1D, Resolution1D);
