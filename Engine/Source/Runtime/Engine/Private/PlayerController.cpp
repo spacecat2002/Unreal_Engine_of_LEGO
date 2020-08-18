@@ -2483,7 +2483,7 @@ void APlayerController::SetupInputComponent()
 	// A subclass could create a different InputComponent class but still want the default bindings
 	if (InputComponent == NULL)
 	{
-		InputComponent = NewObject<UInputComponent>(this, GetWorld()->GetAuthGameMode()->DefaultInputComponentClass, TEXT("PC_InputComponent0"));
+		InputComponent = NewObject<UInputComponent>(this, TEXT("PC_InputComponent0"));
 		InputComponent->RegisterComponent();
 	}
 
@@ -4994,7 +4994,7 @@ void APlayerController::UpdateStateInputComponents()
 		if (InactiveStateInputComponent == NULL)
 		{
 			static const FName InactiveStateInputComponentName(TEXT("PC_InactiveStateInputComponent0"));
-			InactiveStateInputComponent = NewObject<UInputComponent>(this, GetWorld()->GetAuthGameMode()->DefaultInputComponentClass, InactiveStateInputComponentName);
+			InactiveStateInputComponent = NewObject<UInputComponent>(this, InactiveStateInputComponentName);
 			SetupInactiveStateInputComponent(InactiveStateInputComponent);
 			InactiveStateInputComponent->RegisterComponent();
 			PushInputComponent(InactiveStateInputComponent);

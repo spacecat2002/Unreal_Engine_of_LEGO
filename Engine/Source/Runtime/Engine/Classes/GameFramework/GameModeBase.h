@@ -12,7 +12,6 @@
 #include "Engine/ServerStatReplicator.h"
 #include "UObject/CoreOnline.h"
 #include "GameFramework/PlayerController.h"
-#include "Components/InputComponent.h"
 #include "GameModeBase.generated.h"
 
 class AGameSession;
@@ -94,9 +93,6 @@ public:
 	/** The class of PlayerController to spawn for players logging in. */
 	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category=Classes)
 	TSubclassOf<APlayerController> PlayerControllerClass;
-
-	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category = Classes)
-	TSubclassOf<UInputComponent> DefaultInputComponentClass;
 
 	/** A PlayerState of this class will be associated with every player to replicate relevant player information to all clients. */
 	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category=Classes)

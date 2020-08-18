@@ -4,7 +4,6 @@
 #include "Engine/LevelScriptActor.h"
 #include "Engine/World.h"
 #include "Components/InputComponent.h"
-#include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/InputDelegateBinding.h"
 #include "Engine/LevelScriptBlueprint.h"
@@ -36,7 +35,7 @@ void ALevelScriptActor::PreInitializeComponents()
 	if (UInputDelegateBinding::SupportsInputDelegate(GetClass()) && !InputComponent)
 	{
 		// create an InputComponent object so that the level script actor can bind key events
-		InputComponent = NewObject<UInputComponent>(this, GetWorld()->GetAuthGameMode()->DefaultInputComponentClass);
+		InputComponent = NewObject<UInputComponent>(this);
 		InputComponent->RegisterComponent();
 
 		UInputDelegateBinding::BindInputDelegates(GetClass(), InputComponent);
