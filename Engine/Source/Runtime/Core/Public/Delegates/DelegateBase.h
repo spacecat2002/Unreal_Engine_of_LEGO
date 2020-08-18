@@ -188,7 +188,7 @@ public:
 	 */
 	FName TryGetBoundFunctionName() const
 	{
-		if (IDelegateInstance* Ptr = GetDelegateInstanceProtected())
+		if (IDelegateInstance* Ptr = Super::GetDelegateInstanceProtected())
 		{
 			return Ptr->TryGetBoundFunctionName();
 		}
@@ -205,7 +205,7 @@ public:
 	 */
 	FORCEINLINE class UObject* GetUObject( ) const
 	{
-		if (IDelegateInstance* Ptr = GetDelegateInstanceProtected())
+		if (IDelegateInstance* Ptr = Super::GetDelegateInstanceProtected())
 		{
 			return Ptr->GetUObject();
 		}
@@ -220,7 +220,7 @@ public:
 	 */
 	FORCEINLINE bool IsBound( ) const
 	{
-		IDelegateInstance* Ptr = GetDelegateInstanceProtected();
+		IDelegateInstance* Ptr = Super::GetDelegateInstanceProtected();
 
 		return Ptr && Ptr->IsSafeToExecute();
 	}
@@ -232,7 +232,7 @@ public:
 	 */
 	FORCEINLINE const void* GetObjectForTimerManager() const
 	{
-		IDelegateInstance* Ptr = GetDelegateInstanceProtected();
+		IDelegateInstance* Ptr = Super::GetDelegateInstanceProtected();
 
 		const void* Result = Ptr ? Ptr->GetObjectForTimerManager() : nullptr;
 		return Result;
@@ -248,7 +248,7 @@ public:
 	 */
 	uint64 GetBoundProgramCounterForTimerManager() const
 	{
-		if (IDelegateInstance* Ptr = GetDelegateInstanceProtected())
+		if (IDelegateInstance* Ptr = Super::GetDelegateInstanceProtected())
 		{
 			return Ptr->GetBoundProgramCounterForTimerManager();
 		}
@@ -268,7 +268,7 @@ public:
 			return false;
 		}
 
-		IDelegateInstance* Ptr = GetDelegateInstanceProtected();
+		IDelegateInstance* Ptr = Super::GetDelegateInstanceProtected();
 
 		return Ptr && Ptr->HasSameObject(InUserObject);
 	}
@@ -281,7 +281,7 @@ public:
 	FORCEINLINE FDelegateHandle GetHandle() const
 	{
 		FDelegateHandle Result;
-		if (IDelegateInstance* Ptr = GetDelegateInstanceProtected())
+		if (IDelegateInstance* Ptr = Super::GetDelegateInstanceProtected())
 		{
 			Result = Ptr->GetHandle();
 		}
