@@ -955,7 +955,6 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassInputs.SceneColor = SceneColor;
 		PassInputs.SceneColorBeforeTonemap = SceneColorBeforeTonemap;
 		PassInputs.OriginalSceneColor = OriginalSceneColor;
-		PassInputs.SceneTextures = Inputs.SceneTextures;
 
 		SceneColor = AddPixelInspectorPass(GraphBuilder, View, PassInputs);
 	}
