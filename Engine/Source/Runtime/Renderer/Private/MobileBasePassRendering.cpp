@@ -137,6 +137,8 @@ FMobileBasePassMovableLightInfo::FMobileBasePassMovableLightInfo(const FPrimitiv
 	}
 }
 
+extern void SetupFogUniformParameters(FRDGBuilder* GraphBuilder, const FViewInfo& View, FFogUniformParameters& OutParameters);
+
 void SetupMobileBasePassUniformParameters(
 	FRHICommandListImmediate& RHICmdList, 
 	const FViewInfo& View, 
@@ -144,7 +146,7 @@ void SetupMobileBasePassUniformParameters(
 	bool bCanUseCSM,
 	FMobileBasePassUniformParameters& BasePassParameters)
 {
-	SetupFogUniformParameters(View, BasePassParameters.Fog);
+	SetupFogUniformParameters(nullptr, View, BasePassParameters.Fog);
 
 	const FScene* Scene = View.Family->Scene ? View.Family->Scene->GetRenderScene() : nullptr;
 	const FPlanarReflectionSceneProxy* ReflectionSceneProxy = Scene ? Scene->GetForwardPassGlobalPlanarReflection() : nullptr;

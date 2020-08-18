@@ -624,7 +624,7 @@ void SetupTranslucentBasePassUniformParameters(
 		return RegisterExternalOrPassthroughTexture(GraphBuilder, PooledRenderTarget, Flags);
 	};
 
-	SetupSharedBasePassParameters(RHICmdList, View, BasePassParameters.Shared);
+	SetupSharedBasePassParameters(GraphBuilder, RHICmdList, View, BasePassParameters.Shared);
 	SetupSceneTextureUniformParameters(GraphBuilder, View.FeatureLevel, SceneRenderTargets, SceneTextureSetupMode, BasePassParameters.SceneTextures);
 
 	FRDGTextureRef BlackDummyTexture = GetRDG(GSystemTextures.BlackDummy);

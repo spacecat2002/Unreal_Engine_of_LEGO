@@ -119,6 +119,7 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 DECLARE_GPU_DRAWCALL_STAT_EXTERN(Basepass);
 
 extern void SetupSharedBasePassParameters(
+	FRDGBuilder* GraphBuilder,
 	FRHICommandListImmediate& RHICmdList,
 	const FViewInfo& View,
 	FSharedBasePassUniformParameters& BasePassParameters);

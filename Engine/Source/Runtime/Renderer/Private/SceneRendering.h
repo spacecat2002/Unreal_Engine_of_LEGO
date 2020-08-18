@@ -676,14 +676,14 @@ class FVolumetricFogViewResources
 public:
 	TUniformBufferRef<FVolumetricFogGlobalData> VolumetricFogGlobalData;
 
-	TRefCountPtr<IPooledRenderTarget> IntegratedLightScattering;
+	FRDGTextureRef IntegratedLightScatteringTexture = nullptr;
 
 	FVolumetricFogViewResources()
 	{}
 
 	void Release()
 	{
-		IntegratedLightScattering = NULL;
+		IntegratedLightScatteringTexture = nullptr;
 	}
 };
 

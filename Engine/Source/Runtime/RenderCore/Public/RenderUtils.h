@@ -9,6 +9,8 @@
 #include "RenderResource.h"
 #include "RHIDefinitions.h"
 
+class FTextureWithRDG;
+
 extern RENDERCORE_API void RenderUtilsInit();
 
 /**
@@ -116,16 +118,16 @@ extern RENDERCORE_API class FVertexBufferWithSRV* GWhiteVertexBufferWithSRV;
 extern RENDERCORE_API class FTexture* GBlackArrayTexture;
 
 /** A global black volume texture. */
-extern RENDERCORE_API class FTexture* GBlackVolumeTexture;
+extern RENDERCORE_API class FTextureWithRDG* GBlackVolumeTexture;
 
 /** A global black volume texture, with alpha=1. */
-extern RENDERCORE_API class FTexture* GBlackAlpha1VolumeTexture;
+extern RENDERCORE_API class FTextureWithRDG* GBlackAlpha1VolumeTexture;
 
 /** A global black texture<uint> */
 extern RENDERCORE_API class FTexture* GBlackUintTexture;
 
 /** A global black volume texture<uint>  */
-extern RENDERCORE_API class FTexture* GBlackUintVolumeTexture;
+extern RENDERCORE_API class FTextureWithRDG* GBlackUintVolumeTexture;
 
 /** A global white cube texture. */
 extern RENDERCORE_API class FTexture* GWhiteTextureCube;

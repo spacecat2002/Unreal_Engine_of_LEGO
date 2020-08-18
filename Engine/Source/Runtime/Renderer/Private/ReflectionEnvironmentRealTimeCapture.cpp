@@ -213,7 +213,7 @@ class FRenderRealTimeReflectionHeightFogPS : public FGlobalShader
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
-		SHADER_PARAMETER_STRUCT_REF(FFogUniformParameters, FogStruct)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FFogUniformParameters, FogStruct)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
@@ -598,62 +598,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 						PsPassParameters->ViewUniformBuffer = CubeViewUniformBuffer;
 						PsPassParameters->RenderTargets = SkyRC.RenderTargets;
 						PsPassParameters->DepthTexture = CubeDepthTexture != nullptr ? CubeDepthTexture : BlackDummy2dTex;
-
-						FFogUniformParameters FogUniformParameters;
-						SetupFogUniformParameters(CubeView, FogUniformParameters);
-						PsPassParameters->FogStruct = TUniformBufferRef<FFogUniformParameters>::CreateUniformBufferImmediate(FogUniformParameters, UniformBuffer_SingleDraw);
-
-						ClearUnusedGraphResources(PixelShader, PsPassParameters);
-
-						// Render height fog at an infinite distance since real time reflections does not have a depth buffer for now.
-						// Volumetric fog is not supported in such reflections.
-						GraphBuilder.AddPass(
-							RDG_EVENT_NAME("DistantHeightFog"),
-							PsPassParameters,
-							ERDGPassFlags::Raster,
-							[PsPassParameters, VertexShader, PixelShader, CubeWidth](FRHICommandList& RHICmdListLambda)
-						{
-							RHICmdListLambda.SetViewport(0.0f, 0.0f, 0.0f, CubeWidth, CubeWidth, 1.0f);
-
-							FGraphicsPipelineStateInitializer GraphicsPSOInit;
-							RHICmdListLambda.ApplyCachedRenderTargets(GraphicsPSOInit);
-
-							GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_SourceAlpha, BO_Add, BF_Zero, BF_One>::GetRHI();
-							GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-							GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-							GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GEmptyVertexDeclaration.VertexDeclarationRHI;
-							GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
-							GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-							SetGraphicsPipelineState(RHICmdListLambda, GraphicsPSOInit);
-
-							FRenderRealTimeReflectionHeightFogVS::FParameters VsPassParameters;
-							VsPassParameters.ViewUniformBuffer = PsPassParameters->ViewUniformBuffer;
-							SetShaderParameters(RHICmdListLambda, VertexShader, VertexShader.GetVertexShader(), VsPassParameters);
-							SetShaderParameters(RHICmdListLambda, PixelShader, PixelShader.GetPixelShader(), *PsPassParameters);
-
-							RHICmdListLambda.DrawPrimitive(0, 1, 1);
-						});
-					}
-
-					// Also render the height fog as part of the sky render pass when time slicing is enabled.
-					if (Scene && Scene->ExponentialFogs.Num() > 0)
-					{
-						FRenderRealTimeReflectionHeightFogVS::FPermutationDomain VsPermutationVector;
-						TShaderMapRef<FRenderRealTimeReflectionHeightFogVS> VertexShader(GetGlobalShaderMap(SkyRC.FeatureLevel), VsPermutationVector);
-
-						FRenderRealTimeReflectionHeightFogPS::FPermutationDomain PsPermutationVector;
-						PsPermutationVector.Set<FRenderRealTimeReflectionHeightFogPS::FDepthTexture>(CubeDepthTexture != nullptr);
-						TShaderMapRef<FRenderRealTimeReflectionHeightFogPS> PixelShader(GetGlobalShaderMap(SkyRC.FeatureLevel), PsPermutationVector);
-
-						FRenderRealTimeReflectionHeightFogPS::FParameters* PsPassParameters = GraphBuilder.AllocParameters<FRenderRealTimeReflectionHeightFogPS::FParameters>();
-						PsPassParameters->ViewUniformBuffer = CubeViewUniformBuffer;
-						PsPassParameters->RenderTargets = SkyRC.RenderTargets;
-						PsPassParameters->DepthTexture = CubeDepthTexture != nullptr ? CubeDepthTexture : BlackDummy2dTex;
-
-						FFogUniformParameters FogUniformParameters;
-						SetupFogUniformParameters(CubeView, FogUniformParameters);
-						PsPassParameters->FogStruct = TUniformBufferRef<FFogUniformParameters>::CreateUniformBufferImmediate(FogUniformParameters, UniformBuffer_SingleDraw);
+						PsPassParameters->FogStruct = CreateFogUniformBuffer(GraphBuilder, CubeView);
 
 						ClearUnusedGraphResources(PixelShader, PsPassParameters);
 
