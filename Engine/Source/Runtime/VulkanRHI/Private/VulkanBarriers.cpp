@@ -724,6 +724,8 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 			continue;
 		}
 
+		check(Texture != nullptr);
+
 		VkImageSubresourceRange SubresRange;
 		SetupSubresourceRange(SubresRange, Info, Texture->Surface.GetFullAspectMask());
 
