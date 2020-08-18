@@ -1369,13 +1369,15 @@ public:
 			Arr3.SetNumUninitialized(20);
 			Arr3.CheckInvariants();
 			TestEqual(TEXT("SetNumUninitialized 20 from empty sets num at 20"), Arr3.Num(), 20);
-			TestEqual(TEXT("SetNumUninitialized 20 sets max at rounded up"), Arr3.Max(), NumBitsPerDWORD);
+			// Depending on defines, requesting the bitarray's grow to handle a single int might reserve multiple ints. Just confirm the max is a multiple of bitsperdword > num
+			TestTrue(TEXT("SetNumUninitialized 20 sets max at rounded up"), Arr3.Max() >= NumBitsPerDWORD && (Arr3.Max() % NumBitsPerDWORD) == 0);
 
 			TBitArray<FDefaultAllocator> Arr4Ones(true, NumBitsPerDWORD);
 			Arr4Ones.SetNumUninitialized(NumBitsPerDWORD + NumBitsPerDWORD / 2);
 			Arr4Ones.CheckInvariants();
 			TestEqual(TEXT("SetNumUninitialized to a higher number sets num to the higher number"), Arr4Ones.Num(), NumBitsPerDWORD + NumBitsPerDWORD / 2);
-			TestEqual(TEXT("SetNumUninitialized to a higher number sets max to rounded up"), Arr4Ones.Max(), NumBitsPerDWORD * 2);
+			// Depending on defines, requesting the bitarray's grow to handle a single int might reserve multiple ints. Just confirm the max is a multiple of bitsperdword > num
+			TestTrue(TEXT("SetNumUninitialized to a higher number sets max to rounded up"), Arr4Ones.Max() >= NumBitsPerDWORD * 2 && (Arr4Ones.Max() % NumBitsPerDWORD) == 0);
 			for (int n = 0; n < NumBitsPerDWORD; ++n)
 			{
 				TestEqual(TEXT("SetNumUninitialized to a higher number keeps the old elements - ones"), Arr4Ones[n], true);
