@@ -21,7 +21,9 @@
 #if WITH_HOT_RELOAD
 	/** If true, we are reloading a class for HotReload */
 	extern CORE_API bool GIsHotReload;
+#endif
 
+#if WITH_ENGINE
 	extern CORE_API TMap<UClass*, UClass*>& GetClassesToReinstanceForHotReload(); 
 #endif
 
