@@ -9,6 +9,7 @@
 #include "CoreMinimal.h"
 #include "ShaderParameters.h"
 #include "RenderUtils.h"
+#include "RenderGraphUtils.h"
 #include "RHIStaticStates.h"
 
 class FShaderParameterMap;
