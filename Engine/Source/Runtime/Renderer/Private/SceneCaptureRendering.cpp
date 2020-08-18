@@ -218,11 +218,12 @@ void FDeferredShadingSceneRenderer::CopySceneCaptureComponentToTarget(
 				RDG_EVENT_NAME("View(%d)", ViewIndex),
 				PassParameters,
 				ERDGPassFlags::Raster,
-				[GraphicsPSOInit, VertexShader, &View] (FRHICommandListImmediate& RHICmdList)
+				[PassParameters, GraphicsPSOInit, VertexShader, PixelShader, &View] (FRHICommandListImmediate& RHICmdList)
 			{
 				FGraphicsPipelineStateInitializer LocalGraphicsPSOInit = GraphicsPSOInit;
 				RHICmdList.ApplyCachedRenderTargets(LocalGraphicsPSOInit);
 				SetGraphicsPipelineState(RHICmdList, LocalGraphicsPSOInit);
+				SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 
 				DrawRectangle(
 					RHICmdList,
