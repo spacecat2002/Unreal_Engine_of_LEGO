@@ -1760,9 +1760,9 @@ void UAnimSequence::GetBonePose_Additive(FAnimationPoseData& OutAnimationPoseDat
 	FCompactPose BasePose;
 	FBlendedCurve BaseCurve;
 	FStackCustomAttributes BaseAttributes;
-
+	
 	BasePose.SetBoneContainer(&OutPose.GetBoneContainer());
-	BaseCurve.InitFrom(OutCurve);
+	BaseCurve.InitFrom(OutCurve);	
 
 	FAnimationPoseData BasePoseData(BasePose, BaseCurve, BaseAttributes);
 
@@ -1791,7 +1791,7 @@ void UAnimSequence::GetAdditiveBasePose(FAnimationPoseData& OutAnimationPoseData
 		case ABPT_AnimScaled:
 		{
 			// normalize time to fit base seq
-			const float Fraction = (SequenceLength > 0.f) ? FMath::Clamp<float>(ExtractionContext.CurrentTime / SequenceLength, 0.f, 1.f) : 0.f;
+			const float Fraction = (SequenceLength > 0.f)? FMath::Clamp<float>(ExtractionContext.CurrentTime / SequenceLength, 0.f, 1.f) : 0.f;
 			const float BasePoseTime = RefPoseSeq->SequenceLength * Fraction;
 
 			FAnimExtractContext BasePoseExtractionContext(ExtractionContext);
@@ -5224,12 +5224,194 @@ void UAnimSequence::GetCustomAttributesForBone(const FName& BoneName, TArray<FCu
 	}
 }
 
+// Helper functionality to populate a curve by sampling the custom attribute data
+template<typename DataType, typename CurveType>
+void ConvertAttributeToAdditive(const FCustomAttribute& AdditiveAttribute, const FCustomAttribute& RefAttribute, CurveType& InOutCurve, float SamplingTime, int32 NumberOfFrames, TFunctionRef<float(float Time)> GetReferenceTime)
+{
+	for (int32 Frame = 0; Frame < NumberOfFrames; ++Frame)
+	{
+		const float CurrentFrameTime = Frame * SamplingTime;
+
+		DataType AdditiveValue;
+		FCustomAttributesRuntime::GetAttributeValue(AdditiveAttribute, CurrentFrameTime, AdditiveValue);
+
+		DataType RefValue;
+		FCustomAttributesRuntime::GetAttributeValue(RefAttribute, GetReferenceTime(CurrentFrameTime), RefValue);
+
+		const DataType Value = RefValue - AdditiveValue;
+		InOutCurve.AddKey(CurrentFrameTime, Value);
+	}
+}
+
 void UAnimSequence::SynchronousCustomAttributesCompression()
 {
-	if (!HasValidBakedCustomAttributes())
-	{
-		BakedPerBoneCustomAttributeData.Empty(PerBoneCustomAttributeData.Num());
+	// If we are additive, we'll need to sample the base pose (against we're additive) and subtract the attributes from the base ones
+	const bool bShouldSampleBasePose = IsValidAdditive() && RefPoseType != ABPT_RefPose;
+	
+	BakedPerBoneCustomAttributeData.Empty(PerBoneCustomAttributeData.Num());
 
+	auto ProcessCustomAttribute = [this](const FCustomAttribute& Attribute, FBakedCustomAttributePerBoneData& BakedBoneAttributes)
+	{		
+		switch (static_cast<EVariantTypes>(Attribute.VariantType))
+		{
+			case EVariantTypes::Float:
+			{
+				FBakedFloatCustomAttribute& BakedFloatAttribute = BakedBoneAttributes.FloatAttributes.AddDefaulted_GetRef();
+				BakedFloatAttribute.AttributeName = Attribute.Name;
+
+				FSimpleCurve& FloatCurve = BakedFloatAttribute.FloatCurve;
+
+				TArray<FSimpleCurveKey> Keys;
+				for (int32 KeyIndex = 0; KeyIndex < Attribute.Times.Num(); ++KeyIndex)
+				{
+					const FVariant& VariantValue = Attribute.Values[KeyIndex];
+					FloatCurve.AddKey(Attribute.Times[KeyIndex], VariantValue.GetValue<float>());
+				}
+
+				FloatCurve.SetDefaultValue(FloatCurve.GetFirstKey().Value);
+				FloatCurve.RemoveRedundantKeys(0.f);
+				break;
+			}
+
+			case EVariantTypes::Int32:
+			{
+				FBakedIntegerCustomAttribute& BakedIntAttribute = BakedBoneAttributes.IntAttributes.AddDefaulted_GetRef();
+				BakedIntAttribute.AttributeName = Attribute.Name;
+
+				FIntegralCurve& IntCurve = BakedIntAttribute.IntCurve;
+				for (int32 KeyIndex = 0; KeyIndex < Attribute.Times.Num(); ++KeyIndex)
+				{
+					const FVariant& VariantValue = Attribute.Values[KeyIndex];
+					IntCurve.AddKey(Attribute.Times[KeyIndex], VariantValue.GetValue<int32>());
+				}
+
+				IntCurve.SetDefaultValue(IntCurve.GetKey(IntCurve.GetFirstKeyHandle()).Value);
+				IntCurve.RemoveRedundantKeys();
+				break;
+			}
+
+			case EVariantTypes::String:
+			{
+				FBakedStringCustomAttribute& BakedStringAttribute = BakedBoneAttributes.StringAttributes.AddDefaulted_GetRef();
+				BakedStringAttribute.AttributeName = Attribute.Name;
+
+				FStringCurve& StringCurve = BakedStringAttribute.StringCurve;
+				for (int32 KeyIndex = 0; KeyIndex < Attribute.Times.Num(); ++KeyIndex)
+				{
+					const FVariant& VariantValue = Attribute.Values[KeyIndex];
+					StringCurve.AddKey(Attribute.Times[KeyIndex], VariantValue.GetValue<FString>());
+				}
+
+				StringCurve.SetDefaultValue(StringCurve.GetKey(StringCurve.GetFirstKeyHandle()).Value);
+				StringCurve.RemoveRedundantKeys();
+				break;
+			}
+
+			default:
+			{
+				ensureMsgf(false, TEXT("Invalid data variant type for custom attribute, only int32, float and FString are currently supported"));
+				break;
+			}
+		}
+	};
+
+	if (bShouldSampleBasePose)
+	{
+		// Behaviour for determining the time to sample the base pose attributes
+		auto GetBasePoseTimeToSample = [this](float InTime) -> float
+		{
+			float BasePoseTime = 0.f;
+
+			if (RefPoseType == ABPT_AnimScaled)
+			{
+				const float Fraction = (SequenceLength > 0.f) ? FMath::Clamp<float>(InTime / SequenceLength, 0.f, 1.f) : 0.f;
+				BasePoseTime = RefPoseSeq->SequenceLength * Fraction;
+			}
+			else if (RefPoseType == ABPT_AnimFrame)
+			{
+				const float Fraction = (RefPoseSeq->NumFrames > 0) ? FMath::Clamp<float>((float)RefFrameIndex / (float)RefPoseSeq->NumFrames, 0.f, 1.f) : 0.f;
+				BasePoseTime = RefPoseSeq->SequenceLength * Fraction;
+
+			}
+
+			return BasePoseTime;
+		};
+
+		const FReferenceSkeleton& RefSkeleton = GetSkeleton()->GetReferenceSkeleton();
+
+		// Helper struct to match sample timings with regular additive baking
+		FByFramePoseEvalContext EvalContext(this);
+		for (const FCustomAttributePerBoneData& BoneAttributes : PerBoneCustomAttributeData)
+		{
+			FBakedCustomAttributePerBoneData& BakedBoneAttributes = BakedPerBoneCustomAttributeData.AddDefaulted_GetRef();
+			BakedBoneAttributes.BoneTreeIndex = BoneAttributes.BoneTreeIndex;
+
+			TArray<FCustomAttribute> ReferenceSequenceAttributes;			
+			RefPoseSeq->GetCustomAttributesForBone(RefSkeleton.GetBoneName(BoneAttributes.BoneTreeIndex), ReferenceSequenceAttributes);
+
+			// Check whether or not the base sequence has any attributes
+			if (!ReferenceSequenceAttributes.Num())
+			{
+				for (const FCustomAttribute& Attribute : BoneAttributes.Attributes)
+				{
+					ProcessCustomAttribute(Attribute, BakedBoneAttributes);
+				}
+			}
+			else
+			{
+				for (const FCustomAttribute& Attribute : BoneAttributes.Attributes)
+				{
+					// Try and find equivalent in reference sequence
+					const FCustomAttribute* RefAttribute = ReferenceSequenceAttributes.FindByPredicate([Attribute](const FCustomAttribute& Attr)
+					{	
+						return Attribute.Name == Attr.Name && Attribute.VariantType == Attr.VariantType;
+					});
+
+					if (RefAttribute)
+					{
+						switch (static_cast<EVariantTypes>(Attribute.VariantType))
+						{
+							case EVariantTypes::Float:
+							{
+								FBakedFloatCustomAttribute& BakedFloatAttribute = BakedBoneAttributes.FloatAttributes.AddDefaulted_GetRef();
+								BakedFloatAttribute.AttributeName = Attribute.Name;
+
+								FSimpleCurve& FloatCurve = BakedFloatAttribute.FloatCurve;
+								ConvertAttributeToAdditive<float, FSimpleCurve>(Attribute, *RefAttribute, FloatCurve, EvalContext.IntervalTime, NumFrames, GetBasePoseTimeToSample);
+								FloatCurve.RemoveRedundantKeys(0.f);
+
+								break;
+							}
+
+							case EVariantTypes::Int32:
+							{
+								FBakedIntegerCustomAttribute& BakedIntAttribute = BakedBoneAttributes.IntAttributes.AddDefaulted_GetRef();
+								BakedIntAttribute.AttributeName = Attribute.Name;
+
+								FIntegralCurve& IntCurve = BakedIntAttribute.IntCurve;
+								ConvertAttributeToAdditive<int32, FIntegralCurve>(Attribute, *RefAttribute, IntCurve, EvalContext.IntervalTime, NumFrames, GetBasePoseTimeToSample);
+								IntCurve.RemoveRedundantKeys();
+							
+								break;
+							}
+
+							case EVariantTypes::String:
+							{
+								ProcessCustomAttribute(Attribute, BakedBoneAttributes);
+								break;
+							}
+						}
+					}
+					else
+					{
+						ProcessCustomAttribute(Attribute, BakedBoneAttributes);
+					}					
+				}
+			}
+		}
+	}
+	else
+	{
 		for (const FCustomAttributePerBoneData& BoneAttributes : PerBoneCustomAttributeData)
 		{
 			FBakedCustomAttributePerBoneData& BakedBoneAttributes = BakedPerBoneCustomAttributeData.AddDefaulted_GetRef();
@@ -5237,70 +5419,13 @@ void UAnimSequence::SynchronousCustomAttributesCompression()
 
 			for (const FCustomAttribute& Attribute : BoneAttributes.Attributes)
 			{
-				switch (static_cast<EVariantTypes>(Attribute.VariantType))
-				{
-				case EVariantTypes::Float:
-				{
-					FBakedFloatCustomAttribute& BakedFloatAttribute = BakedBoneAttributes.FloatAttributes.AddDefaulted_GetRef();
-					BakedFloatAttribute.AttributeName = Attribute.Name;
-
-					FSimpleCurve& FloatCurve = BakedFloatAttribute.FloatCurve;
-
-					TArray<FSimpleCurveKey> Keys;
-					for (int32 KeyIndex = 0; KeyIndex < Attribute.Times.Num(); ++KeyIndex)
-					{
-						const FVariant& VariantValue = Attribute.Values[KeyIndex];
-						FloatCurve.AddKey(Attribute.Times[KeyIndex], VariantValue.GetValue<float>());
-					}
-
-					FloatCurve.RemoveRedundantKeys(0.f);
-					break;
-				}
-
-				case EVariantTypes::Int32:
-				{
-					FBakedIntegerCustomAttribute& BakedIntAttribute = BakedBoneAttributes.IntAttributes.AddDefaulted_GetRef();
-					BakedIntAttribute.AttributeName = Attribute.Name;
-
-					FIntegralCurve& IntCurve = BakedIntAttribute.IntCurve;
-					for (int32 KeyIndex = 0; KeyIndex < Attribute.Times.Num(); ++KeyIndex)
-					{
-						const FVariant& VariantValue = Attribute.Values[KeyIndex];
-						IntCurve.AddKey(Attribute.Times[KeyIndex], VariantValue.GetValue<int32>());
-					}
-
-					IntCurve.RemoveRedundantKeys();
-					break;
-				}
-
-				case EVariantTypes::String:
-				{
-					FBakedStringCustomAttribute& BakedStringAttribute = BakedBoneAttributes.StringAttributes.AddDefaulted_GetRef();
-					BakedStringAttribute.AttributeName = Attribute.Name;
-
-					FStringCurve& StringCurve = BakedStringAttribute.StringCurve;
-					for (int32 KeyIndex = 0; KeyIndex < Attribute.Times.Num(); ++KeyIndex)
-					{
-						const FVariant& VariantValue = Attribute.Values[KeyIndex];
-						StringCurve.AddKey(Attribute.Times[KeyIndex], VariantValue.GetValue<FString>());
-					}
-
-					StringCurve.RemoveRedundantKeys();
-					break;
-				}
-
-				default:
-				{
-					ensureMsgf(false, TEXT("Invalid data variant type for custom attribute, only int32, float and FString are currently supported"));
-					break;
-				}
-				}
+				ProcessCustomAttribute(Attribute, BakedBoneAttributes);
 			}
 		}
+	}
 
-		// Match baked/raw attributes guid
-		BakedCustomAttributesGuid = CustomAttributesGuid;
-	}	
+	// Match baked/raw attributes guid
+	BakedCustomAttributesGuid = CustomAttributesGuid;
 }
 
 FCustomAttributePerBoneData& UAnimSequence::FindOrAddCustomAttributeForBone(const FName& BoneName)
