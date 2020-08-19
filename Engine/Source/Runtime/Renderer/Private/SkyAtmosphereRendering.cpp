@@ -1236,8 +1236,6 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		TextureSize.Z = 1;
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderTransmittanceLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("TransmittanceLut"), ComputeShader, PassParameters, NumGroups);
-
-		GraphBuilder.QueueTextureExtraction(TransmittanceLut, &SkyInfo.GetTransmittanceLutTexture(), true);
 	}
 	
 	// Multi-Scattering LUT
@@ -1259,8 +1257,6 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		TextureSize.Z = 1;
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderMultiScatteredLuminanceLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("MultiScatteringLut"), ComputeShader, PassParameters, NumGroups);
-
-		GraphBuilder.QueueTextureExtraction(MultiScatteredLuminanceLut, &SkyInfo.GetMultiScatteredLuminanceLutTexture(), true);
 	}
 
 	// Distant Sky Light LUT

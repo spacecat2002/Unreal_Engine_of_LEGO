@@ -15,6 +15,8 @@
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #endif
 
+FTextureWithRDG::~FTextureWithRDG() {}
+
 FRDGTexture* FTextureWithRDG::GetRDG(FRDGBuilder& GraphBuilder) const
 {
 	checkf(RenderTarget, TEXT("InitRDG was not called before use."));
