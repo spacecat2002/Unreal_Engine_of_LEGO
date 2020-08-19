@@ -18,7 +18,7 @@ struct IPooledRenderTarget;
 class RENDERCORE_API FTextureWithRDG : public FTexture
 {
 public:
-	virtual ~FTextureWithRDG() = default;
+	~FTextureWithRDG() override;
 
 	FRDGTexture* GetRDG(FRDGBuilder& GraphBuilder) const;
 	FRDGTexture* GetPassthroughRDG() const;
