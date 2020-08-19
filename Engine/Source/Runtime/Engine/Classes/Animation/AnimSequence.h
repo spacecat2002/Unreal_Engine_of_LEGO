@@ -981,4 +981,5 @@ public:
 	friend struct FScopedAnimSequenceRawDataCache;
 	friend class UAnimationBlueprintLibrary;
 	friend class UAnimBoneCompressionSettings;
+	friend class FCustomAttributeCustomization;
 };
