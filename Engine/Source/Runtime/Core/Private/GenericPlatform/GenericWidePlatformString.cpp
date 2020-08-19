@@ -345,7 +345,7 @@ namespace
 	}
 
 	template <typename CharType>
-	void ProcessStringArg(FSafeDestIterator& DestIter, const TCHAR*& Src, int FieldLen, int PrecisionLen, va_list ArgPtr)
+	void ProcessStringArg(FSafeDestIterator& DestIter, const TCHAR*& Src, int FieldLen, int PrecisionLen, va_list& ArgPtr)
 	{
 		Src++;
 		static const CharType* Null = LITERAL(CharType, "(null)");
