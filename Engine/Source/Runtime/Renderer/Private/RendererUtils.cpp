@@ -17,6 +17,7 @@ public:
 	using FPermutationDomain = TShaderPermutationDomain<FNumRenderTargets>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ReferenceInput)
 		SHADER_PARAMETER_RDG_TEXTURE_SRV_ARRAY(Buffer<uint>, RTWriteMaskInputs, [MaxRenderTargetCount])
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutCombinedRTWriteMask)
 	END_SHADER_PARAMETER_STRUCT()
@@ -119,6 +120,7 @@ void FRenderTargetWriteMask::Decode(
 	OutRTWriteMask = GraphBuilder.CreateTexture(MaskDesc, RTWriteMaskDebugName);
 
 	auto* PassParameters = GraphBuilder.AllocParameters<FRTWriteMaskDecodeCS::FParameters>();
+	PassParameters->ReferenceInput = Texture0;
 	PassParameters->OutCombinedRTWriteMask = GraphBuilder.CreateUAV(OutRTWriteMask);
 
 	for (uint32 Index = 0; Index < NumRenderTargets; ++Index)
@@ -134,9 +136,9 @@ void FRenderTargetWriteMask::Decode(
 		RDG_EVENT_NAME("DecodeWriteMask[%d]", NumRenderTargets),
 		PassParameters,
 		ERDGPassFlags::Compute,
-		[DecodeCS, PassParameters, ShaderMap, Texture0, RTWriteMaskDims](FRHIComputeCommandList& RHICmdList)
+		[DecodeCS, PassParameters, ShaderMap, RTWriteMaskDims](FRHIComputeCommandList& RHICmdList)
 	{
-		FRHITexture* Texture0RHI = Texture0->GetRHI();
+		FRHITexture* Texture0RHI = PassParameters->ReferenceInput->GetRHI();
 
 		// Retrieve the platform specific data that the decode shader needs.
 		void* PlatformDataPtr = nullptr;
