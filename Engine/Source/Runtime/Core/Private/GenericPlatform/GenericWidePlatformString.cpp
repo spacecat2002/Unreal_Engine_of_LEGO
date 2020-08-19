@@ -345,8 +345,12 @@ namespace
 	}
 
 	template <typename CharType>
-	void ProcessStringArg(FSafeDestIterator& DestIter, const TCHAR*& Src, int FieldLen, int PrecisionLen, va_list& ArgPtr)
+	void ProcessStringArg(FSafeDestIterator& DestIter, const TCHAR*& Src, int FieldLen, int PrecisionLen, auto& ArgPtr)
 	{
+		// ArgPtr is taken as an auto parameter, despite being a va_list, because on some
+		// architectures it could be an array type, and when an array is used as a function parameter,
+		// the named value is treated as a pointer and won't bind to an array reference.
+
 		Src++;
 		static const CharType* Null = LITERAL(CharType, "(null)");
 		const CharType* Val = va_arg(ArgPtr, CharType*);
