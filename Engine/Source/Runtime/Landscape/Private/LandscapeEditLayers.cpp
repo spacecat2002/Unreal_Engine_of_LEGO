@@ -4811,6 +4811,15 @@ void ALandscape::UpdateLayersContent(bool bInWaitForStreaming, bool bInSkipMonit
 	}
 	MonitorShaderCompilation();
 
+	// Make sure Brush get a chance to request an update of the landscape
+	for (FLandscapeLayer& Layer : LandscapeLayers)
+	{
+		for (FLandscapeLayerBrush& Brush : Layer.Brushes)
+		{
+			Brush.GetBrush()->PushDeferredLayersContentUpdate();
+		}
+	}
+
 	if (bSplineLayerUpdateRequested)
 	{
 		UpdateLandscapeSplines();
