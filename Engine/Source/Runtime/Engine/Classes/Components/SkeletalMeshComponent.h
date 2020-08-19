@@ -123,12 +123,16 @@ struct FAnimationEvaluationContext
 	// duplicate the cache curves
 	bool bDuplicateToCacheCurve;
 
+	// duplicate the cached attributes
+	bool bDuplicateToCachedAttributes;
+
 	// Curve data, swapped in from the component when we are running parallel eval
 	FBlendedHeapCurve	Curve;
 	FBlendedHeapCurve	CachedCurve;
 
 	// Custom attribute data, swapped in from the component when we are running parallel eval
 	FHeapCustomAttributes CustomAttributes;
+	FHeapCustomAttributes CachedCustomAttributes;
 
 	FAnimationEvaluationContext()
 	{
@@ -155,8 +159,10 @@ struct FAnimationEvaluationContext
 		bDoEvaluation = Other.bDoEvaluation;
 		bDuplicateToCacheBones = Other.bDuplicateToCacheBones;
 		bDuplicateToCacheCurve = Other.bDuplicateToCacheCurve;
+		bDuplicateToCachedAttributes = Other.bDuplicateToCachedAttributes;
 
 		CustomAttributes.CopyFrom(Other.CustomAttributes);
+		CachedCustomAttributes.CopyFrom(Other.CachedCustomAttributes);
 	}
 
 	void Clear()
@@ -424,6 +430,10 @@ private:
 
 	/** Cached Curve result for Update Rate optimization */
 	FBlendedHeapCurve CachedCurve;
+
+	/** Current and cached custom attribute evaluation data, used for Update Rate optimization */
+	FHeapCustomAttributes CachedAttributes;
+	FHeapCustomAttributes CustomAttributes;
 public:
 	/** 
 	 * Get float type custom attribute value.
@@ -507,7 +517,7 @@ public:
 protected:
 	/** Templated version to try and retrieve a typed bone attribute's value */
 	template<typename DataType>
-	bool GetBoneAttribute(const FName& BoneName, const FName& AttributeName, DataType DefaultValue, DataType& OutValue, ECustomBoneAttributeLookup LookupType);
+	bool GetBoneAttribute(const FName& BoneName, const FName& AttributeName, DataType DefaultValue, DataType& OutValue, ECustomBoneAttributeLookup LookupType);	
 
 public:
 	/** Used to scale speed of all animations on this skeletal mesh. */
@@ -1477,7 +1487,7 @@ protected:
 	 * by any system other than rendering, bWaitForParallelClothTask must be true. If bWaitForParallelClothTask is false,
 	 * this data cannot be read on the game thread, and there must be a call to HandleExistingParallelClothSimulation() prior
 	 * to accessing it. 
-	 */
+	*/
 	TMap<int32, FClothSimulData> CurrentSimulationData;
 
 private:

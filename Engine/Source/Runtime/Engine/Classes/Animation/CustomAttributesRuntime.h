@@ -158,7 +158,6 @@ struct TBaseCustomAttributes
 		}
 	}
 
-	template <typename OtherAllocator>
 	void CopyFrom(const TBaseCustomAttributes<BoneIndexType, InAllocator>& Other)
 	{
 		if (&Other != this)
@@ -206,6 +205,14 @@ struct TBaseCustomAttributes
 			UniqueTypedBoneIndices[Index].Empty();
 		}
 	}
+
+	bool operator!=(const TBaseCustomAttributes<BoneIndexType, InAllocator>& Other)
+	{
+		return FloatValues.Num() != Other.FloatValues.Num() 
+		|| IntValues.Num() != Other.IntValues.Num() 
+		|| StringValues.Num() != Other.StringValues.Num();
+	}
+
 protected:
 	// Number of, and explicit types which are currently supported
 	static CONSTEXPR int32 NumSupportedDataTypes = 3;
@@ -290,7 +297,10 @@ struct ENGINE_API FCustomAttributesRuntime
 
 	/** Copy attributes from source, and remap the bone indices according to BoneMapToSource */
 	static void CopyAndRemapAttributes(const FHeapCustomAttributes& SourceAttributes, FStackCustomAttributes& OutAttributes, const TMap<int32, int32>& BoneMapToSource, const FBoneContainer& RequiredBones);
-	
+
+	/** Interpolates between two sets of attributes */
+	static void InterpolateAttributes(const FHeapCustomAttributes& SourceAttributes, FHeapCustomAttributes& OutAttributes, float Alpha);
+
 	/** Helper functionality to retrieve the correct blend type (from UAnimationSettings) for the provided attribute name */
 	static ECustomAttributeBlendType GetAttributeBlendType(const FName& InName);
 };

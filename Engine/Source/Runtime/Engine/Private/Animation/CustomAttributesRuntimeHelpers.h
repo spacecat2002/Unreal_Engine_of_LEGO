@@ -552,3 +552,71 @@ namespace Blending
 	}
 }
 
+namespace URO
+{
+	template<typename DataType>
+	static void InterpolateAttributes(FHeapCustomAttributes& TargetAttributes, const FHeapCustomAttributes& SourceAttributes, float Alpha)
+	{
+		const TArray<FCustomAttributeInfo, FDefaultAllocator>& AttributeInfos = SourceAttributes.GetAttributeInfo<DataType>();
+		TArray<DataType, FDefaultAllocator>& TargetValueArray = TargetAttributes.GetValuesArray<DataType>();
+		const TArray<DataType, FDefaultAllocator>& ValueArray = SourceAttributes.GetValuesArray<DataType>();
+
+		for (int32 EntryIndex = 0; EntryIndex < AttributeInfos.Num(); ++EntryIndex)
+		{
+			const FCustomAttributeInfo& AttributeInfo = AttributeInfos[EntryIndex];
+
+			// Can only interpolate between attributes that exist in both containers
+			const int32 ExistingAttributeIndex = TargetAttributes.IndexOfBoneAttribute<DataType>(AttributeInfo.Hash, AttributeInfo.BoneIndex);
+			if (ExistingAttributeIndex != INDEX_NONE)
+			{
+				TargetValueArray[ExistingAttributeIndex] = FMath::Lerp(TargetValueArray[ExistingAttributeIndex], ValueArray[EntryIndex], Alpha);
+			}
+		}
+	}
+
+
+	template<typename DataType>
+	static void AddOrOverrideAttributes(FHeapCustomAttributes& TargetAttributes, const FHeapCustomAttributes& SourceAttributes, bool bOverride)
+	{
+		const TArray<FCustomAttributeInfo, FDefaultAllocator>& AttributeInfos = SourceAttributes.GetAttributeInfo<DataType>();
+		TArray<DataType, FDefaultAllocator>& TargetValueArray = TargetAttributes.GetValuesArray<DataType>();
+		const TArray<DataType, FDefaultAllocator>& ValueArray = SourceAttributes.GetValuesArray<DataType>();
+
+		for (int32 EntryIndex = 0; EntryIndex < AttributeInfos.Num(); ++EntryIndex)
+		{
+			const FCustomAttributeInfo& AttributeInfo = AttributeInfos[EntryIndex];
+
+			const int32 ExistingAttributeIndex = TargetAttributes.IndexOfBoneAttribute<DataType>(AttributeInfo.Hash, AttributeInfo.BoneIndex);
+			if (ExistingAttributeIndex == INDEX_NONE)
+			{
+				TargetAttributes.AddBoneAttribute<DataType>(AttributeInfo, ValueArray[EntryIndex]);
+			}
+			else if (bOverride)
+			{
+				TargetValueArray[ExistingAttributeIndex] = ValueArray[EntryIndex];
+			}
+		}
+	}
+
+	template<typename DataType>
+	static void OverrideAttributes(FHeapCustomAttributes& TargetAttributes, const FHeapCustomAttributes& SourceAttributes)
+	{
+		const TArray<FCustomAttributeInfo, FDefaultAllocator>& AttributeInfos = SourceAttributes.GetAttributeInfo<DataType>();
+		TArray<DataType, FDefaultAllocator>& TargetValueArray = TargetAttributes.GetValuesArray<DataType>();
+		const TArray<DataType, FDefaultAllocator>& ValueArray = SourceAttributes.GetValuesArray<DataType>();
+
+		for (int32 EntryIndex = 0; EntryIndex < AttributeInfos.Num(); ++EntryIndex)
+		{
+			const FCustomAttributeInfo& AttributeInfo = AttributeInfos[EntryIndex];
+
+			// Can only interpolate between attributes that exist in both containers
+			const int32 ExistingAttributeIndex = TargetAttributes.IndexOfBoneAttribute<DataType>(AttributeInfo.Hash, AttributeInfo.BoneIndex);
+			if (ExistingAttributeIndex != INDEX_NONE)
+			{
+				TargetValueArray[ExistingAttributeIndex] = ValueArray[EntryIndex];
+			}
+		}
+	}
+}
+
+

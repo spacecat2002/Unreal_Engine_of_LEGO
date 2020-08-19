@@ -213,6 +213,31 @@ void FCustomAttributesRuntime::CopyAndRemapAttributes(const FHeapCustomAttribute
 	CopyPoseFromMesh::CopyAndRemapTypedAttributes<FString>(OutAttributes, SourceAttributes, BoneMapToSource, RequiredBones);
 }
 
+void FCustomAttributesRuntime::InterpolateAttributes(const FHeapCustomAttributes& SourceAttributes, FHeapCustomAttributes& OutAttributes, float Alpha)
+{
+	if (!FAnimWeight::IsRelevant(FMath::Abs(Alpha)))
+	{
+		return;
+	}
+	else if (!FAnimWeight::IsRelevant(FMath::Abs(Alpha - 1.0f)))
+	{
+		// If fully blended just directly override the values
+		URO::AddOrOverrideAttributes<float>(OutAttributes, SourceAttributes, true);		
+		URO::AddOrOverrideAttributes<int32>(OutAttributes, SourceAttributes, true);
+		URO::AddOrOverrideAttributes<FString>(OutAttributes, SourceAttributes, true);
+	}
+	else
+	{
+		URO::InterpolateAttributes<float>(OutAttributes, SourceAttributes, Alpha);
+		URO::InterpolateAttributes<int32>(OutAttributes, SourceAttributes, Alpha);
+
+		if (FMath::Abs(Alpha) > 0.5f)
+		{
+			URO::OverrideAttributes<FString>(OutAttributes, SourceAttributes);
+		}
+	}
+}
+
 void FCustomAttributesRuntime::BlendAttributesPerBone(const FStackCustomAttributes& SourceAttributes1, const FStackCustomAttributes& SourceAttributes2, const TArrayView<const float> WeightsOfSource2, FStackCustomAttributes& OutAttributes)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_BlendAttributesPerBone);
