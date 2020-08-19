@@ -473,7 +473,7 @@ const TRDGHandle<ObjectType, IndexType> TRDGHandle<ObjectType, IndexType>::Null;
 struct FRDGTextureDesc;
 
 class FRDGPassFlagsScopeGuard;
-class FRDGGPUMaskScopeGuard;
+class FRDGAsyncComputeBudgetScopeGuard;
 class FRDGEventScopeGuard;
 class FRDGGPUStatScopeGuard;
 class FRDGScopedCsvStatExclusive;
