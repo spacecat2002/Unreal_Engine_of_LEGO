@@ -15,6 +15,30 @@
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #endif
 
+FRDGTexture* FTextureWithRDG::GetRDG(FRDGBuilder& GraphBuilder) const
+{
+	checkf(RenderTarget, TEXT("InitRDG was not called before use."));
+	return GraphBuilder.RegisterExternalTexture(RenderTarget);
+}
+
+FRDGTexture* FTextureWithRDG::GetPassthroughRDG() const
+{
+	checkf(RenderTarget, TEXT("InitRDG was not called before use."));
+	return FRDGTexture::GetPassthrough(RenderTarget);
+}
+
+void FTextureWithRDG::ReleaseRHI()
+{
+	RenderTarget = nullptr;
+	FTexture::ReleaseRHI();
+}
+
+void FTextureWithRDG::InitRDG(const TCHAR* Name)
+{
+	check(TextureRHI);
+	RenderTarget = CreateRenderTarget(TextureRHI, Name);
+}
+
 const uint16 GCubeIndices[12*3] =
 {
 	0, 2, 3,
@@ -134,8 +158,10 @@ public:
 
 FTextureWithSRV* GWhiteTextureWithSRV = new TGlobalResource<FColoredTexture<255,255,255,255> >;
 FTextureWithSRV* GBlackTextureWithSRV = new TGlobalResource<FColoredTexture<0,0,0,255> >;
+FTextureWithSRV* GTransparentBlackTextureWithSRV = new TGlobalResource<FColoredTexture<0,0,0,0> >;
 FTexture* GWhiteTexture = GWhiteTextureWithSRV;
 FTexture* GBlackTexture = GBlackTextureWithSRV;
+FTexture* GTransparentBlackTexture = GTransparentBlackTextureWithSRV;
 FTextureWithSRV* GBlackTextureWithUAV = new TGlobalResource<FColoredTexture<0,0,0,0,true> >;
 
 FVertexBufferWithSRV* GEmptyVertexBufferWithUAV = new TGlobalResource<FEmptyVertexBuffer>;
@@ -208,7 +234,7 @@ private:
  * A class representing a 1x1x1 black volume texture.
  */
 template <EPixelFormat PixelFormat, uint8 Alpha>
-class FBlackVolumeTexture : public FTexture
+class FBlackVolumeTexture : public FTextureWithRDG
 {
 public:
 	
@@ -217,12 +243,14 @@ public:
 	 */
 	virtual void InitRHI() override
 	{
+		const TCHAR* Name = TEXT("BlackVolumeTexture");
+
 		if (GSupportsTexture3D)
 		{
 			// Create the texture.
 			FBlackVolumeTextureResourceBulkDataInterface BlackTextureBulkData(Alpha);
 			FRHIResourceCreateInfo CreateInfo(&BlackTextureBulkData);
-			CreateInfo.DebugName = TEXT("BlackVolumeTexture");
+			CreateInfo.DebugName = Name;
 			FTexture3DRHIRef Texture3D = RHICreateTexture3D(1,1,1,PixelFormat,1,TexCreate_ShaderResource,CreateInfo);
 			TextureRHI = Texture3D;	
 		}
@@ -231,6 +259,7 @@ public:
 			// Create a texture, even though it's not a volume texture
 			FBlackVolumeTextureResourceBulkDataInterface BlackTextureBulkData(Alpha);
 			FRHIResourceCreateInfo CreateInfo(&BlackTextureBulkData);
+			CreateInfo.DebugName = Name;
 			FTexture2DRHIRef Texture2D = RHICreateTexture2D(1, 1, PixelFormat, 1, 1, TexCreate_ShaderResource, CreateInfo);
 			TextureRHI = Texture2D;
 		}
@@ -238,6 +267,8 @@ public:
 		// Create the sampler state.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point, AM_Wrap, AM_Wrap, AM_Wrap);
 		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
+
+		FTextureWithRDG::InitRDG(Name);
 	}
 
 	/**
@@ -258,11 +289,11 @@ public:
 };
 
 /** Global black volume texture resource. */
-FTexture* GBlackVolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_B8G8R8A8, 0>>();
-FTexture* GBlackAlpha1VolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_B8G8R8A8, 255>>();
+FTextureWithRDG* GBlackVolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_B8G8R8A8, 0>>();
+FTextureWithRDG* GBlackAlpha1VolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_B8G8R8A8, 255>>();
 
 /** Global black volume texture resource. */
-FTexture* GBlackUintVolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_R8G8B8A8_UINT, 0>>();
+FTextureWithRDG* GBlackUintVolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_R8G8B8A8_UINT, 0>>();
 
 class FBlackArrayTexture : public FTexture
 {
@@ -997,6 +1028,9 @@ static_assert(SP_NumPlatforms <= sizeof(GSelectiveBasePassOutputsPlatformMask) *
 RENDERCORE_API uint64 GDistanceFieldsPlatformMask = 0;
 static_assert(SP_NumPlatforms <= sizeof(GDistanceFieldsPlatformMask) * 8, "GDistanceFieldsPlatformMask must be large enough to support all shader platforms");
 
+RENDERCORE_API uint64 GSimpleSkyDiffusePlatformMask = 0;
+static_assert(SP_NumPlatforms <= sizeof(GSimpleSkyDiffusePlatformMask) * 8, "GSimpleSkyDiffusePlatformMask must be large enough to support all shader platforms");
+
 // Specifies whether ray tracing *can* be enabled on a particular platform.
 // This takes into account whether RT is globally enabled for the project and specifically enabled on a target platform.
 // Safe to use to make cook-time decisions, such as whether to compile ray tracing shaders.
@@ -1113,6 +1147,15 @@ RENDERCORE_API void RenderUtilsInit()
 				else
 				{
 					GRayTracingPlaformMask &= ~Mask;
+				}
+
+				if (TargetPlatform->ForcesSimpleSkyDiffuse())
+				{
+					GSimpleSkyDiffusePlatformMask |= Mask;
+				}
+				else
+				{
+					GSimpleSkyDiffusePlatformMask &= ~Mask;
 				}
 			}
 		}

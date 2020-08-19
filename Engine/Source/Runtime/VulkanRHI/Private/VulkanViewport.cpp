@@ -52,7 +52,7 @@ void FVulkanBackBuffer::OnGetBackBufferImage(FRHICommandListImmediate& RHICmdLis
 	check(Viewport);
 	if (GVulkanDelayAcquireImage == EDelayAcquireImageType::None)
 	{
-		FVulkanCommandListContext& Context = (FVulkanCommandListContext&)RHICmdList.GetContext();
+		FVulkanCommandListContext& Context = (FVulkanCommandListContext&)RHICmdList.GetContext().GetLowestLevelContext();
 		AcquireBackBufferImage(Context);
 	}
 }
@@ -669,7 +669,7 @@ void FVulkanViewport::CreateSwapchain(FVulkanSwapChainRecreateInfo* RecreateInfo
 		{
 			if(RecreateInfo->SwapChain)
 			{
-				VulkanRHI::vkDestroySwapchainKHR(Device->GetInstanceHandle(), RecreateInfo->SwapChain, VULKAN_CPU_ALLOCATOR);
+				FVulkanPlatform::DestroySwapchainKHR(Device->GetInstanceHandle(), RecreateInfo->SwapChain, VULKAN_CPU_ALLOCATOR);
 				RecreateInfo->SwapChain = VK_NULL_HANDLE;
 			}
 			if (RecreateInfo->Surface)

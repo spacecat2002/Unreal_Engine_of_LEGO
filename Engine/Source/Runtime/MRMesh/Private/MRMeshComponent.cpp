@@ -744,6 +744,8 @@ void UMRMeshComponent::SendBrickData_Internal(IMRMesh::FSendBrickDataArgs Args)
 {
 	check(IsInGameThread());
 	const bool bHasBrickData = Args.Indices.Num() > 0 && Args.PositionData.Num() > 0;
+	
+	OnBrickDataUpdatedDelegate.Broadcast(this, Args);
 
 #if SUPPORTS_PHYSICS_COOKING
 	UE_LOG(LogMrMesh, Log, TEXT("SendBrickData_Internal() processing brick %llu with %i triangles"), Args.BrickId, Args.Indices.Num() / 3);
@@ -1006,25 +1008,48 @@ struct FMeshArrayHolder :
 	TArray<FPackedNormal> BogusTangents;
 	TArray<FColor> BogusColors;
 
-	FMeshArrayHolder(TArray<FVector>& InVertices, TArray<MRMESH_INDEX_TYPE>& InIndices)
+	FMeshArrayHolder(TArray<FVector>& InVertices, TArray<MRMESH_INDEX_TYPE>& InIndices, TArray<FVector2D>& UVData, TArray<FPackedNormal>& TangentXZData, TArray<FColor>& ColorData)
 		: Vertices(MoveTemp(InVertices))
 		, Indices(MoveTemp(InIndices))
 	{
 		int32 CurrentNumVertices = Vertices.Num();
-
-		BogusUVs.AddZeroed(CurrentNumVertices);
-		BogusColors.AddZeroed(CurrentNumVertices);
-		BogusTangents.AddZeroed(CurrentNumVertices * 2);
+		
+		if (UVData.Num() == CurrentNumVertices)
+		{
+			BogusUVs = MoveTemp(UVData);
+		}
+		else
+		{
+			BogusUVs.AddZeroed(CurrentNumVertices);
+		}
+		
+		if (ColorData.Num() == CurrentNumVertices)
+		{
+			BogusColors = MoveTemp(ColorData);
+		}
+		else
+		{
+			BogusColors.AddZeroed(CurrentNumVertices);
+		}
+		
+		if (TangentXZData.Num() == CurrentNumVertices * 2)
+		{
+			BogusTangents = MoveTemp(TangentXZData);
+		}
+		else
+		{
+			BogusTangents.AddZeroed(CurrentNumVertices * 2);
+		}
 	}
 };
 
-void UMRMeshComponent::UpdateMesh(const FVector& InLocation, const FQuat& InRotation, const FVector& Scale, TArray<FVector>& Vertices, TArray<MRMESH_INDEX_TYPE>& Indices)
+void UMRMeshComponent::UpdateMesh(const FVector& InLocation, const FQuat& InRotation, const FVector& Scale, TArray<FVector>& Vertices, TArray<MRMESH_INDEX_TYPE>& Indices, TArray<FVector2D> UVData, TArray<FPackedNormal> TangentXZData, TArray<FColor> ColorData)
 {
 	SetRelativeLocationAndRotation(InLocation, InRotation);
 	SetRelativeScale3D(Scale);
 
 	// Create our struct that will hold the data until the render thread is done with it
-	TSharedPtr<FMeshArrayHolder, ESPMode::ThreadSafe> MeshHolder(new FMeshArrayHolder(Vertices, Indices));
+	TSharedPtr<FMeshArrayHolder, ESPMode::ThreadSafe> MeshHolder(new FMeshArrayHolder(Vertices, Indices, UVData, TangentXZData, ColorData));
 	// NOTE: Vertices and Indices are empty due to MoveTemp()!!!
 
 	SendBrickData_Internal(IMRMesh::FSendBrickDataArgs

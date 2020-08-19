@@ -12,6 +12,7 @@
 #include "MetalRenderPass.h"
 #include "MetalBuffer.h"
 #include "MetalCaptureManager.h"
+#include "MetalFrameAllocator.h"
 #if PLATFORM_IOS
 #include "IOS/IOSView.h"
 #endif
@@ -22,8 +23,8 @@
 
 class FMetalRHICommandContext;
 class FMetalPipelineStateCacheManager;
-class FMetalFrameAllocator;
 class FMetalQueryBufferPool;
+class FMetalRHIBuffer;
 
 class FMetalContext
 {
@@ -178,9 +179,9 @@ template<typename T>
 void FMetalContext::TransitionRHIResource(T* InResource)
 {
 	auto Resource = ResourceCast(InResource);
-	if (Resource->Buffer)
+	if (Resource->GetCurrentBufferOrNil())
 	{
-		RenderPass.TransitionResources(Resource->Buffer);
+		RenderPass.TransitionResources(Resource->GetCurrentBuffer());
 	}
 }
 
@@ -234,6 +235,11 @@ public:
 	
 	/** Get the index of the bound Metal device in the global list of rendering devices. */
 	uint32 GetDeviceIndex(void) const;
+	
+	FMetalFrameAllocator* GetTransferAllocator()
+	{
+		return TransferBufferAllocator;
+	}
     
     FMetalFrameAllocator* GetUniformAllocator()
     {
@@ -244,6 +250,9 @@ public:
     {
         return FrameNumberRHIThread;
     }
+	
+	void NewLock(FMetalRHIBuffer* Buffer, FMetalFrameAllocator::AllocationEntry& Allocation);
+	FMetalFrameAllocator::AllocationEntry FetchAndRemoveLock(FMetalRHIBuffer* Buffer);
 	
 #if METAL_DEBUG_OPTIONS
     void AddActiveBuffer(FMetalBuffer const& Buffer);
@@ -287,6 +296,9 @@ private:
 	
 //	TSet<FMetalUniformBuffer*> UniformBuffers;
     FMetalFrameAllocator* UniformBufferAllocator;
+	FMetalFrameAllocator* TransferBufferAllocator;
+	
+	TMap<FMetalRHIBuffer*, FMetalFrameAllocator::AllocationEntry> OutstandingLocks;
 	
 #if METAL_DEBUG_OPTIONS
 	/** The list of fences for the current frame */

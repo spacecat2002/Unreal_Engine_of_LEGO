@@ -62,6 +62,8 @@ private:
 	FRDGTextureMSAA ColorModulateTexture;
 };
 
+DECLARE_GPU_DRAWCALL_STAT_EXTERN(Translucency);
+
 /** Creates separate translucency textures. */
 FSeparateTranslucencyTextures CreateSeparateTranslucencyTextures(FRDGBuilder& GraphBuilder, FSeparateTranslucencyDimensions Dimensions);
 

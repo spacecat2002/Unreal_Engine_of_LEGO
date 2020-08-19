@@ -41,6 +41,20 @@ enum class EARTrackingState : uint8
 };
 
 
+UENUM(BlueprintType, Category = "AR AugmentedReality", meta = (Experimental))
+enum class EARCaptureType : uint8
+{
+	/** Camera Capture */
+	Camera,
+
+	/** QR Code Capture. */
+	QRCode,
+
+	/** Spatial mapping so the app can selectively turn off discovering surfaces */
+	SpatialMapping,
+};
+
+
 /**
  * Channels that let users select which kind of tracked geometry to trace against.
  */
@@ -581,3 +595,4 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality|Camera")
 	FVector2D PrincipalPoint = FVector2D::ZeroVector;
 };
+

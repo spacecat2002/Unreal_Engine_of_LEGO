@@ -9,6 +9,29 @@
 #include "RenderResource.h"
 #include "RHIDefinitions.h"
 
+class FTextureWithRDG;
+class FRDGTexture;
+class FRDGBuilder;
+struct IPooledRenderTarget;
+
+/** An FTexture variant that includes more efficient support for registering with RDG. */
+class RENDERCORE_API FTextureWithRDG : public FTexture
+{
+public:
+	virtual ~FTextureWithRDG() = default;
+
+	FRDGTexture* GetRDG(FRDGBuilder& GraphBuilder) const;
+	FRDGTexture* GetPassthroughRDG() const;
+
+	void ReleaseRHI() override;
+
+protected:
+	void InitRDG(const TCHAR* Name);
+
+private:
+	TRefCountPtr<IPooledRenderTarget> RenderTarget;
+};
+
 extern RENDERCORE_API void RenderUtilsInit();
 
 /**
@@ -105,6 +128,9 @@ extern RENDERCORE_API class FTexture* GBlackTexture;
 extern RENDERCORE_API class FTextureWithSRV* GBlackTextureWithSRV;
 extern RENDERCORE_API class FTextureWithSRV* GBlackTextureWithUAV;
 
+extern RENDERCORE_API class FTexture* GTransparentBlackTexture;
+extern RENDERCORE_API class FTextureWithSRV* GTransparentBlackTextureWithSRV;
+
 extern RENDERCORE_API class FVertexBufferWithSRV* GEmptyVertexBufferWithUAV;
 
 extern RENDERCORE_API class FVertexBufferWithSRV* GWhiteVertexBufferWithSRV;
@@ -113,16 +139,16 @@ extern RENDERCORE_API class FVertexBufferWithSRV* GWhiteVertexBufferWithSRV;
 extern RENDERCORE_API class FTexture* GBlackArrayTexture;
 
 /** A global black volume texture. */
-extern RENDERCORE_API class FTexture* GBlackVolumeTexture;
+extern RENDERCORE_API class FTextureWithRDG* GBlackVolumeTexture;
 
 /** A global black volume texture, with alpha=1. */
-extern RENDERCORE_API class FTexture* GBlackAlpha1VolumeTexture;
+extern RENDERCORE_API class FTextureWithRDG* GBlackAlpha1VolumeTexture;
 
 /** A global black texture<uint> */
 extern RENDERCORE_API class FTexture* GBlackUintTexture;
 
 /** A global black volume texture<uint>  */
-extern RENDERCORE_API class FTexture* GBlackUintVolumeTexture;
+extern RENDERCORE_API class FTextureWithRDG* GBlackUintVolumeTexture;
 
 /** A global white cube texture. */
 extern RENDERCORE_API class FTexture* GWhiteTextureCube;
@@ -528,6 +554,12 @@ inline bool UseGPUScene(const FStaticShaderPlatform Platform, const FStaticFeatu
 		&& !IsVulkanMobileSM5Platform(Platform)
 		// we only check DDSPI for platforms that have been read in - IsValid() can go away once ALL platforms are converted over to this system
 		&& (!FDataDrivenShaderPlatformInfo::IsValid(Platform) || FDataDrivenShaderPlatformInfo::GetSupportsGPUScene(Platform));
+}
+
+inline bool ForceSimpleSkyDiffuse(const FStaticShaderPlatform Platform)
+{
+	extern RENDERCORE_API uint64 GSimpleSkyDiffusePlatformMask;
+	return !!(GSimpleSkyDiffusePlatformMask & (1ull << Platform));
 }
 
 /** Unit cube vertex buffer (VertexDeclarationFVector4) */

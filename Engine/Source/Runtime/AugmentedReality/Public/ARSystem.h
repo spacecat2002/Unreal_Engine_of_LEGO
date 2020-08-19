@@ -134,6 +134,11 @@ public:
 	/** @return whether the specified tracking type is supported by this device */
 	virtual bool OnIsTrackingTypeSupported(EARSessionType SessionType) const = 0;
 
+	virtual bool OnToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType) { return false; };
+
+	virtual void OnSetEnabledXRCamera(bool bOnOff) {};
+	virtual FIntPoint OnResizeXRCamera(const FIntPoint& InSize) { return FIntPoint(0, 0); }
+
 	/** @return the best available light estimate; nullptr if light estimation is inactive or not available */
 	virtual UARLightEstimate* OnGetCurrentLightEstimate() const = 0;
 
@@ -164,6 +169,13 @@ public:
 	 * The component in question will continue to track with the world, but will not get updates specific to a TrackedGeometry.
 	 */
 	virtual void OnRemovePin(UARPin* PinToRemove) = 0;
+
+	/**
+	* Given the platform specific native resource for a pin, create a pin.
+	*
+	* @return true when a pin is successfully created, otherwise false
+	*/
+	virtual bool OnTryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InPinName, UARPin*& OutPin) { OutPin = nullptr;  return false; }
 
 	/** Tells the ARSystem to generate a capture probe at the specified location if supported */
 	virtual bool OnAddManualEnvironmentCaptureProbe(FVector Location, FVector Extent) = 0;

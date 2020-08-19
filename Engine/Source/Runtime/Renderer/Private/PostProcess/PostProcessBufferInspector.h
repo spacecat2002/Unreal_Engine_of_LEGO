@@ -20,9 +20,6 @@ struct FPixelInspectorInputs
 
 	// [Required] The original scene color before processing.
 	FScreenPassTexture OriginalSceneColor;
-
-	// [Required] The scene textures with GBuffer data.
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = nullptr;
 };
 
 FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPixelInspectorInputs& Inputs);

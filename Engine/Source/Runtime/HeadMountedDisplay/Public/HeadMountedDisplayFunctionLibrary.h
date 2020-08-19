@@ -10,6 +10,8 @@
 #include "XRGestureConfig.h"
 #include "HeadMountedDisplayFunctionLibrary.generated.h"
 
+DECLARE_DYNAMIC_DELEGATE_OneParam(FXRDeviceOnDisconnectDelegate, const FString, OutReason);
+
 UCLASS()
 class HEADMOUNTEDDISPLAY_API UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 {
@@ -333,4 +335,16 @@ class HEADMOUNTEDDISPLAY_API UHeadMountedDisplayFunctionLibrary : public UBluepr
 
 	UFUNCTION(BlueprintCallable, Category = "Input|XRTracking", meta = (ToolTip = "Specify which gestures to capture."))
 	static bool ConfigureGestures(const FXRGestureConfig& GestureConfig);
+
+	
+	/** Connect to a remote device */
+	UFUNCTION(BlueprintCallable, Category = "XR|HeadMountedDisplay")
+	static EXRDeviceConnectionResult::Type ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate);
+	/** Disconnect remote AR Device */
+	UFUNCTION(BlueprintCallable, Category = "XR|HeadMountedDisplay")
+	static void DisconnectRemoteXRDevice();
+	UFUNCTION(BlueprintCallable, Category = "XR|HeadMountedDisplay")
+	static void SetXRDisconnectDelegate(const FXRDeviceOnDisconnectDelegate& InDisconnectedDelegate);
+
+	static FXRDeviceOnDisconnectDelegate OnXRDeviceOnDisconnectDelegate;
 };

@@ -1236,6 +1236,8 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		TextureSize.Z = 1;
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderTransmittanceLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("TransmittanceLut"), ComputeShader, PassParameters, NumGroups);
+
+		GraphBuilder.QueueTextureExtraction(TransmittanceLut, &SkyInfo.GetTransmittanceLutTexture(), true);
 	}
 	
 	// Multi-Scattering LUT
@@ -1257,6 +1259,8 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		TextureSize.Z = 1;
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderMultiScatteredLuminanceLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("MultiScatteringLut"), ComputeShader, PassParameters, NumGroups);
+
+		GraphBuilder.QueueTextureExtraction(MultiScatteredLuminanceLut, &SkyInfo.GetMultiScatteredLuminanceLutTexture(), true);
 	}
 
 	// Distant Sky Light LUT
@@ -1297,6 +1301,8 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		FIntVector TextureSize = FIntVector(1, 1, 1);
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderDistantSkyLightLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("DistantSkyLightLut"), ComputeShader, PassParameters, NumGroups);
+
+		ConvertToUntrackedExternalTexture(GraphBuilder, DistantSkyLightLut, SkyInfo.GetDistantSkyLightLutTexture(), ERHIAccess::SRVMask);
 	}
 
 	SkyAtmosphereLightShadowData LightShadowData;
@@ -1542,6 +1548,9 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 			const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderCameraAerialPerspectiveVolumeCS::GroupSize);
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("CameraVolumeLut"), ComputeShader, PassParameters, NumGroups);
 		}
+
+		ConvertToUntrackedExternalTexture(GraphBuilder, SkyAtmosphereViewLutTexture, View.SkyAtmosphereViewLutTexture, ERHIAccess::SRVMask);
+		ConvertToUntrackedExternalTexture(GraphBuilder, SkyAtmosphereCameraAerialPerspectiveVolume, View.SkyAtmosphereCameraAerialPerspectiveVolume, ERHIAccess::SRVMask);
 	}
 	
 	// TODO have RDG execute those above passes with compute overlap similarly to using AutomaticCacheFlushAfterComputeShader(true);

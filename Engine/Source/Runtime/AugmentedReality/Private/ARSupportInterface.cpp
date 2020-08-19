@@ -135,7 +135,35 @@ bool FARSupportInterface ::IsSessionTypeSupported(EARSessionType SessionType) co
 	return false;
 }
 
-void FARSupportInterface ::SetAlignmentTransform(const FTransform& InAlignmentTransform)
+bool FARSupportInterface::ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnToggleARCapture(bOnOff, CaptureType);
+	}
+	return false;
+}
+
+
+void FARSupportInterface::SetEnabledXRCamera(bool bOnOff)
+{
+	if (ARImplemention)
+	{
+		ARImplemention->OnSetEnabledXRCamera(bOnOff);
+	}
+}
+
+FIntPoint FARSupportInterface::ResizeXRCamera(const FIntPoint& InSize)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnResizeXRCamera(InSize);
+	}
+	return FIntPoint(0, 0);
+}
+
+
+void FARSupportInterface::SetAlignmentTransform(const FTransform& InAlignmentTransform)
 {
 	if (ARImplemention)
 	{
@@ -252,6 +280,17 @@ void FARSupportInterface ::RemovePin(UARPin* PinToRemove)
 	{
 		ARImplemention->OnRemovePin(PinToRemove);
 	}
+}
+
+bool FARSupportInterface ::TryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InPinName, UARPin*& OutPin)
+{
+	OutPin = nullptr;
+	if (ARImplemention)
+	{
+		return ARImplemention->OnTryGetOrCreatePinForNativeResource(InNativeResource, InPinName, OutPin);
+	}
+
+	return false;
 }
 
 TArray<FARVideoFormat> FARSupportInterface ::GetSupportedVideoFormats(EARSessionType SessionType) const
@@ -434,6 +473,15 @@ bool FARSupportInterface::GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntr
 	if (ARImplemention)
 	{
 		return ARImplemention->OnGetCameraIntrinsics(OutCameraIntrinsics);
+	}
+	return false;
+}
+
+bool FARSupportInterface::IsARAvailable() const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->IsARAvailable();
 	}
 	return false;
 }

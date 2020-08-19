@@ -47,7 +47,10 @@ struct FSceneWithoutWaterTextures;
 struct FHairStrandsVisibilityViews;
 struct FSortedLightSetSceneInfo;
 
+
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
+
+DECLARE_GPU_DRAWCALL_STAT_EXTERN(VirtualTextureUpdate);
 
 
 /** Mobile only. Information used to determine whether static meshes will be rendered with CSM shaders or not. */
@@ -673,14 +676,14 @@ class FVolumetricFogViewResources
 public:
 	TUniformBufferRef<FVolumetricFogGlobalData> VolumetricFogGlobalData;
 
-	TRefCountPtr<IPooledRenderTarget> IntegratedLightScattering;
+	FRDGTextureRef IntegratedLightScatteringTexture = nullptr;
 
 	FVolumetricFogViewResources()
 	{}
 
 	void Release()
 	{
-		IntegratedLightScattering = NULL;
+		IntegratedLightScatteringTexture = nullptr;
 	}
 };
 
@@ -1943,6 +1946,11 @@ protected:
 
 private:
 	void ComputeFamilySize();
+
+#if !UE_BUILD_SHIPPING
+	/** Dump all UPrimitiveComponents in the Scene to a CSV file */
+	void DumpPrimitives(const FViewCommands& ViewCommands);
+#endif
 };
 
 /**

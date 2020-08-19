@@ -72,10 +72,5 @@ public class Slate : ModuleRules
         {
             DynamicallyLoadedModuleNames.Add("Settings");
         }
-		
-		if (Target.Platform == UnrealTargetPlatform.HoloLens)
-		{
-			AddEngineThirdPartyPrivateStaticDependencies(Target, "WindowsMixedRealityInterop");
-		}
 	}
 }

@@ -533,6 +533,7 @@ extern RENDERCORE_API TRefCountPtr<IPooledRenderTarget> CreateRenderTarget(FRHIT
  */
 extern RENDERCORE_API bool CacheRenderTarget(FRHITexture* Texture, const TCHAR* Name, TRefCountPtr<IPooledRenderTarget>& OutPooledRenderTarget);
 
+
 // use r.DrawDenormalizedQuadMode to override the function call setting (quick way to see if an artifact is caused by this optimization)
 enum EDrawRectangleFlags
 {

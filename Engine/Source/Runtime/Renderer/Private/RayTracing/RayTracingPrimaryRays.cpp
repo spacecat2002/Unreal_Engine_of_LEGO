@@ -51,7 +51,7 @@ class FRayTracingPrimaryRaysRGS : public FGlobalShader
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		SHADER_PARAMETER_STRUCT_REF(FRaytracingLightDataPacked, LightDataPacked)
 		SHADER_PARAMETER_STRUCT_REF(FReflectionUniformParameters, ReflectionStruct)
-		SHADER_PARAMETER_STRUCT_REF(FFogUniformParameters, FogUniformParameters)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FFogUniformParameters, FogUniformParameters)
 
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
 
@@ -151,7 +151,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingPrimaryRaysView(
 	PassParameters->SceneColorTexture = SceneColorTexture;
 
 	PassParameters->ReflectionStruct = CreateReflectionUniformBuffer(View, EUniformBufferUsage::UniformBuffer_SingleFrame);
-	PassParameters->FogUniformParameters = CreateFogUniformBuffer(View, EUniformBufferUsage::UniformBuffer_SingleFrame);
+	PassParameters->FogUniformParameters = CreateFogUniformBuffer(GraphBuilder, View);
 
 	PassParameters->ColorOutput = GraphBuilder.CreateUAV(*InOutColorTexture);
 	PassParameters->RayHitDistanceOutput = GraphBuilder.CreateUAV(*InOutRayHitDistanceTexture);

@@ -958,7 +958,7 @@ private:
 	 * For example the material needs to support being rendered at different quality levels and feature levels within the same process.
 	 * These are always valid and non-null, but only the entries affected by CacheResourceShadersForRendering are actually valid for rendering.
 	 */
-	FMaterialResource* MaterialResources[EMaterialQualityLevel::Num][ERHIFeatureLevel::Num];
+	TArray<FMaterialResource*> MaterialResources;
 #if WITH_EDITOR
 	/** Material resources being cached for cooking. */
 	TMap<const class ITargetPlatform*, TArray<FMaterialResource*>> CachedMaterialResourcesForCooking;
@@ -1178,9 +1178,6 @@ private:
 
 	/** Sets the value associated with the given usage flag. */
 	void SetUsageByFlag(const EMaterialUsage Usage, const bool NewValue);
-
-	/** Sets up transient properties in MaterialResources. */
-	void UpdateResourceAllocations(FMaterialResourceDeferredDeletionArray* ResourcesToFree = nullptr);
 
 	/** to share code for PostLoad() and PostEditChangeProperty(), and UMaterialInstance::InitResources(), needs to be refactored */
 	void PropagateDataToMaterialProxy();
@@ -1637,6 +1634,8 @@ public:
 #endif
 
 #if WITH_EDITORONLY_DATA
+	/* Returns any UMaterialExpressionFunctionOutput expressions */
+	ENGINE_API void GetAllFunctionOutputExpressions(TArray<class UMaterialExpressionFunctionOutput*>& OutFunctionOutputs) const;
 	/* Returns any UMaterialExpressionCustomOutput expressions */
 	ENGINE_API void GetAllCustomOutputExpressions(TArray<class UMaterialExpressionCustomOutput*>& OutCustomOutputs) const;
 	ENGINE_API void GetAllExpressionsForCustomInterpolators(TArray<class UMaterialExpression*>& OutExpressions) const;

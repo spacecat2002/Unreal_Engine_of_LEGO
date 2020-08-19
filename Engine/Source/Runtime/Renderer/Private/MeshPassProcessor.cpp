@@ -829,6 +829,7 @@ void FRayTracingMeshCommand::SetShaders(const FMeshProcessorShaders& Shaders)
 {
 	check(Shaders.RayHitGroupShader.IsValid())
 	MaterialShaderIndex = Shaders.RayHitGroupShader.GetRayTracingMaterialLibraryIndex();
+	MaterialShader = Shaders.RayHitGroupShader.GetRayTracingShader();
 	ShaderBindings.Initialize(Shaders);
 }
 #endif // RHI_RAYTRACING

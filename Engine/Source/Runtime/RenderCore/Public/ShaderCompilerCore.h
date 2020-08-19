@@ -18,7 +18,7 @@ class Error;
 // this is for the protocol, not the data, bump if FShaderCompilerInput or ProcessInputFromArchive changes.
 const int32 ShaderCompileWorkerInputVersion = 13;
 // this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
-const int32 ShaderCompileWorkerOutputVersion = 5;
+const int32 ShaderCompileWorkerOutputVersion = 6;
 // this is for the protocol, not the data.
 const int32 ShaderCompileWorkerSingleJobHeader = 'S';
 // this is for the protocol, not the data.
@@ -420,7 +420,10 @@ struct FShaderCompilerError
 	}
 };
 
-/** The output of the shader compiler. */
+/**
+ *	The output of the shader compiler.
+ *	Bump ShaderCompileWorkerOutputVersion if FShaderCompilerOutput changes
+ */
 struct FShaderCompilerOutput
 {
 	FShaderCompilerOutput()
@@ -430,6 +433,7 @@ struct FShaderCompilerOutput
 	,	bSucceeded(false)
 	,	bFailedRemovingUnused(false)
 	,	bSupportsQueryingUsedAttributes(false)
+	,	bUsedHLSLccCompiler(false)
 	{
 	}
 
@@ -445,6 +449,7 @@ struct FShaderCompilerOutput
 	bool bSucceeded;
 	bool bFailedRemovingUnused;
 	bool bSupportsQueryingUsedAttributes;
+	bool bUsedHLSLccCompiler;
 	TArray<FString> UsedAttributes;
 
 	FString OptionalFinalShaderSource;

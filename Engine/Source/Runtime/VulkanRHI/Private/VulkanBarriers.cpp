@@ -360,58 +360,84 @@ struct FDepthStencilSubresTransition
 
 static void GetDepthStencilStageAndAccessFlags(ERHIAccess DepthAccess, ERHIAccess StencilAccess, VkPipelineStageFlags& StageFlags, VkAccessFlags& AccessFlags, VkImageLayout& Layout, bool bIsSourceState)
 {
-	const ERHIAccess DepthStencilFlags = ERHIAccess::DSVRead | ERHIAccess::DSVWrite;
-	if (EnumHasAnyFlags(DepthAccess, DepthStencilFlags))
+	if (DepthAccess == ERHIAccess::Unknown || StencilAccess == ERHIAccess::Unknown)
 	{
-		// We can't have one aspect in a renderable state and another aspect in SRV.
-		check(EnumHasAnyFlags(StencilAccess, DepthStencilFlags));
+		StageFlags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+		AccessFlags = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+		Layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		return;
+	}
 
-		StageFlags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-		AccessFlags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+	Layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
-		if (EnumHasAnyFlags(DepthAccess, ERHIAccess::DSVWrite))
+	if (EnumHasAnyFlags(DepthAccess, ERHIAccess::DSVWrite))
+	{
+		if (EnumHasAnyFlags(StencilAccess, ERHIAccess::DSVWrite))
 		{
-			AccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			if (EnumHasAnyFlags(StencilAccess, ERHIAccess::DSVWrite))
-			{
-				Layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-			}
-			else
-			{
-				Layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR;
-			}
+			Layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		}
 		else
 		{
-			if (EnumHasAnyFlags(StencilAccess, ERHIAccess::DSVWrite))
-			{
-				AccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-				Layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR;
-			}
-			else
-			{
-				Layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-			}
-		}
-
-		if (EnumHasAnyFlags(DepthAccess, ERHIAccess::SRVGraphics) || EnumHasAnyFlags(StencilAccess, ERHIAccess::SRVGraphics))
-		{
-			StageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-			AccessFlags |= VK_ACCESS_SHADER_READ_BIT;
-		}
-
-		if (EnumHasAnyFlags(DepthAccess, ERHIAccess::SRVCompute) || EnumHasAnyFlags(StencilAccess, ERHIAccess::SRVCompute))
-		{
-			StageFlags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-			AccessFlags |= VK_ACCESS_SHADER_READ_BIT;
+			Layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR;
 		}
 	}
 	else
 	{
-		// If it's not a renderable state, they better both be in the same state.
-		check(DepthAccess == StencilAccess);
-		GetVkStageAndAccessFlags(DepthAccess, FRHITransitionInfo::EType::Texture, true, StageFlags, AccessFlags, Layout, bIsSourceState);
+		if (EnumHasAnyFlags(StencilAccess, ERHIAccess::DSVWrite))
+		{
+			Layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR;
+		}
 	}
+
+	StageFlags = 0;
+	AccessFlags = 0;
+	ERHIAccess CombinedAccess = DepthAccess | StencilAccess;
+	uint32 ProcessedRHIFlags = 0;
+
+	if (EnumHasAnyFlags(CombinedAccess, ERHIAccess::DSVWrite))
+	{
+		StageFlags |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		AccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		ProcessedRHIFlags |= (uint32)ERHIAccess::DSVWrite;
+	}
+	
+	if (EnumHasAnyFlags(CombinedAccess, ERHIAccess::DSVRead))
+	{
+		StageFlags |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		AccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		ProcessedRHIFlags |= (uint32)ERHIAccess::DSVRead;
+	}
+
+	if (EnumHasAnyFlags(CombinedAccess, ERHIAccess::SRVGraphics))
+	{
+		StageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		AccessFlags |= VK_ACCESS_SHADER_READ_BIT;
+		ProcessedRHIFlags |= (uint32)ERHIAccess::SRVGraphics;
+	}
+
+	if (EnumHasAnyFlags(CombinedAccess, ERHIAccess::UAVGraphics))
+	{
+		StageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		AccessFlags |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+		ProcessedRHIFlags |= (uint32)ERHIAccess::UAVGraphics;
+	}
+
+	if (EnumHasAnyFlags(CombinedAccess, ERHIAccess::SRVCompute))
+	{
+		StageFlags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		AccessFlags |= VK_ACCESS_SHADER_READ_BIT;
+		ProcessedRHIFlags |= (uint32)ERHIAccess::SRVCompute;
+	}
+
+	if (EnumHasAnyFlags(CombinedAccess, ERHIAccess::UAVCompute))
+	{
+		StageFlags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		AccessFlags |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+		ProcessedRHIFlags |= (uint32)ERHIAccess::UAVCompute;
+	}
+
+	uint32 RemainingFlags = (uint32)CombinedAccess & (~ProcessedRHIFlags);
+	ensureMsgf(RemainingFlags == 0, TEXT("Some access flags were not processed. DepthAccess=%x, StencilAccess=%x, ProcessedRHIFlags=%x, RemainingFlags=%x"), DepthAccess, StencilAccess, ProcessedRHIFlags, RemainingFlags);
 }
 
 //
@@ -516,6 +542,41 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 	{
 		SrcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		DstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	}
+
+	// Count the images and buffers to be able to pre-allocate the arrays.
+	int32 NumTextures = 0, NumBuffers = 0;
+	for (const FRHITransitionInfo& Info : Infos)
+	{
+		if (!Info.Resource)
+		{
+			continue;
+		}
+
+		if (Info.Type == FRHITransitionInfo::EType::Texture)
+		{
+			++NumTextures;
+			continue;
+		}
+
+		if (Info.Type == FRHITransitionInfo::EType::UAV)
+		{
+			FVulkanUnorderedAccessView* UAV = ResourceCast(Info.UAV);
+			if (UAV->SourceTexture)
+			{
+				++NumTextures;
+				continue;
+			}
+		}
+
+		++NumBuffers;
+	}
+
+	Data->ImageBarriers.Reserve(NumTextures);
+	Data->Textures.Reserve(NumTextures);
+	if (SrcPipelines != DstPipelines)
+	{
+		Data->BufferBarriers.Reserve(NumBuffers);
 	}
 
 	const ERHIAccess DepthStencilFlags = ERHIAccess::DSVRead | ERHIAccess::DSVWrite;
@@ -688,6 +749,8 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 			BufferBarrier.size = VK_WHOLE_SIZE;
 			continue;
 		}
+
+		check(Texture != nullptr);
 
 		VkImageSubresourceRange SubresRange;
 		SetupSubresourceRange(SubresRange, Info, Texture->Surface.GetFullAspectMask());
@@ -1492,6 +1555,21 @@ void FVulkanLayoutManager::BeginRenderPass(FVulkanCommandListContext& Context, F
 			ClearValues[ClearValueIndex].depthStencil.depth = Depth;
 			ClearValues[ClearValueIndex].depthStencil.stencil = Stencil;
 			++ClearValueIndex;
+		}
+	}
+
+	FRHITexture* FoveationTexture = RPInfo.FoveationTexture;
+	if (FoveationTexture)
+	{
+		FVulkanSurface& Surface = FVulkanTextureBase::Cast(FoveationTexture)->Surface;
+		VkImageLayout& DSLayout = FindOrAddLayoutRW(Surface, VK_IMAGE_LAYOUT_UNDEFINED);
+		VkImageLayout ExpectedLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT;
+
+		// transition foveation textures to the foveation layout for rendering
+		if (DSLayout != ExpectedLayout)
+		{
+			Barrier.AddImageLayoutTransition(Surface.Image, DSLayout, ExpectedLayout, FVulkanPipelineBarrier::MakeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT));
+			DSLayout = ExpectedLayout;
 		}
 	}
 

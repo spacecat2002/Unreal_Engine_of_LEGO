@@ -33,7 +33,8 @@ public class VulkanRHI : ModuleRules
 			new string[]
 			{
 				"Core", 
-				"CoreUObject", 
+				"CoreUObject",
+				"ApplicationCore",
 				"Engine", 
 				"RHI", 
 				"RenderCore", 

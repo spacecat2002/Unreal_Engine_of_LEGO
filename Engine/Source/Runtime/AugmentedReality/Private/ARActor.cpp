@@ -67,9 +67,6 @@ void AARActor::RequestSpawnARActor(FGuid NativeID, UClass* InComponentClass)
 			const auto SpawnTransform = FTransform::Identity;
 			if (auto TempARActor = Cast<AARActor>(World->SpawnActor(AARActor::StaticClass(), &SpawnTransform)))
 			{
-				// make sure this is using the local player controller for networking
-				APlayerController* PlayerController = GEngine->GetFirstLocalPlayerController(World);
-				TempARActor->SetOwner(PlayerController);
 				//force replication on for all (for now)
 				TempARActor->SetReplicates(true);
 				TempARActor->AddARComponent(InComponentClass, NativeID);

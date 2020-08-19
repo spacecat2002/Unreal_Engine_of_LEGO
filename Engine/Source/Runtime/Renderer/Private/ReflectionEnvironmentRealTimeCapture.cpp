@@ -213,7 +213,7 @@ class FRenderRealTimeReflectionHeightFogPS : public FGlobalShader
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
-		SHADER_PARAMETER_STRUCT_REF(FFogUniformParameters, FogStruct)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FFogUniformParameters, FogStruct)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
@@ -323,7 +323,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 
 	FPooledRenderTargetDesc SkyCubeTexDesc = FPooledRenderTargetDesc::CreateCubemapDesc(CubeWidth, 
 		PF_FloatR11G11B10, FClearValueBinding::Black, TexCreate_TargetArraySlicesIndependently,
-		TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable, false, 1, CubeMipCount);
+		TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable, false, 1, CubeMipCount, false);
 
 	const bool bTimeSlicedRealTimeCapture = CVarRealTimeReflectionCaptureTimeSlicing.GetValueOnRenderThread() > 0;
 
@@ -598,10 +598,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 						PsPassParameters->ViewUniformBuffer = CubeViewUniformBuffer;
 						PsPassParameters->RenderTargets = SkyRC.RenderTargets;
 						PsPassParameters->DepthTexture = CubeDepthTexture != nullptr ? CubeDepthTexture : BlackDummy2dTex;
-
-						FFogUniformParameters FogUniformParameters;
-						SetupFogUniformParameters(CubeView, FogUniformParameters);
-						PsPassParameters->FogStruct = TUniformBufferRef<FFogUniformParameters>::CreateUniformBufferImmediate(FogUniformParameters, UniformBuffer_SingleDraw);
+						PsPassParameters->FogStruct = CreateFogUniformBuffer(GraphBuilder, CubeView);
 
 						ClearUnusedGraphResources(PixelShader, PsPassParameters);
 

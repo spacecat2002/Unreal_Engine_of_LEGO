@@ -345,6 +345,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "AR Settings | Image Tracking")
 	bool bUseAutomaticImageScaleEstimation = true;
 	
+	/** Whether to use the standard onboarding UX, if the system supports it. */
+	UPROPERTY(EditAnywhere, Category = "AR Settings")
+	bool bUseStandardOnboardingUX = false;
+	
 	/** @see bUseOptimalVideoFormat */
 	bool ShouldUseOptimalVideoFormat() const;
 

@@ -220,7 +220,7 @@ DECLARE_GPU_STAT(GPUSceneUpdate);
 DECLARE_GPU_STAT_NAMED(Unaccounted, TEXT("[unaccounted]"));
 DECLARE_GPU_DRAWCALL_STAT(WaterRendering);
 DECLARE_GPU_STAT(HairRendering);
-DECLARE_GPU_DRAWCALL_STAT(VirtualTextureUpdate);
+DEFINE_GPU_DRAWCALL_STAT(VirtualTextureUpdate);
 DECLARE_GPU_STAT(UploadDynamicBuffers);
 DECLARE_GPU_STAT(PostOpaqueExtensions);
 
@@ -1856,6 +1856,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	FRDGTextureRef VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
 
+	// Rebuild scene textures to include GBuffers.
 	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
 
 	if (ViewFamily.EngineShowFlags.VisualizeLightCulling)
@@ -1928,8 +1929,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
 
-	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
-
 	// Hair base pass for deferred shading
 	if (bHairEnable && !IsForwardShadingEnabled(ShaderPlatform))
 	{
@@ -1987,6 +1986,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
+
+	// Rebuild scene textures to include velocity, custom depth, and SSAO.
+	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
 
 	if (!IsForwardShadingEnabled(ShaderPlatform))
 	{
@@ -2106,8 +2108,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderDeferredReflectionsAndSkyLightingHair(GraphBuilder, HairDatas);
 	}
 
-	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
-
 	if (bShouldRenderVolumetricCloud)
 	{
 		// Generate the volumetric cloud render target
@@ -2134,10 +2134,13 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			EnumRemoveFlags(TranslucencyViewsToRender, ETranslucencyView::UnderWater);
 		}
 
-		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_WaterPass));
+		AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_WaterPass));
 		RenderSingleLayerWater(GraphBuilder, SceneColorTexture, SceneDepthTexture, SceneTextures, bShouldRenderVolumetricCloud);
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
+
+	// Rebuild scene textures to include scene color.
+	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
 
 	FRDGTextureRef LightShaftOcclusionTexture = nullptr;
 
@@ -2195,7 +2198,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 				InRHICmdList,
 				Views[0].ViewUniformBuffer,
 				&FSceneTextureUniformParameters::StaticStructMetadata,
-				CreateSceneTextureUniformBuffer(InRHICmdList, FeatureLevel, ESceneTextureSetupMode::SceneColor | ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneVelocity),
+				CreateSceneTextureUniformBuffer(InRHICmdList, FeatureLevel),
 				Views[0].AllowGPUParticleUpdate()
 			);
 
@@ -2263,7 +2266,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 			if (bRecreateSceneTextures)
 			{
-				SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::All);
+				// Rebuild scene textures to include newly allocated velocity.
+				SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
 			}
 		}
 
@@ -2445,6 +2449,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			ShaderPrint::EndView(Views[ViewIndex]);
 			ShaderDrawDebug::EndView(Views[ViewIndex]);
 		}
+
+		GEngine->GetPostRenderDelegate().Broadcast();
 
 		SceneContext.AdjustGBufferRefCount(InRHICmdList, -1);
 		SceneContext.SceneVelocity.SafeRelease();

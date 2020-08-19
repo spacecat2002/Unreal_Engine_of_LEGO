@@ -488,7 +488,7 @@ void FMetalDynamicRHI::RHIUpdateShaderResourceView(FRHIShaderResourceView* SRVRH
 void FMetalRHICommandContext::ClearUAVStructuredBuffer(FRHIUnorderedAccessView* UnorderedAccessViewRHI, uint32 Pattern)
 {
 	FMetalUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
-	FMetalBuffer Buffer = UnorderedAccessView->SourceView->SourceStructuredBuffer->Buffer;
+	FMetalBuffer Buffer = UnorderedAccessView->SourceView->SourceStructuredBuffer->GetCurrentBuffer();
 	uint32 Size = UnorderedAccessView->SourceView->SourceStructuredBuffer->GetSize();
 	uint32 AlignedSize = Align(Size, BufferOffsetAlignment);
 	FMetalPooledBufferArgs Args(GetMetalDeviceContext().GetDevice(), AlignedSize, BUF_Dynamic, mtlpp::StorageMode::Shared);
@@ -638,7 +638,7 @@ void FMetalRHICommandContext::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBuf
 		}
 
 		// Inline copy from the actual buffer to the shadow
-		GetMetalDeviceContext().CopyFromBufferToBuffer(SourceBuffer->Buffer, Offset, ReadbackBuffer, 0, NumBytes);
+		GetMetalDeviceContext().CopyFromBufferToBuffer(SourceBuffer->GetCurrentBuffer(), Offset, ReadbackBuffer, 0, NumBytes);
 	}
 }
 

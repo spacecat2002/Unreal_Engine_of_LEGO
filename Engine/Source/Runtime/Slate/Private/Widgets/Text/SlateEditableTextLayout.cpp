@@ -1294,9 +1294,10 @@ FReply FSlateEditableTextLayout::HandleMouseMove(const FGeometry& InMyGeometry, 
 
 FReply FSlateEditableTextLayout::HandleMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent)
 {
-	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	if (OwnerWidget->ShouldSelectWordOnMouseDoubleClick() && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		SelectWordAt(InMyGeometry, InMouseEvent.GetScreenSpacePosition());
+		return FReply::Handled();
 	}
 
 	return FReply::Unhandled();
@@ -2619,6 +2620,8 @@ void FSlateEditableTextLayout::UpdateCursorHighlight()
 	{
 		TextLayout->AddLineHighlight(LineHighlight);
 	}
+	
+	VirtualKeyboardEntry->OnSelectionChanged.ExecuteIfBound();
 }
 
 void FSlateEditableTextLayout::RemoveCursorHighlight()
@@ -3608,6 +3611,19 @@ FText FSlateEditableTextLayout::FVirtualKeyboardEntry::GetText() const
 	check(IsInGameThread());
 
 	return OwnerLayout->GetText();
+}
+
+bool FSlateEditableTextLayout::FVirtualKeyboardEntry::GetSelection(int& OutSelStart, int& OutSelEnd)
+{
+	check(IsInGameThread());
+
+	const FTextLocation CursorInteractionPosition = OwnerLayout->CursorInfo.GetCursorInteractionLocation();
+	FTextLocation SelectionLocation = OwnerLayout->SelectionStart.Get(CursorInteractionPosition);
+	FTextSelection Selection(SelectionLocation, CursorInteractionPosition);
+
+	OutSelStart = Selection.GetBeginning().GetOffset();
+	OutSelEnd = Selection.GetEnd().GetOffset();
+	return true;
 }
 
 FText FSlateEditableTextLayout::FVirtualKeyboardEntry::GetHintText() const

@@ -49,7 +49,7 @@ struct FHeightFogRenderingParameters
 	FVector4 LinearDepthMinMaxUV;
 };
 
-void SetupFogUniformParameters(const FViewInfo& View, FFogUniformParameters& OutParameters)
+void SetupFogUniformParameters(FRDGBuilder* GraphBuilder, const FViewInfo& View, FFogUniformParameters& OutParameters)
 {
 	// Exponential Height Fog
 	{
@@ -75,25 +75,37 @@ void SetupFogUniformParameters(const FViewInfo& View, FFogUniformParameters& Out
 
 	// Volumetric Fog
 	{
-		FRHITexture* IntegratedLightScatteringTexture = nullptr;
-		if (View.VolumetricFogResources.IntegratedLightScattering)
+		if (View.VolumetricFogResources.IntegratedLightScatteringTexture)
 		{
-			IntegratedLightScatteringTexture = View.VolumetricFogResources.IntegratedLightScattering->GetRenderTargetItem().ShaderResourceTexture;
+			OutParameters.IntegratedLightScattering = View.VolumetricFogResources.IntegratedLightScatteringTexture;
+			OutParameters.ApplyVolumetricFog = 1.0f;
 		}
-		SetBlackAlpha13DIfNull(IntegratedLightScatteringTexture);
-
-		const bool bApplyVolumetricFog = View.VolumetricFogResources.IntegratedLightScattering != NULL;
-		OutParameters.ApplyVolumetricFog = bApplyVolumetricFog ? 1.0f : 0.0f;
-		OutParameters.IntegratedLightScattering = IntegratedLightScatteringTexture;
+		else
+		{
+			if (GraphBuilder)
+			{
+				OutParameters.IntegratedLightScattering = GBlackAlpha1VolumeTexture->GetRDG(*GraphBuilder);
+			}
+			else
+			{
+				OutParameters.IntegratedLightScattering = GBlackAlpha1VolumeTexture->GetPassthroughRDG();
+			}
+			OutParameters.ApplyVolumetricFog = 0.0f;
+		}
 		OutParameters.IntegratedLightScatteringSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	}
 }
 
-TUniformBufferRef<FFogUniformParameters> CreateFogUniformBuffer(const class FViewInfo& View, EUniformBufferUsage Usage)
+void SetupFogUniformParameters(FRDGBuilder& GraphBuilder, const FViewInfo& View, FFogUniformParameters& OutParameters)
 {
-	FFogUniformParameters FogStruct;
-	SetupFogUniformParameters(View, FogStruct);
-	return CreateUniformBufferImmediate(FogStruct, Usage);
+	SetupFogUniformParameters(&GraphBuilder, View, OutParameters);
+}
+
+TRDGUniformBufferRef<FFogUniformParameters> CreateFogUniformBuffer(FRDGBuilder& GraphBuilder, const FViewInfo& View)
+{
+	auto* FogStruct = GraphBuilder.AllocParameters<FFogUniformParameters>();
+	SetupFogUniformParameters(GraphBuilder, View, *FogStruct);
+	return GraphBuilder.CreateUniformBuffer(FogStruct);
 }
 
 /** A vertex shader for rendering height fog. */
@@ -192,13 +204,10 @@ public:
 		LinearDepthTextureMinMaxUV.Bind(Initializer.ParameterMap, TEXT("LinearDepthTextureMinMaxUV"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, const FHeightFogRenderingParameters& Params)
+	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, const FHeightFogRenderingParameters& Params, FRHIUniformBuffer* FogUniformBuffer)
 	{
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
-		
-		FFogUniformParameters FogUniformParameters;
-		SetupFogUniformParameters(View, FogUniformParameters);
-		SetUniformBufferParameterImmediate(RHICmdList, RHICmdList.GetBoundPixelShader(), GetUniformBufferParameter<FFogUniformParameters>(), FogUniformParameters);
+		FGlobalShader::SetParameters<FFogUniformParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), FogUniformBuffer);
 
 		FRHITexture* TextureRHI = Params.LightShaftOcclusionRHI;
 		
@@ -355,7 +364,7 @@ void FSceneRenderer::InitFogConstants()
 }
 
 /** Sets the bound shader state for either the per-pixel or per-sample fog pass. */
-static void SetFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, const FViewInfo& View, bool bShouldRenderVolumetricFog, const FHeightFogRenderingParameters& Params)
+static void SetFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, const FViewInfo& View, bool bShouldRenderVolumetricFog, const FHeightFogRenderingParameters& Params, FRHIUniformBuffer* FogUniformBuffer)
 {
 	TShaderMapRef<FHeightFogVS> VertexShader(View.ShaderMap);
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFogVertexDeclaration.VertexDeclarationRHI;
@@ -370,7 +379,7 @@ static void SetFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateIni
 			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ExponentialHeightFogPixelShader.GetPixelShader();
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			VertexShader->SetParameters(RHICmdList, View);
-			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params);
+			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params, FogUniformBuffer);
 		}
 		else if (View.bUseDirectionalInscattering)
 		{
@@ -379,7 +388,7 @@ static void SetFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateIni
 			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ExponentialHeightFogPixelShader.GetPixelShader();
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			VertexShader->SetParameters(RHICmdList, View);
-			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params);
+			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params, FogUniformBuffer);
 		}
 		else
 		{
@@ -388,7 +397,7 @@ static void SetFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateIni
 			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ExponentialHeightFogPixelShader.GetPixelShader();
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			VertexShader->SetParameters(RHICmdList, View);
-			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params);
+			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params, FogUniformBuffer);
 		}
 	}
 	else
@@ -400,7 +409,7 @@ static void SetFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateIni
 			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ExponentialHeightFogPixelShader.GetPixelShader();
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			VertexShader->SetParameters(RHICmdList, View);
-			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params);
+			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params, FogUniformBuffer);
 		}
 		else if (View.bUseDirectionalInscattering)
 		{
@@ -409,7 +418,7 @@ static void SetFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateIni
 			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ExponentialHeightFogPixelShader.GetPixelShader();
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			VertexShader->SetParameters(RHICmdList, View);
-			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params);
+			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params, FogUniformBuffer);
 		}
 		else
 		{
@@ -418,12 +427,12 @@ static void SetFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateIni
 			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ExponentialHeightFogPixelShader.GetPixelShader();
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			VertexShader->SetParameters(RHICmdList, View);
-			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params);
+			ExponentialHeightFogPixelShader->SetParameters(RHICmdList, View, Params, FogUniformBuffer);
 		}
 	}
 }
 
-static void RenderViewFog(FRHICommandList& RHICmdList, const FViewInfo& View, bool bShouldRenderVolumetricFog, const FHeightFogRenderingParameters& Params)
+static void RenderViewFog(FRHICommandList& RHICmdList, const FViewInfo& View, bool bShouldRenderVolumetricFog, const FHeightFogRenderingParameters& Params, FRHIUniformBuffer* FogUniformBuffer)
 {
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -441,7 +450,7 @@ static void RenderViewFog(FRHICommandList& RHICmdList, const FViewInfo& View, bo
 	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
-	SetFogShaders(RHICmdList, GraphicsPSOInit, View, bShouldRenderVolumetricFog, Params);
+	SetFogShaders(RHICmdList, GraphicsPSOInit, View, bShouldRenderVolumetricFog, Params, FogUniformBuffer);
 
 	// Draw a quad covering the view.
 	RHICmdList.SetStreamSource(0, GScreenSpaceVertexBuffer.VertexBufferRHI, 0);
@@ -450,6 +459,7 @@ static void RenderViewFog(FRHICommandList& RHICmdList, const FViewInfo& View, bo
 
 BEGIN_SHADER_PARAMETER_STRUCT(FFogPassParameters, )
 	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
+	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FFogUniformParameters, Fog)
 	RDG_TEXTURE_ACCESS(LightShaftOcclusionTexture, ERHIAccess::SRVGraphics)
 	RDG_TEXTURE_ACCESS(LinearDepthTexture, ERHIAccess::SRVGraphics)
 	RENDER_TARGET_BINDING_SLOTS()
@@ -468,12 +478,6 @@ void FDeferredShadingSceneRenderer::RenderFog(
 	{
 		RDG_EVENT_SCOPE(GraphBuilder, "ExponentialHeightFog");
 
-		FFogPassParameters* PassParameters = GraphBuilder.AllocParameters<FFogPassParameters>();
-		PassParameters->SceneTextures = SceneTexturesWithDepth;
-		PassParameters->LightShaftOcclusionTexture = LightShaftOcclusionTexture;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
-		PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SceneDepthTexture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite);
-
 		const bool bShouldRenderVolumetricFog = ShouldRenderVolumetricFog();
 
 		for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
@@ -484,7 +488,16 @@ void FDeferredShadingSceneRenderer::RenderFog(
 				RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
 				RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
-				GraphBuilder.AddPass({}, PassParameters, ERDGPassFlags::Raster, [this, &View, bShouldRenderVolumetricFog, LightShaftOcclusionTexture](FRHICommandList& RHICmdList)
+				TRDGUniformBufferRef<FFogUniformParameters> FogUniformBuffer = CreateFogUniformBuffer(GraphBuilder, View);
+
+				FFogPassParameters* PassParameters = GraphBuilder.AllocParameters<FFogPassParameters>();
+				PassParameters->SceneTextures = SceneTexturesWithDepth;
+				PassParameters->Fog = FogUniformBuffer;
+				PassParameters->LightShaftOcclusionTexture = LightShaftOcclusionTexture;
+				PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
+				PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SceneDepthTexture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite);
+
+				GraphBuilder.AddPass({}, PassParameters, ERDGPassFlags::Raster, [this, &View, bShouldRenderVolumetricFog, LightShaftOcclusionTexture, FogUniformBuffer](FRHICommandList& RHICmdList)
 				{
 					FHeightFogRenderingParameters Parameters;
 					Parameters.ViewRect = View.ViewRect;
@@ -492,7 +505,7 @@ void FDeferredShadingSceneRenderer::RenderFog(
 					{
 						Parameters.LightShaftOcclusionRHI = LightShaftOcclusionTexture->GetRHI();
 					}
-					RenderViewFog(RHICmdList, View, bShouldRenderVolumetricFog, Parameters);
+					RenderViewFog(RHICmdList, View, bShouldRenderVolumetricFog, Parameters, FogUniformBuffer->GetRHI());
 				});
 			}
 		}
@@ -513,11 +526,6 @@ void FDeferredShadingSceneRenderer::RenderUnderWaterFog(
 		FRDGTextureRef LinearDepthTexture = SceneWithoutWaterTextures.DepthTexture;
 		check(LinearDepthTexture);
 
-		FFogPassParameters* PassParameters = GraphBuilder.AllocParameters<FFogPassParameters>();
-		PassParameters->SceneTextures = SceneTexturesWithDepth;
-		PassParameters->LinearDepthTexture = LinearDepthTexture;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneWithoutWaterTextures.ColorTexture, ERenderTargetLoadAction::ELoad);
-
 		const bool bShouldRenderVolumetricFog = ShouldRenderVolumetricFog();
 
 		// This must match SINGLE_LAYER_WATER_DEPTH_SCALE from SingleLayerWaterCommon.ush and SingleLayerWaterComposite.usf.
@@ -533,16 +541,24 @@ void FDeferredShadingSceneRenderer::RenderUnderWaterFog(
 				RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
 				RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
+				TRDGUniformBufferRef<FFogUniformParameters> FogUniformBuffer = CreateFogUniformBuffer(GraphBuilder, View);
+
+				FFogPassParameters* PassParameters = GraphBuilder.AllocParameters<FFogPassParameters>();
+				PassParameters->SceneTextures = SceneTexturesWithDepth;
+				PassParameters->Fog = FogUniformBuffer;
+				PassParameters->LinearDepthTexture = LinearDepthTexture;
+				PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneWithoutWaterTextures.ColorTexture, ERenderTargetLoadAction::ELoad);
+
 				const auto& SceneWithoutWaterView = SceneWithoutWaterTextures.Views[ViewIndex];
 				Parameters.ViewRect = SceneWithoutWaterView.ViewRect;
 				Parameters.LinearDepthMinMaxUV = SceneWithoutWaterView.MinMaxUV;
 
-				GraphBuilder.AddPass({}, PassParameters, ERDGPassFlags::Raster, [this, &View, bShouldRenderVolumetricFog, Parameters, LinearDepthTexture](FRHICommandList& RHICmdList)
+				GraphBuilder.AddPass({}, PassParameters, ERDGPassFlags::Raster, [this, &View, bShouldRenderVolumetricFog, Parameters, LinearDepthTexture, FogUniformBuffer](FRHICommandList& RHICmdList)
 				{
 					FHeightFogRenderingParameters LocalParameters = Parameters;
 					LocalParameters.ViewRect = View.ViewRect;
 					LocalParameters.LinearDepthTextureRHI = LinearDepthTexture->GetRHI();
-					RenderViewFog(RHICmdList, View, bShouldRenderVolumetricFog, LocalParameters);
+					RenderViewFog(RHICmdList, View, bShouldRenderVolumetricFog, LocalParameters, FogUniformBuffer->GetRHI());
 				});
 			}
 		}
