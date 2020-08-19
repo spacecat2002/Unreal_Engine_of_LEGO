@@ -1255,6 +1255,8 @@ void FRDGBuilder::SetupPassInternal(FRDGPass* Pass, FRDGPassHandle PassHandle, E
 	Pass->PrologueBarrierPass = PassHandle;
 	Pass->EpilogueBarrierPass = PassHandle;
 
+	Pass->AsyncComputeBudget = AsyncComputeBudgetScope;
+
 #if WITH_MGPU
 	Pass->GPUMask = RHICmdList.GetGPUMask();
 #endif
@@ -1299,6 +1301,11 @@ void FRDGBuilder::ExecutePassPrologue(FRHIComputeCommandList& RHICmdListPass, FR
 	{
 		BeginResourceRHI(UniformBuffer);
 	});
+
+	if (Pass->GetPipeline() == ERHIPipeline::AsyncCompute)
+	{
+		RHICmdListPass.SetAsyncComputeBudget(Pass->AsyncComputeBudget);
+	}
 
 	const ERDGPassFlags PassFlags = Pass->GetFlags();
 
