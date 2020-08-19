@@ -344,10 +344,10 @@ namespace
 		return (Char == 'i') | (Char == 'd') | (Char == 'u') | (Char == 'X') | (Char == 'x');
 	}
 
-	template <typename CharType>
-	void ProcessStringArg(FSafeDestIterator& DestIter, const TCHAR*& Src, int FieldLen, int PrecisionLen, auto& ArgPtr)
+	template <typename CharType, typename VaListType>
+	void ProcessStringArg(FSafeDestIterator& DestIter, const TCHAR*& Src, int FieldLen, int PrecisionLen, VaListType& ArgPtr)
 	{
-		// ArgPtr is taken as an auto parameter, despite being a va_list, because on some
+		// ArgPtr is taken as a templated parameter, despite being a va_list, because on some
 		// architectures it could be an array type, and when an array is used as a function parameter,
 		// the named value is treated as a pointer and won't bind to an array reference.
 
