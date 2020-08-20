@@ -543,6 +543,13 @@ void USplineComponent::ClearSplinePoints(bool bUpdateSpline)
 	SplineCurves.Position.Points.Reset();
 	SplineCurves.Rotation.Points.Reset();
 	SplineCurves.Scale.Points.Reset();
+
+	USplineMetadata* Metadata = GetSplinePointsMetadata();
+	if (Metadata)
+	{
+		Metadata->Reset(0);
+	}
+
 	if (bUpdateSpline)
 	{
 		UpdateSpline();
