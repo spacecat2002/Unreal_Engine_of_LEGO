@@ -1655,7 +1655,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FRDGTextureRef SmallDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SmallDepthZ, ERenderTargetTexture::Targetable);
 	FRDGTextureSRVRef SceneStencilTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(SceneDepthTexture.Target, PF_X24_G8));
 
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth);
+	ESceneTextureSetupMode SceneTexturesSetupMode = ESceneTextureSetupMode::SceneDepth;
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, SceneTexturesSetupMode);
 
 	const bool bShouldRenderVelocities = ShouldRenderVelocities();
 	const bool bBasePassCanOutputVelocity = FVelocityRendering::BasePassCanOutputVelocity(FeatureLevel);
@@ -1744,6 +1745,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_CustomDepthPass0);
 		RenderCustomDepthPassAtLocation(GraphBuilder, 0);
+
+		SceneTexturesSetupMode |= ESceneTextureSetupMode::CustomDepth;
+		SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, SceneTexturesSetupMode);
 	}
 
 	if (bOcclusionBeforeBasePass)
@@ -1857,7 +1861,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FRDGTextureRef VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
 
 	// Rebuild scene textures to include GBuffers.
-	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
+	SceneTexturesSetupMode |= ESceneTextureSetupMode::GBuffers;
+	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, SceneTexturesSetupMode);
 
 	if (ViewFamily.EngineShowFlags.VisualizeLightCulling)
 	{
@@ -1911,6 +1916,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(CustomDepthPass);
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_CustomDepthPass1);
 		RenderCustomDepthPassAtLocation(GraphBuilder, 1);
+
+		SceneTexturesSetupMode |= ESceneTextureSetupMode::CustomDepth;
+		SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, SceneTexturesSetupMode);
 	}
 
 #if RHI_RAYTRACING
@@ -1988,7 +1996,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 
 	// Rebuild scene textures to include velocity, custom depth, and SSAO.
-	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
+	SceneTexturesSetupMode |= ESceneTextureSetupMode::All;
+	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, SceneTexturesSetupMode);
 
 	if (!IsForwardShadingEnabled(ShaderPlatform))
 	{
@@ -2140,7 +2149,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 
 	// Rebuild scene textures to include scene color.
-	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
+	SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, SceneTexturesSetupMode);
 
 	FRDGTextureRef LightShaftOcclusionTexture = nullptr;
 
@@ -2267,7 +2276,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			if (bRecreateSceneTextures)
 			{
 				// Rebuild scene textures to include newly allocated velocity.
-				SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel);
+				SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, SceneTexturesSetupMode);
 			}
 		}
 
