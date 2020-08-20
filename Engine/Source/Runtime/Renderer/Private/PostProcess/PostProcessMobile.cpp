@@ -1063,6 +1063,7 @@ public:
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER(FVector2D, LightShaftCenter)
 		SHADER_PARAMETER(FVector4, BloomUpSizeAndInvSize)
+		SHADER_PARAMETER(FVector4, ViewportSize)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -1102,6 +1103,8 @@ FScreenPassTexture AddMobileSunMergePass(FRDGBuilder& GraphBuilder, const FViewI
 	{
 		VSShaderParameters.BloomUpSizeAndInvSize = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 	}
+
+	VSShaderParameters.ViewportSize = FVector4(OutputSize.X, OutputSize.Y, 1.0f / OutputSize.X, 1.0f / OutputSize.Y);
 
 	auto ShaderPermutationVector = FMobileSunMergePS::BuildPermutationVector(Inputs.bUseBloom, Inputs.bUseSun);
 
