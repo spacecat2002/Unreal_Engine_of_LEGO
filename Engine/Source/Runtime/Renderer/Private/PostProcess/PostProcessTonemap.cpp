@@ -1082,6 +1082,7 @@ class FMobileTonemapVS : public FGlobalShader
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FVector4, BufferSizeAndInvSize)
 		SHADER_PARAMETER(FVector4, DofBlurSizeAndInvSize)
+		SHADER_PARAMETER(FVector4, ViewportSize)
 		SHADER_PARAMETER(FVector, GrainRandomFull)
 		SHADER_PARAMETER(float, FringeIntensity)
 		SHADER_PARAMETER(FVector2D, Color_ScreenPosToViewportBias)
@@ -1199,6 +1200,7 @@ FScreenPassTexture AddMobileTonemapperPass(FRDGBuilder& GraphBuilder, const FVie
 	VSShaderParameters->View = View.ViewUniformBuffer;
 	VSShaderParameters->BufferSizeAndInvSize = FVector4(BufferSize.X, BufferSize.Y, 1.0f / BufferSize.X, 1.0f / BufferSize.Y);
 	VSShaderParameters->DofBlurSizeAndInvSize = FVector4(DofBlurSize.X, DofBlurSize.Y, 1.0f / DofBlurSize.X, 1.0f / DofBlurSize.Y);
+	VSShaderParameters->ViewportSize = FVector4(ViewportExtent.X, ViewportExtent.Y, 1.0f / ViewportExtent.X, 1.0f / ViewportExtent.Y);
 	VSShaderParameters->GrainRandomFull = GrainRandomFullValue;
 	VSShaderParameters->FringeIntensity = fabsf(Settings.SceneFringeIntensity) * 0.01f;
 	VSShaderParameters->Color_ScreenPosToViewportScale = FVector2D(ScreenPosToScenePixelValue.X, ScreenPosToScenePixelValue.Y);
