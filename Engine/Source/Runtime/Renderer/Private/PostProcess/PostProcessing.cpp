@@ -1442,7 +1442,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 	// The scene color will be decoded at the first post-process material and output linear color space for the following passes
 	// bMetalMSAAHDRDecode will be set to false if there is any post-process material exist
 
-	auto AddPostProcessMaterialPass = [&GraphBuilder, &View, &SceneColor, &CustomDepth, &bMetalMSAAHDRDecode, &PassSequence](EBlendableLocation BlendableLocation, bool bLastPass)
+	auto AddPostProcessMaterialPass = [&GraphBuilder, &View, &Inputs, &SceneColor, &CustomDepth, &bMetalMSAAHDRDecode, &PassSequence](EBlendableLocation BlendableLocation, bool bLastPass)
 	{
 		FPostProcessMaterialInputs PostProcessMaterialInputs;
 
@@ -1458,6 +1458,8 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 		PostProcessMaterialInputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(View.GetShaderPlatform()) && bLastPass;
 
 		PostProcessMaterialInputs.bMetalMSAAHDRDecode = bMetalMSAAHDRDecode;
+
+		PostProcessMaterialInputs.SceneTextures = GetSceneTextureShaderParameters(Inputs.SceneTextures);
 
 		const FPostProcessMaterialChain MaterialChain = GetPostProcessMaterialChain(View, BlendableLocation);
 
@@ -1911,7 +1913,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 			TonemapperInputs.EyeAdaptationTexture = nullptr;
 			TonemapperInputs.ColorGradingTexture = ColorGradingTexture;
 			TonemapperInputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || IsPostProcessingWithAlphaChannelSupported() || bUseMobileDof;
-			TonemapperInputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(View.GetShaderPlatform()) && PassSequence.IsLastPass(EPass::Tonemap);
+			TonemapperInputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(View.GetShaderPlatform()) && !PassSequence.IsEnabled(EPass::PostProcessMaterialAfterTonemapping);
 			TonemapperInputs.bOutputInHDR = bHDRTonemapperOutput;
 			TonemapperInputs.bGammaOnly = bDoGammaOnly;
 			TonemapperInputs.bMetalMSAAHDRDecode = bMetalMSAAHDRDecode;
@@ -1940,7 +1942,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 				TonemapperInputs.OverrideOutput.LoadAction = OutputLoadAction;
 			}
 
-			TonemapperInputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(View.GetShaderPlatform()) && PassSequence.IsLastPass(EPass::Tonemap);
+			TonemapperInputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(View.GetShaderPlatform()) && !PassSequence.IsEnabled(EPass::PostProcessMaterialAfterTonemapping);
 			TonemapperInputs.bMetalMSAAHDRDecode = bMetalMSAAHDRDecode;
 			TonemapperInputs.bOutputInHDR = bHDRTonemapperOutput;
 			TonemapperInputs.bSRGBAwareTarget = bSRGBAwareTarget;
@@ -1960,7 +1962,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 
 	if (IsPostProcessingEnabled(View))
 	{
-		AddPostProcessMaterialPass(BL_AfterTonemapping, PassSequence.IsLastPass(EPass::PostProcessMaterialAfterTonemapping));
+		AddPostProcessMaterialPass(BL_AfterTonemapping, true);
 
 		if (PassSequence.IsEnabled(EPass::TAA))
 		{
