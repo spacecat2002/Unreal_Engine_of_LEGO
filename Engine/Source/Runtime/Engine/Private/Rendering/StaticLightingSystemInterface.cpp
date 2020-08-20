@@ -168,7 +168,7 @@ ENGINE_API void ToggleLightmapPreview_GameThread(UWorld* InWorld)
 						UE_LOG(LogTemp, Log, TEXT("Static lighting system is created for world %s."), *InWorld->GetPathName(InWorld->GetOuter()));
 
 						ULightComponent::ReassignStationaryLightChannels(InWorld, false, NULL);
-
+#if WITH_EDITOR
 						if (!GIsEditor)
 						{
 							if (GEngine)
@@ -176,7 +176,7 @@ ENGINE_API void ToggleLightmapPreview_GameThread(UWorld* InWorld)
 								GEngine->OnPostEditorTick().AddStatic(&FStaticLightingSystemInterface::GameTick);
 							}
 						}
-
+#endif // WITH_EDITOR
 						int32 NumPrimitiveComponents = 0;
 						int32 NumLightComponents = 0;
 
