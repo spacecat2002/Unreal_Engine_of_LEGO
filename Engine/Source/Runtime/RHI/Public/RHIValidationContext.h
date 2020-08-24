@@ -336,11 +336,11 @@ public:
 				EResourceTransitionFlags::None);
 		};
 
-		if (SourceTexture)
+		if (SourceTexture && ResolveParams.SourceAccessFinal != ERHIAccess::Unknown)
 		{
 			SetAccess(SourceTexture, ResolveParams.SourceAccessFinal);
 		}
-		if (DestTexture && SourceTexture != DestTexture)
+		if (DestTexture && SourceTexture != DestTexture && ResolveParams.DestAccessFinal != ERHIAccess::Unknown)
 		{
 			SetAccess(DestTexture, ResolveParams.DestAccessFinal);
 		}

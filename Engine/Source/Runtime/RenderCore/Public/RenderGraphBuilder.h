@@ -9,13 +9,10 @@
 #include "RenderGraphValidation.h"
 #include "ShaderParameterMacros.h"
 #include "ProfilingDebugging/CsvProfiler.h"
- 
+
 class FRDGLogFile;
 
-/** Builds the per-frame render graph.
- *  Resources must be created from the builder before they can be bound to Pass ResourceTables.
- *  These resources are descriptors only until the graph is executed, where RHI resources are allocated as needed.
- */
+/** Use the render graph builder to build up a graph of passes and then call Execute() to process them. */
 class RENDERCORE_API FRDGBuilder
 {
 public:
@@ -134,19 +131,18 @@ public:
 	}
 #endif
 
-	/** Queues a pooled resource extraction to happen at the end of graph execution. *OutTexturePtr is assigned the internal
-	 *  pooled render target. Extractions are still deferred in immediate mode to preserve expected behavior.
-	 */
+	/** Queues a pooled texture extraction to happen at the end of graph execution. */
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr);
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr, ERHIAccess AccessFinal);
 
 	UE_DEPRECATED(4.26, "QueueTextureExtraction with bTransitionToRead is deprecated; use the ERHIAccess variant instead.")
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutTexturePtr, bool bTransitionToRead);
 
+	/** Queues a pooled buffer extraction to happen at the end of graph execution. */
 	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>* OutPooledBufferPtr);
 	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>* OutPooledBufferPtr, ERHIAccess AccessFinal);
 
-	/** If the resource is created by the graph, this will force allocation of the underlying resource in order to allow immediate extraction. */
+	/** If the resource is created by the graph, this will force immediate allocation of the underlying resource. */
 	void PreallocateTexture(FRDGTextureRef Texture);
 	void PreallocateBuffer(FRDGBufferRef Buffer);
 
@@ -230,6 +226,9 @@ private:
 	TArray<TPair<FRDGTextureRef, TRefCountPtr<IPooledRenderTarget>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedTextures;
 	TArray<TPair<FRDGBufferRef, TRefCountPtr<FRDGPooledBuffer>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedBuffers;
 
+	/** Texture state used for intermediate operations. Held here to avoid re-allocating. */
+	FRDGTextureTransientSubresourceStateIndirect ScratchTextureState;
+
 	/** Current scope's async compute budget. This is passed on to every pass created. */
 	EAsyncComputeBudget AsyncComputeBudgetScope = EAsyncComputeBudget::EAll_4;
 
@@ -264,8 +263,8 @@ private:
 	void BeginResourceRHI(FRDGPassHandle, FRDGBufferSRV* SRV);
 	void BeginResourceRHI(FRDGPassHandle, FRDGBufferUAV* UAV);
 
-	void EndResourceRHI(FRDGPassHandle, FRDGTexture* Texture, const FRDGTextureSubresourceRange Range);
-	void EndResourceRHI(FRDGPassHandle, FRDGBuffer* Buffer);
+	void EndResourceRHI(FRDGPassHandle, FRDGTexture* Texture, uint32 ReferenceCount);
+	void EndResourceRHI(FRDGPassHandle, FRDGBuffer* Buffer, uint32 ReferenceCount);
 
 	void SetupPassInternal(FRDGPass* Pass, FRDGPassHandle PassHandle, ERHIPipeline PassPipeline);
 	void SetupPass(FRDGPass* Pass);
@@ -283,7 +282,7 @@ private:
 	void AddEpilogueTransition(FRDGTextureRef Texture, FRDGPassHandle LastUntrackedPassHandle);
 	void AddEpilogueTransition(FRDGBufferRef Buffer, FRDGPassHandle LastUntrackedPassHandle);
 
-	void AddTransition(FRDGPassHandle PassHandle, FRDGTextureRef Texture, const FRDGTextureState& StateAfter, FRDGPassHandle LastUntrackedPassHandle);
+	void AddTransition(FRDGPassHandle PassHandle, FRDGTextureRef Texture, const FRDGTextureTransientSubresourceStateIndirect& StateAfter, FRDGPassHandle LastUntrackedPassHandle);
 	void AddTransition(FRDGPassHandle PassHandle, FRDGBufferRef Buffer, FRDGSubresourceState StateAfter, FRDGPassHandle LastUntrackedPassHandle);
 
 	void AddTransitionInternal(
@@ -294,6 +293,8 @@ private:
 		const FRHITransitionInfo& TransitionInfo);
 
 	FRHIRenderPassInfo GetRenderPassInfo(const FRDGPass* Pass) const;
+
+	FRDGSubresourceState* AllocSubresource(const FRDGSubresourceState& Other);
 
 #if RDG_ENABLE_DEBUG
 	void VisualizePassOutputs(const FRDGPass* Pass);

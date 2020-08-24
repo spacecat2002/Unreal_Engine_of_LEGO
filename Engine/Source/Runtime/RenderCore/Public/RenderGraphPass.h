@@ -10,7 +10,6 @@ class RENDERCORE_API FRDGBarrierBatch
 {
 public:
 	FRDGBarrierBatch(const FRDGBarrierBatch&) = delete;
-	virtual ~FRDGBarrierBatch() = default;
 
 	bool IsSubmitted() const
 	{
@@ -20,18 +19,23 @@ public:
 	FString GetName() const;
 
 protected:
-	FRDGBarrierBatch(const FRDGPass* InPass, const TCHAR* InName)
-		: Pass(InPass)
-		, Name(InName)
-	{
-		check(Pass && Name);
-	}
+	FRDGBarrierBatch(const FRDGPass* InPass, const TCHAR* InName);
 
 	void SetSubmitted();
 
+	ERHIPipeline GetPipeline() const
+	{
+		return Pipeline;
+	}
+
+private:
+	bool bSubmitted = false;
+	ERHIPipeline Pipeline;
+
+#if RDG_ENABLE_DEBUG
 	const FRDGPass* Pass;
 	const TCHAR* Name;
-	bool bSubmitted = false;
+#endif
 };
 
 class RENDERCORE_API FRDGBarrierBatchBegin final : public FRDGBarrierBatch
@@ -59,25 +63,22 @@ public:
 		bUseCrossPipelineFence = true;
 	}
 
-	void ReserveMemory(uint32 ExpectedTransitionCount);
-
 	void Submit(FRHIComputeCommandList& RHICmdList);
 
 private:
+	TOptional<ERHIPipeline> OverridePipelineToEnd;
+	bool bUseCrossPipelineFence = false;
 
 	/** The transition to store after submission. It is assigned back to null by the end batch. */
 	const FRHITransition* Transition = nullptr;
 
 	/** An array of asynchronous resource transitions to perform. */
-	TArray<FRHITransitionInfo, TInlineAllocator<4, SceneRenderingAllocator>> Transitions;
+	TArray<FRHITransitionInfo, TInlineAllocator<1, SceneRenderingAllocator>> Transitions;
 
 #if RDG_ENABLE_DEBUG
 	/** An array of RDG resources matching with the Transitions array. For debugging only. */
-	TArray<FRDGParentResource*, TInlineAllocator<4, SceneRenderingAllocator>> Resources;
+	TArray<FRDGParentResource*, SceneRenderingAllocator> Resources;
 #endif
-
-	TOptional<ERHIPipeline> OverridePipelineToEnd;
-	bool bUseCrossPipelineFence = false;
 
 	friend class FRDGBarrierBatchEnd;
 	friend class FRDGBarrierValidation;
@@ -192,11 +193,6 @@ public:
 		return bGraphicsJoin;
 	}
 
-	const FRDGPassHandleArray& GetConsumers() const
-	{
-		return Consumers;
-	}
-
 	const FRDGPassHandleArray& GetProducers() const
 	{
 		return Producers;
@@ -241,7 +237,12 @@ public:
 #endif
 
 private:
-	FRDGBarrierBatchBegin* GetEpilogueBarriersToBeginFor(ERHIPipeline PipelineForEnd)
+	FRDGBarrierBatchBegin& GetPrologueBarriersToBegin(FRDGAllocator& Allocator);
+	FRDGBarrierBatchEnd& GetPrologueBarriersToEnd(FRDGAllocator& Allocator);
+	FRDGBarrierBatchBegin& GetEpilogueBarriersToBeginForGraphics(FRDGAllocator& Allocator);
+	FRDGBarrierBatchBegin& GetEpilogueBarriersToBeginForAsyncCompute(FRDGAllocator& Allocator);
+
+	FRDGBarrierBatchBegin& GetEpilogueBarriersToBeginFor(FRDGAllocator& Allocator, ERHIPipeline PipelineForEnd)
 	{
 		switch (PipelineForEnd)
 		{
@@ -250,10 +251,10 @@ private:
 			// fall through
 
 		case ERHIPipeline::Graphics:
-			return &EpilogueBarriersToBeginForGraphics;
+			return GetEpilogueBarriersToBeginForGraphics(Allocator);
 
 		case ERHIPipeline::AsyncCompute:
-			return &EpilogueBarriersToBeginForAsyncCompute;
+			return GetEpilogueBarriersToBeginForAsyncCompute(Allocator);
 		}
 	}
 
@@ -273,24 +274,7 @@ private:
 	const FRDGParameterStruct ParameterStruct;
 	const ERDGPassFlags Flags;
 	const ERHIPipeline Pipeline;
-
 	FRDGPassHandle Handle;
-
-	/** Handle of the latest cross-pipeline producer and earliest cross-pipeline consumer. */
-	FRDGPassHandle CrossPipelineProducer;
-	FRDGPassHandle CrossPipelineConsumer;
-
-	/** (AsyncCompute only) Graphics passes which are the fork / join for async compute interval this pass is in. */
-	FRDGPassHandle GraphicsForkPass;
-	FRDGPassHandle GraphicsJoinPass;
-
-	/** The passes which are handling the epilogue / prologue barriers meant for this pass. */
-	FRDGPassHandle PrologueBarrierPass;
-	FRDGPassHandle EpilogueBarrierPass;
-
-	/** Lists of producer / consumer passes. */
-	FRDGPassHandleArray Producers;
-	FRDGPassHandleArray Consumers;
 
 	union
 	{
@@ -311,11 +295,11 @@ private:
 			uint32 bGraphicsFork : 1;
 			uint32 bGraphicsJoin : 1;
 
-			/** Whether subresource accesses are the same across textures. */
-			uint32 bSubresourceTrackingRequired : 1;
-
 			/** Whether the pass writes to a UAV. */
 			uint32 bUAVAccess : 1;
+
+			/** Whether the pass has untracked outputs. */
+			uint32 bUntrackedOutputs : 1;
 
 			/** Whether this pass allocated a texture through the pool. */
 			IF_RDG_ENABLE_DEBUG(uint32 bFirstTextureAllocated : 1);
@@ -323,34 +307,50 @@ private:
 		uint32 PackedBits = 0;
 	};
 
-	struct FAccessInfo
+	/** Handle of the latest cross-pipeline producer and earliest cross-pipeline consumer. */
+	FRDGPassHandle CrossPipelineProducer;
+	FRDGPassHandle CrossPipelineConsumer;
+
+	/** (AsyncCompute only) Graphics passes which are the fork / join for async compute interval this pass is in. */
+	FRDGPassHandle GraphicsForkPass;
+	FRDGPassHandle GraphicsJoinPass;
+
+	/** The passes which are handling the epilogue / prologue barriers meant for this pass. */
+	FRDGPassHandle PrologueBarrierPass;
+	FRDGPassHandle EpilogueBarrierPass;
+
+	/** Lists of producer passes. */
+	FRDGPassHandleArray Producers;
+
+	struct FTextureState
 	{
-		/** The combined set of access across all resource references. */
-		ERHIAccess AccessUnion = ERHIAccess::Unknown;
+		FTextureState()
+		{
+			InitAsWholeResource(State);
+		}
 
-		/** The number of resource references across the pass. */
+		FRDGTextureTransientSubresourceState State;
+		FRDGTextureTransientSubresourceStateIndirect MergeState;
 		uint16 ReferenceCount = 0;
+	};
 
-		/** The last no-barrier UAV assigned. */
-		FRDGViewUniqueFilter NoUAVBarrierFilter;
-
-		/** Whether the resource requires subresource tracking. */
-		bool bSubresourceTrackingRequired = false;
-
-		/** The combined set of transition flags required by all resource references. */
-		EResourceTransitionFlags FlagsUnion = EResourceTransitionFlags::None;
+	struct FBufferState
+	{
+		FRDGSubresourceState State;
+		FRDGSubresourceState* MergeState = nullptr;
+		uint16 ReferenceCount = 0;
 	};
 
 	/** Maps textures / buffers to information on how they are used in the pass. */
-	TSortedMap<FRDGTexture*, FAccessInfo, SceneRenderingAllocator> TextureAccessMap;
-	TSortedMap<FRDGBuffer*, FAccessInfo, SceneRenderingAllocator> BufferAccessMap;
+	TSortedMap<FRDGTexture*, FTextureState, SceneRenderingAllocator> TextureStates;
+	TSortedMap<FRDGBuffer*, FBufferState, SceneRenderingAllocator> BufferStates;
 
 	/** Lists of pass parameters scheduled for begin during execution of this pass. */
-	TArray<FRDGParameterStruct, TInlineAllocator<1, SceneRenderingAllocator>> ResourcesToBegin;
-	TArray<FRDGParameterStruct, TInlineAllocator<1, SceneRenderingAllocator>> ResourcesToEnd;
+	TArray<FRDGPass*, TInlineAllocator<1, SceneRenderingAllocator>> ResourcesToBegin;
+	TArray<FRDGPass*, TInlineAllocator<1, SceneRenderingAllocator>> ResourcesToEnd;
 
 	/** List of textures to acquire *after* the pass completes, *before* discards. Acquires apply to all allocated textures. */
-	TArray<FRHITexture*, TInlineAllocator<4, SceneRenderingAllocator>> TexturesToAcquire;
+	TArray<FRHITexture*, SceneRenderingAllocator> TexturesToAcquire;
 
 	/** List of textures to discard *after* the pass completes, *after* acquires. Discards only apply to textures marked as
 	 *  transient and the last alias of the texture uses the automatic discard behavior (in order to support cleaner hand-off
@@ -359,15 +359,18 @@ private:
 	TArray<FRHITexture*, SceneRenderingAllocator> TexturesToDiscard;
 
 	/** Barriers to begin / end prior to executing a pass. */
-	FRDGBarrierBatchBegin PrologueBarriersToBegin;
-	FRDGBarrierBatchEnd PrologueBarriersToEnd;
+	FRDGBarrierBatchBegin* PrologueBarriersToBegin = nullptr;
+	FRDGBarrierBatchEnd* PrologueBarriersToEnd = nullptr;
 
 	/** Barriers to begin after executing a pass. */
-	FRDGBarrierBatchBegin EpilogueBarriersToBeginForGraphics;
-	FRDGBarrierBatchBegin EpilogueBarriersToBeginForAsyncCompute;
+	FRDGBarrierBatchBegin* EpilogueBarriersToBeginForGraphics = nullptr;
+	FRDGBarrierBatchBegin* EpilogueBarriersToBeginForAsyncCompute = nullptr;
 
 	EAsyncComputeBudget AsyncComputeBudget = EAsyncComputeBudget::EAll_4;
+
+#if WITH_MGPU
 	FRHIGPUMask GPUMask;
+#endif
 
 	IF_RDG_CPU_SCOPES(FRDGCPUScopes CPUScopes);
 	IF_RDG_GPU_SCOPES(FRDGGPUScopes GPUScopes);

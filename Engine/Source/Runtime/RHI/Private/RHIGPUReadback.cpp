@@ -100,7 +100,23 @@ FRHIGPUTextureReadback::FRHIGPUTextureReadback(FName RequestName) : FRHIGPUMemor
 {
 }
 
+void FRHIGPUTextureReadback::EnqueueCopyRDG(FRHICommandList& RHICmdList, FRHITexture* SourceTexture, FResolveRect Rect)
+{
+	FResolveParams ResolveParams(Rect);
+	ResolveParams.SourceAccessFinal = ERHIAccess::Unknown;
+	ResolveParams.DestAccessFinal = ERHIAccess::Unknown;
+	EnqueueCopyInternal(RHICmdList, SourceTexture, ResolveParams);
+}
+
 void FRHIGPUTextureReadback::EnqueueCopy(FRHICommandList& RHICmdList, FRHITexture* SourceTexture, FResolveRect Rect)
+{
+	FResolveParams ResolveParams(Rect);
+	ResolveParams.SourceAccessFinal = ERHIAccess::CopySrc;
+	ResolveParams.DestAccessFinal = ERHIAccess::CopyDest;
+	EnqueueCopyInternal(RHICmdList, SourceTexture, ResolveParams);
+}
+
+void FRHIGPUTextureReadback::EnqueueCopyInternal(FRHICommandList& RHICmdList, FRHITexture* SourceTexture, FResolveParams ResolveParams)
 {
 	Fence->Clear();
 
@@ -121,9 +137,6 @@ void FRHIGPUTextureReadback::EnqueueCopy(FRHICommandList& RHICmdList, FRHITextur
 
 		// Transfer memory GPU -> CPU
 		RHICmdList.Transition(FRHITransitionInfo(DestinationStagingBuffer, ERHIAccess::Unknown, ERHIAccess::CopyDest));
-		FResolveParams ResolveParams(Rect);
-		ResolveParams.SourceAccessFinal = ERHIAccess::CopySrc;
-		ResolveParams.DestAccessFinal = ERHIAccess::CopyDest;
 		RHICmdList.CopyToResolveTarget(SourceTexture, DestinationStagingBuffer, ResolveParams);
 		RHICmdList.WriteGPUFence(Fence);
 		LastCopyGPUMask = RHICmdList.GetGPUMask();

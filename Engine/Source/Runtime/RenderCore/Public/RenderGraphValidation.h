@@ -81,17 +81,11 @@ public:
 	FRDGBarrierValidation(const FRDGPassRegistry* InPasses, const FRDGEventName& InGraphName);
 	FRDGBarrierValidation(const FRDGBarrierValidation&) = delete;
 
-	/** Validates a texture state. */
-	void ValidateState(FRDGPassHandle RequestingPass, FRDGTextureRef Texture, const FRDGTextureState& State);
-
-	/** Validates a buffer state. */
-	void ValidateState(FRDGPassHandle RequestingPass, FRDGBufferRef Buffer, FRDGSubresourceState State);
-
 	/** Validates a begin barrier batch just prior to submission to the command list. */
-	void ValidateBarrierBatchBegin(const FRDGBarrierBatchBegin& Batch);
+	void ValidateBarrierBatchBegin(const FRDGPass* Pass, const FRDGBarrierBatchBegin& Batch);
 
 	/** Validates an end barrier batch just prior to submission to the command list. */
-	void ValidateBarrierBatchEnd(const FRDGBarrierBatchEnd& Batch);
+	void ValidateBarrierBatchEnd(const FRDGPass* Pass, const FRDGBarrierBatchEnd& Batch);
 
 	/** Validates that all barrier batches were flushed at execution end. */
 	void ValidateExecuteEnd();
@@ -131,11 +125,11 @@ public:
 
 	void AddAliasEdge(const FRDGBufferRef BufferBefore, FRDGPassHandle BeforePass, const FRDGBufferRef BufferAfter, FRDGPassHandle PassAfter);
 
-	void AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture);
+	void AddTransitionEdge(FRDGPassHandle PassHandle, FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture);
 
-	void AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture, uint32 MipIndex, uint32 ArraySlice, uint32 PlaneSlice);
+	void AddTransitionEdge(FRDGPassHandle PassHandle, FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture, FRDGTextureSubresource Subresource);
 
-	void AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGBufferRef Buffer);
+	void AddTransitionEdge(FRDGPassHandle PassHandle, FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGBufferRef Buffer);
 
 	void End();
 

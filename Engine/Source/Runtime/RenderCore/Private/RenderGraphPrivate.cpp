@@ -45,8 +45,9 @@ FAutoConsoleVariableRef CVarDumpGraph(
 	GRDGDumpGraph,
 	TEXT("Dumps several visualization logs to disk.\n")
 	TEXT(" 0: disabled;\n")
-	TEXT(" 1: dump the graph nodes and their dependencies;\n")
-	TEXT(" 2: dump the graph and resource nodes and their dependencies;\n"),
+	TEXT(" 1: visualizes producer / consumer pass dependencies;\n")
+	TEXT(" 2: visualizes resource states and transitions;\n")
+	TEXT(" 3: visualizes graphics / async compute overlap;\n"),
 	FConsoleVariableDelegate::CreateLambda([](IConsoleVariable*)
 	{
 		if (GRDGDumpGraph)
@@ -283,6 +284,30 @@ FAutoConsoleVariableRef CVarRDGVerboseCSVStats(
 	TEXT(" 0: emits one CSV profile for graph execution;\n")
 	TEXT(" 1: emits a CSV profile for each phase of graph execution."),
 	ECVF_RenderThreadSafe);
+#endif
+
+#if STATS
+int32 GRDGStatPassCount = 0;
+int32 GRDGStatPassCullCount = 0;
+int32 GRDGStatPassDependencyCount = 0;
+int32 GRDGStatRenderPassMergeCount = 0;
+int32 GRDGStatTextureCount = 0;
+int32 GRDGStatBufferCount = 0;
+int32 GRDGStatTransitionCount = 0;
+int32 GRDGStatMemoryWatermark = 0;
+
+DEFINE_STAT(STAT_RDG_PassCount);
+DEFINE_STAT(STAT_RDG_PassCullCount);
+DEFINE_STAT(STAT_RDG_RenderPassMergeCount);
+DEFINE_STAT(STAT_RDG_PassDependencyCount);
+DEFINE_STAT(STAT_RDG_TextureCount);
+DEFINE_STAT(STAT_RDG_BufferCount);
+DEFINE_STAT(STAT_RDG_TransitionCount);
+DEFINE_STAT(STAT_RDG_CompileTime);
+DEFINE_STAT(STAT_RDG_CollectResourcesTime);
+DEFINE_STAT(STAT_RDG_CollectBarriersTime);
+DEFINE_STAT(STAT_RDG_ClearTime);
+DEFINE_STAT(STAT_RDG_MemoryWatermark);
 #endif
 
 void InitRenderGraph()
