@@ -824,19 +824,11 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 		// When rendering in stereo we want to use the same exposure for both eyes.
 		if (IStereoRendering::IsASecondaryView(*this))
 		{
-			int32 ViewIndex = Family->Views.Find(this);
-			if (Family->Views.IsValidIndex(ViewIndex))
+			check(Family->Views.Num() >= 1);
+			const FSceneView* PrimaryView = Family->Views[0];
+			if (IStereoRendering::IsAPrimaryView(*PrimaryView))
 			{
-				// The left eye is always added before other eye views.
-				ViewIndex = 0;
-				if (Family->Views.IsValidIndex(ViewIndex))
-				{
-					const FSceneView* PrimaryView = Family->Views[ViewIndex];
-					if (IStereoRendering::IsAPrimaryView(*PrimaryView))
-					{
-						EyeAdaptationViewState = PrimaryView->State;
-					}
-				}
+				EyeAdaptationViewState = PrimaryView->State;
 			}
 		}
 	}
