@@ -576,7 +576,7 @@ void AddEnqueueCopyPass(FRDGBuilder& GraphBuilder, FRHIGPUTextureReadback* Readb
 		ERDGPassFlags::Readback,
 		[Readback, SourceTexture, Rect](FRHICommandList& RHICmdList)
 	{
-		Readback->EnqueueCopy(RHICmdList, SourceTexture->GetRHI(), Rect);
+		Readback->EnqueueCopyRDG(RHICmdList, SourceTexture->GetRHI(), Rect);
 	});
 }
 

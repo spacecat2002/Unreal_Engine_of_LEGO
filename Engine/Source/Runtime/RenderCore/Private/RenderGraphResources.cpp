@@ -36,7 +36,6 @@ FRDGParentResource::FRDGParentResource(const TCHAR* InName, const ERDGParentReso
 	// Culling logic runs only when immediate mode is off.
 	, bCulled(1)
 	, bUsedByAsyncComputePass(0)
-	, ReferenceCount(0)
 {}
 
 bool FRDGSubresourceState::IsTransitionRequired(const FRDGSubresourceState& Previous, const FRDGSubresourceState& Next)
@@ -67,6 +66,41 @@ bool FRDGSubresourceState::IsTransitionRequired(const FRDGSubresourceState& Prev
 	{
 		return false;
 	}
+}
+
+bool FRDGSubresourceState::IsMergeAllowed(const FRDGSubresourceState& Previous, const FRDGSubresourceState& Next)
+{
+	// Only one write state is allowed at a time -- except for UAV_Graphics | UAV_Compute.
+	if ((Previous.Access & ERHIAccess::WritableMask) != (Next.Access & ERHIAccess::WritableMask))
+	{
+		return false;
+	}
+
+	// Not allowed to merge read-only and writable states.
+	if (EnumHasAnyFlags(Previous.Access, ERHIAccess::ReadOnlyExclusiveMask) && EnumHasAnyFlags(Next.Access, ERHIAccess::WritableMask))
+	{
+		return false;
+	}
+
+	// Not allowed to merge write-only and readable states.
+	if (EnumHasAnyFlags(Previous.Access, ERHIAccess::WriteOnlyExclusiveMask) && EnumHasAnyFlags(Next.Access, ERHIAccess::ReadableMask))
+	{
+		return false;
+	}
+
+	// For merging purposes we are conservative and assume a UAV barrier.
+	if (EnumHasAnyFlags(Previous.Access | Next.Access, ERHIAccess::UAVMask))
+	{
+		return false;
+	}
+
+	// We are not allowed to cross pipelines or change flags in a merge.
+	if (Previous.Pipeline != Next.Pipeline || Previous.Flags != Next.Flags || Previous.NoUAVBarrierFilter.GetUniqueHandle() != Next.NoUAVBarrierFilter.GetUniqueHandle())
+	{
+		return false;
+	}
+
+	return true;
 }
 
 bool FRDGTextureDesc::IsValid() const
@@ -127,34 +161,6 @@ void FRDGPooledTexture::InitViews(const FUnorderedAccessViewRHIRef& FirstMipUAV)
 	}
 }
 
-void FRDGTextureState::MergeFrom(const FRDGTextureState& Other)
-{
-	check(Layout == Other.Layout);
-
-	if (Other.IsWholeResourceState())
-	{
-		if (Other.WholeResourceState.Access != ERHIAccess::Unknown)
-		{
-			FRDGSubresourceState State;
-			State.MergeFrom(Other.WholeResourceState);
-			InitAsWholeResource(State);
-		}
-	}
-	else
-	{
-		if (IsWholeResourceState())
-		{
-			InitAsSubresources(WholeResourceState);
-		}
-
-		// Only merge subresource states that are known.
-		for (int32 Index = 0; Index < SubresourceStates.Num(); ++Index)
-		{
-			SubresourceStates[Index].MergeFrom(Other.SubresourceStates[Index]);
-		}
-	}
-}
-
 FRDGTextureSubresourceRange FRDGTexture::GetSubresourceRangeSRV() const
 {
 	FRDGTextureSubresourceRange Range = GetSubresourceRange();
@@ -177,6 +183,8 @@ void FRDGTexture::SetRHI(FPooledRenderTarget* InPooledRenderTarget, FRDGTextureR
 	}
 	PooledTexture = InPooledRenderTarget->GetRDG(RenderTargetTexture);
 	check(PooledTexture);
+
+	State = &PooledTexture->State;
 
 	// Return the previous owner and assign this texture as the new one.
 	OutPreviousOwner = PooledTexture->Owner;
@@ -237,6 +245,7 @@ void FRDGBuffer::SetRHI(FRDGPooledBuffer* InPooledBuffer, FRDGBufferRef& OutPrev
 
 	PooledBuffer = InPooledBuffer;
 	Allocation = InPooledBuffer;
+	State = &PooledBuffer->State;
 	switch (Desc.UnderlyingType)
 	{
 	case FRDGBufferDesc::EUnderlyingType::VertexBuffer:

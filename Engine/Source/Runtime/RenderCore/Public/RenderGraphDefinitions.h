@@ -238,6 +238,13 @@ public:
 		return TrackedAlloc->Get();
 	}
 
+	/** Allocates a C++ object with no destructor tracking (dangerous!). */
+	template <typename ObjectType, typename... TArgs>
+	FORCEINLINE ObjectType* AllocNoDestruct(TArgs&&... Args)
+	{
+		return new (MemStack) ObjectType(Forward<TArgs&&>(Args)...);
+	}
+
 	/** Releases all allocations. */
 	void ReleaseAll()
 	{
@@ -247,6 +254,11 @@ public:
 		}
 		TrackedAllocs.Empty();
 		MemStack.Flush();
+	}
+
+	FORCEINLINE int32 GetByteCount() const
+	{
+		return MemStack.GetByteCount();
 	}
 
 private:
@@ -398,14 +410,14 @@ public:
 	}
 
 private:
-	TArray<ObjectType*, TInlineAllocator<8, SceneRenderingAllocator>> Array;
+	TArray<ObjectType*, SceneRenderingAllocator> Array;
 };
 
 /** Specialization of bit array with compile-time type checking for handles and a pre-configured allocator. */
 template <typename HandleType>
-class TRDGHandleBitArray : public TBitArray<TInlineAllocator<4, SceneRenderingAllocator>>
+class TRDGHandleBitArray : public TBitArray<SceneRenderingBitArrayAllocator>
 {
-	using Base = TBitArray<TInlineAllocator<4, SceneRenderingAllocator>>;
+	using Base = TBitArray<SceneRenderingBitArrayAllocator>;
 public:
 	TRDGHandleBitArray() = default;
 
@@ -516,7 +528,7 @@ class FRDGPass;
 using FRDGPassRef = const FRDGPass*;
 using FRDGPassHandle = TRDGHandle<FRDGPass, uint16>;
 using FRDGPassRegistry = TRDGHandleRegistry<FRDGPassHandle>;
-using FRDGPassHandleArray = TArray<FRDGPassHandle, TInlineAllocator<8, SceneRenderingAllocator>>;
+using FRDGPassHandleArray = TArray<FRDGPassHandle, TInlineAllocator<4, SceneRenderingAllocator>>;
 using FRDGPassBitArray = TRDGHandleBitArray<FRDGPassHandle>;
 
 class FRDGUniformBuffer;
@@ -545,3 +557,6 @@ using FRDGBufferBitArray = TRDGHandleBitArray<FRDGBufferHandle>;
 
 template <typename TUniformStruct> class TRDGUniformBuffer;
 template <typename TUniformStruct> using TRDGUniformBufferRef = TRDGUniformBuffer<TUniformStruct>*;
+
+template <typename InElementType, typename InAllocatorType = FDefaultAllocator>
+using TRDGTextureSubresourceArray = TArray<InElementType, TInlineAllocator<1, InAllocatorType>>;

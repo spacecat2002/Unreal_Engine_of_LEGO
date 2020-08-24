@@ -44,7 +44,7 @@ void EnumerateSubresources(const FRHITransitionInfo& Transition, uint32 NumMips,
 		{
 			for (uint32 MipIndex = MinMipIndex; MipIndex < MaxMipIndex; ++MipIndex)
 			{
-				Function(MipIndex, ArraySlice, PlaneSlice);
+				Function(FRDGTextureSubresource(MipIndex, ArraySlice, PlaneSlice));
 			}
 		}
 	}
@@ -687,67 +687,7 @@ FRDGBarrierValidation::FRDGBarrierValidation(const FRDGPassRegistry* InPasses, c
 	check(Passes);
 }
 
-void FRDGBarrierValidation::ValidateState(FRDGPassHandle RequestingPassHandle, FRDGTextureRef Texture, const FRDGTextureState& State)
-{
-	check(Texture);
-
-	const auto ValidateSubresourceState = [&] (FRDGSubresourceState SubresourceState, uint32 MipIndex, uint32 ArraySlice, uint32 PlaneSlice)
-	{
-		if (SubresourceState.Access != ERHIAccess::Unknown)
-		{
-			checkf(SubresourceState.PassHandle.IsValid(), TEXT("A known access was specified with no pass."));
-		}
-
-		if (!IsValidAccess(SubresourceState.Access))
-		{
-			const FRDGPass* Pass = Passes->Get(SubresourceState.PassHandle);
-
-			UE_LOG(LogRDG, Error,
-				TEXT("RDG Texture '%s' in Pass '%s' with subresource Mip(%u), Array(%u), Plane(%u) using Access (%s). Simultaneous read and write access and is not allowed. Visual corruption may occur."),
-				Texture->Name, Pass->GetName(), MipIndex, ArraySlice, PlaneSlice, *GetRHIAccessName(SubresourceState.Access));
-		}
-	};
-
-	if (State.IsWholeResourceState())
-	{
-		ValidateSubresourceState(State.GetWholeResourceState(), 0, 0, 0);
-	}
-	else
-	{
-		const FRDGTextureSubresourceRange WholeRange = Texture->GetSubresourceRange();
-
-		WholeRange.EnumerateSubresources([&](uint32 MipIndex, uint32 ArraySlice, uint32 PlaneSlice)
-		{
-			const FRDGSubresourceState SubresourceState = State.GetSubresourceState(MipIndex, ArraySlice, PlaneSlice);
-			ValidateSubresourceState(SubresourceState, MipIndex, ArraySlice, PlaneSlice);
-		});
-	}
-
-	Texture->TextureDebugData.States.Emplace(RequestingPassHandle, State);
-}
-
-void FRDGBarrierValidation::ValidateState(FRDGPassHandle RequestingPassHandle, FRDGBufferRef Buffer, FRDGSubresourceState State)
-{
-	check(Buffer);
-
-	if (State.Access != ERHIAccess::Unknown)
-	{
-		checkf(State.PassHandle.IsValid(), TEXT("A known access was specified with no pass."));
-	}
-
-	if (!IsValidAccess(State.Access))
-	{
-		const FRDGPass* Pass = Passes->Get(State.PassHandle);
-
-		UE_LOG(LogRDG, Error,
-			TEXT("RDG Buffer '%s' in Pass '%s' using Access (%s). Simultaneous read and write access and is not allowed. Visual corruption may occur."),
-			Buffer->Name, Pass->GetName(), *GetRHIAccessName(State.Access));
-	}
-
-	Buffer->BufferDebugData.States.Emplace(RequestingPassHandle, State);
-}
-
-void FRDGBarrierValidation::ValidateBarrierBatchBegin(const FRDGBarrierBatchBegin& Batch)
+void FRDGBarrierValidation::ValidateBarrierBatchBegin(const FRDGPass* Pass, const FRDGBarrierBatchBegin& Batch)
 {
 	checkf(!Batch.IsTransitionValid() && !BatchMap.Contains(&Batch), TEXT("Begin barrier batch '%s' has already been submitted."), *Batch.GetName());
 
@@ -776,7 +716,7 @@ void FRDGBarrierValidation::ValidateBarrierBatchBegin(const FRDGBarrierBatchBegi
 		}
 	}
 
-	const bool bAllowedForPass = IsDebugAllowedForGraph(GraphName) && IsDebugAllowedForPass(Batch.Pass->GetName());
+	const bool bAllowedForPass = IsDebugAllowedForGraph(GraphName) && IsDebugAllowedForPass(Pass->GetName());
 
 	// Debug mode will report errors regardless of logging filter.
 	if (!bAllowedForPass && !GRDGDebug)
@@ -810,30 +750,19 @@ void FRDGBarrierValidation::ValidateBarrierBatchBegin(const FRDGBarrierBatchBegi
 
 		const FRDGTextureSubresourceLayout SubresourceLayout = Texture->GetSubresourceLayout();
 
-		TBitArray<SceneRenderingBitArrayAllocator> SubresourceBits;
-		SubresourceBits.Init(false, SubresourceLayout.GetSubresourceCount());
-
 		for (const FRHITransitionInfo& Transition : Transitions)
 		{
 			check(SubresourceLayout.GetSubresourceCount() > 0);
 
 			EnumerateSubresources(Transition, SubresourceLayout.NumMips, SubresourceLayout.NumArraySlices, SubresourceLayout.NumPlaneSlices,
-				[&](uint32 MipIndex, uint32 ArraySlice, uint32 PlaneSlice)
+				[&](FRDGTextureSubresource Subresource)
 			{
-				const int32 SubresourceIndex = SubresourceLayout.GetSubresourceIndex(MipIndex, ArraySlice, PlaneSlice);
+				const int32 SubresourceIndex = SubresourceLayout.GetSubresourceIndex(Subresource);
 
 				UE_CLOG(bAllowedForResource, LogRDG, Display, TEXT("\t\tMip(%d), Array(%d), Slice(%d): %s -> %s"),
-					MipIndex, ArraySlice, PlaneSlice,
+					Subresource.MipIndex, Subresource.ArraySlice, Subresource.PlaneSlice,
 					*GetRHIAccessName(Transition.AccessBefore),
 					*GetRHIAccessName(Transition.AccessAfter));
-
-				if (SubresourceBits[SubresourceIndex])
-				{
-					UE_LOG(LogRDG, Error, TEXT("\t\t\tDetected duplicate subresource transitions! Pass '%s', Resource '%s', Mip(%d), Array(%d), Plane(%d)"),
-						Batch.Pass->GetName(), Texture->Name, MipIndex, ArraySlice, PlaneSlice);
-				}
-
-				SubresourceBits[SubresourceIndex] = true;
 			});
 		}
 	}
@@ -861,9 +790,9 @@ void FRDGBarrierValidation::ValidateBarrierBatchBegin(const FRDGBarrierBatchBegi
 	}
 }
 
-void FRDGBarrierValidation::ValidateBarrierBatchEnd(const FRDGBarrierBatchEnd& Batch)
+void FRDGBarrierValidation::ValidateBarrierBatchEnd(const FRDGPass* Pass, const FRDGBarrierBatchEnd& Batch)
 {
-	if (!GRDGTransitionLog || !IsDebugAllowedForGraph(GraphName) || !IsDebugAllowedForPass(Batch.Pass->GetName()))
+	if (!GRDGTransitionLog || !IsDebugAllowedForGraph(GraphName) || !IsDebugAllowedForPass(Pass->GetName()))
 	{
 		return;
 	}
@@ -1133,7 +1062,7 @@ void FRDGLogFile::End()
 			PrevPassInPipelineHandle = PassHandle;
 		}
 	}
-	else if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_LOW)
+	else if (GRDGDumpGraph == RDG_DUMP_GRAPH_PRODUCERS)
 	{
 		for (FRDGPassHandle PassHandle = Passes->Begin(); PassHandle != Passes->End(); ++PassHandle)
 		{
@@ -1262,11 +1191,11 @@ void FRDGLogFile::End()
 
 	switch (GRDGDumpGraph)
 	{
-	case RDG_DUMP_GRAPH_VERBOSITY_HIGH:
-		DumpType = TEXT("");
+	case RDG_DUMP_GRAPH_RESOURCES:
+		DumpType = TEXT("_resources");
 		break;
-	case RDG_DUMP_GRAPH_VERBOSITY_LOW:
-		DumpType = TEXT("_simple");
+	case RDG_DUMP_GRAPH_PRODUCERS:
+		DumpType = TEXT("_producers");
 		break;
 	case RDG_DUMP_GRAPH_TRACKS:
 		DumpType = TEXT("_tracks");
@@ -1285,12 +1214,12 @@ bool FRDGLogFile::IncludeTransitionEdgeInGraph(FRDGPassHandle Pass) const
 
 bool FRDGLogFile::IncludeTransitionEdgeInGraph(FRDGPassHandle PassBefore, FRDGPassHandle PassAfter) const
 {
-	return IncludeTransitionEdgeInGraph(PassBefore) && IncludeTransitionEdgeInGraph(PassAfter);
+	return IncludeTransitionEdgeInGraph(PassBefore) && IncludeTransitionEdgeInGraph(PassAfter) && PassBefore < PassAfter;
 }
 
 void FRDGLogFile::AddFirstEdge(const FRDGTextureRef Texture, FRDGPassHandle FirstPass)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(FirstPass))
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_RESOURCES && bOpen && IncludeTransitionEdgeInGraph(FirstPass))
 	{
 		AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s]"),
 			*GetNodeName(Texture),
@@ -1301,7 +1230,7 @@ void FRDGLogFile::AddFirstEdge(const FRDGTextureRef Texture, FRDGPassHandle Firs
 
 void FRDGLogFile::AddFirstEdge(const FRDGBufferRef Buffer, FRDGPassHandle FirstPass)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(FirstPass))
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_RESOURCES && bOpen && IncludeTransitionEdgeInGraph(FirstPass))
 	{
 		AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s]"),
 			*GetNodeName(Buffer),
@@ -1313,7 +1242,7 @@ void FRDGLogFile::AddFirstEdge(const FRDGBufferRef Buffer, FRDGPassHandle FirstP
 
 void FRDGLogFile::AddAliasEdge(const FRDGTextureRef TextureBefore, FRDGPassHandle BeforePass, const FRDGTextureRef TextureAfter, FRDGPassHandle AfterPass)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(BeforePass, AfterPass))
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_RESOURCES && bOpen && IncludeTransitionEdgeInGraph(BeforePass, AfterPass))
 	{
 		AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<Alias: <b>%s -&gt; %s</b>>]"),
 			*GetProducerName(BeforePass),
@@ -1326,7 +1255,7 @@ void FRDGLogFile::AddAliasEdge(const FRDGTextureRef TextureBefore, FRDGPassHandl
 
 void FRDGLogFile::AddAliasEdge(const FRDGBufferRef BufferBefore, FRDGPassHandle BeforePass, const FRDGBufferRef BufferAfter, FRDGPassHandle AfterPass)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(BeforePass, AfterPass))
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_RESOURCES && bOpen && IncludeTransitionEdgeInGraph(BeforePass, AfterPass))
 	{
 		AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<Alias: <b>%s -&gt; %s</b>>]"),
 			*GetProducerName(BeforePass),
@@ -1337,15 +1266,15 @@ void FRDGLogFile::AddAliasEdge(const FRDGBufferRef BufferBefore, FRDGPassHandle 
 	}
 }
 
-void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture)
+void FRDGLogFile::AddTransitionEdge(FRDGPassHandle PassHandle, FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(StateBefore.PassHandle, StateAfter.PassHandle))
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_RESOURCES && bOpen && IncludeTransitionEdgeInGraph(StateBefore.FirstPass, PassHandle))
 	{
 		if (FRDGSubresourceState::IsTransitionRequired(StateBefore, StateAfter))
 		{
 			AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<%s: <b>%s -&gt; %s</b>>]"),
-				*GetProducerName(StateBefore.PassHandle),
-				*GetConsumerName(StateAfter.PassHandle),
+				*GetProducerName(StateBefore.LastPass),
+				*GetConsumerName(StateAfter.FirstPass),
 				TextureColorAttributes,
 				Texture->Name,
 				*GetSubresourceStateLabel(StateBefore),
@@ -1354,8 +1283,8 @@ void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubres
 		else
 		{
 			AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<%s: <b>%s</b>>]"),
-				*GetProducerName(StateBefore.PassHandle),
-				*GetConsumerName(StateAfter.PassHandle),
+				*GetProducerName(StateBefore.FirstPass),
+				*GetConsumerName(PassHandle),
 				TextureColorAttributes,
 				Texture->Name,
 				*GetSubresourceStateLabel(StateBefore)));
@@ -1363,43 +1292,43 @@ void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubres
 	}
 }
 
-void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture, uint32 MipIndex, uint32 ArraySlice, uint32 PlaneSlice)
+void FRDGLogFile::AddTransitionEdge(FRDGPassHandle PassHandle, FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture, FRDGTextureSubresource Subresource)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(StateBefore.PassHandle, StateAfter.PassHandle))
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_RESOURCES && bOpen && IncludeTransitionEdgeInGraph(StateBefore.FirstPass, PassHandle))
 	{
 		if (FRDGSubresourceState::IsTransitionRequired(StateBefore, StateAfter))
 		{
 			AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<%s[%d][%d][%d]: <b>%s -&gt; %s</b>>]"),
-				*GetProducerName(StateBefore.PassHandle),
-				*GetConsumerName(StateAfter.PassHandle),
+				*GetProducerName(StateBefore.LastPass),
+				*GetConsumerName(StateAfter.FirstPass),
 				TextureColorAttributes,
 				Texture->Name,
-				MipIndex, ArraySlice, PlaneSlice,
+				Subresource.MipIndex, Subresource.ArraySlice, Subresource.PlaneSlice,
 				*GetSubresourceStateLabel(StateBefore),
 				*GetSubresourceStateLabel(StateAfter)));
 		}
 		else
 		{
 			AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<%s[%d][%d][%d]: <b>%s</b>>]"),
-				*GetProducerName(StateBefore.PassHandle),
-				*GetConsumerName(StateAfter.PassHandle),
+				*GetProducerName(StateBefore.FirstPass),
+				*GetConsumerName(PassHandle),
 				TextureColorAttributes,
 				Texture->Name,
-				MipIndex, ArraySlice, PlaneSlice,
+				Subresource.MipIndex, Subresource.ArraySlice, Subresource.PlaneSlice,
 				*GetSubresourceStateLabel(StateBefore)));
 		}
 	}
 }
 
-void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGBufferRef Buffer)
+void FRDGLogFile::AddTransitionEdge(FRDGPassHandle PassHandle, FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGBufferRef Buffer)
 {
-	if (GRDGDumpGraph == RDG_DUMP_GRAPH_VERBOSITY_HIGH && bOpen && IncludeTransitionEdgeInGraph(StateBefore.PassHandle, StateAfter.PassHandle))
+	if (GRDGDumpGraph == RDG_DUMP_GRAPH_RESOURCES && bOpen && IncludeTransitionEdgeInGraph(StateBefore.FirstPass, PassHandle))
 	{
 		if (FRDGSubresourceState::IsTransitionRequired(StateBefore, StateAfter))
 		{
 			AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<%s: <b>%s -&gt; %s</b>>]"),
-				*GetProducerName(StateBefore.PassHandle),
-				*GetConsumerName(StateAfter.PassHandle),
+				*GetProducerName(StateBefore.LastPass),
+				*GetConsumerName(StateAfter.FirstPass),
 				BufferColorAttributes,
 				Buffer->Name,
 				*GetSubresourceStateLabel(StateBefore),
@@ -1408,8 +1337,8 @@ void FRDGLogFile::AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubres
 		else
 		{
 			AddLine(FString::Printf(TEXT("\"%s\" -> \"%s\" [%s, label=<%s: <b>%s</b>>]"),
-				*GetProducerName(StateBefore.PassHandle),
-				*GetConsumerName(StateAfter.PassHandle),
+				*GetProducerName(StateBefore.FirstPass),
+				*GetConsumerName(PassHandle),
 				BufferColorAttributes,
 				Buffer->Name,
 				*GetSubresourceStateLabel(StateBefore)));

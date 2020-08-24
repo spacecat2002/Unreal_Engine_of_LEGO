@@ -2,16 +2,6 @@
 
 #pragma once
 
-inline bool FRDGSubresourceState::MergeFrom(const FRDGSubresourceState& Other)
-{
-	if (Other.Access != ERHIAccess::Unknown)
-	{
-		*this = Other;
-		return true;
-	}
-	return false;
-}
-
 inline void FRDGSubresourceState::Finalize()
 {
 	ensureMsgf(Pipeline == ERHIPipeline::Graphics, TEXT("Resource should be on the graphics pipeline!"));
@@ -19,63 +9,6 @@ inline void FRDGSubresourceState::Finalize()
 	const ERHIAccess LocalAccess = Access;
 	*this = {};
 	Access = LocalAccess;
-}
-
-template <typename TFunction>
-inline void FRDGTextureSubresourceRange::EnumerateSubresources(TFunction Function) const
-{
-	const uint32 LastMip = MipIndex + NumMips;
-	const uint32 LastArraySlice = ArraySlice + NumArraySlices;
-	const uint32 LastPlaneSlice = PlaneSlice + NumPlaneSlices;
-
-	for (uint32 LocalPlaneSlice = PlaneSlice; LocalPlaneSlice < LastPlaneSlice; ++LocalPlaneSlice)
-	{
-		for (uint32 LocalArraySlice = ArraySlice; LocalArraySlice < LastArraySlice; ++LocalArraySlice)
-		{
-			for (uint32 LocalMipIndex = MipIndex; LocalMipIndex < LastMip; ++LocalMipIndex)
-			{
-				Function(LocalMipIndex, LocalArraySlice, LocalPlaneSlice);
-			}
-		}
-	}
-}
-
-inline FRDGTextureState::FRDGTextureState(const FRDGTextureDesc& Desc)
-	: Layout(Desc)
-{
-	checkf(Layout.GetSubresourceCount(), TEXT("Texture has zero subresources. Check that mips / array slices are not zero."));
-}
-
-inline void FRDGTextureState::InitAsWholeResource(FRDGSubresourceState InState)
-{
-	check(Layout.GetSubresourceCount());
-
-	WholeResourceState = InState;
-
-	// Reset the subresource states. This keeps the array memory allocation in case the resource
-	// is accessed on a subresource level again for the lifetime of this render graph instance.
-	SubresourceStates.Reset();
-}
-
-inline void FRDGTextureState::InitAsSubresources(FRDGSubresourceState InState)
-{
-	check(Layout.GetSubresourceCount());
-
-	WholeResourceState = {};
-	SubresourceStates.SetNum(Layout.GetSubresourceCount());
-
-	for (FRDGSubresourceState& State : SubresourceStates)
-	{
-		State = InState;
-	}
-}
-
-inline void FRDGTextureState::Finalize()
-{
-	EnumerateSubresources([&](FRDGSubresourceState& SubresourceState)
-	{
-		SubresourceState.Finalize();
-	});
 }
 
 inline FPooledRenderTargetDesc Translate(const FRDGTextureDesc& InDesc)

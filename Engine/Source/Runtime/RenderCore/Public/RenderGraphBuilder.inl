@@ -195,6 +195,13 @@ FORCEINLINE ParameterStructType* FRDGBuilder::AllocParameters()
 	return Allocator.AllocObject<ParameterStructType>();
 }
 
+FORCEINLINE FRDGSubresourceState* FRDGBuilder::AllocSubresource(const FRDGSubresourceState& Other)
+{
+	FRDGSubresourceState* State = Allocator.AllocPOD<FRDGSubresourceState>();
+	*State = Other;
+	return State;
+}
+
 template <typename ParameterStructType>
 TRDGUniformBufferRef<ParameterStructType> FRDGBuilder::CreateUniformBuffer(ParameterStructType* ParameterStruct)
 {
