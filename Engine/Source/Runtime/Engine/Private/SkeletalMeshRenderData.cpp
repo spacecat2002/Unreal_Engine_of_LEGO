@@ -513,10 +513,10 @@ void FSkeletalMeshRenderData::ReleaseResources()
 	}
 }
 
-uint32 FSkeletalMeshRenderData::GetNumBoneInfluences() const
+uint32 FSkeletalMeshRenderData::GetNumBoneInfluences(int32 MinLODIndex) const
 {
 	uint32 NumBoneInfluences = 0;
-	for (int32 LODIndex = 0; LODIndex < LODRenderData.Num(); ++LODIndex)
+	for (int32 LODIndex = MinLODIndex; LODIndex < LODRenderData.Num(); ++LODIndex)
 	{
 		const FSkeletalMeshLODRenderData& Data = LODRenderData[LODIndex];
 		NumBoneInfluences = FMath::Max(NumBoneInfluences, Data.GetVertexBufferMaxBoneInfluences());
@@ -525,12 +525,22 @@ uint32 FSkeletalMeshRenderData::GetNumBoneInfluences() const
 	return NumBoneInfluences;
 }
 
-bool FSkeletalMeshRenderData::RequiresCPUSkinning(ERHIFeatureLevel::Type FeatureLevel) const
+uint32 FSkeletalMeshRenderData::GetNumBoneInfluences() const
+{
+	return GetNumBoneInfluences(0);
+}
+
+bool FSkeletalMeshRenderData::RequiresCPUSkinning(ERHIFeatureLevel::Type FeatureLevel, int32 MinLODIndex) const
 {
 	const int32 MaxGPUSkinBones = FMath::Min(GetFeatureLevelMaxNumberOfBones(FeatureLevel), FGPUBaseSkinVertexFactory::GetMaxGPUSkinBones());
-	const int32 MaxBonesPerChunk = GetMaxBonesPerSection();
+	const int32 MaxBonesPerChunk = GetMaxBonesPerSection(MinLODIndex);
 	// Do CPU skinning if we need too many bones per chunk, or if we have too many influences per vertex on lower end
-	return (MaxBonesPerChunk > MaxGPUSkinBones) || (GetNumBoneInfluences() > MAX_INFLUENCES_PER_STREAM && FeatureLevel < ERHIFeatureLevel::ES3_1);
+	return (MaxBonesPerChunk > MaxGPUSkinBones) || (GetNumBoneInfluences(MinLODIndex) > MAX_INFLUENCES_PER_STREAM && FeatureLevel < ERHIFeatureLevel::ES3_1);
+}
+
+bool FSkeletalMeshRenderData::RequiresCPUSkinning(ERHIFeatureLevel::Type FeatureLevel) const
+{
+	return RequiresCPUSkinning(FeatureLevel, 0);
 }
 
 void FSkeletalMeshRenderData::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
@@ -542,10 +552,10 @@ void FSkeletalMeshRenderData::GetResourceSizeEx(FResourceSizeEx& CumulativeResou
 	}
 }
 
-int32 FSkeletalMeshRenderData::GetMaxBonesPerSection() const
+int32 FSkeletalMeshRenderData::GetMaxBonesPerSection(int32 MinLODIdx) const
 {
 	int32 MaxBonesPerSection = 0;
-	for (int32 LODIndex = 0; LODIndex < LODRenderData.Num(); ++LODIndex)
+	for (int32 LODIndex = MinLODIdx; LODIndex < LODRenderData.Num(); ++LODIndex)
 	{
 		const FSkeletalMeshLODRenderData& RenderData = LODRenderData[LODIndex];
 		for (int32 SectionIndex = 0; SectionIndex < RenderData.RenderSections.Num(); ++SectionIndex)
@@ -554,6 +564,11 @@ int32 FSkeletalMeshRenderData::GetMaxBonesPerSection() const
 		}
 	}
 	return MaxBonesPerSection;
+}
+
+int32 FSkeletalMeshRenderData::GetMaxBonesPerSection() const
+{
+	return GetMaxBonesPerSection(0);
 }
 
 int32 FSkeletalMeshRenderData::GetFirstValidLODIdx(int32 MinIdx) const
