@@ -371,9 +371,9 @@ public:
 private:
 	ELLMTracker			Tracker;
 	FLLMAllocator*		Allocator;
-	FLLMArray<int64>	StatTags;
+	FLLMArray<int64>	StatTags; // uses 0 as invalid tag id; != 0 for valid tag ids
 	FLLMArray<int64>	StatValues;
-	FLLMArray<int64>	StatTagsSnapshot;
+	FLLMArray<int64>	StatTagsSnapshot; // copy of StatTags
 	FLLMArray<int64>	StatValuesSnapshot;
 	FCriticalSection	StatValuesLock;
 	int32				LastTracedTagCount;
@@ -646,6 +646,8 @@ FLowLevelMemTracker::~FLowLevelMemTracker()
 
 void FLowLevelMemTracker::InitialiseTrackers()
 {
+	UE_LOG(LogInit, Log, TEXT("Initialize LLM trackers..."));
+
 	for (int32 TrackerIndex = 0; TrackerIndex < (int32)ELLMTracker::Max; ++TrackerIndex)
 	{
 		FLLMTracker* Tracker = (FLLMTracker*)Allocator.Alloc(sizeof(FLLMTracker));
@@ -663,7 +665,9 @@ void FLowLevelMemTracker::InitialiseTrackers()
 void FLowLevelMemTracker::UpdateStatsPerFrame(const TCHAR* LogName)
 {
 	if (bIsDisabled && !bCanEnable)
+	{
 		return;
+	}
 
 	// let some stats get through even if we've disabled LLM - this shows up some overhead that is always there even when disabled
 	// (unless the #define completely removes support, of course)
@@ -675,6 +679,8 @@ void FLowLevelMemTracker::UpdateStatsPerFrame(const TCHAR* LogName)
 	// delay init
 	if (bFirstTimeUpdating)
 	{
+		UE_LOG(LogInit, Log, TEXT("First time updating LLM stats..."));
+
 		static_assert((uint8)ELLMTracker::Max == 2, "You added a tracker, without updating FLowLevelMemTracker::UpdateStatsPerFrame (and probably need to update macros)");
 
 		GetTracker(ELLMTracker::Platform)->SetTotalTags(ELLMTag::PlatformUntaggedTotal, ELLMTag::PlatformTrackedTotal);
@@ -770,7 +776,9 @@ void FLowLevelMemTracker::InitialiseProgramSize()
 void FLowLevelMemTracker::SetProgramSize(uint64 InProgramSize)
 {
 	if (bIsDisabled)
+	{
 		return;
+	}
 
 	int64 ProgramSizeDiff = InProgramSize - ProgramSize;
 
@@ -782,8 +790,16 @@ void FLowLevelMemTracker::SetProgramSize(uint64 InProgramSize)
 
 void FLowLevelMemTracker::ProcessCommandLine(const TCHAR* CmdLine)
 {
+	UE_LOG(LogInit, Log, TEXT("LLM is %s"), bIsDisabled ? TEXT("disabled") : TEXT("enabled"));
+	if (bIsDisabled)
+	{
+		UE_LOG(LogInit, Log, TEXT("LLM %s be enabled"), bCanEnable ? TEXT("can") : TEXT("cannot"));
+	}
+
 	if (bIsDisabled && !bCanEnable)
+	{
 		return;
+	}
 
 	if (bCanEnable)
 	{
@@ -801,15 +817,19 @@ void FLowLevelMemTracker::ProcessCommandLine(const TCHAR* CmdLine)
 
 	bCsvWriterEnabled = FParse::Param(CmdLine, TEXT("LLMCSV"));
 	bTraceWriterEnabled = UE_TRACE_CHANNELEXPR_IS_ENABLED(MemoryChannel);
+
 	for (int32 TrackerIndex = 0; TrackerIndex < (int32)ELLMTracker::Max; ++TrackerIndex)
 	{
 		GetTracker((ELLMTracker)TrackerIndex)->SetCSVEnabled(bCsvWriterEnabled);
 	}
 
+	UE_LOG(LogInit, Log, TEXT("LLM CsvWriter: %s TraceWriter: %s"), bCsvWriterEnabled ? TEXT("on") : TEXT("off"), bTraceWriterEnabled ? TEXT("on") : TEXT("off"));
+
 	// automatically enable LLM if only csv or trace output is active
 	if ((bCsvWriterEnabled || bTraceWriterEnabled) && bIsDisabled && bCanEnable)
 	{
 		bIsDisabled = false;
+		UE_LOG(LogInit, Log, TEXT("LLM has just been enabled"));
 	}
 
 	if (bIsDisabled)
@@ -2267,7 +2287,7 @@ void FLLMTraceWriter::AddStat(int64 Tag, int64 Value)
 	int32 StatValueCount = StatTags.Num();
 	for (int32 i = 0; i < StatValueCount; ++i)
 	{
-		if (StatTags[i] == Tag)
+		if (StatTags[i] == Tag + 1)
 		{
 			StatValues[i] += Value;
 			return;
@@ -2275,7 +2295,7 @@ void FLLMTraceWriter::AddStat(int64 Tag, int64 Value)
 	}
 
 	check(StatTags.Num() == StatValues.Num());
-	StatTags.Add(Tag);
+	StatTags.Add(Tag + 1);
 	StatValues.Add(Value);
 }
 
@@ -2285,7 +2305,7 @@ void FLLMTraceWriter::SetStat(int64 Tag, int64 Value)
 	int32 StatValueCount = StatValues.Num();
 	for (int32 i = 0; i < StatValueCount; ++i)
 	{
-		if (StatTags[i] == Tag)
+		if (StatTags[i] == Tag + 1)
 		{
 			StatValues[i] = Value;
 			return;
@@ -2293,7 +2313,7 @@ void FLLMTraceWriter::SetStat(int64 Tag, int64 Value)
 	}
 
 	check(StatTags.Num() == StatValues.Num());
-	StatTags.Add(Tag);
+	StatTags.Add(Tag + 1);
 	StatValues.Add(Value);
 }
 
@@ -2307,7 +2327,7 @@ void FLLMTraceWriter::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
 	if (!bTrackerSpecSent)
 	{
 		bTrackerSpecSent = true;
-		static const ANSICHAR* TrackerNames[] = {"System", "Default"};
+		static const ANSICHAR* TrackerNames[] = {"Platform", "Default"};
 		static_assert(UE_ARRAY_COUNT(TrackerNames) == int(ELLMTracker::Max), "");
 		UE_TRACE_LOG(LLM, TrackerSpec, MemoryChannel)
 			<< TrackerSpec.TrackerId((uint8)Tracker)
@@ -2327,12 +2347,12 @@ void FLLMTraceWriter::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
 	{
 		for (int32 i = LastTracedTagCount; i < TagCount; ++i)
 		{
-			const int64 Tag = StatTagsSnapshot[i];
+			const int64 Tag = StatTagsSnapshot[i] - 1;
 			//FString TagName = GetTagName(Tag, CustomTags, ParentTags); // prefix with parent tag
 			FString TagName = GetTagName(Tag, CustomTags, nullptr);
 			UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel)
-				<< TagsSpec.TagId(Tag)
-				<< TagsSpec.ParentId(ParentTags[Tag])
+				<< TagsSpec.TagId(Tag + 1) // 0 as invalid tag id; != 0 for valid tag ids
+				<< TagsSpec.ParentId(ParentTags[Tag] + 1)
 				<< TagsSpec.Name(*TagName);
 		}
 		LastTracedTagCount = TagCount;
@@ -2344,7 +2364,7 @@ void FLLMTraceWriter::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
 	UE_TRACE_LOG(LLM, TagValue, MemoryChannel)
 		<< TagValue.TrackerId((uint8)Tracker)
 		<< TagValue.Cycle(Cycle)
-		<< TagValue.Tags(Tags, TagCount)
+		<< TagValue.Tags(Tags, TagCount) // uses 0 as invalid tag id; != 0 for valid tag ids
 		<< TagValue.Values(Values, TagCount);
 }
 
@@ -2354,8 +2374,8 @@ void FLLMTraceWriter::TraceGenericTags(const int32* ParentTags)
 	{
 		FString TagName = GetTagName(GenericTagIndex, nullptr, ParentTags);
 		UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel)
-			<< TagsSpec.TagId(GenericTagIndex)
-			<< TagsSpec.ParentId(ParentTags[GenericTagIndex])
+			<< TagsSpec.TagId(GenericTagIndex + 1) // 0 as invalid tag id; != 0 for valid tag ids
+			<< TagsSpec.ParentId(ParentTags[GenericTagIndex] + 1)
 			<< TagsSpec.Name(*TagName);
 	}
 }
