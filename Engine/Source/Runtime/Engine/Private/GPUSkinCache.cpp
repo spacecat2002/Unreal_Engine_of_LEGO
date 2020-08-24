@@ -1070,6 +1070,16 @@ void FGPUSkinCache::DispatchUpdateSkinTangents(FRHICommandListImmediate& RHICmdL
 				DispatchData.DuplicatedIndicesIndices = LodData.RenderSections[SectionIndex].DuplicatedVerticesBuffer.LengthAndIndexDuplicatedVerticesIndexBuffer.VertexBufferSRV;
 			}
 
+			RHICmdList.Transition(FRHITransitionInfo(DispatchData.GetPositionRWBuffer()->UAV.GetReference(), ERHIAccess::UAVCompute, ERHIAccess::SRVCompute));
+			if (!GBlendUsingVertexColorForRecomputeTangents)
+			{
+				RHICmdList.Transition(FRHITransitionInfo(DispatchData.GetTangentRWBuffer()->UAV.GetReference(), ERHIAccess::UAVCompute, ERHIAccess::SRVCompute));
+			}
+			else if (DispatchData.IntermediateTangentBuffer)
+			{
+				RHICmdList.Transition(FRHITransitionInfo(DispatchData.IntermediateTangentBuffer->UAV.GetReference(), ERHIAccess::UAVCompute, ERHIAccess::SRVCompute));
+			}
+
 			INC_DWORD_STAT_BY(STAT_GPUSkinCache_NumTrianglesForRecomputeTangents, NumTriangles);
 			Shader->SetParameters(RHICmdList, Entry, DispatchData, StagingBuffer);
 			DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupCountValue, 1, 1);
@@ -1103,6 +1113,7 @@ void FGPUSkinCache::DispatchUpdateSkinTangents(FRHICommandListImmediate& RHICmdL
 			uint32 ThreadGroupCountValue = FMath::DivideAndRoundUp(VertexCount, ComputeShader->ThreadGroupSizeX);
 
 			RHICmdList.Transition(FRHITransitionInfo(StagingBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+			RHICmdList.Transition(FRHITransitionInfo(DispatchData.GetTangentRWBuffer()->UAV.GetReference(), GBlendUsingVertexColorForRecomputeTangents ? ERHIAccess::Unknown : ERHIAccess::SRVCompute, ERHIAccess::UAVCompute));
 
 			ComputeShader->SetParameters(RHICmdList, Entry, DispatchData, StagingBuffer);
 			DispatchComputeShader(RHICmdList, ComputeShader.GetShader(), ThreadGroupCountValue, 1, 1);
