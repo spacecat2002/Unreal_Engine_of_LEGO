@@ -230,6 +230,9 @@ private:
 	TArray<TPair<FRDGTextureRef, TRefCountPtr<IPooledRenderTarget>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedTextures;
 	TArray<TPair<FRDGBufferRef, TRefCountPtr<FRDGPooledBuffer>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedBuffers;
 
+	/** Current scope's async compute budget. This is passed on to every pass created. */
+	EAsyncComputeBudget AsyncComputeBudgetScope = EAsyncComputeBudget::EAll_4;
+
 	IF_RDG_CPU_SCOPES(FRDGCPUScopeStacks CPUScopeStacks);
 	IF_RDG_GPU_SCOPES(FRDGGPUScopeStacksByPipeline GPUScopeStacks);
 
@@ -299,13 +302,35 @@ private:
 
 	friend FRDGEventScopeGuard;
 	friend FRDGGPUStatScopeGuard;
-	friend FRDGGPUMaskScopeGuard;
+	friend FRDGAsyncComputeBudgetScopeGuard;
 	friend FRDGScopedCsvStatExclusive;
 	friend FRDGScopedCsvStatExclusiveConditional;
 };
 
+class FRDGAsyncComputeBudgetScopeGuard final
+{
+public:
+	FRDGAsyncComputeBudgetScopeGuard(FRDGBuilder& InGraphBuilder, EAsyncComputeBudget InAsyncComputeBudget)
+		: GraphBuilder(InGraphBuilder)
+		, AsyncComputeBudgetRestore(GraphBuilder.AsyncComputeBudgetScope)
+	{
+		GraphBuilder.AsyncComputeBudgetScope = InAsyncComputeBudget;
+	}
+
+	~FRDGAsyncComputeBudgetScopeGuard()
+	{
+		GraphBuilder.AsyncComputeBudgetScope = AsyncComputeBudgetRestore;
+	}
+
+private:
+	FRDGBuilder& GraphBuilder;
+	const EAsyncComputeBudget AsyncComputeBudgetRestore;
+};
+
+#define RDG_ASYNC_COMPUTE_BUDGET_SCOPE(GraphBuilder, AsyncComputeBudget) \
+	FRDGAsyncComputeBudgetScopeGuard PREPROCESSOR_JOIN(FRDGAsyncComputeBudgetScope, __LINE__)(GraphBuilder, AsyncComputeBudget)
+
 #if WITH_MGPU
-	// #define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask) FRDGGPUMaskScopeGuard PREPROCESSOR_JOIN(RDGGPUMaskScope, __LINE__){ GraphBuilder, GPUMask }
 	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask) SCOPED_GPU_MASK(GraphBuilder.RHICmdList, GPUMask)
 #else
 	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask)

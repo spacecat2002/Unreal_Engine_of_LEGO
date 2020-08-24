@@ -737,10 +737,7 @@ void FCompositionLighting::ProcessAsyncSSAO(
 	const TArray<FViewInfo>& Views,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer)
 {
-	AddPass(GraphBuilder, [](FRHICommandList&)
-	{
-		FRHICommandListExecutor::GetImmediateAsyncComputeCommandList().SetAsyncComputeBudget(FSSAOHelper::GetAmbientOcclusionAsyncComputeBudget());
-	});
+	RDG_ASYNC_COMPUTE_BUDGET_SCOPE(GraphBuilder, FSSAOHelper::GetAmbientOcclusionAsyncComputeBudget());
 
 	for (const FViewInfo& View : Views)
 	{
@@ -786,9 +783,4 @@ void FCompositionLighting::ProcessAsyncSSAO(
 				GTAODepths);
 		}
 	}
-
-	AddPass(GraphBuilder, [this](FRHICommandList&)
-	{
-		FRHICommandListExecutor::GetImmediateAsyncComputeCommandList().SetAsyncComputeBudget(EAsyncComputeBudget::EAll_4);
-	});
 }

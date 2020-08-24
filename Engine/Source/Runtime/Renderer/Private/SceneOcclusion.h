@@ -33,6 +33,8 @@ struct FViewOcclusionQueries
 	FRenderQueryArray CSMQueries;
 	FRenderQueryArray ShadowQueries;
 	FRenderQueryArray ReflectionQueries;
+
+	bool bFlushQueries = true;
 };
 
 using FViewOcclusionQueriesPerView = TArray<FViewOcclusionQueries, TInlineAllocator<1, SceneRenderingAllocator>>;

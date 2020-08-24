@@ -15,6 +15,11 @@
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #endif
 
+FTextureWithRDG::FTextureWithRDG() = default;
+FTextureWithRDG::FTextureWithRDG(const FTextureWithRDG& Other) = default;
+FTextureWithRDG& FTextureWithRDG::operator=(const FTextureWithRDG & Other) = default;
+FTextureWithRDG::~FTextureWithRDG() = default;
+
 FRDGTexture* FTextureWithRDG::GetRDG(FRDGBuilder& GraphBuilder) const
 {
 	checkf(RenderTarget, TEXT("InitRDG was not called before use."));

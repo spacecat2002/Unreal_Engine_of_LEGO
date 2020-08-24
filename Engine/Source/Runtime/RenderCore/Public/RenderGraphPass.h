@@ -366,6 +366,7 @@ private:
 	FRDGBarrierBatchBegin EpilogueBarriersToBeginForGraphics;
 	FRDGBarrierBatchBegin EpilogueBarriersToBeginForAsyncCompute;
 
+	EAsyncComputeBudget AsyncComputeBudget = EAsyncComputeBudget::EAll_4;
 	FRHIGPUMask GPUMask;
 
 	IF_RDG_CPU_SCOPES(FRDGCPUScopes CPUScopes);

@@ -1146,12 +1146,12 @@ static FViewOcclusionQueriesPerView AllocateOcclusionTests(const FScene* Scene, 
 				}
 			}
 
-			bBatchedQueries |= (View.IndividualOcclusionQueries.HasBatches() || View.GroupedOcclusionQueries.HasBatches()
-				// Don't do primitive occlusion if we have a view parent or are frozen - only applicable to Debug & Development.
+			// Don't do primitive occlusion if we have a view parent or are frozen - only applicable to Debug & Development.
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-				|| (!ViewState->HasViewParent() && !ViewState->bIsFrozen)
+			ViewQuery.bFlushQueries &= (!ViewState->HasViewParent() && !ViewState->bIsFrozen);
 #endif
-				);
+
+			bBatchedQueries |= (View.IndividualOcclusionQueries.HasBatches() || View.GroupedOcclusionQueries.HasBatches() || ViewQuery.bFlushQueries);
 		}
 	}
 
@@ -1287,10 +1287,7 @@ static void BeginOcclusionTests(
 			VertexBufferRHI.SafeRelease();
 		}
 
-		// Don't do primitive occlusion if we have a view parent or are frozen - only applicable to Debug & Development.
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-		if (!ViewState->HasViewParent() && !ViewState->bIsFrozen)
-#endif
+		if (ViewQuery.bFlushQueries)
 		{
 			VertexShader->SetParameters(RHICmdList, View);
 
