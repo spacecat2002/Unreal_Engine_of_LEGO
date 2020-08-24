@@ -61,16 +61,26 @@ public:
 
 	/** Returns true if this resource must be skinned on the CPU for the given feature level. */
 	ENGINE_API bool RequiresCPUSkinning(ERHIFeatureLevel::Type FeatureLevel) const;
+	
+	/** Returns true if this resource must be skinned on the CPU for the given feature level starting at MinLODIdx */
+	ENGINE_API bool RequiresCPUSkinning(ERHIFeatureLevel::Type FeatureLevel, int32 MinLODIdx) const;
 
 	/** Returns the number of bone influences per vertex. */
 	uint32 GetNumBoneInfluences() const;
 
+	/** Returns the number of bone influences per vertex starting at MinLODIdx. */
+	uint32 GetNumBoneInfluences(int32 MinLODIdx) const;
+	
 	/**
 	* Computes the maximum number of bones per section used to render this mesh.
 	*/
 	ENGINE_API int32 GetMaxBonesPerSection() const;
-
-
+	
+	/**
+	* Computes the maximum number of bones per section used to render this mesh starting at MinLODIdx.
+	*/
+	ENGINE_API int32 GetMaxBonesPerSection(int32 MinLODIdx) const;
+	
 	/** Return first valid LOD index starting at MinLODIdx. */
 	ENGINE_API int32 GetFirstValidLODIdx(int32 MinLODIdx) const;
 
