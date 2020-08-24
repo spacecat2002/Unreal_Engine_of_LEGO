@@ -339,6 +339,40 @@ public:
 		}
 	}
 
+	template<typename T, typename U>
+	static void Array_Random(const TArray<T>& TargetArray, U& OutItem, int32& OutIndex)
+	{
+		if (TargetArray.Num() > 0)
+		{
+			const int32 Index = FMath::RandRange(0, ArrayHelper.Num() - 1);
+
+			OutItem = TargetArray[Index];
+			OutIndex = Index;
+		}
+		else
+		{
+			OutItem = U{};
+			OutIndex = INDEX_NONE;
+		}
+	}
+
+	template<typename T, typename U>
+	static void Array_RandomFromStream(const TArray<T>& TargetArray, FRandomStream& RandomStream, U& OutItem, int32& OutIndex)
+	{
+		if (TargetArray.Num() > 0)
+		{
+			const int32 Index = RandomStream.RandRange(0, TargetArray.Num() - 1);
+
+			OutItem = TargetArray[Index];
+			OutIndex = Index;
+		}
+		else
+		{
+			OutItem = U{};
+			OutIndex = INDEX_NONE;
+		}
+	}
+
 	template<typename T>
 	static void SetArrayPropertyByName(UObject* Object, FName PropertyName, TArray<T>& Value)
 	{
