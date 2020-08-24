@@ -599,10 +599,11 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::RemoveFromSceneData(FPrecomp
 				Parameters.IndirectionTextureOriginalValues = IndirectionTextureOriginalValuesSRV;
 				Parameters.PersistentLevelBrickDataBaseOffset = PersistentLevelBrickDataBaseOffset;
 
+				RHICmdList.Transition(FRHITransitionInfo(SceneData->IndirectionTexture.UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+
 				FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters, FIntVector(FMath::DivideAndRoundUp(SubLevelBrickPositions.Num(), 64), 1, 1));
 
-				FRHIUnorderedAccessView* UAV = SceneData->IndirectionTexture.UAV;
-				RHICmdList.Transition(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+				RHICmdList.Transition(FRHITransitionInfo(SceneData->IndirectionTexture.UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
 
 				ReleaseRHIForSubLevelResources();
 			}
