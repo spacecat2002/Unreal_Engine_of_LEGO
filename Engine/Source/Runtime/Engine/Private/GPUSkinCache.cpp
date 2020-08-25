@@ -1128,7 +1128,6 @@ void FGPUSkinCache::DoDispatch(FRHICommandListImmediate& RHICmdList)
 	INC_DWORD_STAT_BY(STAT_GPUSkinCache_TotalNumChunks, BatchCount);
 
 	RHICmdList.BeginUAVOverlap();
-	
 	{
 		for (int32 i = 0; i < BatchCount; ++i)
 		{
@@ -1136,7 +1135,8 @@ void FGPUSkinCache::DoDispatch(FRHICommandListImmediate& RHICmdList)
 			DispatchUpdateSkinning(RHICmdList, DispatchItem.SkinCacheEntry, DispatchItem.Section, DispatchItem.RevisionNumber);
 		}
 	}
-		
+	RHICmdList.EndUAVOverlap();
+
 	{
 		for (int32 i = 0; i < BatchCount; ++i)
 		{
@@ -1151,8 +1151,6 @@ void FGPUSkinCache::DoDispatch(FRHICommandListImmediate& RHICmdList)
 			DispatchItem.SkinCacheEntry->UpdateVertexFactoryDeclaration(DispatchItem.Section);
 		}
 	}
-	
-	RHICmdList.EndUAVOverlap();
 }
 
 void FGPUSkinCache::DoDispatch(FRHICommandListImmediate& RHICmdList, FGPUSkinCacheEntry* SkinCacheEntry, int32 Section, int32 RevisionNumber)
