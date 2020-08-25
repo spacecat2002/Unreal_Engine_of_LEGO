@@ -191,6 +191,9 @@ FVulkanDynamicRHI::FVulkanDynamicRHI()
 	GRHITransitionPrivateData_SizeInBytes = sizeof(FVulkanPipelineBarrier);
 	GRHITransitionPrivateData_AlignInBytes = alignof(FVulkanPipelineBarrier);
 	GConfig->GetInt(TEXT("TextureStreaming"), TEXT("PoolSizeVRAMPercentage"), GPoolSizeVRAMPercentage, GEngineIni);
+
+	// Copy source requires its own image layout.
+	EnumRemoveFlags(GRHITextureReadAccessMask, ERHIAccess::CopySrc);
 }
 
 void FVulkanDynamicRHI::Init()

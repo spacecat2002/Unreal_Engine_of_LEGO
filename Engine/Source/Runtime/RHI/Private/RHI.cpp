@@ -868,6 +868,8 @@ RHI_API int32 GNumPrimitivesDrawnRHI = 0;
 RHI_API uint64 GRHITransitionPrivateData_SizeInBytes = 0;
 RHI_API uint64 GRHITransitionPrivateData_AlignInBytes = 0;
 
+ERHIAccess GRHITextureReadAccessMask = ERHIAccess::ReadOnlyMask;
+
 /** Called once per frame only from within an RHI. */
 void RHIPrivateBeginFrame()
 {
