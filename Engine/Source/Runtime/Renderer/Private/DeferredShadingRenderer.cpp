@@ -201,6 +201,24 @@ static TAutoConsoleVariable<float> CVarRayTracingDynamicGeometryLastRenderTimeUp
 	5000.0f,
 	TEXT("Dynamic geometries within this distance will have their LastRenderTime updated, so that visibility based ticking (like skeletal mesh) can work when the component is not directly visible in the view (but reflected)."));
 
+static TAutoConsoleVariable<int32> CVarRayTracingCulling(
+	TEXT("r.RayTracing.Culling"),
+	0,
+	TEXT("Enable culling in ray tracing for objects that are behind the camera\n")
+	TEXT(" 0: Culling disabled (default)\n")
+	TEXT(" 1: Culling by distance and solid angle enabled"),
+	ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<float> CVarRayTracingCullingRadius(
+	TEXT("r.RayTracing.Culling.Radius"),
+	10000.0f, 
+	TEXT("Do camera culling for objects behind the camera outside of this radius in ray tracing effects (default = 10000 (100m))"));
+
+static TAutoConsoleVariable<float> CVarRayTracingCullingAngle(
+	TEXT("r.RayTracing.Culling.Angle"),
+	1.0f, 
+	TEXT("Do camera culling for objects behind the camera with a projected angle smaller than this threshold in ray tracing effects (default = 5 degrees )"));
+
 #if !UE_BUILD_SHIPPING
 static TAutoConsoleVariable<int32> CVarForceBlackVelocityBuffer(
 	TEXT("r.Test.ForceBlackVelocityBuffer"), 0,
@@ -746,6 +764,12 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 		TRACE_CPUPROFILER_EVENT_SCOPE(GatherRayTracingWorldInstances_RelevantPrimitives);
 
 		int32 BroadIndex = 0;
+		const int32 CullInRayTracing = CVarRayTracingCulling.GetValueOnRenderThread();
+		const float CullingRadius = CVarRayTracingCullingRadius.GetValueOnRenderThread();
+		const float CullAngleThreshold = CVarRayTracingCullingAngle.GetValueOnRenderThread();
+		const float AngleThresholdRatio = FMath::Tan(CullAngleThreshold * PI / 180.0f);
+		const FVector ViewOrigin = ReferenceView.ViewMatrices.GetViewOrigin();
+		const FVector ViewDirection = ReferenceView.GetViewDirection();
 
 		for (int PrimitiveIndex = 0; PrimitiveIndex < Scene->PrimitiveSceneProxies.Num(); PrimitiveIndex++)
 		{
@@ -771,6 +795,35 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 			if (!(SceneInfo->bShouldRenderInMainPass && SceneInfo->bDrawInGame))
 			{
 				continue;
+			}
+
+			if (CullInRayTracing > 0)
+			{
+				FPrimitiveSceneProxy* SceneProxy = Scene->PrimitiveSceneProxies[PrimitiveIndex];
+
+				const FBoxSphereBounds ObjectBounds = SceneProxy->GetBounds();
+				const float ObjectRadius = ObjectBounds.SphereRadius;
+				const FVector ObjectCenter = ObjectBounds.Origin + 0.5*ObjectBounds.BoxExtent;
+				const FVector CameraToObjectCenter = FVector(ObjectCenter - ViewOrigin);
+
+				const bool bIsBehindCamera = FVector::DotProduct(ViewDirection, CameraToObjectCenter) < -ObjectRadius;
+
+				if (bIsBehindCamera)
+				{
+					const float CameraToObjectCenterLength = CameraToObjectCenter.Size();
+					const bool bIsFarEnoughToCull = CameraToObjectCenterLength > (CullingRadius + ObjectRadius);
+
+					if (bIsFarEnoughToCull) 
+					{
+						// Cull by solid angle: check the radius of bounding sphere against angle threshold
+						const bool bAngleIsSmallEnoughToCull = ObjectRadius / CameraToObjectCenterLength < AngleThresholdRatio;
+
+						if (bAngleIsSmallEnoughToCull)
+						{
+							continue;
+						}					
+					}
+				}
 			}
 
 			bool bIsDynamic = false;
@@ -1256,10 +1309,8 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 
 		View.RayTracingSubSurfaceProfileSRV = RHICreateShaderResourceView(View.RayTracingSubSurfaceProfileTexture->GetRenderTargetItem().ShaderResourceTexture, 0);
 
-		View.RayTracingLightingDataUniformBuffer = CreateLightDataPackedUniformBuffer(Scene->Lights, View,
-			EUniformBufferUsage::UniformBuffer_SingleFrame,
-			View.RayTracingLightingDataBuffer,
-			View.RayTracingLightingDataSRV);
+		View.RayTracingLightData = CreateRayTracingLightData(RHICmdList, Scene->Lights, View,
+			EUniformBufferUsage::UniformBuffer_SingleFrame);
 	}
 
 	if (!bAsyncUpdateGeometry)
@@ -1392,6 +1443,17 @@ void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmedi
 				View.RayTracingMaterialPipeline,
 				NumTotalBindings, MergedBindings,
 				bCopyDataToInlineStorage);
+
+			TArray<FRHIRayTracingShader*> DeferredMaterialRayGenShaders;
+
+			PrepareRayTracingReflectionsDeferredMaterial(View, *Scene, DeferredMaterialRayGenShaders);
+			PrepareRayTracingDeferredReflectionsDeferredMaterial(View, *Scene, DeferredMaterialRayGenShaders);
+			PrepareRayTracingGlobalIlluminationDeferredMaterial(View, DeferredMaterialRayGenShaders);
+
+			if (DeferredMaterialRayGenShaders.Num())
+			{
+				View.RayTracingMaterialGatherPipeline = BindRayTracingDeferredMaterialGatherPipeline(RHICmdList, View, DeferredMaterialRayGenShaders);
+			}
 
 			// Move the ray tracing binding container ownership to the command list, so that memory will be
 			// released on the RHI thread timeline, after the commands that reference it are processed.
@@ -3023,6 +3085,15 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 		else 
 		{
+			for (int32 ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ++ViewExt)
+			{
+				for (int32 ViewIndex = 0; ViewIndex < ViewFamily.Views.Num(); ++ViewIndex)
+				{
+					FViewInfo& View = Views[ViewIndex];
+					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+					ViewFamily.ViewExtensions[ViewExt]->PrePostProcessPass_RenderThread(GraphBuilder, View, PostProcessingInputs);
+				}
+			}
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
 				FViewInfo& View = Views[ViewIndex];
@@ -3118,11 +3189,15 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			}
 
 			// Release common lighting resources
-			View.RayTracingLightingDataSRV.SafeRelease();
 			View.RayTracingSubSurfaceProfileSRV.SafeRelease();
 			View.RayTracingSubSurfaceProfileTexture.SafeRelease();
-			View.RayTracingLightingDataBuffer.SafeRelease();
-			View.RayTracingLightingDataUniformBuffer.SafeRelease();
+
+			View.RayTracingLightData.LightBufferSRV.SafeRelease();
+			View.RayTracingLightData.LightBuffer.SafeRelease();
+			View.RayTracingLightData.LightCullVolumeSRV.SafeRelease();
+			View.RayTracingLightData.LightCullVolume.SafeRelease();
+			View.RayTracingLightData.LightIndices.Release();
+			View.RayTracingLightData.UniformBuffer.SafeRelease();
 		}
 #endif //  RHI_RAYTRACING
 	}

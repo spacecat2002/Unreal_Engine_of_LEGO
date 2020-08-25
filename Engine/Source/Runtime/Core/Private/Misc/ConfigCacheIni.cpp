@@ -1476,7 +1476,7 @@ bool FConfigFile::Write(const FString& Filename, bool bDoRemoteWrite, TMap<FStri
 		return true;
 
 	bool bAcquiredIniCombineThreshold = false;	// avoids extra work when writing multiple properties
-	int32 IniCombineThreshold = -1;
+	int32 IniCombineThreshold = MAX_int32;
 
 	FString Text;
 	// Estimate max size to reduce re-allocations (does not inspect actual properties for performance)
@@ -2430,7 +2430,7 @@ bool FConfigCacheIni::GetSection( const TCHAR* Section, TArray<FString>& Result,
 	return true;
 }
 
-FConfigSection* FConfigCacheIni::GetSectionPrivate( const TCHAR* Section, bool Force, bool Const, const FString& Filename )
+FConfigSection* FConfigCacheIni::GetSectionPrivate( const TCHAR* Section, const bool Force, const bool Const, const FString& Filename )
 {
 	FRemoteConfig::Get()->FinishRead(*Filename); // Ensure the remote file has been loaded and processed
 	FConfigFile* File = Find( Filename, Force );

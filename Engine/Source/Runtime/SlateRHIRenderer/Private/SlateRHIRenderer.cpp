@@ -1112,7 +1112,7 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 
 		if (!ClampedScreenshotRect.IsEmpty())
 		{
-			RHICmdList.ReadSurfaceData(BackBuffer, ScreenshotRect, *OutScreenshotData, FReadSurfaceDataFlags());
+			RHICmdList.ReadSurfaceData(BackBuffer, ClampedScreenshotRect, *OutScreenshotData, FReadSurfaceDataFlags());
 		}
 		else
 		{
@@ -1239,7 +1239,7 @@ void FSlateRHIRenderer::DrawWindows_Private(FSlateDrawBuffer& WindowDrawBuffer)
 					}
 					else
 					{
-						UE_LOG(LogSlate, Error, TEXT("The ViewportInfo could not be found for Window '%s'"), *FReflectionMetaData::GetWidgetPath(Window));
+						UE_LOG(LogSlate, Error, TEXT("The ViewportInfo could not be found for Window."));
 						continue;
 					}
 				}

@@ -317,6 +317,13 @@ TAutoConsoleVariable<int32> CVarTransientResourceAliasing_Buffers(
 	TEXT("Enables transient resource aliasing for specified buffers. Used only if GSupportsTransientResourceAliasing is true.\n"),
 	ECVF_ReadOnly);
 
+static TAutoConsoleVariable<int32> CVarBasePassForceOutputsVelocity(
+	TEXT("r.BasePassForceOutputsVelocity"), 0,
+	TEXT("Force the base pass to compute motion vector, regardless of FPrimitiveUniformShaderParameters.")
+	TEXT("0: Disabled (default)")
+	TEXT("1: Enabled"),
+	ECVF_RenderThreadSafe);
+
 #if !UE_BUILD_SHIPPING
 
 static TAutoConsoleVariable<int32> CVarTestInternalViewRectOffset(
@@ -1458,6 +1465,8 @@ void FViewInfo::SetupUniformBufferParameters(
 			TemporalJitterPixels.X,
 			TemporalJitterPixels.Y);
 	}
+
+	ViewUniformShaderParameters.ForceDrawAllVelocities = CVarBasePassForceOutputsVelocity.GetValueOnRenderThread();
 		
 	uint32 FrameIndex = 0;
 	if (ViewState)
@@ -2565,7 +2574,11 @@ void FSceneRenderer::ComputeViewGPUMasks(FRHIGPUMask RenderTargetGPUMask)
 				}
 				else
 				{
-					ViewInfo.GPUMask = FRHIGPUMask::FromIndex(*GPUIterator);
+					if (!ViewInfo.bOverrideGPUMask)
+					{
+						ViewInfo.GPUMask = FRHIGPUMask::FromIndex(*GPUIterator);
+					}
+
 					ViewFamily.bMultiGPUForkAndJoin |= (ViewInfo.GPUMask != RenderTargetGPUMask);
 
 					// Increment and wrap around if we reach the last index.
@@ -2606,7 +2619,7 @@ void FSceneRenderer::DoCrossGPUTransfers(FRHICommandListImmediate& RHICmdList, F
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
 			const FViewInfo& ViewInfo = Views[ViewIndex];
-			if (ViewInfo.GPUMask != RenderTargetGPUMask)
+			if (ViewInfo.bAllowCrossGPUTransfer && ViewInfo.GPUMask != RenderTargetGPUMask)
 			{
 				// Clamp the view rect by the rendertarget rect to prevent issues when resizing the viewport.
 				const FIntRect TransferRect(ViewInfo.ViewRect.Min.ComponentMin(SceneRenderTarget->GetSizeXY()), ViewInfo.ViewRect.Max.ComponentMin(SceneRenderTarget->GetSizeXY()));

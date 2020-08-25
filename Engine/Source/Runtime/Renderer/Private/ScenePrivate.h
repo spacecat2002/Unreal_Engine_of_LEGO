@@ -802,10 +802,16 @@ private:
 			return GetRTRef(nullptr, CurrentBuffer);
 		}
 
+		int32 GetPreviousPreviousIndex() const
+		{
+			return ((CurrentBuffer-2)+3)%3;
+		}
+
 		/** Return old Render Target*/
 		TRefCountPtr<IPooledRenderTarget>& GetLastRT(FRHICommandList& RHICmdList)
 		{
-			return GetRTRef(&RHICmdList, 1 - CurrentBuffer);
+			// "last" frame is actually 2 behind
+			return GetRTRef(&RHICmdList, GetPreviousPreviousIndex());
 		}
 
 		/** Reverse the current/last order of the targets */
@@ -824,7 +830,8 @@ private:
 
 		const FExposureBufferData& GetLastBuffer()
 		{
-			return GetBufferRef(1 - CurrentBuffer);
+			// "last" frame is actually 2 behind
+			return GetBufferRef(GetPreviousPreviousIndex());
 		}
 
 		void SwapBuffers(bool bUpdateLastExposure);
@@ -842,11 +849,14 @@ private:
 		float LastExposure = 0;
 		float LastAverageSceneLuminance = 0; // 0 means invalid. Used for Exposure Compensation Curve.
 
-		TRefCountPtr<IPooledRenderTarget> PooledRenderTarget[2];
-		TUniquePtr<FRHIGPUTextureReadback> ExposureTextureReadback;
+		// Data is triple buffered. When getting the "previous" frame, we actually want the
+		// data from two frames agao, so the actual previous frame is ((CurrentBuffer-1)+3)%3, but 
+		// the frame we actually want to use is ((CurrentBuffer-2)+3)%3;
+		TRefCountPtr<IPooledRenderTarget> PooledRenderTarget[3];
+		TUniquePtr<FRHIGPUTextureReadback> ExposureTextureReadback[3];
 
-		FExposureBufferData ExposureBufferData[2];
-		TUniquePtr<FRHIGPUBufferReadback> ExposureBufferReadback;
+		FExposureBufferData ExposureBufferData[3];
+		TUniquePtr<FRHIGPUBufferReadback> ExposureBufferReadback[3];
 
 	} EyeAdaptationRTManager;
 
@@ -979,6 +989,9 @@ public:
 	// Ray Traced Global Illumination Gather Point Data
 	TRefCountPtr<FPooledRDGBuffer> GatherPointsBuffer;
 	FIntVector GatherPointsResolution;
+	// todo: shared definition for maximum gather points per-pixel (32)
+	TStaticArray<FMatrix, 32> GatherPointsViewHistory;
+	uint32 GatherPointsCount;
 
 	// Last valid RTPSO is saved, so it could be used as fallback in future frames if background PSO compilation is enabled.
 	// This RTPSO can be used only if the only difference from previous PSO is the material hit shaders.
