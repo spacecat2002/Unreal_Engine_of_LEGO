@@ -218,18 +218,21 @@ void FVulkanCommandListContext::RHICopyToResolveTarget(FRHITexture* SourceTextur
 		DstCurrentAccess = ERHIAccess::Unknown;
 	}
 
-	FVulkanPipelineBarrier BarrierAfter;
-	if (SrcSurface->Image != DstSurface->Image && SrcCurrentAccess != InResolveParams.SourceAccessFinal)
+	if (InResolveParams.SourceAccessFinal != ERHIAccess::Unknown && InResolveParams.DestAccessFinal != ERHIAccess::Unknown)
 	{
-		BarrierAfter.AddImageAccessTransition(*SrcSurface, SrcCurrentAccess, InResolveParams.SourceAccessFinal, FVulkanPipelineBarrier::MakeSubresourceRange(SrcSurface->GetFullAspectMask()), SrcLayout);
-	}
+		FVulkanPipelineBarrier BarrierAfter;
+		if (SrcSurface->Image != DstSurface->Image && SrcCurrentAccess != InResolveParams.SourceAccessFinal && InResolveParams.SourceAccessFinal != ERHIAccess::Unknown)
+		{
+			BarrierAfter.AddImageAccessTransition(*SrcSurface, SrcCurrentAccess, InResolveParams.SourceAccessFinal, FVulkanPipelineBarrier::MakeSubresourceRange(SrcSurface->GetFullAspectMask()), SrcLayout);
+		}
 
-	if (DstCurrentAccess != InResolveParams.DestAccessFinal)
-	{
-		BarrierAfter.AddImageAccessTransition(*DstSurface, DstCurrentAccess, InResolveParams.DestAccessFinal, FVulkanPipelineBarrier::MakeSubresourceRange(DstSurface->GetFullAspectMask()), DstLayout);
-	}
+		if (DstCurrentAccess != InResolveParams.DestAccessFinal && InResolveParams.DestAccessFinal != ERHIAccess::Unknown)
+		{
+			BarrierAfter.AddImageAccessTransition(*DstSurface, DstCurrentAccess, InResolveParams.DestAccessFinal, FVulkanPipelineBarrier::MakeSubresourceRange(DstSurface->GetFullAspectMask()), DstLayout);
+		}
 
-	BarrierAfter.Execute(CmdBuffer->GetHandle());
+		BarrierAfter.Execute(CmdBuffer->GetHandle());
+	}
 
 	if (GSubmitOnCopyToResolve)
 	{

@@ -15,7 +15,7 @@ struct FRDGSubresourceState
 	static bool IsTransitionRequired(const FRDGSubresourceState& Previous, const FRDGSubresourceState& Next);
 
 	/** Given a before and after state, returns whether they can be merged into a single state. */
-	static bool IsMergeAllowed(const FRDGSubresourceState& Previous, const FRDGSubresourceState& Next);
+	static bool IsMergeAllowed(ERDGParentResourceType ResourceType, const FRDGSubresourceState& Previous, const FRDGSubresourceState& Next);
 
 	FRDGSubresourceState() = default;
 

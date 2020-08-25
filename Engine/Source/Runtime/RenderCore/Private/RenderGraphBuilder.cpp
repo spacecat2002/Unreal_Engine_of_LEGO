@@ -746,33 +746,33 @@ void FRDGBuilder::Compile()
 				continue;
 			}
 
-			const auto MergeSubresourceStates = [&](FRDGSubresourceState*& PassMergeState, FRDGSubresourceState*& TextureMergeState, const FRDGSubresourceState& PassState)
+			const auto MergeSubresourceStates = [&](ERDGParentResourceType ResourceType, FRDGSubresourceState*& PassMergeState, FRDGSubresourceState*& ResourceMergeState, const FRDGSubresourceState& PassState)
 			{
 				if (PassState.Access == ERHIAccess::Unknown)
 				{
 					return;
 				}
 
-				if (!TextureMergeState || !FRDGSubresourceState::IsMergeAllowed(*TextureMergeState, PassState))
+				if (!ResourceMergeState || !FRDGSubresourceState::IsMergeAllowed(ResourceType, *ResourceMergeState, PassState))
 				{
 					// Cross-pipeline, non-mergable state changes require a new pass dependency for fencing purposes.
-					if (TextureMergeState && TextureMergeState->Pipeline != PassState.Pipeline)
+					if (ResourceMergeState && ResourceMergeState->Pipeline != PassState.Pipeline)
 					{
-						AddPassDependency(TextureMergeState->LastPass, PassHandle);
+						AddPassDependency(ResourceMergeState->LastPass, PassHandle);
 					}
 
 					// Allocate a new pending merge state and assign it to the pass state.
-					TextureMergeState = AllocSubresource(PassState);
-					TextureMergeState->SetPass(PassHandle);
+					ResourceMergeState = AllocSubresource(PassState);
+					ResourceMergeState->SetPass(PassHandle);
 				}
 				else
 				{
 					// Merge the pass state into the merged state.
-					TextureMergeState->Access |= PassState.Access;
-					TextureMergeState->LastPass = PassHandle;
+					ResourceMergeState->Access |= PassState.Access;
+					ResourceMergeState->LastPass = PassHandle;
 				}
 
-				PassMergeState = TextureMergeState;
+				PassMergeState = ResourceMergeState;
 			};
 
 			const bool bAsyncComputePass = PassesOnAsyncCompute[PassHandle];
@@ -806,7 +806,7 @@ void FRDGBuilder::Compile()
 
 				for (uint32 Index = 0; Index < SubresourceCount; ++Index)
 				{
-					MergeSubresourceStates(PassState.MergeState[Index], Texture->MergeState[Index], PassState.State[Index]);
+					MergeSubresourceStates(ERDGParentResourceType::Texture, PassState.MergeState[Index], Texture->MergeState[Index], PassState.State[Index]);
 				}
 			}
 
@@ -818,7 +818,7 @@ void FRDGBuilder::Compile()
 				Buffer->ReferenceCount += PassState.ReferenceCount;
 				Buffer->bUsedByAsyncComputePass |= bAsyncComputePass;
 
-				MergeSubresourceStates(PassState.MergeState, Buffer->MergeState, PassState.State);
+				MergeSubresourceStates(ERDGParentResourceType::Buffer, PassState.MergeState, Buffer->MergeState, PassState.State);
 			}
 		}
 	}

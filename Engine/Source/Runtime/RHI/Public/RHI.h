@@ -771,6 +771,9 @@ enum class ERHIAccess
 };
 ENUM_CLASS_FLAGS(ERHIAccess)
 
+/** Mask of read states that can be used together for textures. */
+extern RHI_API ERHIAccess GRHITextureReadAccessMask;
+
 // Helper namespace to maintain compatibility with old renderer code for one engine release.
 namespace EResourceTransitionAccess
 {

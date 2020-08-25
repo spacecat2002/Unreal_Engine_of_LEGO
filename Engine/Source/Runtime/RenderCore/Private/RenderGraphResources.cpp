@@ -68,34 +68,40 @@ bool FRDGSubresourceState::IsTransitionRequired(const FRDGSubresourceState& Prev
 	}
 }
 
-bool FRDGSubresourceState::IsMergeAllowed(const FRDGSubresourceState& Previous, const FRDGSubresourceState& Next)
+bool FRDGSubresourceState::IsMergeAllowed(ERDGParentResourceType ResourceType, const FRDGSubresourceState& Previous, const FRDGSubresourceState& Next)
 {
-	// Only one write state is allowed at a time -- except for UAV_Graphics | UAV_Compute.
-	if ((Previous.Access & ERHIAccess::WritableMask) != (Next.Access & ERHIAccess::WritableMask))
-	{
-		return false;
-	}
+	const ERHIAccess AccessUnion = Previous.Access | Next.Access;
 
-	// Not allowed to merge read-only and writable states.
-	if (EnumHasAnyFlags(Previous.Access, ERHIAccess::ReadOnlyExclusiveMask) && EnumHasAnyFlags(Next.Access, ERHIAccess::WritableMask))
+	// If we have the same access between the two states, we don't need to check for invalid access combinations.
+	if (Previous.Access != Next.Access)
 	{
-		return false;
-	}
+		// Not allowed to merge read-only and writable states.
+		if (EnumHasAnyFlags(Previous.Access, ERHIAccess::ReadOnlyExclusiveMask) && EnumHasAnyFlags(Next.Access, ERHIAccess::WritableMask))
+		{
+			return false;
+		}
 
-	// Not allowed to merge write-only and readable states.
-	if (EnumHasAnyFlags(Previous.Access, ERHIAccess::WriteOnlyExclusiveMask) && EnumHasAnyFlags(Next.Access, ERHIAccess::ReadableMask))
-	{
-		return false;
+		// Not allowed to merge write-only and readable states.
+		if (EnumHasAnyFlags(Previous.Access, ERHIAccess::WriteOnlyExclusiveMask) && EnumHasAnyFlags(Next.Access, ERHIAccess::ReadableMask))
+		{
+			return false;
+		}
+
+		// Textures only allow certain read states to merge.
+		if (ResourceType == ERDGParentResourceType::Texture && EnumHasAnyFlags(AccessUnion, ~GRHITextureReadAccessMask))
+		{
+			return false;
+		}
 	}
 
 	// For merging purposes we are conservative and assume a UAV barrier.
-	if (EnumHasAnyFlags(Previous.Access | Next.Access, ERHIAccess::UAVMask))
+	if (EnumHasAnyFlags(AccessUnion, ERHIAccess::UAVMask))
 	{
 		return false;
 	}
 
 	// We are not allowed to cross pipelines or change flags in a merge.
-	if (Previous.Pipeline != Next.Pipeline || Previous.Flags != Next.Flags || Previous.NoUAVBarrierFilter.GetUniqueHandle() != Next.NoUAVBarrierFilter.GetUniqueHandle())
+	if (Previous.Pipeline != Next.Pipeline || Previous.Flags != Next.Flags)
 	{
 		return false;
 	}
