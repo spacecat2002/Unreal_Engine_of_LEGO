@@ -1613,6 +1613,14 @@ void USplineComponent::Draw(FPrimitiveDrawInterface* PDI, const FSceneView* View
 	}
 }
 
+#if WITH_EDITOR
+bool USplineComponent::IgnoreBoundsForEditorFocus() const
+{
+	// Cannot compute proper bounds when there's no point so don't participate to editor focus if that's the case : 
+	return SplineCurves.Position.Points.Num() == 0;
+}
+#endif WITH_EDITOR
+
 FBoxSphereBounds USplineComponent::CalcBounds(const FTransform& LocalToWorld) const
 {
 	if (!bDrawDebug)
@@ -1635,18 +1643,25 @@ FBoxSphereBounds USplineComponent::CalcBounds(const FTransform& LocalToWorld) co
 
 	FVector Min(WORLD_MAX);
 	FVector Max(-WORLD_MAX);
-	for (int32 Index = 0; Index < NumSegments; Index++)
+	if (NumSegments > 0)
 	{
-		const bool bLoopSegment = (Index == NumPoints - 1);
-		const int32 NextIndex = bLoopSegment ? 0 : Index + 1;
-		const FInterpCurvePoint<FVector>& ThisInterpPoint = SplineCurves.Position.Points[Index];
-		FInterpCurvePoint<FVector> NextInterpPoint = SplineCurves.Position.Points[NextIndex];
-		if (bLoopSegment)
+		for (int32 Index = 0; Index < NumSegments; Index++)
 		{
-			NextInterpPoint.InVal = ThisInterpPoint.InVal + SplineCurves.Position.LoopKeyOffset;
-		}
+			const bool bLoopSegment = (Index == NumPoints - 1);
+			const int32 NextIndex = bLoopSegment ? 0 : Index + 1;
+			const FInterpCurvePoint<FVector>& ThisInterpPoint = SplineCurves.Position.Points[Index];
+			FInterpCurvePoint<FVector> NextInterpPoint = SplineCurves.Position.Points[NextIndex];
+			if (bLoopSegment)
+			{
+				NextInterpPoint.InVal = ThisInterpPoint.InVal + SplineCurves.Position.LoopKeyOffset;
+			}
 
-		CurveVectorFindIntervalBounds(ThisInterpPoint, NextInterpPoint, Min, Max);
+			CurveVectorFindIntervalBounds(ThisInterpPoint, NextInterpPoint, Min, Max);
+		}
+	}
+	else if (NumPoints == 1)
+	{
+		Min = Max = SplineCurves.Position.Points[0].OutVal;
 	}
 
 	return FBoxSphereBounds(FBox(Min, Max).TransformBy(LocalToWorld));
