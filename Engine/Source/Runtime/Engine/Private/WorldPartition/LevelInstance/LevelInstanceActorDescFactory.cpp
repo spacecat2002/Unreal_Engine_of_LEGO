@@ -1,15 +1,15 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "WorldPartition/Foundation/FoundationActorDescFactory.h"
+#include "WorldPartition/LevelInstance/LevelInstanceActorDescFactory.h"
 
 #if WITH_EDITOR
-#include "WorldPartition/Foundation/FoundationActorDesc.h"
-#include "Foundation/FoundationActor.h"
+#include "WorldPartition/LevelInstance/LevelInstanceActorDesc.h"
+#include "LevelInstance/LevelInstanceActor.h"
 #include "WorldPartition/WorldPartition.h"
 #include "ActorRegistry.h"
 #include "Editor.h"
 
-FWorldPartitionActorDesc* FFoundationActorDescFactory::CreateInstance(const FWorldPartitionActorDescInitData& ActorDescInitData)
+FWorldPartitionActorDesc* FLevelInstanceActorDescFactory::CreateInstance(const FWorldPartitionActorDescInitData& ActorDescInitData)
 {
 	FWorldPartitionActorDescData Data;
 	if (!ReadMetaData(ActorDescInitData, Data))
@@ -18,15 +18,15 @@ FWorldPartitionActorDesc* FFoundationActorDescFactory::CreateInstance(const FWor
 	}
 
 	FString LevelPackageNameStr;
-	static const FName NAME_FoundationPackage(TEXT("FoundationPackage"));
-	if (!FActorRegistry::ReadActorMetaData(NAME_FoundationPackage, LevelPackageNameStr, ActorDescInitData.AssetData))
+	static const FName NAME_LevelInstancePackage(TEXT("LevelInstancePackage"));
+	if (!FActorRegistry::ReadActorMetaData(NAME_LevelInstancePackage, LevelPackageNameStr, ActorDescInitData.AssetData))
 	{
 		return nullptr;
 	}
 
-	FTransform FoundationTransform;
-	static const FName NAME_FoundationTransform(TEXT("FoundationTransform"));
-	if (!FActorRegistry::ReadActorMetaData(NAME_FoundationTransform, FoundationTransform, ActorDescInitData.AssetData))
+	FTransform LevelInstanceTransform;
+	static const FName NAME_LevelInstanceTransform(TEXT("LevelInstanceTransform"));
+	if (!FActorRegistry::ReadActorMetaData(NAME_LevelInstanceTransform, LevelInstanceTransform, ActorDescInitData.AssetData))
 	{
 		return nullptr;
 	}
@@ -44,16 +44,16 @@ FWorldPartitionActorDesc* FFoundationActorDescFactory::CreateInstance(const FWor
 			//@todo_ow: This will result in a new BoundsExtent that is larger than it should. To fix this, we would need the Object Oriented BoundingBox of the actor (the BV of the actor without rotation)
 			const FVector BoundsMin = Data.BoundsLocation - Data.BoundsExtent;
 			const FVector BoundsMax = Data.BoundsLocation + Data.BoundsExtent;
-			const FBox NewBounds = FBox(BoundsMin, BoundsMax).TransformBy(FoundationTransform);
+			const FBox NewBounds = FBox(BoundsMin, BoundsMax).TransformBy(LevelInstanceTransform);
 			NewBounds.GetCenterAndExtents(Data.BoundsLocation, Data.BoundsExtent);
 		}
 	}
 
-	return new FFoundationActorDesc(Data, LevelPackage);
+	return new FLevelInstanceActorDesc(Data, LevelPackage);
 }
 
-FWorldPartitionActorDesc* FFoundationActorDescFactory::CreateInstance(AActor* InActor)
+FWorldPartitionActorDesc* FLevelInstanceActorDescFactory::CreateInstance(AActor* InActor)
 {
-	return new FFoundationActorDesc(InActor);
+	return new FLevelInstanceActorDesc(InActor);
 }
 #endif

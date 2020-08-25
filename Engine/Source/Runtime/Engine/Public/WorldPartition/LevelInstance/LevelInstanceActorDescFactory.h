@@ -6,9 +6,9 @@
 #include "WorldPartition/WorldPartitionActorDescFactory.h"
 
 class FWorldPartitionActorDesc;
-class UFoundationSubsystem;
+class ULevelInstanceSubsystem;
 
-class ENGINE_API FFoundationActorDescFactory : public FWorldPartitionActorDescFactory
+class ENGINE_API FLevelInstanceActorDescFactory : public FWorldPartitionActorDescFactory
 {
 public:
 #if WITH_EDITOR

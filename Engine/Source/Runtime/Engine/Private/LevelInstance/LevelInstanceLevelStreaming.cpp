@@ -1,77 +1,77 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Foundation/FoundationInstanceLevelStreaming.h"
-#include "Foundation/FoundationActor.h"
-#include "Foundation/FoundationPrivate.h"
-#include "Foundation/FoundationSubsystem.h"
+#include "LevelInstance/LevelInstanceLevelStreaming.h"
+#include "LevelInstance/LevelInstanceActor.h"
+#include "LevelInstance/LevelInstancePrivate.h"
+#include "LevelInstance/LevelInstanceSubsystem.h"
 #include "Engine/LevelBounds.h"
 #include "Engine/World.h"
 #include "Misc/PackageName.h"
 
 #if WITH_EDITOR
-#include "Foundation/FoundationEditorInstanceActor.h"
+#include "LevelInstance/LevelInstanceEditorInstanceActor.h"
 #include "Editor.h"
 #include "EditorLevelUtils.h"
 #include "LevelUtils.h"
 #endif
 
-ULevelStreamingFoundationInstance::ULevelStreamingFoundationInstance(const FObjectInitializer& ObjectInitializer)
+ULevelStreamingLevelInstance::ULevelStreamingLevelInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, FoundationID(InvalidFoundationID)
+	, LevelInstanceID(InvalidLevelInstanceID)
 {
 #if WITH_EDITOR
 	SetShouldBeVisibleInEditor(true);
 #endif
 }
 
-AFoundationActor* ULevelStreamingFoundationInstance::GetFoundationActor() const
+ALevelInstance* ULevelStreamingLevelInstance::GetLevelInstanceActor() const
 {
-	if (UFoundationSubsystem* FoundationSubsystem = GetWorld()->GetSubsystem<UFoundationSubsystem>())
+	if (ULevelInstanceSubsystem* LevelInstanceSubsystem = GetWorld()->GetSubsystem<ULevelInstanceSubsystem>())
 	{
-		return FoundationSubsystem->GetFoundation(FoundationID);
+		return LevelInstanceSubsystem->GetLevelInstance(LevelInstanceID);
 	}
 
 	return nullptr;
 }
 
 #if WITH_EDITOR
-FBox ULevelStreamingFoundationInstance::GetBounds() const
+FBox ULevelStreamingLevelInstance::GetBounds() const
 {
 	check(GetLoadedLevel());
 	return ALevelBounds::CalculateLevelBounds(GetLoadedLevel());
 }
 #endif
 
-ULevelStreamingFoundationInstance* ULevelStreamingFoundationInstance::LoadInstance(AFoundationActor* FoundationActor)
+ULevelStreamingLevelInstance* ULevelStreamingLevelInstance::LoadInstance(ALevelInstance* LevelInstanceActor)
 {
 #if WITH_EDITOR
-	if (!FoundationActor->CheckForLoop(FoundationActor->GetFoundation()))
+	if (!LevelInstanceActor->CheckForLoop(LevelInstanceActor->GetWorldAsset()))
 	{
-		UE_LOG(LogFoundation, Error, TEXT("Failed to load Foundation Actor '%s' because that would cause a loop. Run Map Check for more details."), *FoundationActor->GetPathName());
+		UE_LOG(LogLevelInstance, Error, TEXT("Failed to load LevelInstance Actor '%s' because that would cause a loop. Run Map Check for more details."), *LevelInstanceActor->GetPathName());
 		return nullptr;
 	}
 #endif
 
 	bool bOutSuccess = false;
 
-	FString ShortPackageName = FPackageName::GetShortName(FoundationActor->GetFoundation().GetLongPackageName());
-	// Build a unique and deterministic Foundation level instance name by using FoundationID. 
+	FString ShortPackageName = FPackageName::GetShortName(LevelInstanceActor->GetWorldAsset().GetLongPackageName());
+	// Build a unique and deterministic LevelInstance level instance name by using LevelInstanceID. 
 	// Distinguish game from editor since we don't want to duplicate for PIE already loaded editor instances (not yet supported).
-	FString Suffix = FString::Printf(TEXT("%s_Foundation_%08X_%d"), *ShortPackageName, FoundationActor->GetFoundationID(), FoundationActor->GetWorld()->IsGameWorld() ? 1 : 0);
-	ULevelStreamingFoundationInstance* LevelStreaming = Cast<ULevelStreamingFoundationInstance>(ULevelStreamingDynamic::LoadLevelInstanceBySoftObjectPtr(FoundationActor->GetWorld(), FoundationActor->GetFoundation(), FoundationActor->GetActorLocation(), FoundationActor->GetActorRotation(), bOutSuccess, Suffix, ULevelStreamingFoundationInstance::StaticClass()));
+	FString Suffix = FString::Printf(TEXT("%s_LevelInstance_%08X_%d"), *ShortPackageName, LevelInstanceActor->GetLevelInstanceID(), LevelInstanceActor->GetWorld()->IsGameWorld() ? 1 : 0);
+	ULevelStreamingLevelInstance* LevelStreaming = Cast<ULevelStreamingLevelInstance>(ULevelStreamingDynamic::LoadLevelInstanceBySoftObjectPtr(LevelInstanceActor->GetWorld(), LevelInstanceActor->GetWorldAsset(), LevelInstanceActor->GetActorLocation(), LevelInstanceActor->GetActorRotation(), bOutSuccess, Suffix, ULevelStreamingLevelInstance::StaticClass()));
 	if (bOutSuccess)
 	{
-		LevelStreaming->FoundationID = FoundationActor->GetFoundationID();
+		LevelStreaming->LevelInstanceID = LevelInstanceActor->GetLevelInstanceID();
 		
 #if WITH_EDITOR
-		if (!FoundationActor->GetWorld()->IsPlayInEditor())
+		if (!LevelInstanceActor->GetWorld()->IsPlayInEditor())
 		{
-			GEngine->BlockTillLevelStreamingCompleted(FoundationActor->GetWorld());
+			GEngine->BlockTillLevelStreamingCompleted(LevelInstanceActor->GetWorld());
 
-			// Most of the code here is meant to allow partial support for undo/redo of Foundation Instance Loading:
+			// Most of the code here is meant to allow partial support for undo/redo of LevelInstance Instance Loading:
 			// by setting the objects RF_Transient and !RF_Transactional we can check when unloading if those flags
 			// have been changed and figure out if we need to clear the transaction buffer or not.
-			// It might not be the final solution to support Undo/Redo in foundations but it handles most of the non-editing part
+			// It might not be the final solution to support Undo/Redo in LevelInstances but it handles most of the non-editing part
 			ULevel* Level = LevelStreaming->GetLoadedLevel();
 			check(Level);
 			check(LevelStreaming->GetCurrentState() == ULevelStreaming::ECurrentState::LoadedVisible);
@@ -103,10 +103,10 @@ ULevelStreamingFoundationInstance* ULevelStreamingFoundationInstance::LoadInstan
 			}
 
 			// Create special actor that will handle selection and transform
-			AFoundationEditorInstanceActor::Create(FoundationActor, Level);
+			ALevelInstanceEditorInstanceActor::Create(LevelInstanceActor, Level);
 
 			// Make sure selection is reflected after load
-			FoundationActor->PushSelectionToProxies();
+			LevelInstanceActor->PushSelectionToProxies();
 		}
 #endif
 		return LevelStreaming;
@@ -115,7 +115,7 @@ ULevelStreamingFoundationInstance* ULevelStreamingFoundationInstance::LoadInstan
 	return nullptr;
 }
 
-void ULevelStreamingFoundationInstance::UnloadInstance(ULevelStreamingFoundationInstance* LevelStreaming)
+void ULevelStreamingLevelInstance::UnloadInstance(ULevelStreamingLevelInstance* LevelStreaming)
 {
 	if (LevelStreaming->GetWorld()->IsGameWorld())
 	{
@@ -142,7 +142,7 @@ void ULevelStreamingFoundationInstance::UnloadInstance(ULevelStreamingFoundation
 
 		// No need to clear the whole editor selection since actor of this level will be removed from the selection by: UEditorEngine::OnLevelRemovedFromWorld
 		const bool bClearSelection = false;
-		LevelStreaming->GetWorld()->GetSubsystem<UFoundationSubsystem>()->RemoveLevelFromWorld(LevelStreaming->GetLoadedLevel(), bResetTrans);
+		LevelStreaming->GetWorld()->GetSubsystem<ULevelInstanceSubsystem>()->RemoveLevelFromWorld(LevelStreaming->GetLoadedLevel(), bResetTrans);
 	}
 #endif 
 }

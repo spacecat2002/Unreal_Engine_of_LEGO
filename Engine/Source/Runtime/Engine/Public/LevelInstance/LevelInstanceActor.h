@@ -6,34 +6,34 @@
 #include "UObject/ObjectMacros.h"
 #include "GameFramework/Actor.h"
 #include "Containers/Array.h"
-#include "Foundation/FoundationTypes.h"
-#include "FoundationActor.generated.h"
+#include "LevelInstance/LevelInstanceTypes.h"
+#include "LevelInstanceActor.generated.h"
 
 UCLASS()
-class ENGINE_API AFoundationActor : public AActor
+class ENGINE_API ALevelInstance : public AActor
 {
 	GENERATED_UCLASS_BODY()
 
 protected:
-	/** Level Foundation */
-	UPROPERTY(EditAnywhere, Category = Foundation)
-	TSoftObjectPtr<UWorld> Foundation;
+	/** Level LevelInstance */
+	UPROPERTY(EditAnywhere, Category = LevelInstance)
+	TSoftObjectPtr<UWorld> WorldAsset;
 public:
 
-	void LoadFoundation();
-	void UnloadFoundation();
-	bool IsFoundationPathValid() const;
-	const TSoftObjectPtr<UWorld>& GetFoundation() const { return Foundation; }
-	class UFoundationSubsystem* GetFoundationSubsystem() const;
+	void LoadLevelInstance();
+	void UnloadLevelInstance();
+	bool IsLevelInstancePathValid() const;
+	const TSoftObjectPtr<UWorld>& GetWorldAsset() const { return WorldAsset; }
+	class ULevelInstanceSubsystem* GetLevelInstanceSubsystem() const;
 	
-	const FFoundationID& GetFoundationID() const;
-	bool HasValidFoundationID() const;
+	const FLevelInstanceID& GetLevelInstanceID() const;
+	bool HasValidLevelInstanceID() const;
 
 	virtual void PostRegisterAllComponents() override;
 	virtual void PostUnregisterAllComponents() override;
 	virtual void Serialize(FArchive& Ar) override;
 
-	const FGuid& GetFoundationActorGuid() const;
+	const FGuid& GetLevelInstanceActorGuid() const;
 #if WITH_EDITOR
 	// UObject overrides
 	virtual void PreEditUndo() override;
@@ -67,30 +67,30 @@ public:
 	bool SetCurrent();
 	bool IsCurrent() const;
 	bool IsLoaded() const;
-	void OnFoundationLoaded();
-	FString GetFoundationPackage() const;
-	void UpdateFoundation();
-	bool SetFoundation(TSoftObjectPtr<UWorld> Foundation);
-	bool CheckForLoop(TSoftObjectPtr<UWorld> Foundation, TArray<TPair<FText, TSoftObjectPtr<UWorld>>>* LoopInfo = nullptr, const AFoundationActor** LoopStart = nullptr) const;
+	void OnLevelInstanceLoaded();
+	FString GetWorldAssetPackage() const;
+	void UpdateLevelInstance();
+	bool SetWorldAsset(TSoftObjectPtr<UWorld> WorldAsset);
+	bool CheckForLoop(TSoftObjectPtr<UWorld> WorldAsset, TArray<TPair<FText, TSoftObjectPtr<UWorld>>>* LoopInfo = nullptr, const ALevelInstance** LoopStart = nullptr) const;
 	AActor* FindEditorInstanceActor() const;
 
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnFoundationActorPostLoad, AFoundationActor*);
-	static FOnFoundationActorPostLoad OnFoundationActorPostLoad;
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnLevelInstanceActorPostLoad, ALevelInstance*);
+	static FOnLevelInstanceActorPostLoad OnLevelInstanceActorPostLoad;
 #endif
 
 private:
 
 #if WITH_EDITOR
-	bool CanSetValue(TSoftObjectPtr<UWorld> Foundation, FString* Reason = nullptr) const;
+	bool CanSetValue(TSoftObjectPtr<UWorld> LevelInstance, FString* Reason = nullptr) const;
 	
-	TSoftObjectPtr<UWorld> CachedFoundation;
-	FFoundationID CachedFoundationID;
+	TSoftObjectPtr<UWorld> CachedWorldAsset;
+	FLevelInstanceID CachedLevelInstanceID;
 	bool bCachedIsTemporarilyHiddenInEditor;
 	bool bGuardLoadUnload;
 #else
-	// This Guid is used to compute the FoundationID. Because in non-editor build we don't have an ActorGuid, we store it at cook time.
-	FGuid FoundationActorGuid;
+	// This Guid is used to compute the LevelInstanceID. Because in non-editor build we don't have an ActorGuid, we store it at cook time.
+	FGuid LevelInstanceActorGuid;
 #endif
 
-	FFoundationID FoundationID;
+	FLevelInstanceID LevelInstanceID;
 };

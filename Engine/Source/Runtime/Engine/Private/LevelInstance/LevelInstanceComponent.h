@@ -5,21 +5,21 @@
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 
-#include "FoundationComponent.generated.h"
+#include "LevelInstanceComponent.generated.h"
 
 /**
- * UFoundationComponent subclasses USceneComponent for Editing purposes so that we can have a proxy to the FoundationActor's RootComponent transform without attaching to it.
+ * ULevelInstanceComponent subclasses USceneComponent for Editing purposes so that we can have a proxy to the LevelInstanceActor's RootComponent transform without attaching to it.
  *
- * It is responsible for updating the transform of the AFoundationEditorInstanceActor which is created when loading a Foundation Instance Level
+ * It is responsible for updating the transform of the ALevelInstanceEditorInstanceActor which is created when loading a LevelInstance Instance Level
  *
- * We use this method to avoid attaching the Instance Level Actors to the AFoundationActor. (Cross level attachment and undo/redo pain)
+ * We use this method to avoid attaching the Instance Level Actors to the ALevelInstance. (Cross level attachment and undo/redo pain)
  * 
- * The Foundation Level Actors are attached to this AFoundationEditorInstanceActor keeping the attachment local to the Instance Level and shielded from the transaction buffer.
+ * The LevelInstance Level Actors are attached to this ALevelInstanceEditorInstanceActor keeping the attachment local to the Instance Level and shielded from the transaction buffer.
  *
  * Avoiding those Level Actors from being part of the Transaction system allows us to unload that level without clearing the transaction buffer. It also allows BP Reinstancing without having to update attachements.
  */
-UCLASS(Within=FoundationActor)
-class ENGINE_API UFoundationComponent : public USceneComponent
+UCLASS(Within=LevelInstance)
+class ENGINE_API ULevelInstanceComponent : public USceneComponent
 {
 	GENERATED_UCLASS_BODY()
 public:
