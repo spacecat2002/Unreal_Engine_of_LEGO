@@ -208,7 +208,10 @@ void FMetalRHICommandContext::RHINextSubpass()
 	if (RenderPassInfo.SubpassHint == ESubpassHint::DepthReadSubpass)
 	{
 		FMetalRenderPass& RP = Context->GetCurrentRenderPass();
-		RP.InsertTextureBarrier();
+		if (RP.GetCurrentCommandEncoder().IsRenderCommandEncoderActive())
+		{
+			RP.InsertTextureBarrier();
+		}
 	}
 #endif
 }
