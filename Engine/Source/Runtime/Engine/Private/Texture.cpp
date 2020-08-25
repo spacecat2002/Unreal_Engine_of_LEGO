@@ -755,7 +755,7 @@ FStreamableRenderResourceState UTexture::GetResourcePostInitState(FTexturePlatfo
 	}
 	else
 	{
-		const int32 NumMipsInTail = FMath::Max(GMinTextureResidentMipCount, PlatformData->GetNumMipsInTail());
+		const int32 NumMipsInTail = PlatformData->GetNumMipsInTail();
 		// Bias is not allowed to shrink the mip count bellow NumMipsInTail.
 		// Also, don't rely on optional mips 
 		if (NumMips - GetCachedLODBias() < NumMipsInTail)
@@ -772,7 +772,10 @@ FStreamableRenderResourceState UTexture::GetResourcePostInitState(FTexturePlatfo
 		}
 	}
 
-	NumRequestedMips = FMath::Clamp<int32>(NumRequestedMips, MinRequestMipCount, NumMips);
+	if (NumRequestedMips < MinRequestMipCount && MinRequestMipCount < NumMips)
+	{
+		NumRequestedMips = MinRequestMipCount;
+	}
 
 	FStreamableRenderResourceState PostInitState;
 	PostInitState.bSupportsStreaming = bMakeStreamble;
