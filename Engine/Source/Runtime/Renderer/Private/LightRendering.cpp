@@ -1929,7 +1929,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 							ClearShadowMask(ScreenShadowMaskSubPixelTexture);
 						}
 
-						RenderShadowProjections(GraphBuilder, SceneTexturesUniformBuffer, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, SceneDepthTexture, &LightSceneInfo, InHairVisibilityViews, bInjectedTranslucentVolume);
+						RenderDeferredShadowProjections(GraphBuilder, SceneTexturesUniformBuffer,  &LightSceneInfo, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, SceneDepthTexture, HairDatas, bInjectedTranslucentVolume);
 					}
 
 					bUsedShadowMaskTexture = true;
