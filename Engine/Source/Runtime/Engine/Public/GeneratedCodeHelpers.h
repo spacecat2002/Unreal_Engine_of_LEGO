@@ -344,7 +344,7 @@ public:
 	{
 		if (TargetArray.Num() > 0)
 		{
-			const int32 Index = FMath::RandRange(0, ArrayHelper.Num() - 1);
+			const int32 Index = FMath::RandRange(0, TargetArray.Num() - 1);
 
 			OutItem = TargetArray[Index];
 			OutIndex = Index;
