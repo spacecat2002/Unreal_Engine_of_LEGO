@@ -47,8 +47,19 @@ class ENGINE_API UCurveFloat : public UCurveBase
 	virtual TArray<FRichCurveEditInfoConst> GetCurves() const override;
 	virtual TArray<FRichCurveEditInfo> GetCurves() override;
 	virtual bool IsValidCurve( FRichCurveEditInfo CurveInfo ) override;
+	virtual void OnCurveChanged(const TArray<FRichCurveEditInfo>& ChangedCurveEditInfos) override;
 
 	/** Determine if Curve is the same */
 	bool operator == (const UCurveFloat& Curve) const;
+
+#if WITH_EDITORONLY_DATA
+	// Delegate called whenever the curve data is updated
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnUpdateCurve, UCurveFloat* /*Curve*/, EPropertyChangeType::Type /*ChangeType*/);
+	FOnUpdateCurve OnUpdateCurve;
+#endif
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif // WITH_EDITOR
 };
 
