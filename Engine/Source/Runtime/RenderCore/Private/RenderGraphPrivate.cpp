@@ -294,6 +294,7 @@ int32 GRDGStatRenderPassMergeCount = 0;
 int32 GRDGStatTextureCount = 0;
 int32 GRDGStatBufferCount = 0;
 int32 GRDGStatTransitionCount = 0;
+int32 GRDGStatTransitionBatchCount = 0;
 int32 GRDGStatMemoryWatermark = 0;
 
 DEFINE_STAT(STAT_RDG_PassCount);
@@ -303,6 +304,7 @@ DEFINE_STAT(STAT_RDG_PassDependencyCount);
 DEFINE_STAT(STAT_RDG_TextureCount);
 DEFINE_STAT(STAT_RDG_BufferCount);
 DEFINE_STAT(STAT_RDG_TransitionCount);
+DEFINE_STAT(STAT_RDG_TransitionBatchCount);
 DEFINE_STAT(STAT_RDG_CompileTime);
 DEFINE_STAT(STAT_RDG_CollectResourcesTime);
 DEFINE_STAT(STAT_RDG_CollectBarriersTime);

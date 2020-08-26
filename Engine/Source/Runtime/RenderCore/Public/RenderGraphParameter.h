@@ -191,8 +191,8 @@ public:
 		: FRDGParameterStruct(Parameters, &ParameterStructType::FTypeInfo::GetStructMetadata()->GetLayout())
 	{}
 
-	explicit FRDGParameterStruct(void* InContents, const FRHIUniformBufferLayout* InLayout)
-		: Contents(reinterpret_cast<uint8*>(InContents))
+	explicit FRDGParameterStruct(const void* InContents, const FRHIUniformBufferLayout* InLayout)
+		: Contents(reinterpret_cast<const uint8*>(InContents))
 		, Layout(InLayout)
 	{
 		checkf(Contents && Layout, TEXT("Pass parameter struct created with null inputs."));
@@ -253,10 +253,10 @@ private:
 		checkf(ParameterIndex < static_cast<uint32>(Parameters.Num()), TEXT("Attempted to access RDG pass parameter outside of index for Layout '%s'"), *Layout->GetDebugName());
 		const EUniformBufferBaseType MemberType = Parameters[ParameterIndex].MemberType;
 		const uint16 MemberOffset = Parameters[ParameterIndex].MemberOffset;
-		return FRDGParameter(MemberType, Contents + MemberOffset);
+		return FRDGParameter(MemberType, const_cast<uint8*>(Contents + MemberOffset));
 	}
 
-	uint8* Contents;
+	const uint8* Contents;
 	const FRHIUniformBufferLayout* Layout;
 
 	friend class FRDGPass;

@@ -12,7 +12,11 @@
 
 class FRDGLogFile;
 
-/** Use the render graph builder to build up a graph of passes and then call Execute() to process them. */
+/** Use the render graph builder to build up a graph of passes and then call Execute() to process them. Resource barriers
+ *  and lifetimes are derived from _RDG_ parameters in the pass parameter struct provided to each AddPass call. The resulting
+ *  graph is compiled, culled, and executed in Execute(). The builder should be created on the stack and executed prior to
+ *  destruction.
+ */
 class RENDERCORE_API FRDGBuilder
 {
 public:
@@ -23,13 +27,17 @@ public:
 	FRDGTextureRef FindExternalTexture(FRHITexture* Texture) const;
 	FRDGTextureRef FindExternalTexture(IPooledRenderTarget* ExternalPooledTexture, ERenderTargetTexture Texture) const;
 
-	/** Register a external texture to be tracked by the render graph. */
+	/** Registers a external pooled render target texture to be tracked by the render graph. The pooled render target may contain two RHI
+	 *  textures--one MSAA and one non-MSAA resolve texture. In most cases they are both the same pointer. RDG textures are 1-to-1 with an
+	 *  RHI texture, so two RDG textures must be registered at most. Use ERenderTargetTexture to select which RHI texture on the pooled
+	 *  render target to register. The name of the registered RDG texture is pulled from the pooled render target.
+	 */
 	FRDGTextureRef RegisterExternalTexture(
 		const TRefCountPtr<IPooledRenderTarget>& ExternalPooledTexture,
 		ERenderTargetTexture Texture = ERenderTargetTexture::ShaderResource,
 		ERDGTextureFlags Flags = ERDGTextureFlags::None);
 
-	/** Register an external texture with a custom name. The name is only used if this is the first registration of the texture. */
+	/** Register an external texture with a custom name. The name is only used if the texture has not already been registered. */
 	FRDGTextureRef RegisterExternalTexture(
 		const TRefCountPtr<IPooledRenderTarget>& ExternalPooledTexture,
 		const TCHAR* NameIfNotRegistered,
@@ -40,21 +48,22 @@ public:
 	FRDGBufferRef RegisterExternalBuffer(const TRefCountPtr<FRDGPooledBuffer>& ExternalPooledBuffer, ERDGBufferFlags Flags = ERDGBufferFlags::None);
 	FRDGBufferRef RegisterExternalBuffer(const TRefCountPtr<FRDGPooledBuffer>& ExternalPooledBuffer, ERDGBufferFlags Flags, ERHIAccess AccessFinal);
 
-	/** Register an external buffer with a custom name. The name is only used if this is the first registration of the buffer. */
+	/** Register an external buffer with a custom name. The name is only used if the buffer has not already been registered. */
 	FRDGBufferRef RegisterExternalBuffer(
 		const TRefCountPtr<FRDGPooledBuffer>& ExternalPooledBuffer,
 		const TCHAR* NameIfNotRegistered,
 		ERDGBufferFlags Flags = ERDGBufferFlags::None);
 
-	/** Create graph tracked resource from a descriptor with a debug name.
-	 *
-	 *  The debug name is the name used for GPU debugging tools, but also for the VisualizeTexture/Vis command.
+	/** Create graph tracked texture from a descriptor. The CPU memory is guaranteed to be valid through execution of
+	 *  the graph, at which point it is released. The underlying RHI texture lifetime is only guaranteed for passes which
+	 *  declare the texture in the pass parameter struct. The name is the name used for GPU debugging tools and the the
+	 *  VisualizeTexture/Vis command.
 	 */
 	FRDGTextureRef CreateTexture(const FRDGTextureDesc& Desc, const TCHAR* Name, ERDGTextureFlags Flags = ERDGTextureFlags::None);
 
-	/** Create graph tracked resource from a descriptor with a debug name.
-	 *
-	 *  The debug name is the name used for GPU debugging tools, but also for the VisualizeTexture/Vis command.
+	/** Create graph tracked buffer from a descriptor. The CPU memory is guaranteed to be valid through execution of
+	 *  the graph, at which point it is released. The underlying RHI buffer lifetime is only guaranteed for passes which
+	 *  declare the buffer in the pass parameter struct. The name is the name used for GPU debugging tools.
 	 */
 	FRDGBufferRef CreateBuffer(const FRDGBufferDesc& Desc, const TCHAR* Name, ERDGBufferFlags Flags = ERDGBufferFlags::None);
 
@@ -100,20 +109,32 @@ public:
 	template <typename ParameterStructType>
 	ParameterStructType* AllocParameters();
 
-	/** Creates a graph tracked uniform buffer which can be attached to passes. */
+	/** Creates a graph tracked uniform buffer which can be attached to passes. These uniform buffers require some care
+	 *  because they will bulk transition all resources. The graph will only transition resources which are not also
+	 *  bound for write access by the pass.
+	 */
 	template <typename ParameterStructType>
 	TRDGUniformBufferRef<ParameterStructType> CreateUniformBuffer(ParameterStructType* ParameterStruct);
 
-	/** Adds a lambda pass to the graph.
+	/** Adds a lambda pass to the graph with an accompanied pass parameter struct.
 	 *
-	 * The Name of the pass should be generated with enough information to identify it's purpose and GPU cost, to be clear
-	 * for GPU profiling tools.
+	 *  RDG resources declared in the struct (via _RDG parameter macros) are safe to access in the lambda. The pass parameter struct
+	 *  should be allocated by AllocParameters(), and once passed in, should not be mutated. It is safe to provide the same parameter
+	 *  struct to multiple passes, so long as it is kept immutable. The lambda is deferred until execution unless the immediate debug
+	 *  mode is enabled. All lambda captures should assume deferral of execution.
 	 *
-	 * Caution: The pass parameter will be validated, and should not longer be modified after this call, since the pass may be executed
-	 * right away with the immediate debugging mode.
+	 *  The lambda must include a single RHI command list as its parameter. The exact type of command list depends on the workload.
+	 *  For example, use FRHIComputeCommandList& for Compute / AsyncCompute workloads. Raster passes should use FRHICommandList&.
+	 *  Prefer not to use FRHICommandListImmediate& unless actually required.
+	 *
+	 *  Declare the type of GPU workload (i.e. Copy, Compute / AsyncCompute, Graphics) to the pass via the Flags argument. This is
+	 *  used to determine async compute regions, render pass setup / merging, RHI transition accesses, etc. Other flags exist for
+	 *  specialized purposes, like forcing a pass to never be culled (NeverCull). See ERDGPassFlags for more info.
+	 *
+	 *  The pass name is used by debugging / profiling tools.
 	 */
 	template <typename ParameterStructType, typename ExecuteLambdaType>
-	FRDGPassRef AddPass(FRDGEventName&& Name, ParameterStructType* ParameterStruct, ERDGPassFlags Flags, ExecuteLambdaType&& ExecuteLambda);
+	FRDGPassRef AddPass(FRDGEventName&& Name, const ParameterStructType* ParameterStruct, ERDGPassFlags Flags, ExecuteLambdaType&& ExecuteLambda);
 
 	/** Adds a lambda pass to the graph without any parameters. This useful for deferring RHI work onto the graph timeline,
 	 *  or incrementally porting code to use the graph system. NeverCull and SkipRenderPass (if Raster) are implicitly added
@@ -131,18 +152,27 @@ public:
 	}
 #endif
 
-	/** Queues a pooled texture extraction to happen at the end of graph execution. */
+	/** Queues a pooled render target extraction to happen at the end of graph execution. For graph-created textures, this extends
+	 *  the lifetime of the GPU resource until execution, at which point the pointer is filled. If specified, the texture is transitioned
+	 *  to the AccessFinal state, or kDefaultAccessFinal otherwise.
+	 */
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr);
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr, ERHIAccess AccessFinal);
 
 	UE_DEPRECATED(4.26, "QueueTextureExtraction with bTransitionToRead is deprecated; use the ERHIAccess variant instead.")
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutTexturePtr, bool bTransitionToRead);
 
-	/** Queues a pooled buffer extraction to happen at the end of graph execution. */
+	/** Queues a pooled buffer extraction to happen at the end of graph execution. For graph-created buffers, this extends the lifetime
+	 *  of the GPU resource until execution, at which point the pointer is filled. If specified, the buffer is transitioned to the
+	 *  AccessFinal state, or kDefaultAccessFinal otherwise.
+	 */
 	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>* OutPooledBufferPtr);
 	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>* OutPooledBufferPtr, ERHIAccess AccessFinal);
 
-	/** If the resource is created by the graph, this will force immediate allocation of the underlying resource. */
+	/** For graph-created resources, this forces immediate allocation of the underlying pooled resource, effectively promoting it
+	 *  to an external resource. This will increase memory pressure, but allows for querying the pooled resource with GetPooled{Texture, Buffer}.
+	 *  This is primarily used as an aid for porting code incrementally to RDG.
+	 */
 	void PreallocateTexture(FRDGTextureRef Texture);
 	void PreallocateBuffer(FRDGBufferRef Buffer);
 

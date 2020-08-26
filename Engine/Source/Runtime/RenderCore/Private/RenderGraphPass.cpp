@@ -11,7 +11,7 @@ FUniformBufferStaticBindings FRDGParameterStruct::GetGlobalUniformBuffers() cons
 	for (uint32 Index = 0, Count = Layout->UniformBuffers.Num(); Index < Count; ++Index)
 	{
 		const uint32 MemberOffset = Layout->UniformBuffers[Index].MemberOffset;
-		FRHIUniformBuffer* UniformBufferPtr = *reinterpret_cast<FUniformBufferRHIRef*>(Contents + MemberOffset);
+		FRHIUniformBuffer* UniformBufferPtr = *reinterpret_cast<FUniformBufferRHIRef*>(const_cast<uint8*>(Contents + MemberOffset));
 
 		if (UniformBufferPtr && UniformBufferPtr->IsGlobal())
 		{
@@ -173,6 +173,10 @@ void FRDGBarrierBatchBegin::Submit(FRHIComputeCommandList& RHICmdList)
 		Transitions.Empty();
 #if RDG_ENABLE_DEBUG
 		Resources.Empty();
+#endif
+
+#if STATS
+		GRDGStatTransitionBatchCount++;
 #endif
 	}
 }
