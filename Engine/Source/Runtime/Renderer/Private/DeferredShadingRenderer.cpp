@@ -2388,7 +2388,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	CopySceneCaptureComponentToTarget(GraphBuilder, SceneTextures, ViewFamilyTexture);
 
 	// Finish rendering for each view.
-	if (ViewFamily.bResolveScene)
+	if (ViewFamily.bResolveScene && ViewFamilyTexture)
 	{
 		RDG_EVENT_SCOPE(GraphBuilder, "PostProcessing");
 		RDG_GPU_STAT_SCOPE(GraphBuilder, Postprocessing);
