@@ -342,8 +342,6 @@ FScreenPassTexture AddEditorPrimitivePass(
 				DrawRenderState.SetDepthStencilAccess(FExclusiveDepthStencil::DepthWrite_StencilWrite);
 				DrawRenderState.SetBlendState(TStaticBlendStateWriteMask<CW_RGBA>::GetRHI());
 
-				RenderEditorPrimitives(RHICmdList, *EditorView, DrawRenderState);
-
 				// Draw editor primitives.
 				{
 					SCOPED_DRAW_EVENTF(RHICmdList, EditorPrimitives,
