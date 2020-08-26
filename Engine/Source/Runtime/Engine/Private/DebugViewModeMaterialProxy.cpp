@@ -63,6 +63,10 @@ FDebugViewModeMaterialProxy::FDebugViewModeMaterialProxy(
 				bIsUsedWithAPEXCloth = Resource->IsUsedWithAPEXCloth();
 				bIsUsedWithWater = Resource->IsUsedWithWater();
 				bIsUsedWithVirtualHeightfieldMesh = Resource->IsUsedWithVirtualHeightfieldMesh();
+				bIsUsedWithGeometryCache = Resource->IsUsedWithGeometryCache();
+				bIsUsedWithHairStrands = Resource->IsUsedWithHairStrands();
+				bIsUsedWithLidarPointCloud = Resource->IsUsedWithLidarPointCloud();
+				bIsUsedWithGeometryCollections = Resource->IsUsedWithGeometryCollections();
 			}
 		}
 
