@@ -8,8 +8,6 @@
 #include "ClearReplacementShaders.h"
 #include "MetalTransitionData.h"
 
-static void ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICmdList, FMetalUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat);
-
 FMetalShaderResourceView::FMetalShaderResourceView()
 	: TextureView(nullptr)
 	, Offset(0)
@@ -484,35 +482,96 @@ void FMetalDynamicRHI::RHIUpdateShaderResourceView(FRHIShaderResourceView* SRVRH
 	}
 }
 
-#if UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
-void FMetalRHICommandContext::ClearUAVStructuredBuffer(FRHIUnorderedAccessView* UnorderedAccessViewRHI, uint32 Pattern)
+#if UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
+struct FMetalRHICommandClearUAVWithBlitEncoder : public FRHICommand<FMetalRHICommandClearUAVWithBlitEncoder>
 {
-	FMetalUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
-	FMetalBuffer Buffer = UnorderedAccessView->SourceView->SourceStructuredBuffer->GetCurrentBuffer();
-	uint32 Size = UnorderedAccessView->SourceView->SourceStructuredBuffer->GetSize();
-	uint32 AlignedSize = Align(Size, BufferOffsetAlignment);
-	FMetalPooledBufferArgs Args(GetMetalDeviceContext().GetDevice(), AlignedSize, BUF_Dynamic, mtlpp::StorageMode::Shared);
-	FMetalBuffer Temp = GetMetalDeviceContext().CreatePooledBuffer(Args);
-	uint32* ContentBytes = (uint32*)Temp.GetContents();
-	for (uint32 Element = 0; Element < (AlignedSize >> 2); ++Element)
+	FMetalContext*	Context;
+	FMetalBuffer	Buffer;
+	uint32			Size;
+	uint32			Pattern;
+
+	FORCEINLINE_DEBUGGABLE FMetalRHICommandClearUAVWithBlitEncoder(FMetalContext* InContext, FMetalBuffer InBuffer, uint32 InSize, uint32 InPattern)
+		: Context(InContext)
+		, Buffer(InBuffer)
+		, Size(InSize)
+		, Pattern(InPattern)
 	{
-		ContentBytes[Element] = Pattern;
 	}
-	Context->CopyFromBufferToBuffer(Temp, 0, Buffer, 0, Size);
-	GetMetalDeviceContext().ReleaseBuffer(Temp);
+
+	virtual ~FMetalRHICommandClearUAVWithBlitEncoder()
+	{
+	}
+
+	void Execute(FRHICommandListBase& CmdList)
+	{
+		SCOPED_AUTORELEASE_POOL;
+
+		uint32 AlignedSize = Align(Size, BufferOffsetAlignment);
+		FMetalPooledBufferArgs Args(GetMetalDeviceContext().GetDevice(), AlignedSize, BUF_Dynamic, mtlpp::StorageMode::Shared);
+		FMetalBuffer Temp = GetMetalDeviceContext().CreatePooledBuffer(Args);
+		uint32* ContentBytes = (uint32*)Temp.GetContents();
+		for (uint32 Element = 0; Element < (AlignedSize >> 2); ++Element)
+		{
+			ContentBytes[Element] = Pattern;
+		}
+		Context->CopyFromBufferToBuffer(Temp, 0, Buffer, 0, Size);
+		GetMetalDeviceContext().ReleaseBuffer(Temp);
+	}
+};
+
+void FMetalRHICommandContext::ClearUAVWithBlitEncoder(FRHIUnorderedAccessView* UnorderedAccessViewRHI, EMetalRHIClearUAVType Type, uint32 Pattern)
+{
+	SCOPED_AUTORELEASE_POOL;
+
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+	FMetalUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
+	FMetalBuffer Buffer;
+	uint32 Size = 0;
+
+	switch (Type)
+	{
+		case EMetalRHIClearUAVType::VertexBuffer:
+			check(0 != (UnorderedAccessView->SourceView->SourceVertexBuffer->GetUsage() & BUF_ByteAddressBuffer));
+			Buffer = UnorderedAccessView->SourceView->SourceVertexBuffer->GetCurrentBuffer();
+			Size = UnorderedAccessView->SourceView->SourceVertexBuffer->GetSize();
+			break;
+
+		case EMetalRHIClearUAVType::StructuredBuffer:
+			Buffer = UnorderedAccessView->SourceView->SourceStructuredBuffer->GetCurrentBuffer();
+			Size = UnorderedAccessView->SourceView->SourceStructuredBuffer->GetSize();
+			break;
+	};
+
+	if (RHICmdList.Bypass() || !IsRunningRHIInSeparateThread())
+	{
+		uint32 AlignedSize = Align(Size, BufferOffsetAlignment);
+		FMetalPooledBufferArgs Args(GetMetalDeviceContext().GetDevice(), AlignedSize, BUF_Dynamic, mtlpp::StorageMode::Shared);
+		FMetalBuffer Temp = GetMetalDeviceContext().CreatePooledBuffer(Args);
+		uint32* ContentBytes = (uint32*)Temp.GetContents();
+		for (uint32 Element = 0; Element < (AlignedSize >> 2); ++Element)
+		{
+			ContentBytes[Element] = Pattern;
+		}
+		Context->CopyFromBufferToBuffer(Temp, 0, Buffer, 0, Size);
+		GetMetalDeviceContext().ReleaseBuffer(Temp);
+	}
+	else
+	{
+		new (RHICmdList.AllocCommand<FMetalRHICommandClearUAVWithBlitEncoder>()) FMetalRHICommandClearUAVWithBlitEncoder(Context, Buffer, Size, Pattern);
+	}
 }
-#endif // UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+#endif // UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
 
 void FMetalRHICommandContext::RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values)
 {
-#if UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+#if UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
 	FMetalUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
 	if (UnorderedAccessView->SourceView->SourceStructuredBuffer)
 	{
-		ClearUAVStructuredBuffer(UnorderedAccessViewRHI, *(uint32*)&Values.X);
+		ClearUAVWithBlitEncoder(UnorderedAccessViewRHI, EMetalRHIClearUAVType::StructuredBuffer, *(uint32*)&Values.X);
 	}
 	else
-#endif // UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+#endif // UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
 	{
 		TRHICommandList_RecursiveHazardous<FMetalRHICommandContext> RHICmdList(this);
 		ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, true);
@@ -521,21 +580,21 @@ void FMetalRHICommandContext::RHIClearUAVFloat(FRHIUnorderedAccessView* Unordere
 
 void FMetalRHICommandContext::RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values)
 {
-#if UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+#if UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
 	FMetalUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
 	if (UnorderedAccessView->SourceView->SourceStructuredBuffer)
 	{
-		ClearUAVStructuredBuffer(UnorderedAccessViewRHI, *(uint32*)&Values.X);
+		ClearUAVWithBlitEncoder(UnorderedAccessViewRHI, EMetalRHIClearUAVType::StructuredBuffer, *(uint32*)&Values.X);
 	}
 	else
-#endif // UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+#endif // UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
 	{
 		TRHICommandList_RecursiveHazardous<FMetalRHICommandContext> RHICmdList(this);
 		ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, false);
 	}
 }
 
-void ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICmdList, FMetalUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat)
+void FMetalRHICommandContext::ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICmdList, FMetalUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat)
 {
 	@autoreleasepool {
 		EClearReplacementValueType ValueType = bFloat ? EClearReplacementValueType::Float : EClearReplacementValueType::Uint32;
@@ -557,8 +616,17 @@ void ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICm
 
 		if (UnorderedAccessView->SourceView->SourceVertexBuffer)
 		{
-			uint32 NumElements = UnorderedAccessView->SourceView->SourceVertexBuffer->GetSize() / GPixelFormats[UnorderedAccessView->SourceView->Format].BlockBytes;
-			ClearUAVShader_T<EClearReplacementResourceType::Buffer, 4, false>(RHICmdList, UnorderedAccessView, NumElements, 1, 1, ClearValue, ValueType);
+#if UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
+			if (UnorderedAccessView->SourceView->SourceVertexBuffer->GetUsage() & BUF_ByteAddressBuffer)
+			{
+				ClearUAVWithBlitEncoder(UnorderedAccessView, EMetalRHIClearUAVType::VertexBuffer, *(const uint32*)ClearValue);
+			}
+			else
+#endif // UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
+			{
+				uint32 NumElements = UnorderedAccessView->SourceView->SourceVertexBuffer->GetSize() / GPixelFormats[UnorderedAccessView->SourceView->Format].BlockBytes;
+				ClearUAVShader_T<EClearReplacementResourceType::Buffer, 4, false>(RHICmdList, UnorderedAccessView, NumElements, 1, 1, ClearValue, ValueType);
+			}
 		}
 		else if (UnorderedAccessView->SourceView->SourceTexture)
 		{

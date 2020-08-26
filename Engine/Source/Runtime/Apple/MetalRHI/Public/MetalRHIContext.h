@@ -8,12 +8,18 @@
 #include "MetalResources.h"
 #include "MetalViewport.h"
 
-// The UAV structured buffer clear is experimental.  It is know to work for
-// RHITests, but has not yet been widely tested (especially cross-platform).
-#define UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER (PLATFORM_MAC && !UE_BUILD_SHIPPING)
+#define UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER	1
 
 class FMetalContext;
 struct FMetalCommandBufferFence;
+
+#if UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
+enum class EMetalRHIClearUAVType : uint8
+{
+	VertexBuffer,
+	StructuredBuffer
+};
+#endif // UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
 
 /** The interface RHI command context. */
 class FMetalRHICommandContext : public IRHICommandContext
@@ -241,9 +247,11 @@ protected:
 	TArray<FRHIUniformBuffer*> GlobalUniformBuffers;
 
 private:
-#if UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
-	void ClearUAVStructuredBuffer(FRHIUnorderedAccessView* UnorderedAccessViewRHI, uint32 Pattern);
-#endif // UE_METAL_RHI_HAS_CLEAR_UAV_STRUCTURED_BUFFER
+#if UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
+	void ClearUAVWithBlitEncoder(FRHIUnorderedAccessView* UnorderedAccessViewRHI, EMetalRHIClearUAVType Type, uint32 Pattern);
+#endif // UE_METAL_RHI_SUPPORT_CLEAR_UAV_WITH_BLIT_ENCODER
+	void ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICmdList, FMetalUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat);
+
 	void RHIClearMRT(bool bClearColor, int32 NumClearColors, const FLinearColor* ColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil);
 };
 
