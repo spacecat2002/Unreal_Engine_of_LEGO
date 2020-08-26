@@ -42,7 +42,7 @@ FRHIRenderPassInfo FRDGParameterStruct::GetRenderPassInfo() const
 	{
 		FRDGTextureRef Texture = RenderTarget.GetTexture();
 		FRDGTextureRef ResolveTexture = RenderTarget.GetResolveTexture();
-		ERenderTargetStoreAction StoreAction = ERenderTargetStoreAction::EStore;
+		ERenderTargetStoreAction StoreAction = EnumHasAnyFlags(Texture->Desc.Flags, TexCreate_Memoryless) ? ERenderTargetStoreAction::ENoAction : ERenderTargetStoreAction::EStore;
 
 		if (ResolveTexture)
 		{
@@ -73,7 +73,7 @@ FRHIRenderPassInfo FRDGParameterStruct::GetRenderPassInfo() const
 	if (FRDGTextureRef Texture = DepthStencil.GetTexture())
 	{
 		const FExclusiveDepthStencil ExclusiveDepthStencil = DepthStencil.GetDepthStencilAccess();
-		const ERenderTargetStoreAction StoreAction = ERenderTargetStoreAction::EStore;
+		const ERenderTargetStoreAction StoreAction = EnumHasAnyFlags(Texture->Desc.Flags, TexCreate_Memoryless) ? ERenderTargetStoreAction::ENoAction : ERenderTargetStoreAction::EStore;
 		const ERenderTargetStoreAction DepthStoreAction = ExclusiveDepthStencil.IsUsingDepth() ? StoreAction : ERenderTargetStoreAction::ENoAction;
 		const ERenderTargetStoreAction StencilStoreAction = ExclusiveDepthStencil.IsUsingStencil() ? StoreAction : ERenderTargetStoreAction::ENoAction;
 
