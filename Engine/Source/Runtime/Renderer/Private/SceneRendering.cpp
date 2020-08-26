@@ -3254,10 +3254,10 @@ void FSceneRenderer::RenderCustomDepthPass(FRDGBuilder& GraphBuilder)
 
 					View.ParallelMeshDrawCommandPasses[EMeshPass::CustomDepth].DispatchDraw(nullptr, RHICmdList);
 				});
+
+				SceneContext.bCustomDepthIsValid = true;
 			}
 		}
-
-		SceneContext.bCustomDepthIsValid = true;
 	}
 }
 
