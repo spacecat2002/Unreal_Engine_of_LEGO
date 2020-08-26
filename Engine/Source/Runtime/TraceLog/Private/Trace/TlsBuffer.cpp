@@ -161,6 +161,20 @@ void Writer_DrainBuffers()
 		}
 	}
 
+	// Reverse the new threads list so they're more closely ordered by age
+	// when sent out.
+	FWriteBuffer* __restrict NewThreadCursor = NewThreadList;
+	NewThreadList = nullptr;
+	while (NewThreadCursor != nullptr)
+	{
+		FWriteBuffer* __restrict NextThread = NewThreadCursor->NextThread;
+
+		NewThreadCursor->NextThread = NewThreadList;
+		NewThreadList = NewThreadCursor;
+
+		NewThreadCursor = NextThread;
+	}
+	
 	FRetireList RetireList;
 
 	FWriteBuffer* __restrict ActiveThreadList = GActiveThreadList;
