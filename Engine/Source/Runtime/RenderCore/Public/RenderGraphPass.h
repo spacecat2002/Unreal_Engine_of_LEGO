@@ -410,7 +410,7 @@ public:
 
 	TRDGLambdaPass(
 		FRDGEventName&& InName,
-		ParameterStructType* InParameterStruct,
+		const ParameterStructType* InParameterStruct,
 		ERDGPassFlags InPassFlags,
 		ExecuteLambdaType&& InExecuteLambda)
 		: FRDGPass(MoveTemp(InName), FRDGParameterStruct(InParameterStruct), InPassFlags)

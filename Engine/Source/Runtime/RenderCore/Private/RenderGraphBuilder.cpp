@@ -330,6 +330,7 @@ void FRDGBuilder::TickPoolElements()
 	SET_DWORD_STAT(STAT_RDG_TextureCount, GRDGStatTextureCount);
 	SET_DWORD_STAT(STAT_RDG_BufferCount, GRDGStatBufferCount);
 	SET_DWORD_STAT(STAT_RDG_TransitionCount, GRDGStatTransitionCount);
+	SET_DWORD_STAT(STAT_RDG_TransitionBatchCount, GRDGStatTransitionBatchCount);
 	SET_MEMORY_STAT(STAT_RDG_MemoryWatermark, int64(GRDGStatMemoryWatermark));
 	GRDGStatPassCount = 0;
 	GRDGStatPassCullCount = 0;
@@ -338,6 +339,7 @@ void FRDGBuilder::TickPoolElements()
 	GRDGStatTextureCount = 0;
 	GRDGStatBufferCount = 0;
 	GRDGStatTransitionCount = 0;
+	GRDGStatTransitionBatchCount = 0;
 	GRDGStatMemoryWatermark = 0;
 #endif
 }

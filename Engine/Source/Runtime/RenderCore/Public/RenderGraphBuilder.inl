@@ -244,7 +244,7 @@ FRDGPassRef FRDGBuilder::AddPass(
 template <typename ParameterStructType, typename ExecuteLambdaType>
 FRDGPassRef FRDGBuilder::AddPass(
 	FRDGEventName&& Name,
-	ParameterStructType* ParameterStruct,
+	const ParameterStructType* ParameterStruct,
 	ERDGPassFlags Flags,
 	ExecuteLambdaType&& ExecuteLambda)
 {
