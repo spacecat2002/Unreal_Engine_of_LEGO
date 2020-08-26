@@ -579,7 +579,7 @@ void* FMetalRHIBuffer::Lock(bool bIsOnRHIThread, EResourceLockMode InLockMode, u
 			//kick the current command buffer.
 			GetMetalDeviceContext().SubmitCommandBufferAndWait();
 			
-			ReturnPointer = TransferBuffer.GetPtr();
+			ReturnPointer = TransferBuffer.GetContents();
 		}
 		#if PLATFORM_MAC
 		else if(Mode == mtlpp::StorageMode::Managed)
