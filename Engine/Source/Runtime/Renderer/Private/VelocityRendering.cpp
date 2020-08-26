@@ -215,7 +215,7 @@ END_SHADER_PARAMETER_STRUCT()
 void FDeferredShadingSceneRenderer::RenderVelocities(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureRef DepthTexture,
-	FRDGTextureRef& VelocityTexture,
+	FRDGTextureRef& InOutVelocityTexture,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	EVelocityPass VelocityPass)
 {
@@ -231,14 +231,12 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 	SCOPE_CYCLE_COUNTER(STAT_RenderVelocities);
 
 	ERenderTargetLoadAction VelocityLoadAction = ERenderTargetLoadAction::ELoad;
+	FRDGTextureRef VelocityTexture = InOutVelocityTexture;
+	bool bVelocityRendered = false;
 
 	if (!VelocityTexture)
 	{
 		VelocityTexture = GraphBuilder.CreateTexture(FVelocityRendering::GetRenderTargetDesc(ShaderPlatform), TEXT("Velocity"));
-
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-		ConvertToExternalTexture(GraphBuilder, VelocityTexture, SceneContext.SceneVelocity);
-
 		VelocityLoadAction = ERenderTargetLoadAction::EClear;
 	}
 
@@ -255,16 +253,16 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 		{
 			const FParallelMeshDrawCommandPass& ParallelMeshPass = View.ParallelMeshDrawCommandPasses[MeshPass];
 
+			if (!ParallelMeshPass.HasAnyDraw())
+			{
+				continue;
+			}
+
 			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 			if (View.DecayLoadAction(VelocityLoadAction) == ERenderTargetLoadAction::EClear)
 			{
 				AddClearRenderTargetPass(GraphBuilder, VelocityTexture);
-			}
-
-			if (!ParallelMeshPass.HasAnyDraw())
-			{
-				continue;
 			}
 
 			FVelocityPassParameters* PassParameters = GraphBuilder.AllocParameters<FVelocityPassParameters>();
@@ -308,7 +306,16 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 					ParallelMeshPass.DispatchDraw(nullptr, RHICmdList);
 				});
 			}
+
+			bVelocityRendered = true;
 		}
+	}
+
+	if (!InOutVelocityTexture && bVelocityRendered)
+	{
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+		ConvertToExternalTexture(GraphBuilder, VelocityTexture, SceneContext.SceneVelocity);
+		InOutVelocityTexture = VelocityTexture;
 	}
 }
 
