@@ -4,7 +4,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-#include "AssetRegistryState.h"
+#include "AssetRegistry/AssetRegistryState.h"
 #include "DependsNode.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"

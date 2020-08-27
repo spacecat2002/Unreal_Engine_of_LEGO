@@ -34,6 +34,9 @@ namespace EAssetRegistryDependencyType
 	static const Type Manage = (Type)(SoftManage | HardManage);
 }
 
+class IAssetRegistry;
+class UAssetRegistryImpl;
+
 namespace UE
 {
 namespace AssetRegistry
@@ -156,28 +159,60 @@ namespace AssetRegistry
 	// Functions to read and write the data used by the AssetRegistry in each package; the format of this data is separate from the format of the data in the asset registry
 	COREUOBJECT_API void WritePackageData(FStructuredArchiveRecord& ParentRecord, bool bIsCooking, const UPackage* Package, FLinkerSave* Linker, const TSet<UObject*>& ImportsUsedInGame, const TSet<FName>& SoftPackagesUsedInGame);
 	// ReadPackageDataMain and ReadPackageDataDependencies are declared in IAssetRegistry.h, in the AssetRegistry module, because they depend upon some structures defined in the AssetRegistry module
+
+	namespace Private
+	{
+		/**
+		 * Storage for the singleton IAssetRegistry*
+		 * TODO: this storage should be a class static variable on IAssetRegistry, but that type is defined in the AssetRegistry module, and many modules try to access the singleton (and call virtual functions on it) without linking against
+		 * the AssetRegistry module, so the storage for the singleton needs to be defined in a lower-level module that all of those modules do include
+		 */
+		class COREUOBJECT_API IAssetRegistrySingleton
+		{
+		public:
+			static IAssetRegistry* Get()
+			{
+				return Singleton;
+			}
+		private:
+			static IAssetRegistry* Singleton;
+			friend class ::UAssetRegistryImpl;
+		};
+	}
 }
+}
+
+// Enums used in public Engine headers
+namespace EAssetSetManagerResult
+{
+	enum Type
+	{
+		DoNotSet,			// Do not set manager
+		SetButDoNotRecurse,	// Set but do not recurse
+		SetAndRecurse		// Set and recurse into reference
+	};
+}
+
+namespace EAssetSetManagerFlags
+{
+	enum Type
+	{
+		IsDirectSet = 1,				// This attempt is a direct set instead of a recursive set
+		TargetHasExistingManager = 2,	// Target already has a manager from previous run
+		TargetHasDirectManager = 4,		// Target has another direct manager that will be set in this run
+	};
 }
 
 /**
  * Asset Registry module interface
  */
-class IAssetRegistryInterface : public IModuleInterface
+class COREUOBJECT_API IAssetRegistryInterface
 {
 public:
 	/**
 	 * Tries to gets a pointer to the active AssetRegistryInterface implementation. 
 	 */
-	static inline IAssetRegistryInterface* GetPtr()
-	{
-		static FName AssetRegistry("AssetRegistry");
-		auto Module = FModuleManager::GetModulePtr<IAssetRegistryInterface>(AssetRegistry);
-		if (Module == nullptr)
-		{
-			Module = &FModuleManager::LoadModuleChecked<IAssetRegistryInterface>(AssetRegistry);
-		}
-		return reinterpret_cast<IAssetRegistryInterface*>(Module);
-	}
+	static IAssetRegistryInterface* GetPtr();
 
 	UE_DEPRECATED(4.26, "Use GetDependencies that takes a UE::AssetRegistry::EDependencyCategory instead")
 	void GetDependencies(FName InPackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType)
@@ -193,5 +228,7 @@ public:
 protected:
 	/* This function is a workaround for platforms that don't support disable of deprecation warnings on override functions*/
 	virtual void GetDependenciesDeprecated(FName InPackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) = 0;
-};
 
+	static IAssetRegistryInterface* Default;
+	friend class UAssetRegistryImpl;
+};

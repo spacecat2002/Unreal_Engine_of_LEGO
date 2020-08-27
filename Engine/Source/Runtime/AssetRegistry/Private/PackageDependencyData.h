@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 
-#include "AssetData.h"
+#include "AssetRegistry/AssetData.h"
 #include "Containers/BitArray.h"
 #include "Misc/AssetRegistryInterface.h"
 #include "UObject/Linker.h"

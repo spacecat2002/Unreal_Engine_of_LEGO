@@ -3,9 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AssetData.h"
-#include "IAssetRegistry.h"
-#include "AssetRegistryState.h"
+#include "AssetRegistry/AssetData.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "AssetRegistry/AssetRegistryState.h"
 #include "PathTree.h"
 #include "PackageDependencyData.h"
 #include "AssetDataGatherer.h"

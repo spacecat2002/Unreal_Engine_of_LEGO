@@ -2,7 +2,7 @@
 
 #include "DependsNode.h"
 #include "AssetRegistryPrivate.h"
-#include "AssetRegistryState.h"
+#include "AssetRegistry/AssetRegistryState.h"
 
 void FDependsNode::PrintNode() const
 {

@@ -3791,3 +3791,9 @@ template<> struct TBaseStructure<FPolyglotTextData>
 {
 	COREUOBJECT_API static UScriptStruct* Get();
 };
+
+struct FAssetBundleData;
+template<> struct TBaseStructure<FAssetBundleData>
+{
+	COREUOBJECT_API static UScriptStruct* Get();
+};

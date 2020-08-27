@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "AssetRegistryState.h"
+#include "AssetRegistry/AssetRegistryState.h"
 #include "AssetRegistry.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
@@ -11,7 +11,7 @@
 #include "UObject/UObjectIterator.h"
 #include "UObject/MetaData.h"
 #include "AssetRegistryPrivate.h"
-#include "ARFilter.h"
+#include "AssetRegistry/ARFilter.h"
 #include "DependsNode.h"
 #include "PackageReader.h"
 #include "NameTableArchive.h"

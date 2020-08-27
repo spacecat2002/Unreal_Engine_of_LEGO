@@ -5,9 +5,9 @@
 #include "CoreMinimal.h"
 
 #include "Algo/BinarySearch.h"
-#include "AssetData.h"
+#include "AssetRegistry/AssetData.h"
 #include "Containers/BitArray.h"
-#include "IAssetRegistry.h"
+#include "AssetRegistry/IAssetRegistry.h"
 #include "Misc/AssetRegistryInterface.h"
 #include "PropertyCombinationSet.h"
 

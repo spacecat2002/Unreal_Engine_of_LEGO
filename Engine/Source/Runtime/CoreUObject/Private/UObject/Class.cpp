@@ -5985,6 +5985,12 @@ UScriptStruct* TBaseStructure<FFrameTime>::Get()
 	return ScriptStruct;
 }
 
+UScriptStruct* TBaseStructure<FAssetBundleData>::Get()
+{
+	static UScriptStruct* ScriptStruct = StaticGetBaseStructureInternal(TEXT("AssetBundleData"));
+	return ScriptStruct;
+}
+
 IMPLEMENT_CORE_INTRINSIC_CLASS(UFunction, UStruct,
 	{
 	}

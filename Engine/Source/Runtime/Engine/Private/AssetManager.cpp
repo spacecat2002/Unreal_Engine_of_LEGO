@@ -21,6 +21,7 @@
 #include "IPlatformFilePak.h"
 #include "Stats/StatsMisc.h"
 #include "Internationalization/PackageLocalizationManager.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -766,7 +767,7 @@ void UAssetManager::UpdateCachedAssetData(const FPrimaryAssetId& PrimaryAssetId,
 
 				if (bStripBundleData)
 				{
-					GetAssetRegistry().StripAssetRegistryKeyForObject(NewAssetData.ObjectPath, FAssetBundleData::StaticStruct()->GetFName());
+					GetAssetRegistry().StripAssetRegistryKeyForObject(NewAssetData.ObjectPath, TBaseStructure<FAssetBundleData>::Get()->GetFName());
 				}
 			}
 		}

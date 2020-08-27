@@ -7,7 +7,7 @@
 #include "Misc/PackageName.h"
 #include "UObject/Class.h"
 #include "AssetRegistryPrivate.h"
-#include "AssetData.h"
+#include "AssetRegistry/AssetData.h"
 #include "AssetRegistry.h"
 
 FPackageReader::FPackageReader()

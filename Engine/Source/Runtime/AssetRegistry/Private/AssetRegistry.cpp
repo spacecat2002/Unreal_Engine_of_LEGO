@@ -12,7 +12,7 @@
 #include "UObject/CoreRedirects.h"
 #include "Blueprint/BlueprintSupport.h"
 #include "AssetRegistryPrivate.h"
-#include "ARFilter.h"
+#include "AssetRegistry/ARFilter.h"
 #include "DependsNode.h"
 #include "PackageReader.h"
 #include "GenericPlatform/GenericPlatformChunkInstall.h"
@@ -20,10 +20,10 @@
 #include "Misc/CoreDelegates.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Misc/RedirectCollector.h"
-#include "AssetRegistryModule.h"
 #include "Serialization/LargeMemoryReader.h"
 #include "Misc/ScopeExit.h"
 #include "HAL/ThreadHeartBeat.h"
+#include "AssetRegistryConsoleCommands.h"
 
 #if WITH_EDITOR
 #include "IDirectoryWatcher.h"
@@ -31,6 +31,32 @@
 #include "HAL/PlatformProcess.h"
 #include "HAL/IConsoleManager.h"
 #endif // WITH_EDITOR
+
+static FAssetRegistryConsoleCommands ConsoleCommands; // Registers its various console commands in the constructor
+
+/**
+ * Implementation of IAssetRegistryInterface; forwards calls from the CoreUObject-accessible IAssetRegistryInterface into the AssetRegistry-accessible IAssetRegistry
+ */
+class FAssetRegistryInterface : public IAssetRegistryInterface
+{
+public:
+	virtual void GetDependencies(FName InPackageName, TArray<FName>& OutDependencies,
+		UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::Package,
+		const UE::AssetRegistry::FDependencyQuery& Flags = UE::AssetRegistry::FDependencyQuery()) override
+	{
+		IAssetRegistry::GetChecked().GetDependencies(InPackageName, OutDependencies, Category, Flags);
+	}
+
+protected:
+	/* This function is a workaround for platforms that don't support disable of deprecation warnings on override functions*/
+	virtual void GetDependenciesDeprecated(FName InPackageName, TArray<FName>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) override
+	{
+		PRAGMA_DISABLE_DEPRECATION_WARNINGS
+		IAssetRegistry::GetChecked().GetDependencies(InPackageName, OutDependencies, InDependencyType);
+		PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	}
+};
+FAssetRegistryInterface GAssetRegistryInterface;
 
 // Caching is permanently enabled in editor because memory is not that constrained, disabled by default otherwise
 #define ASSETREGISTRY_CACHE_ALWAYS_ENABLED (WITH_EDITOR)
@@ -68,6 +94,8 @@ static FPreLoadFile GPreLoadAssetRegistry(TEXT("{PROJECT}AssetRegistry.bin"));
 UAssetRegistryImpl::UAssetRegistryImpl(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	LLM_SCOPE(ELLMTag::AssetRegistry);
+
 	const double StartupStartTime = FPlatformTime::Seconds();
 
 	bInitialSearchCompleted = true;
@@ -206,6 +234,13 @@ UAssetRegistryImpl::UAssetRegistryImpl(const FObjectInitializer& ObjectInitializ
 	FCoreDelegates::OnPostEngineInit.AddUObject(this, &UAssetRegistryImpl::RefreshNativeClasses);
 
 	InitRedirectors();
+
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		check(UE::AssetRegistry::Private::IAssetRegistrySingleton::Singleton == nullptr && IAssetRegistryInterface::Default == nullptr);
+		UE::AssetRegistry::Private::IAssetRegistrySingleton::Singleton = this;
+		IAssetRegistryInterface::Default = &GAssetRegistryInterface;
+	}
 }
 
 bool UAssetRegistryImpl::ResolveRedirect(const FString& InPackageName, FString& OutPackageName)
@@ -486,6 +521,13 @@ void UAssetRegistryImpl::RefreshNativeClasses()
 
 UAssetRegistryImpl::~UAssetRegistryImpl()
 {
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		check(UE::AssetRegistry::Private::IAssetRegistrySingleton::Singleton == this && IAssetRegistryInterface::Default == &GAssetRegistryInterface);
+		UE::AssetRegistry::Private::IAssetRegistrySingleton::Singleton = nullptr;
+		IAssetRegistryInterface::Default = nullptr;
+	}
+
 	// Make sure the asset search thread is closed
 	if (BackgroundAssetSearch.IsValid())
 	{
@@ -540,8 +582,8 @@ UAssetRegistryImpl::~UAssetRegistryImpl()
 
 UAssetRegistryImpl& UAssetRegistryImpl::Get()
 {
-	FAssetRegistryModule& Module = FModuleManager::GetModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	return static_cast<UAssetRegistryImpl&>(Module.Get());
+	check(UE::AssetRegistry::Private::IAssetRegistrySingleton::Singleton);
+	return static_cast<UAssetRegistryImpl&>(*UE::AssetRegistry::Private::IAssetRegistrySingleton::Singleton);
 }
 
 void UAssetRegistryImpl::SearchAllAssets(bool bSynchronousSearch)
@@ -1541,6 +1583,7 @@ void UAssetRegistryImpl::PrioritizeSearchPath(const FString& PathToPrioritize)
 
 void UAssetRegistryImpl::AssetCreated(UObject* NewAsset)
 {
+	checkf(GIsEditor, TEXT("Updating the AssetRegistry is only available in editor"));
 	if (ensure(NewAsset) && NewAsset->IsAsset())
 	{
 		// Add the newly created object to the package file cache because its filename can already be
@@ -1569,6 +1612,7 @@ void UAssetRegistryImpl::AssetCreated(UObject* NewAsset)
 
 void UAssetRegistryImpl::AssetDeleted(UObject* DeletedAsset)
 {
+	checkf(GIsEditor, TEXT("Updating the AssetRegistry is only available in editor"));
 	if (ensure(DeletedAsset) && DeletedAsset->IsAsset())
 	{
 		UPackage* DeletedObjectPackage = DeletedAsset->GetOutermost();
@@ -1612,6 +1656,7 @@ void UAssetRegistryImpl::AssetDeleted(UObject* DeletedAsset)
 
 void UAssetRegistryImpl::AssetRenamed(const UObject* RenamedAsset, const FString& OldObjectPath)
 {
+	checkf(GIsEditor, TEXT("Updating the AssetRegistry is only available in editor"));
 	if (ensure(RenamedAsset) && RenamedAsset->IsAsset())
 	{
 		// Add the renamed object to the package file cache because its filename can already be
@@ -1645,6 +1690,7 @@ void UAssetRegistryImpl::AssetRenamed(const UObject* RenamedAsset, const FString
 
 void UAssetRegistryImpl::PackageDeleted(UPackage* DeletedPackage)
 {
+	checkf(GIsEditor, TEXT("Updating the AssetRegistry is only available in editor"));
 	if (ensure(DeletedPackage))
 	{
 		RemovePackageData(*DeletedPackage->GetName());
