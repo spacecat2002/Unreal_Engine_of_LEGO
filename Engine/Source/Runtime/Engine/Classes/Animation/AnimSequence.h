@@ -974,7 +974,7 @@ private:
 	}
 #endif // WITH_EDITOR
 
-	UPROPERTY(VisibleAnywhere, EditFixedSize, AdvancedDisplay, Category = CustomAttributes)
+	UPROPERTY()
 	TArray<FBakedCustomAttributePerBoneData> BakedPerBoneCustomAttributeData;
 public:
 	friend class UAnimationAsset;
