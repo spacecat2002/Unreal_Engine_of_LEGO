@@ -589,7 +589,7 @@ void UpdateHistory(
 						DistanceFieldNormal->GetPooledRenderTarget()->GetRenderTargetItem(),
 						BentNormalInterpolation->GetPooledRenderTarget()->GetRenderTargetItem(),
 						BentNormalHistoryTexture->GetPooledRenderTarget()->GetRenderTargetItem(),
-						VelocityTexture->GetPooledRenderTarget(),
+						VelocityTexture ? VelocityTexture->GetPooledRenderTarget() : nullptr,
 						Parameters);
 
 					VertexShader->SetParameters(RHICmdList, View.ViewUniformBuffer);
