@@ -425,22 +425,7 @@ public:
 	FTransform ExtractRootTrackTransform(float Pos, const FBoneContainer * RequiredBones) const;
 
 	// Begin Transform related functions 
-
-	/**
-	* Get Bone Transform of the Time given, relative to Parent for all RequiredBones
-	* This returns different transform based on additive or not. Or what kind of additive.
-	*
-	* @param	OutPose				[out] Pose object to fill
-	* @param	OutCurve			[out] Curves to fill
-	* @param	ExtractionContext	Extraction Context (position, looping, root motion, etc.)
-	*/
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	UE_DEPRECATED(4.26, "Use other GetAnimationPose signature")
-	virtual void GetAnimationPose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const override;
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 	virtual void GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const override;
-
 
 	/**
 	* Get Bone Transform of the animation for the Time given, relative to Parent for all RequiredBones
@@ -452,7 +437,14 @@ public:
 	*/
 	UE_DEPRECATED(4.26, "Use other GetBonePose signature")
 	void GetBonePose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext, bool bForceUseRawData=false) const;
-
+	
+	/**
+	* Get Bone Transform of the Time given, relative to Parent for all RequiredBones
+	* This returns different transform based on additive or not. Or what kind of additive.
+	*
+	* @param	OutAnimationPoseData  [out] Animation Pose related data to populate
+	* @param	ExtractionContext	  Extraction Context (position, looping, root motion, etc.)
+	*/
 	void GetBonePose(struct FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext, bool bForceUseRawData = false) const;
 
 	const TArray<FRawAnimSequenceTrack>& GetRawAnimationData() const { return RawAnimationData; }

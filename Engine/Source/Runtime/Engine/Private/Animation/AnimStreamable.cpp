@@ -195,13 +195,6 @@ FORCEINLINE int32 PreviousChunkIndex(int32 ChunkIndex, int32 NumChunks)
 	return (ChunkIndex + NumChunks - 1) % NumChunks;
 }
 
-void UAnimStreamable::GetAnimationPose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const
-{
-	FStackCustomAttributes TempAttributes;
-	FAnimationPoseData OutAnimationPoseData(OutPose, OutCurve, TempAttributes);
-	GetAnimationPose(OutAnimationPoseData, ExtractionContext);
-}
-
 void UAnimStreamable::GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_AnimStreamable_GetAnimationPose);

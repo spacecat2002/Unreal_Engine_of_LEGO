@@ -1484,13 +1484,6 @@ void DebugPrintBone(const FCompactPose& OutPose, const FCompactPoseBoneIndex& Bo
 }
 #endif
 
-void UAnimSequence::GetAnimationPose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const
-{
-	FStackCustomAttributes TempAttributes;
-	FAnimationPoseData OutAnimationPoseData(OutPose, OutCurve, TempAttributes);
-	GetAnimationPose(OutAnimationPoseData, ExtractionContext);
-}
-
 void UAnimSequence::GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_GetAnimationPose);

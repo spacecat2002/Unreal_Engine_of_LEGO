@@ -173,7 +173,7 @@ public:
 	* @param	ExtractionContext	Extraction Context (position, looping, root motion, etc.)
 	*/
 	UE_DEPRECATED(4.26, "Use other GetAnimationPose signature")
-	virtual void GetAnimationPose(struct FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const PURE_VIRTUAL(UAnimSequenceBase::GetAnimationPose, );
+	virtual void GetAnimationPose(struct FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const;
 	
 	virtual void GetAnimationPose(FAnimationPoseData& OutPoseData, const FAnimExtractContext& ExtractionContext) const
 		PURE_VIRTUAL(UAnimSequenceBase::GetAnimationPose, );

@@ -70,14 +70,6 @@ void UAnimComposite::HandleAssetPlayerTickedInternal(FAnimAssetTickContext &Cont
 	ExtractRootMotionFromTrack(AnimationTrack, PreviousTime, PreviousTime + MoveDelta, Context.RootMotionMovementParams);
 }
 
-void UAnimComposite::GetAnimationPose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const
-{
-	FStackCustomAttributes TempAttributes;
-	FAnimationPoseData OutAnimationPoseData(OutPose, OutCurve, TempAttributes);
-	GetAnimationPose(OutAnimationPoseData, ExtractionContext);
-}
-
-
 void UAnimComposite::GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const
 {
 	AnimationTrack.GetAnimationPose(OutAnimationPoseData, ExtractionContext);
