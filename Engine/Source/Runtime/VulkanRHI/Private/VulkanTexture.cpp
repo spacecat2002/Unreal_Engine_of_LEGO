@@ -443,12 +443,14 @@ struct FRHICommandSetInitialImageState final : public FRHICommand<FRHICommandSet
 {
 	FVulkanSurface* Surface;
 	VkImageLayout InitialLayout;
+	bool bOnlyAddToLayoutManager;
 	bool bClear;
 	FClearValueBinding ClearValueBinding;
 
-	FRHICommandSetInitialImageState(FVulkanSurface* InSurface, VkImageLayout InInitialLayout, bool bInClear, const FClearValueBinding& InClearValueBinding)
+	FRHICommandSetInitialImageState(FVulkanSurface* InSurface, VkImageLayout InInitialLayout, bool bInOnlyAddToLayoutManager, bool bInClear, const FClearValueBinding& InClearValueBinding)
 		: Surface(InSurface)
 		, InitialLayout(InInitialLayout)
+		, bOnlyAddToLayoutManager(bInOnlyAddToLayoutManager)
 		, bClear(bInClear)
 		, ClearValueBinding(InClearValueBinding)
 	{
@@ -456,7 +458,16 @@ struct FRHICommandSetInitialImageState final : public FRHICommand<FRHICommandSet
 
 	void Execute(FRHICommandListBase& CmdList)
 	{
-		Surface->SetInitialImageState(FVulkanCommandListContext::GetVulkanContext(CmdList.GetContext()), InitialLayout, bClear, ClearValueBinding);
+		FVulkanCommandListContext& Context = FVulkanCommandListContext::GetVulkanContext(CmdList.GetContext());
+		
+		if (bOnlyAddToLayoutManager)
+		{
+			Context.GetLayoutManager().GetOrAddFullLayout(*Surface, InitialLayout);
+		}
+		else
+		{
+			Surface->SetInitialImageState(Context, InitialLayout, bClear, ClearValueBinding);
+		}
 	}
 };
 
@@ -627,7 +638,7 @@ FVulkanSurface::FVulkanSurface(FVulkanDevice& InDevice, FVulkanTextureBase* Owne
 		else
 		{
 			check(IsInRenderingThread());
-			ALLOC_COMMAND_CL(RHICmdList, FRHICommandSetInitialImageState)(this, InitialLayout, bDoInitialClear, CreateInfo.ClearValueBinding);
+			ALLOC_COMMAND_CL(RHICmdList, FRHICommandSetInitialImageState)(this, InitialLayout, false, bDoInitialClear, CreateInfo.ClearValueBinding);
 		}
 	}
 }
@@ -812,19 +823,39 @@ FVulkanSurface::FVulkanSurface(FVulkanDevice& InDevice, VkImageViewType Resource
 #endif
 		VULKAN_SET_DEBUG_NAME(InDevice, VK_OBJECT_TYPE_IMAGE, Image, TEXT("(FVulkanSurface*)0x%p"), this);
 
-		// The code below seems to have always assumed it's in the RHI thread, so I've added this check to make sure.
-		check(!IsInRenderingThread() || FRHICommandListExecutor::GetImmediateCommandList().Bypass() || !IsRunningRHIInSeparateThread());
-
+		VkImageLayout InitialLayout;
+		bool bOnlyAddToLayoutManager, bDoInitialClear;
 		if (UEFlags & (TexCreate_RenderTargetable | TexCreate_DepthStencilTargetable))
 		{
-			VkImageLayout InitialLayout = (UEFlags & TexCreate_DepthStencilTargetable) ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			SetInitialImageState(InDevice.GetImmediateContext(), InitialLayout, true, CreateInfo.ClearValueBinding);
+			InitialLayout = (UEFlags & TexCreate_DepthStencilTargetable) ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			bOnlyAddToLayoutManager = false;
+			bDoInitialClear = true;
 		}
 		else
 		{
 			// If we haven't seen this image before, we assume it's an SRV (VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) and the call below
 			// tells the layout manager about it. If we've seen it before, the call won't do anything, since the manager already knows the layout.
-			InDevice.GetImmediateContext().GetLayoutManager().GetOrAddFullLayout(*this, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			InitialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			bOnlyAddToLayoutManager = true;
+			bDoInitialClear = false;
+		}
+
+		FRHICommandList& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+		if (!IsInRenderingThread() || (RHICmdList.Bypass() || !IsRunningRHIInSeparateThread()))
+		{
+			if (bOnlyAddToLayoutManager)
+			{
+				InDevice.GetImmediateContext().GetLayoutManager().GetOrAddFullLayout(*this, InitialLayout);
+			}
+			else
+			{
+				SetInitialImageState(InDevice.GetImmediateContext(), InitialLayout, true, CreateInfo.ClearValueBinding);
+			}
+		}
+		else
+		{
+			check(IsInRenderingThread());
+			ALLOC_COMMAND_CL(RHICmdList, FRHICommandSetInitialImageState)(this, InitialLayout, bOnlyAddToLayoutManager, bDoInitialClear, CreateInfo.ClearValueBinding);
 		}
 	}
 }
@@ -1132,8 +1163,9 @@ void FVulkanSurface::SetInitialImageState(FVulkanCommandListContext& Context, Vk
 		VulkanSetImageLayout(CmdBuffer->GetHandle(), Image, CurrentLayout, InitialLayout, SubresourceRange);
 	}
 
-	checkSlow(Context.GetLayoutManager().GetFullLayout(Image) == nullptr);
-	Context.GetLayoutManager().GetOrAddFullLayout(*this, InitialLayout);
+	FVulkanImageLayout& FullLayout = Context.GetLayoutManager().GetOrAddFullLayout(*this, InitialLayout);
+	checkSlow(FullLayout.AreAllSubresourcesSameLayout());
+	FullLayout.MainLayout = InitialLayout;
 }
 
 /*-----------------------------------------------------------------------------
