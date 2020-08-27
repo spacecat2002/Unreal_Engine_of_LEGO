@@ -68,21 +68,3 @@ bool UCurveFloat::operator==( const UCurveFloat& Curve ) const
 {
 	return bIsEventCurve == Curve.bIsEventCurve && FloatCurve == Curve.FloatCurve;
 }
-
-void UCurveFloat::OnCurveChanged(const TArray<FRichCurveEditInfo>& ChangedCurveEditInfos)
-{
-	Super::OnCurveChanged(ChangedCurveEditInfos);
-
-#if WITH_EDITOR
-	OnUpdateCurve.Broadcast(this, EPropertyChangeType::ValueSet);
-#endif // WITH_EDITOR
-}
-
-#if WITH_EDITOR
-void UCurveFloat::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
-{
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	OnUpdateCurve.Broadcast(this, PropertyChangedEvent.ChangeType);
-}
-#endif // WITH_EDITOR
