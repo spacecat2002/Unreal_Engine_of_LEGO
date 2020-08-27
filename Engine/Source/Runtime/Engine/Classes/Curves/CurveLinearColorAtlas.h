@@ -17,7 +17,7 @@ static FName NAME_GradientScale = FName(TEXT("GradientScale"));
 static FName NAME_GradientCount = FName(TEXT("GradientCount"));
 
 class UCurveLinearColor;
-
+class UCurveBase;
 
 
 /**
