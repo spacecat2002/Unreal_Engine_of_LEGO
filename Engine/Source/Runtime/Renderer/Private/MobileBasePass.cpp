@@ -282,6 +282,10 @@ ELightMapPolicyType MobileBasePass::SelectMeshLightmapPolicy(
 				{
 					SelectedLightmapPolicy = LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP;
 				}
+				else
+				{
+					SelectedLightmapPolicy = LMP_LQ_LIGHTMAP;
+				}
 			}
 		}
 		else if ((bHasValidVLM || bHasValidILC) && bPrimitiveUsesILC)

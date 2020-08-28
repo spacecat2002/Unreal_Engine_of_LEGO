@@ -2192,7 +2192,7 @@ void AddMobileEyeAdaptationPass(FRDGBuilder& GraphBuilder, const FViewInfo& View
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("BasicEyeAdaptation (CS)"),
+			RDG_EVENT_NAME("HistogramEyeAdaptation (CS)"),
 			ComputeShader,
 			PassParameters,
 			FComputeShaderUtils::GetGroupCount(1, 1));
