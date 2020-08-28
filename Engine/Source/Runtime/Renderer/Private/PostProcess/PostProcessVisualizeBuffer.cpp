@@ -226,22 +226,11 @@ TUniquePtr<FImagePixelData> ReadbackPixelData(FRHICommandListImmediate& RHICmdLi
 	return nullptr;
 }
 
-BEGIN_SHADER_PARAMETER_STRUCT(FReadbackParameters, )
-	SHADER_PARAMETER_RDG_TEXTURE(, Texture)
-END_SHADER_PARAMETER_STRUCT()
-
 void AddDumpToPipePass(FRDGBuilder& GraphBuilder, FScreenPassTexture Input, FImagePixelPipe* OutputPipe)
 {
 	check(Input.IsValid());
 	check(OutputPipe);
-
-	FReadbackParameters* PassParameters = GraphBuilder.AllocParameters<FReadbackParameters>();
-	PassParameters->Texture = Input.Texture;
-
-	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("DumpToPipe(%s)", Input.Texture->Name),
-		PassParameters,
-		ERDGPassFlags::Copy,
+	AddReadbackTexturePass(GraphBuilder, RDG_EVENT_NAME("DumpToPipe(%s)", Input.Texture->Name), Input.Texture,
 		[Input, OutputPipe](FRHICommandListImmediate& RHICmdList)
 	{
 		OutputPipe->Push(ReadbackPixelData(RHICmdList, Input.Texture->GetRHI(), Input.ViewRect));
@@ -264,13 +253,7 @@ void AddDumpToFilePass(FRDGBuilder& GraphBuilder, FScreenPassTexture Input, cons
 		Input.ViewRect = HighResScreenshotConfig.CaptureRegion;
 	}
 
-	FReadbackParameters* PassParameters = GraphBuilder.AllocParameters<FReadbackParameters>();
-	PassParameters->Texture = Input.Texture;
-
-	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("DumpToFile(%s)", Input.Texture->Name),
-		PassParameters,
-		ERDGPassFlags::Copy,
+	AddReadbackTexturePass(GraphBuilder, RDG_EVENT_NAME("DumpToFile(%s)", Input.Texture->Name), Input.Texture,
 		[&HighResScreenshotConfig, Input, Filename](FRHICommandListImmediate& RHICmdList)
 	{
 		TUniquePtr<FImagePixelData> PixelData = ReadbackPixelData(RHICmdList, Input.Texture->GetRHI(), Input.ViewRect);
@@ -309,14 +292,7 @@ void AddDumpToColorArrayPass(FRDGBuilder& GraphBuilder, FScreenPassTexture Input
 {
 	check(Input.IsValid());
 	check(OutputColorArray);
-
-	FReadbackParameters* PassParameters = GraphBuilder.AllocParameters<FReadbackParameters>();
-	PassParameters->Texture = Input.Texture;
-
-	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("DumpToPipe(%s)", Input.Texture->Name),
-		PassParameters,
-		ERDGPassFlags::Copy,
+	AddReadbackTexturePass(GraphBuilder, RDG_EVENT_NAME("DumpToPipe(%s)", Input.Texture->Name), Input.Texture,
 		[Input, OutputColorArray](FRHICommandListImmediate& RHICmdList)
 	{
 		RHICmdList.ReadSurfaceData(Input.Texture->GetRHI(), Input.ViewRect, *OutputColorArray, FReadSurfaceDataFlags());
@@ -333,10 +309,8 @@ FScreenPassTexture AddVisualizeGBufferOverviewPass(
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.bDumpToFile || Inputs.bOverview || PostProcessSettings.BufferVisualizationPipes.Num() > 0);
 
-
 	FScreenPassTexture Output;
 	const EPixelFormat OutputFormat = Inputs.bOutputInHDR ? PF_FloatRGBA : PF_Unknown;
-
 	TArray<FVisualizeBufferTile> Tiles;
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeGBufferOverview");

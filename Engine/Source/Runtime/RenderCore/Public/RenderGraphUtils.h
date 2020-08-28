@@ -610,6 +610,18 @@ FORCEINLINE void AddEndUAVOverlapPass(FRDGBuilder& GraphBuilder, TArrayView<FRHI
 	});
 }
 
+BEGIN_SHADER_PARAMETER_STRUCT(FReadbackTextureParameters, )
+	RDG_TEXTURE_ACCESS(Texture, ERHIAccess::CopySrc)
+END_SHADER_PARAMETER_STRUCT()
+
+template <typename ExecuteLambdaType>
+void AddReadbackTexturePass(FRDGBuilder& GraphBuilder, FRDGEventName&& Name, FRDGTextureRef Texture, ExecuteLambdaType&& ExecuteLambda)
+{
+	auto* PassParameters = GraphBuilder.AllocParameters<FReadbackTextureParameters>();
+	PassParameters->Texture = Texture;
+	GraphBuilder.AddPass(MoveTemp(Name), PassParameters, ERDGPassFlags::Readback, MoveTemp(ExecuteLambda));
+}
+
 // Forces the graph to make the resource immediately available as if it were registered. Returns the pooled resource.
 
 inline void ConvertToExternalBuffer(FRDGBuilder& GraphBuilder, FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>& OutPooledBuffer)
