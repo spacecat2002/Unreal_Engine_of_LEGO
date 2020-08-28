@@ -316,6 +316,7 @@ public:
 	static const uint32 GHardwareMaxGPUSkinBones = 65536;
 	
 	ENGINE_API static bool UseUnlimitedBoneInfluences(uint32 MaxBoneInfluences);
+	ENGINE_API static bool GetUnlimitedBoneInfluences();
 
 	virtual const FShaderResourceViewRHIRef GetPositionsSRV() const = 0;
 	virtual const FShaderResourceViewRHIRef GetTangentsSRV() const = 0;
