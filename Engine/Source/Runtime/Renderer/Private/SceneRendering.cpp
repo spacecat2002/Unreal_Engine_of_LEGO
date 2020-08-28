@@ -2541,22 +2541,13 @@ void FSceneRenderer::InitFXSystem()
 	}
 }
 
-BEGIN_SHADER_PARAMETER_STRUCT(FCrossGPUTransferParameters, )
-	SHADER_PARAMETER_RDG_TEXTURE(, ViewFamilyTexture)
-END_SHADER_PARAMETER_STRUCT()
-
 void FSceneRenderer::DoCrossGPUTransfers(FRDGBuilder& GraphBuilder, FRHIGPUMask RenderTargetGPUMask, FRDGTextureRef ViewFamilyTexture)
 {
 #if WITH_MGPU
 	if (ViewFamily.bMultiGPUForkAndJoin)
 	{
-		FCrossGPUTransferParameters* PassParameters = GraphBuilder.AllocParameters<FCrossGPUTransferParameters>();
-		PassParameters->ViewFamilyTexture = ViewFamilyTexture;
-
-		GraphBuilder.AddPass(
-			RDG_EVENT_NAME("CrossGPUTransfers"),
-			PassParameters,
-			ERDGPassFlags::Copy | ERDGPassFlags::NeverCull,
+		// A readback pass is the closest analog to what this is doing. There isn't a way to express cross-GPU transfers via the RHI barrier API.
+		AddReadbackTexturePass(GraphBuilder, RDG_EVENT_NAME("CrossGPUTransfers"), ViewFamilyTexture, 
 			[this, RenderTargetGPUMask, ViewFamilyTexture] (FRHICommandListImmediate& RHICmdList)
 		{
 			const FIntPoint Extent = ViewFamilyTexture->Desc.Extent;
@@ -4357,8 +4348,8 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandListImmediate& RHICmdList)
 }
 
 BEGIN_SHADER_PARAMETER_STRUCT(FResolveSceneDepthParameters, )
-SHADER_PARAMETER_RDG_TEXTURE(, SceneDepth)
-RENDER_TARGET_BINDING_SLOTS()
+	RDG_TEXTURE_ACCESS(SceneDepth, ERHIAccess::SRVGraphics)
+	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
 
 void AddResolveSceneDepthPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureMSAA SceneDepth)

@@ -564,10 +564,6 @@ void FVisualizeTexture::ReleaseDynamicRHI()
 	Captured = {};
 }
 
-BEGIN_SHADER_PARAMETER_STRUCT(FSaveBitmapParameters, )
-	SHADER_PARAMETER_RDG_TEXTURE(, Input)
-END_SHADER_PARAMETER_STRUCT()
-
 void FVisualizeTexture::CreateContentCapturePass(FRDGBuilder& GraphBuilder, const FRDGTextureRef InputTexture, uint32 CaptureId)
 {
 	if (!InputTexture)
@@ -705,15 +701,9 @@ void FVisualizeTexture::CreateContentCapturePass(FRDGBuilder& GraphBuilder, cons
 		ReadDataFlags.SetOutputStencil(EnumHasAnyFlags(Config.Flags, EFlags::SaveBitmapAsStencil));
 		ReadDataFlags.SetMip(Config.MipIndex);
 
-		FSaveBitmapParameters* PassParameters = GraphBuilder.AllocParameters<FSaveBitmapParameters>();
-		PassParameters->Input = OutputTexture;
-
 		const TCHAR* DebugName = Captured.Desc.DebugName;
 
-		GraphBuilder.AddPass(
-			RDG_EVENT_NAME("SaveBitmap"),
-			PassParameters,
-			ERDGPassFlags::Readback,
+		AddReadbackTexturePass(GraphBuilder, RDG_EVENT_NAME("SaveBitmap"), OutputTexture,
 			[OutputTexture, Extent, ReadDataFlags, DebugName](FRHICommandListImmediate& RHICmdList)
 		{
 			TArray<FColor> Bitmap;
