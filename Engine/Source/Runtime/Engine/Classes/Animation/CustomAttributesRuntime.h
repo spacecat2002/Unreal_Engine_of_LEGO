@@ -36,16 +36,16 @@ struct TBaseCustomAttributes
 	/** Retrieve the typed  array containing individual attribute values */
 	template<typename DataType> TArray<DataType, InAllocator>& GetValuesArray()
 	{
-		TArray<DataType, InAllocator>* ArrayPtr = GetValuesArray_Internal<DataType>();
-		checkf(ArrayPtr != nullptr, TEXT("Unsupported data type"));
+		TArray<DataType, InAllocator>* ArrayPtr = nullptr;
+		GetValuesArray_Internal(ArrayPtr);
 		return *ArrayPtr;
 	}
 
 	template<typename DataType>
 	const TArray<DataType, InAllocator>& GetValuesArray() const
 	{
-		const TArray<DataType, InAllocator>* ArrayPtr = GetValuesArray_Internal<DataType>();
-		checkf(ArrayPtr != nullptr, TEXT("Unsupported data type"));
+		const TArray<DataType, InAllocator>* ArrayPtr = nullptr;
+		GetValuesArray_Internal(ArrayPtr);
 		return *ArrayPtr;
 	}
 
@@ -233,16 +233,14 @@ protected:
 		return INDEX_NONE;
 	};
 
-	// Internal type array getters, used to retrieve by-reference arrays in the public API
-	template<typename DataType> TArray<DataType, InAllocator>* GetValuesArray_Internal() { return nullptr; }
-	template<> TArray<float, InAllocator>* GetValuesArray_Internal() { return &FloatValues; }
-	template<> TArray<int32, InAllocator>* GetValuesArray_Internal() { return &IntValues; }
-	template<> TArray<FString, InAllocator>* GetValuesArray_Internal() { return &StringValues; }
+	// Internal type array getters, used to retrieve by-reference array in the public API
+	void GetValuesArray_Internal(TArray<float, InAllocator>*& OutPtr) { OutPtr = &FloatValues; }
+	void GetValuesArray_Internal(TArray<int32, InAllocator>*& OutPtr) { OutPtr = &IntValues; }
+	void GetValuesArray_Internal(TArray<FString, InAllocator>*& OutPtr) { OutPtr = &StringValues; }
 
-	template<typename DataType> const TArray<DataType, InAllocator>* GetValuesArray_Internal() const { return nullptr; }
-	template<> const TArray<float, InAllocator>* GetValuesArray_Internal() const { return &FloatValues; }
-	template<> const TArray<int32, InAllocator>* GetValuesArray_Internal() const { return &IntValues; }
-	template<> const TArray<FString, InAllocator>* GetValuesArray_Internal() const { return &StringValues; }
+	void GetValuesArray_Internal(const TArray<float, InAllocator>*& OutPtr) const { OutPtr = &FloatValues; }
+	void GetValuesArray_Internal(const TArray<int32, InAllocator>*& OutPtr) const { OutPtr = &IntValues; }
+	void GetValuesArray_Internal(const TArray<FString, InAllocator>*& OutPtr) const { OutPtr = &StringValues; }
 
 protected:
 	// Information for each stored custom attribute
