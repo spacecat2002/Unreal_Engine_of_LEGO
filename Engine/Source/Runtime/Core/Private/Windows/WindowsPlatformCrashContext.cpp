@@ -69,6 +69,7 @@ enum EConstants
 /**
  * Code for an assert exception
  */
+const uint32 EnsureExceptionCode = ECrashExitCodes::UnhandledEnsure; // Use a rather unique exception code in case SEH doesn't handle it as expected.
 const uint32 AssertExceptionCode = 0x4000;
 const uint32 GPUCrashExceptionCode = 0x8000;
 
@@ -1179,7 +1180,7 @@ public:
 
 	void RegisterUnhandledExceptionHandler()
 	{
-#if !PLATFORM_SEH_EXCEPTIONS_DISABLED && !NOINITCRASHREPORTER && WITH_EDITOR // Just registered for the Editor in 4.25.x to avoid changing other apps behavior.
+#if !PLATFORM_SEH_EXCEPTIONS_DISABLED && !NOINITCRASHREPORTER
 		::SetUnhandledExceptionFilter(EngineUnhandledExceptionFilter);
 #endif
 	}
@@ -1309,7 +1310,7 @@ private:
 			NumStackFramesToIgnore += Info.NumStackFramesToIgnore;
 		}
 		// Generic exception description is stored in GErrorExceptionDescription
-		else if (ExceptionInfo->ExceptionRecord->ExceptionCode != 1)
+		else if (ExceptionInfo->ExceptionRecord->ExceptionCode != EnsureExceptionCode)
 		{
 			// When a generic exception is thrown, it is important to get all the stack frames
 			NumStackFramesToIgnore = 0;
@@ -1386,7 +1387,7 @@ private:
 			
 			FPlatformStackWalk::StackWalkAndDump(StackTrace, StackTraceSize, 0, ContextWrapper);
 			
-			if (ExceptionInfo->ExceptionRecord->ExceptionCode != 1 && ExceptionInfo->ExceptionRecord->ExceptionCode != AssertExceptionCode)
+			if (ExceptionInfo->ExceptionRecord->ExceptionCode != EnsureExceptionCode && ExceptionInfo->ExceptionRecord->ExceptionCode != AssertExceptionCode)
 			{
 				CreateExceptionInfoString(ExceptionInfo->ExceptionRecord);
 				FCString::Strncat(GErrorHist, GErrorExceptionDescription, UE_ARRAY_COUNT(GErrorHist));
@@ -1456,14 +1457,14 @@ LONG WINAPI UnhandledStaticInitException(LPEXCEPTION_POINTERS ExceptionInfo)
  *   - If an exception handler/filter triggers another exception, the new inner exception is handled recursively. If the code is not robust, it may retrigger that inner exception over and over.
  *     This eventually stops with a stack overflow, at which point the OS terminates the program and the original exception is lost.
  *
- * When an exception occurs, Windows executes following steps:
+ * Usually, when an exception occurs, Windows executes following steps (see below for unusual cases):
  *     1- Invoke the vectored exception handlers registered with AddVectoredExceptionHandler(), if any.
  *         - In general, this is too soon to handle an exception because local structured exception handlers did not execute yet and many exceptions are handled there.
  *         - If a registered vectored exception handler returns EXCEPTION_CONTINUE_EXECUTION, the vectored continue handler(s), are invoked next (see number 4 below)
  *         - If a registered vectored exception handler returns EXCEPTION_CONTINUE_SEARCH, the OS skip this one and continue iterating the list of vectored exception handlers.
  *         - If a registered vectored exception handler returns EXCEPTION_EXECUTE_HANDLER, in my tests, this was equivalent to returning EXCEPTION_CONTINUE_SEARCH.
  *         - If no vectored exception handlers are registered or all registered one return EXCEPTION_CONTINUE_SEARCH, the structured exception handlers (__try/__except) are executed next.
-  *        - At this stage, be careful when returning EXCEPTION_CONTINUE_EXECUTION. For example, continuing after an access violation would retrigger the exception immediatedly.
+ *         - At this stage, be careful when returning EXCEPTION_CONTINUE_EXECUTION. For example, continuing after an access violation would retrigger the exception immediatedly.
  *     2- If the exception wasn't handled by a vectored exception handler, invoke the structured exception handlers (the __try/__except clauses)
  *         - That let the code manage exceptions more locally, for the Engine, we want that to run first.
  *         - When the filter expression in __except(filterExpression) { block } clause returns EXCEPTION_EXECUTE_HANDLER, the 'block' is executed, the code continue after the block. The exception is considered handled.
@@ -1481,6 +1482,19 @@ LONG WINAPI UnhandledStaticInitException(LPEXCEPTION_POINTERS ExceptionInfo)
  *         - The handler can short cut other continue handlers by returning EXCEPTION_CONTINUE_EXECUTION which resume the code immediatedly.
  *         - In my tests, if a vectored continue handler returns EXCEPTION_EXECUTE_HANDLER, this is equivalent to returning EXCEPTION_CONTINUE_SEARCH.
  *         - By default, if no handlers are registered or all registered handler(s) returned EXCEPTION_CONTINUE_SEARCH, the program resumes execution at the point of the exception.
+ *
+ * Inside a Windows OS callback, in a 64-bit application, a different flow than the one described is used.
+ *    - 64-bit applications don't cross Kernel/user-mode easily. If the engine crash during a Kernel callback, EngineUnhandledExceptionFilter() is called directly. This behavior is
+ *      documented by various article on the net. See: https://stackoverflow.com/questions/11376795/why-cant-64-bit-windows-unwind-user-kernel-user-exceptions.
+ *    - On early versions of Windows 7, the kernel could swallow exceptions occurring in kernel callback just as if they never occurred. This is not the case anymore with Win 10.
+ *
+ * Other SEH particularities:
+ *     - A stack buffer overflow bypasses SEH entirely and the application exits with code: -1073740791 (STATUS_STACK_BUFFER_OVERRUN).
+ *     - A stack overflow exception occurs when not enough space remains to push what needs to be pushed, but it doesn't means it has no stack space left at all. The exception will be reported
+ *       if enough stack space is available to call/run SEH, otherwise, the app exits with code: -1073741571 (STATUS_STACK_OVERFLOW)
+ *     - Fast fail exceptions bypasse SEH entirely and the application exits with code: -1073740286 (STATUS_FAIL_FAST_EXCEPTION) or 1653 (ERROR_FAIL_FAST_EXCEPTION)
+ *     - Heap corruption (like a double free) is a special exception. It is likely only visible to Vectored Exception Handler (VEH) before possibly beeing handled by Windows Error Reporting (WER).
+ *       A popup may be shown asking to debug or exit. The application may exit with code -1073740940 (STATUS_HEAP_CORRUPTION) or 255 (Abort) depending on the situation.
  *
  * The engine hooks itself in the unhandled exception filter. This is the best place to be as it runs after structured exception handlers and
  * it can be easily overriden externally (because there can only be one) to do something else.
@@ -1545,7 +1559,7 @@ FORCENOINLINE void ReportEnsureInner(const TCHAR* ErrorMessage, int NumStackFram
 	__try
 #endif
 	{
-		::RaiseException(1, 0, 0, nullptr);
+		::RaiseException(EnsureExceptionCode, 0, 0, nullptr);
 	}
 #if !PLATFORM_SEH_EXCEPTIONS_DISABLED
 	__except (ReportEnsureUsingCrashReportClient( GetExceptionInformation(), NumStackFramesToIgnore, ErrorMessage, IsInteractiveEnsureMode() ? EErrorReportUI::ShowDialog : EErrorReportUI::ReportInUnattendedMode))

@@ -66,13 +66,6 @@ void FPreLoadSlateWidgetRenderer::DrawWindow(float DeltaTime)
 		FSlateRenderer* MainSlateRenderer = FSlateApplication::Get().GetRenderer();
 		FScopeLock ScopeLock(MainSlateRenderer->GetResourceCriticalSection());
 
-		if (GDynamicRHI && GDynamicRHI->RHIIsRenderingSuspended())
-		{
-			// This avoids crashes if we Suspend rendering whilst the loading screen is up
-			// as we don't want Slate to submit any more draw calls until we Resume.
-			return;
-		}
-
 		const FVector2D DrawSize = VirtualRenderWindow->GetClientSizeInScreen();
 
 		FSlateApplication::Get().Tick(ESlateTickType::Time);
@@ -129,6 +122,7 @@ FPreLoadScreenSlateSynchMechanism::~FPreLoadScreenSlateSynchMechanism()
 
 	if (FSlateApplication::IsInitialized())
 	{
+		FSlateApplication::Get().OnWindowBeingDestroyed().RemoveAll(this);
 		FSlateApplication::Get().OnPreShutdown().RemoveAll(this);
 	}
 }
@@ -142,6 +136,7 @@ void FPreLoadScreenSlateSynchMechanism::Initialize()
 	{
 		// Prevent the application from closing while we are rendering from another thread
 		FSlateApplication::Get().OnPreShutdown().AddRaw(this, &FPreLoadScreenSlateSynchMechanism::DestroySlateThread);
+		FSlateApplication::Get().OnWindowBeingDestroyed().AddRaw(this, &FPreLoadScreenSlateSynchMechanism::HandleWindowBeingDestroyed);
 
 		bIsRunningSlateMainLoop = true;
 		check(SlateLoadingThread == nullptr);
@@ -174,6 +169,17 @@ void FPreLoadScreenSlateSynchMechanism::DestroySlateThread()
         SlateLoadingThread = nullptr;
         SlateRunnableTask = nullptr;
     }
+}
+
+void FPreLoadScreenSlateSynchMechanism::HandleWindowBeingDestroyed(const SWindow& WindowBeingDestroyed)
+{
+	check(IsInGameThread());
+
+	if (WidgetRenderer && WidgetRenderer->GetMainWindow_GameThread() == &WindowBeingDestroyed)
+	{
+		// wait until the render has completed its task
+		DestroySlateThread();
+	}
 }
 
 bool FPreLoadScreenSlateSynchMechanism::IsSlateMainLoopRunning_AnyThread() const
@@ -219,26 +225,31 @@ void FPreLoadScreenSlateSynchMechanism::RunMainLoop_SlateThread()
 
 		if (IsSlateMainLoopRunning_AnyThread())
 		{
-			FScopeLock Lock(&FPreLoadScreenManager::AcquireCriticalSection);
-			if (IsSlateMainLoopRunning_AnyThread() && FPreLoadScreenManager::bRenderingEnabled)
+			// This avoids crashes if we Suspend rendering whilst the loading screen is up
+			// as we don't want Slate to submit any more draw calls until we Resume.
+			if (GDynamicRHI && !GDynamicRHI->RHIIsRenderingSuspended())
 			{
-				WidgetRenderer->DrawWindow(DeltaTime);
-				++SlateDrawEnqueuedCounter;
-			}
-
-			//Queue up a render tick every time we tick on this sync thread.
-			FPreLoadScreenSlateSynchMechanism* SyncMech = this;
-			ENQUEUE_RENDER_COMMAND(PreLoadScreenRenderTick)(
-				[SyncMech, &SlateDrawEnqueuedCounter, EnqueueRenderEvent](FRHICommandListImmediate& RHICmdList)
+				FScopeLock Lock(&FPreLoadScreenManager::AcquireCriticalSection);
+				if (IsSlateMainLoopRunning_AnyThread() && FPreLoadScreenManager::bRenderingEnabled)
 				{
-					if (SyncMech->IsSlateMainLoopRunning_AnyThread())
-					{
-						FPreLoadScreenManager::StaticRenderTick_RenderThread();
-					}
-					--SlateDrawEnqueuedCounter;
-					EnqueueRenderEvent->Trigger();
+					WidgetRenderer->DrawWindow(DeltaTime);
+					++SlateDrawEnqueuedCounter;
 				}
-			);
+
+				//Queue up a render tick every time we tick on this sync thread.
+				FPreLoadScreenSlateSynchMechanism* SyncMech = this;
+				ENQUEUE_RENDER_COMMAND(PreLoadScreenRenderTick)(
+					[SyncMech, &SlateDrawEnqueuedCounter, EnqueueRenderEvent](FRHICommandListImmediate& RHICmdList)
+					{
+						if (SyncMech->IsSlateMainLoopRunning_AnyThread())
+						{
+							FPreLoadScreenManager::StaticRenderTick_RenderThread();
+						}
+						--SlateDrawEnqueuedCounter;
+						EnqueueRenderEvent->Trigger();
+					}
+				);
+			}
 		}
 
 		LastTime = CurrentTime;

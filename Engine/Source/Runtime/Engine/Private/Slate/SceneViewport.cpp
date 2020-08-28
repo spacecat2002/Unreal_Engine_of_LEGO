@@ -584,17 +584,17 @@ FReply FSceneViewport::OnMouseButtonUp( const FGeometry& InGeometry, const FPoin
 		if (bCursorVisible)
 		{
 			bReleaseMouseCapture = true;
-			UE_LOG(LogViewport, Log, TEXT("Releasing Mouse Capture; Cursor is visible"));
+			UE_LOG(LogViewport, Verbose, TEXT("Releasing Mouse Capture; Cursor is visible"));
 		}
 		else if (ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CaptureDuringMouseDown)
 		{
 			bReleaseMouseCapture = true;
-			UE_LOG(LogViewport, Log, TEXT("Releasing Mouse Capture; EMouseCaptureMode::CaptureDuringMouseDown - Mouse Button Released"));
+			UE_LOG(LogViewport, Verbose, TEXT("Releasing Mouse Capture; EMouseCaptureMode::CaptureDuringMouseDown - Mouse Button Released"));
 		}
 		else if (ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CaptureDuringRightMouseDown && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 		{
 			bReleaseMouseCapture = true;
-			UE_LOG(LogViewport, Log, TEXT("Releasing Mouse Capture; EMouseCaptureMode::CaptureDuringRightMouseDown - Right Mouse Button Released"));
+			UE_LOG(LogViewport, Verbose, TEXT("Releasing Mouse Capture; EMouseCaptureMode::CaptureDuringRightMouseDown - Right Mouse Button Released"));
 		}
 		else
 		{
@@ -1479,8 +1479,25 @@ bool FSceneViewport::IsStereoRenderingAllowed() const
 void FSceneViewport::ResizeViewport(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::Type NewWindowMode)
 {
 	// Do not resize if the viewport is an invalid size or our UI should be responsive
-	if( NewSizeX > 0 && NewSizeY > 0 )
+	if( NewSizeX > 0 && NewSizeY > 0)
 	{
+		uint32 MaxSize = GetMax2DTextureDimension();
+		// When the size is larger than the biggest texture possible, we clamp it to the max size but still preserve aspect ratio
+		if (NewSizeX > MaxSize || NewSizeY > MaxSize)
+		{
+			float Ratio = (float)NewSizeX / (float)NewSizeY;
+			if (NewSizeX > NewSizeY)
+			{
+				NewSizeX = MaxSize;
+				NewSizeY = NewSizeX / Ratio;
+			}
+			else
+			{
+				NewSizeY = MaxSize;
+				NewSizeX = NewSizeY * Ratio;
+			}
+		}
+
 		bIsResizing = true;
 
 		UpdateViewportRHI(false, NewSizeX, NewSizeY, NewWindowMode, PF_Unknown);

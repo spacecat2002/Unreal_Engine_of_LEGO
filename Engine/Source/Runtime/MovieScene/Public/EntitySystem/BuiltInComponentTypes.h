@@ -191,6 +191,12 @@ public:
 	// A float representing the output of the channel considered to be at index N within the source structure (ie 0 = Location.X, Vector.X, Color.R; 1 = Location.Y, Vector.Y, Color.G)
 	TComponentTypeID<float> FloatResult[9];
 
+	// A float representing the base value for the float channel at index N, for the purposes of "additive from base" blending.
+	TComponentTypeID<float> BaseFloat[9];
+
+	// The time at which to evaluate a base value, such as BaseFloat[].
+	TComponentTypeID<FFrameTime> BaseValueEvalTime;
+
 	// A float representing the evaluated output of a weight channel
 	TComponentTypeID<float> WeightResult;
 
@@ -198,6 +204,12 @@ public:
 
 	// An FEasingComponentData for computing easing curves
 	TComponentTypeID<FEasingComponentData> Easing;
+
+	// An index associated to hierarchical easing for the owning sub-sequence
+	TComponentTypeID<uint16> HierarchicalEasingChannel;
+
+	// The sub-sequence ID that should receive ease in/out as a whole
+	TComponentTypeID<FMovieSceneSequenceID> HierarchicalEasingProvider;
 
 	// A float representing the evaluated easing weight
 	TComponentTypeID<float> WeightAndEasingResult;
@@ -230,6 +242,7 @@ public:
 		FComponentTypeID AbsoluteBlend;
 		FComponentTypeID RelativeBlend;
 		FComponentTypeID AdditiveBlend;
+		FComponentTypeID AdditiveFromBaseBlend;
 
 		FComponentTypeID NeedsLink;
 		FComponentTypeID NeedsUnlink;
@@ -240,6 +253,11 @@ public:
 		FComponentTypeID ImportedEntity;
 		FComponentTypeID Master;
 
+		FComponentTypeID FixedTime;
+
+		FComponentTypeID SectionPreRoll;
+		FComponentTypeID PreRoll;
+
 		FComponentTypeID Finished;
 
 		FComponentTypeID Ignored;
@@ -248,8 +266,8 @@ public:
 
 	struct
 	{
-		TComponentTypeID<FInterrogationChannel> InputChannel;
-		TComponentTypeID<FInterrogationChannel> OutputChannel;
+		TComponentTypeID<FInterrogationKey> InputKey;
+		TComponentTypeID<FInterrogationKey> OutputKey;
 	} Interrogation;
 
 	struct

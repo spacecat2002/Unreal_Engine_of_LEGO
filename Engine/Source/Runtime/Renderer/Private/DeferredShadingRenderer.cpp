@@ -10,6 +10,7 @@
 #include "SingleLayerWaterRendering.h"
 #include "SkyAtmosphereRendering.h"
 #include "VolumetricCloudRendering.h"
+#include "VolumetricRenderTarget.h"
 #include "ScenePrivate.h"
 #include "ScreenRendering.h"
 #include "PostProcess/SceneFilterRendering.h"
@@ -194,6 +195,31 @@ static FAutoConsoleVariableRef CRayTracingParallelMeshBatchSize(
 	TEXT("r.RayTracing.ParallelMeshBatchSize"),
 	GRayTracingParallelMeshBatchSize,
 	TEXT("Batch size for ray tracing materials parallel jobs."),
+	ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<float> CVarRayTracingDynamicGeometryLastRenderTimeUpdateDistance(
+	TEXT("r.RayTracing.DynamicGeometryLastRenderTimeUpdateDistance"),
+	5000.0f,
+	TEXT("Dynamic geometries within this distance will have their LastRenderTime updated, so that visibility based ticking (like skeletal mesh) can work when the component is not directly visible in the view (but reflected)."));
+
+static TAutoConsoleVariable<int32> CVarRayTracingCulling(
+	TEXT("r.RayTracing.Culling"),
+	0,
+	TEXT("Enable culling in ray tracing for objects that are behind the camera\n")
+	TEXT(" 0: Culling disabled (default)\n")
+	TEXT(" 1: Culling by distance and solid angle enabled"),
+	ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<float> CVarRayTracingCullingRadius(
+	TEXT("r.RayTracing.Culling.Radius"),
+	10000.0f, 
+	TEXT("Do camera culling for objects behind the camera outside of this radius in ray tracing effects (default = 10000 (100m))"),
+	ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<float> CVarRayTracingCullingAngle(
+	TEXT("r.RayTracing.Culling.Angle"),
+	1.0f, 
+	TEXT("Do camera culling for objects behind the camera with a projected angle smaller than this threshold in ray tracing effects (default = 5 degrees )"),
 	ECVF_RenderThreadSafe);
 
 #if !UE_BUILD_SHIPPING
@@ -717,6 +743,8 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 		*ReferenceView.RayTracingMeshResourceCollector
 	};
 
+	float CurrentWorldTime = ReferenceView.Family->CurrentWorldTime;
+
 	struct FRelevantPrimitive
 	{
 		FRHIRayTracingGeometry* RayTracingGeometryRHI = nullptr;
@@ -739,6 +767,12 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 		TRACE_CPUPROFILER_EVENT_SCOPE(GatherRayTracingWorldInstances_RelevantPrimitives);
 
 		int32 BroadIndex = 0;
+		const int32 CullInRayTracing = CVarRayTracingCulling.GetValueOnRenderThread();
+		const float CullingRadius = CVarRayTracingCullingRadius.GetValueOnRenderThread();
+		const float CullAngleThreshold = CVarRayTracingCullingAngle.GetValueOnRenderThread();
+		const float AngleThresholdRatio = FMath::Tan(CullAngleThreshold * PI / 180.0f);
+		const FVector ViewOrigin = ReferenceView.ViewMatrices.GetViewOrigin();
+		const FVector ViewDirection = ReferenceView.GetViewDirection();
 
 		for (int PrimitiveIndex = 0; PrimitiveIndex < Scene->PrimitiveSceneProxies.Num(); PrimitiveIndex++)
 		{
@@ -764,6 +798,35 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 			if (!(SceneInfo->bShouldRenderInMainPass && SceneInfo->bDrawInGame))
 			{
 				continue;
+			}
+
+			if (CullInRayTracing > 0)
+			{
+				FPrimitiveSceneProxy* SceneProxy = Scene->PrimitiveSceneProxies[PrimitiveIndex];
+
+				const FBoxSphereBounds ObjectBounds = SceneProxy->GetBounds();
+				const float ObjectRadius = ObjectBounds.SphereRadius;
+				const FVector ObjectCenter = ObjectBounds.Origin + 0.5*ObjectBounds.BoxExtent;
+				const FVector CameraToObjectCenter = FVector(ObjectCenter - ViewOrigin);
+
+				const bool bIsBehindCamera = FVector::DotProduct(ViewDirection, CameraToObjectCenter) < -ObjectRadius;
+
+				if (bIsBehindCamera)
+				{
+					const float CameraToObjectCenterLength = CameraToObjectCenter.Size();
+					const bool bIsFarEnoughToCull = CameraToObjectCenterLength > (CullingRadius + ObjectRadius);
+
+					if (bIsFarEnoughToCull) 
+					{
+						// Cull by solid angle: check the radius of bounding sphere against angle threshold
+						const bool bAngleIsSmallEnoughToCull = ObjectRadius / CameraToObjectCenterLength < AngleThresholdRatio;
+
+						if (bAngleIsSmallEnoughToCull)
+						{
+							continue;
+						}					
+					}
+				}
 			}
 
 			bool bIsDynamic = false;
@@ -800,11 +863,8 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 					continue;
 				}
 				
-				FSceneViewState* ViewState = (FSceneViewState*)View.State;
-				const bool bHLODActive = Scene->SceneLODHierarchy.IsActive();
-				const FHLODVisibilityState* const HLODState = bHLODActive && ViewState ? &ViewState->HLODVisibilityState : nullptr;
-
-				if (HLODState && HLODState->IsNodeForcedHidden(PrimitiveIndex))
+				// Check if the primitive has been distance culled already during frustum culling
+				if (View.DistanceCullingPrimitiveMap[PrimitiveIndex])
 				{
 					continue;
 				}
@@ -948,7 +1008,7 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 			}
 
 			const int32 PrimitiveIndex = RelevantPrimitive.PrimitiveIndex;
-			const FPrimitiveSceneInfo* SceneInfo = Scene->Primitives[PrimitiveIndex];
+			FPrimitiveSceneInfo* SceneInfo = Scene->Primitives[PrimitiveIndex];
 
 			FPrimitiveSceneProxy* SceneProxy = Scene->PrimitiveSceneProxies[PrimitiveIndex];
 			RayTracingInstances.Reset();
@@ -1024,6 +1084,17 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 
 							RayTracingMeshProcessor.AddMeshBatch(MeshBatch, 1, SceneProxy);
 						}
+					}
+				}
+
+				if (CVarRayTracingDynamicGeometryLastRenderTimeUpdateDistance.GetValueOnRenderThread() > 0.0f)
+				{
+					if (FVector::Distance(SceneProxy->GetActorPosition(), ReferenceView.ViewMatrices.GetViewOrigin()) < CVarRayTracingDynamicGeometryLastRenderTimeUpdateDistance.GetValueOnRenderThread())
+					{
+						// Update LastRenderTime for components so that visibility based ticking (like skeletal meshes) can get updated
+						// We are only doing this for dynamic geometries now
+						SceneInfo->LastRenderTime = CurrentWorldTime;
+						SceneInfo->UpdateComponentLastRenderTime(CurrentWorldTime, /*bUpdateLastRenderTimeOnScreen=*/true);
 					}
 				}
 			}
@@ -1241,10 +1312,8 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 
 		View.RayTracingSubSurfaceProfileSRV = RHICreateShaderResourceView(View.RayTracingSubSurfaceProfileTexture->GetRenderTargetItem().ShaderResourceTexture, 0);
 
-		View.RayTracingLightingDataUniformBuffer = CreateLightDataPackedUniformBuffer(Scene->Lights, View,
-			EUniformBufferUsage::UniformBuffer_SingleFrame,
-			View.RayTracingLightingDataBuffer,
-			View.RayTracingLightingDataSRV);
+		View.RayTracingLightData = CreateRayTracingLightData(RHICmdList, Scene->Lights, View,
+			EUniformBufferUsage::UniformBuffer_SingleFrame);
 	}
 
 	if (!bAsyncUpdateGeometry)
@@ -1377,6 +1446,17 @@ void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmedi
 				View.RayTracingMaterialPipeline,
 				NumTotalBindings, MergedBindings,
 				bCopyDataToInlineStorage);
+
+			TArray<FRHIRayTracingShader*> DeferredMaterialRayGenShaders;
+
+			PrepareRayTracingReflectionsDeferredMaterial(View, *Scene, DeferredMaterialRayGenShaders);
+			PrepareRayTracingDeferredReflectionsDeferredMaterial(View, *Scene, DeferredMaterialRayGenShaders);
+			PrepareRayTracingGlobalIlluminationDeferredMaterial(View, DeferredMaterialRayGenShaders);
+
+			if (DeferredMaterialRayGenShaders.Num())
+			{
+				View.RayTracingMaterialGatherPipeline = BindRayTracingDeferredMaterialGatherPipeline(RHICmdList, View, DeferredMaterialRayGenShaders);
+			}
 
 			// Move the ray tracing binding container ownership to the command list, so that memory will be
 			// released on the RHI thread timeline, after the commands that reference it are processed.
@@ -2413,6 +2493,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 			GCompositionLighting.ProcessAfterBasePass(RHICmdList, View);
 		}
+		SceneContext.ScreenSpaceGTAOHorizons.SafeRelease();
+		SceneContext.ScreenSpaceGTAODepths.SafeRelease();
+
 		ServiceLocalQueue();
 	}
 
@@ -2562,6 +2645,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderDeferredReflectionsAndSkyLightingHair(RHICmdList, HairDatas);
 	}
 	checkSlow(RHICmdList.IsOutsideRenderPass());
+
+	if (bShouldRenderVolumetricCloud && IsVolumetricRenderTargetEnabled())
+	{
+		// The checkerboarded half resolution depth texture will be needed.
+		UpdateHalfResDepthSurfaceCheckerboardMinMax(RHICmdList);
+	}
 
 	if (bShouldRenderVolumetricCloud)
 	{
@@ -3008,6 +3097,15 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 		else 
 		{
+			for (int32 ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ++ViewExt)
+			{
+				for (int32 ViewIndex = 0; ViewIndex < ViewFamily.Views.Num(); ++ViewIndex)
+				{
+					FViewInfo& View = Views[ViewIndex];
+					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+					ViewFamily.ViewExtensions[ViewExt]->PrePostProcessPass_RenderThread(GraphBuilder, View, PostProcessingInputs);
+				}
+			}
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
 				FViewInfo& View = Views[ViewIndex];
@@ -3103,11 +3201,15 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			}
 
 			// Release common lighting resources
-			View.RayTracingLightingDataSRV.SafeRelease();
 			View.RayTracingSubSurfaceProfileSRV.SafeRelease();
 			View.RayTracingSubSurfaceProfileTexture.SafeRelease();
-			View.RayTracingLightingDataBuffer.SafeRelease();
-			View.RayTracingLightingDataUniformBuffer.SafeRelease();
+
+			View.RayTracingLightData.LightBufferSRV.SafeRelease();
+			View.RayTracingLightData.LightBuffer.SafeRelease();
+			View.RayTracingLightData.LightCullVolumeSRV.SafeRelease();
+			View.RayTracingLightData.LightCullVolume.SafeRelease();
+			View.RayTracingLightData.LightIndices.Release();
+			View.RayTracingLightData.UniformBuffer.SafeRelease();
 		}
 #endif //  RHI_RAYTRACING
 	}
@@ -3138,12 +3240,13 @@ public:
 		ProjectionScaleBias.Bind(Initializer.ParameterMap,TEXT("ProjectionScaleBias"));
 		SourceTexelOffsets01.Bind(Initializer.ParameterMap,TEXT("SourceTexelOffsets01"));
 		SourceTexelOffsets23.Bind(Initializer.ParameterMap,TEXT("SourceTexelOffsets23"));
-		UseMaxDepth.Bind(Initializer.ParameterMap, TEXT("UseMaxDepth"));
 		SourceMaxUVParameter.Bind(Initializer.ParameterMap, TEXT("SourceMaxUV"));
+		DepthDownsampleMode.Bind(Initializer.ParameterMap, TEXT("DepthDownsampleMode"));
+		DestinationResolution.Bind(Initializer.ParameterMap, TEXT("DestinationResolution"));
 	}
 	FDownsampleSceneDepthPS() {}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, bool bUseMaxDepth, FIntPoint ViewMax)
+	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, EDepthDownsampleMode SelectedDepthDownsampleMode, FIntPoint ViewMax, FVector2D InDestinationResolution, uint32 DownsampleFactor)
 	{
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
@@ -3151,12 +3254,12 @@ public:
 		// Used to remap view space Z (which is stored in scene color alpha) into post projection z and w so we can write z/w into the downsized depth buffer
 		const FVector2D ProjectionScaleBiasValue(View.ViewMatrices.GetProjectionMatrix().M[2][2], View.ViewMatrices.GetProjectionMatrix().M[3][2]);
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), ProjectionScaleBias, ProjectionScaleBiasValue);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), UseMaxDepth, (bUseMaxDepth ? 1.0f : 0.0f));
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), DepthDownsampleMode, (uint32)SelectedDepthDownsampleMode);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), DestinationResolution, InDestinationResolution);
 
 		FIntPoint BufferSize = SceneContext.GetBufferSizeXY();
-
-		const uint32 DownsampledBufferSizeX = BufferSize.X / SceneContext.GetSmallColorDepthDownsampleFactor();
-		const uint32 DownsampledBufferSizeY = BufferSize.Y / SceneContext.GetSmallColorDepthDownsampleFactor();
+		const uint32 DownsampledBufferSizeX = BufferSize.X / DownsampleFactor;
+		const uint32 DownsampledBufferSizeY = BufferSize.Y / DownsampleFactor;
 
 		// Offsets of the four full resolution pixels corresponding with a low resolution pixel
 		const FVector4 Offsets01(0.0f, 0.0f, 1.0f / DownsampledBufferSizeX, 0.0f);
@@ -3173,7 +3276,8 @@ public:
 	LAYOUT_FIELD(FShaderParameter, SourceTexelOffsets01);
 	LAYOUT_FIELD(FShaderParameter, SourceTexelOffsets23);
 	LAYOUT_FIELD(FShaderParameter, SourceMaxUVParameter);
-	LAYOUT_FIELD(FShaderParameter, UseMaxDepth);
+	LAYOUT_FIELD(FShaderParameter, DepthDownsampleMode);
+	LAYOUT_FIELD(FShaderParameter, DestinationResolution);
 };
 
 IMPLEMENT_SHADER_TYPE(,FDownsampleSceneDepthPS,TEXT("/Engine/Private/DownsampleDepthPixelShader.usf"),TEXT("Main"),SF_Pixel);
@@ -3190,15 +3294,39 @@ void FDeferredShadingSceneRenderer::UpdateDownsampledDepthSurface(FRHICommandLis
 		{
 			const FViewInfo& View = Views[ViewIndex];
 			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-			DownsampleDepthSurface(RHICmdList, SceneContext.GetSmallDepthSurface(), View, 1.0f / SceneContext.GetSmallColorDepthDownsampleFactor(), true);
+			DownsampleDepthSurface(RHICmdList, SceneContext.GetSmallDepthSurface(), View, SceneContext.GetSmallColorDepthDownsampleFactor(), EDepthDownsampleMode::Max);
 		}
+	}
+}
+
+/** Updates the downsized depth buffer with the current full resolution depth buffer. */
+void FDeferredShadingSceneRenderer::UpdateHalfResDepthSurfaceCheckerboardMinMax(FRHICommandList& RHICmdList)
+{
+	SCOPED_DRAW_EVENT(RHICmdList, HalfResDepthCheckerboardMinMax);
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, SceneContext.GetSceneDepthSurface());
+
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		FViewInfo& View = Views[ViewIndex];
+		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
+		const uint32 DownsampleFactor = 2;
+		FIntPoint BufferSizeXY = SceneContext.GetBufferSizeXY();
+		FIntPoint HalfResBufferSizeXY(FMath::Max<uint32>(BufferSizeXY.X / DownsampleFactor, 1), FMath::Max<uint32>(BufferSizeXY.Y / DownsampleFactor, 1));
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(HalfResBufferSizeXY, PF_DepthStencil, FClearValueBinding::None, TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource, true));
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, View.HalfResDepthSurfaceCheckerboardMinMax, TEXT("HalfResDepthSurfaceCheckerboardMinMax"), true, ERenderTargetTransience::Transient);
+
+		DownsampleDepthSurface(RHICmdList, View.HalfResDepthSurfaceCheckerboardMinMax->GetRenderTargetItem().TargetableTexture->GetTexture2D(), View, DownsampleFactor, EDepthDownsampleMode::Checkerboard);
+		RHICmdList.CopyToResolveTarget(View.HalfResDepthSurfaceCheckerboardMinMax->GetRenderTargetItem().TargetableTexture, View.HalfResDepthSurfaceCheckerboardMinMax->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
 	}
 }
 
 /** Downsample the scene depth with a specified scale factor to a specified render target
 */
-void FDeferredShadingSceneRenderer::DownsampleDepthSurface(FRHICommandList& RHICmdList, const FTexture2DRHIRef& RenderTarget, const FViewInfo& View, float ScaleFactor, bool bUseMaxDepth)
+void FDeferredShadingSceneRenderer::DownsampleDepthSurface(FRHICommandList& RHICmdList, const FTexture2DRHIRef& RenderTarget, const FViewInfo& View, uint32 DownsampleFactor, EDepthDownsampleMode DepthDownsampleMode)
 {
+	const float ScaleFactor = 1.0f / float(DownsampleFactor);
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, UniformBuffer_SingleDraw);
 	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
@@ -3232,11 +3360,11 @@ void FDeferredShadingSceneRenderer::DownsampleDepthSurface(FRHICommandList& RHIC
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
-	PixelShader->SetParameters(RHICmdList, View, bUseMaxDepth, View.ViewRect.Max);
 	const uint32 DownsampledX = FMath::TruncToInt(View.ViewRect.Min.X * ScaleFactor);
 	const uint32 DownsampledY = FMath::TruncToInt(View.ViewRect.Min.Y * ScaleFactor);
 	const uint32 DownsampledSizeX = FMath::TruncToInt(View.ViewRect.Width() * ScaleFactor);
 	const uint32 DownsampledSizeY = FMath::TruncToInt(View.ViewRect.Height() * ScaleFactor);
+	PixelShader->SetParameters(RHICmdList, View, DepthDownsampleMode, View.ViewRect.Max, FVector2D(DownsampledSizeX, DownsampledSizeY), DownsampleFactor);
 
 	RHICmdList.SetViewport(DownsampledX, DownsampledY, 0.0f, DownsampledX + DownsampledSizeX, DownsampledY + DownsampledSizeY, 1.0f);
 

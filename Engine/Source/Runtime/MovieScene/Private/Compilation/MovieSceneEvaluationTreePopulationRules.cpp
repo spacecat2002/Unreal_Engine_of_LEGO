@@ -2,6 +2,7 @@
 
 #include "Compilation/MovieSceneEvaluationTreePopulationRules.h"
 #include "MovieSceneSection.h"
+#include "MovieSceneTimeHelpers.h"
 
 namespace UE
 {
@@ -131,6 +132,11 @@ void FEvaluationTreePopulationRules::HighPassCustomPerRow(TArrayView<UMovieScene
 
 void FEvaluationTreePopulationRules::PopulateNearestSection(TArrayView<UMovieSceneSection* const> Sections, TMovieSceneEvaluationTree<FMovieSceneTrackEvaluationData>& OutTree)
 {
+	if (OutTree.IsEmpty())
+	{
+		return;
+	}
+
 	// Fill in gaps
 	TArray<TTuple<TRange<FFrameNumber>, FMovieSceneTrackEvaluationData>> RangesToInsert;
 
@@ -139,18 +145,28 @@ void FEvaluationTreePopulationRules::PopulateNearestSection(TArrayView<UMovieSce
 		const bool bContainsSection = OutTree.GetAllData(It.Node()).IsValid();
 		if (!bContainsSection)
 		{
+			FFrameNumber ForcedTime;
+
 			FMovieSceneEvaluationTreeRangeIterator NodeToCopy = It.Next();
 			if (!NodeToCopy)
 			{
 				NodeToCopy = It.Previous();
+				ForcedTime = UE::MovieScene::DiscreteExclusiveUpper(NodeToCopy.Range());
+			}
+			else
+			{
+				ForcedTime = UE::MovieScene::DiscreteInclusiveLower(NodeToCopy.Range())-1;
 			}
 
 			if (NodeToCopy)
 			{
-				TMovieSceneEvaluationTreeDataIterator<FMovieSceneTrackEvaluationData> DataIt = OutTree.GetAllData(It.Node());
+				TMovieSceneEvaluationTreeDataIterator<FMovieSceneTrackEvaluationData> DataIt = OutTree.GetAllData(NodeToCopy.Node());
 				while (DataIt)
 				{
-					RangesToInsert.Add(MakeTuple(It.Range(), *DataIt));
+					FMovieSceneTrackEvaluationData DataItCopy = *DataIt;
+					DataItCopy.ForcedTime = ForcedTime;
+
+					RangesToInsert.Add(MakeTuple(It.Range(), DataItCopy));
 					++DataIt;
 				}
 			}

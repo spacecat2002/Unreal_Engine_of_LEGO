@@ -215,7 +215,7 @@ USkeletalMeshComponent::USkeletalMeshComponent(const FObjectInitializer& ObjectI
 
 	bBindClothToMasterComponent = false;
 	bClothingSimulationSuspended = false;
-	
+
 #endif//#if WITH_APEX_CLOTHING || WITH_CHAOS_CLOTHING
 
 	MassMode_DEPRECATED = EClothMassMode::Density;
@@ -1276,6 +1276,8 @@ void USkeletalMeshComponent::TickComponent(float DeltaTime, enum ELevelTick Tick
 	// relative to a root bone we need to extract simulation positions as this bone could be animated.
 	if(bClothingSimulationSuspended && ClothingSimulation && ClothingSimulation->ShouldSimulate())
 	{
+		CSV_SCOPED_TIMING_STAT(Animation, Cloth);
+
 		ClothingSimulation->GetSimulationData(CurrentSimulationData, this, Cast<USkeletalMeshComponent>(MasterPoseComponent.Get()));
 	}
 
@@ -1904,6 +1906,11 @@ const IClothingSimulation* USkeletalMeshComponent::GetClothingSimulation() const
 	return ClothingSimulation;
 }
 
+const IClothingSimulationContext* USkeletalMeshComponent::GetClothingSimulationContext() const
+{
+	return ClothingSimulationContext;
+}
+
 UClothingSimulationInteractor* USkeletalMeshComponent::GetClothingSimulationInteractor() const
 {
 	return ClothingInteractor;
@@ -1980,6 +1987,8 @@ void USkeletalMeshComponent::WritebackClothingSimulationData()
 {
 	if(ClothingSimulation)
 	{
+		CSV_SCOPED_TIMING_STAT(Animation, Cloth);
+
 		USkinnedMeshComponent* OverrideComponent = nullptr;
 		if(MasterPoseComponent.IsValid())
 		{

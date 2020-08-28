@@ -222,7 +222,7 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 		MSleepData.Empty();
 		SleepDataLock.WriteUnlock();
 	}
-	FRWLock& GetSleepDataLock() { return SleepDataLock; }
+	FORCEINLINE FRWLock& GetSleepDataLock() { return SleepDataLock; }
 
 	FORCEINLINE const EObjectStateType ObjectState(const int32 Index) const { return MObjectState[Index]; }
 	FORCEINLINE EObjectStateType& ObjectState(const int32 Index) { return MObjectState[Index]; }
@@ -267,6 +267,22 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 		Ar << MCollisionParticles << MCollisionGroup << MIsland << MDisabled << MObjectState;
 		//todo: add gravity enabled when we decide how we want to handle serialization
 	}
+
+	FORCEINLINE TArray<TVector<T, d>>& AllF() { return MF; }
+	FORCEINLINE TArray<TVector<T, d>>& AllT() { return MT; }
+	FORCEINLINE TArray<TVector<T, d>>& AllLinearImpulse() { return MLinearImpulse; }
+	FORCEINLINE TArray<TVector<T, d>>& AllAngularImpulse() { return MAngularImpulse; }
+	FORCEINLINE TArray<PMatrix<T, d, d>>& AllI() { return MI; }
+	FORCEINLINE TArray<PMatrix<T, d, d>>& AllInvI() { return MInvI; }
+	FORCEINLINE TArray<FReal>& AllM() { return MM; }
+	FORCEINLINE TArray<FReal>& AllInvM() { return MInvM; }
+	FORCEINLINE TArray<TVector<T, d>>& AllCenterOfMass() { return MCenterOfMass; }
+	FORCEINLINE TArray<TRotation<T, d>>& AllRotationOfMass() { return MRotationOfMass; }
+	FORCEINLINE TArray<FReal>& AllLinearEtherDrag() { return MLinearEtherDrag; }
+	FORCEINLINE TArray<FReal>& AllAngularEtherDrag() { return MAngularEtherDrag; }
+	FORCEINLINE TArray<bool>& AllDisabled() { return MDisabled; }
+	FORCEINLINE TArray<EObjectStateType>& AllObjectState() { return MObjectState; }
+	FORCEINLINE TArray<bool>& AllGravityEnabled() { return MGravityEnabled; }
 
   private:
 	TArrayCollectionArray<TVector<T, d>> MF;

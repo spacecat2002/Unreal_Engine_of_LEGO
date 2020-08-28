@@ -2970,7 +2970,7 @@ bool FLinkerLoad::VerifyImportInner(const int32 ImportIndex, FString& WarningSuf
 		// In the other case we do not want to trigger another load of the objects in that import, in case they contain dependencies to the package we are currently loading
 		// and the current loader doesn't have the LOAD_DeferDependencyLoads flag
 		Package = FindObjectFast<UPackage>(nullptr, PackageToLoadInto);
-		if (Package == nullptr)
+		if (Package == nullptr || !Package->IsFullyLoaded())
 		{
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 			// when LOAD_DeferDependencyLoads is in play, we usually head off 
@@ -4670,20 +4670,14 @@ UObject* FLinkerLoad::CreateExport( int32 Index )
 
 		LoadClass->GetDefaultObject();
 
-		Export.Object = StaticConstructObject_Internal
-		(
-			LoadClass,
-			ThisParent,
-			NewName,
-			ObjectLoadFlags,
-			EInternalObjectFlags::None,
-			Template,
-			false,
-			nullptr,
-			false,
-			// if our outer is actually an import, then the package we are an export of is not in our outer chain, set our package in that case
-			Export.OuterIndex.IsImport() ? LinkerRoot : nullptr /*ExternalPackage*/
-		);
+		FStaticConstructObjectParameters Params(LoadClass);
+		Params.Outer = ThisParent;
+		Params.Name = NewName;
+		Params.SetFlags = ObjectLoadFlags;
+		Params.Template = Template;
+		// if our outer is actually an import, then the package we are an export of is not in our outer chain, set our package in that case
+		Params.ExternalPackage = Export.OuterIndex.IsImport() ? LinkerRoot : nullptr;
+		Export.Object = StaticConstructObject_Internal(Params);
 
 		if (FPlatformProperties::RequiresCookedData())
 		{
@@ -4723,7 +4717,12 @@ UObject* FLinkerLoad::CreateExport( int32 Index )
 			// Check to see if LoadClass is a blueprint, which potentially needs 
 			// to be refreshed and regenerated.  If so, regenerate and patch it 
 			// back into the export table
-			if( !LoadClass->bCooked && bIsBlueprintCDO && (LoadClass->GetOutermost() != GetTransientPackage()) )
+#if WITH_EDITOR
+			// Allow cooked Blueprint classes to take the same regeneration code path in the editor context.
+			if (bIsBlueprintCDO && (LoadClass->GetOutermost() != GetTransientPackage()))
+#else
+			if (!LoadClass->bCooked && bIsBlueprintCDO && (LoadClass->GetOutermost() != GetTransientPackage()))
+#endif
 			{
 				{
 					// For classes that are about to be regenerated, make sure we register them with the linker, so future references to this linker index will be valid

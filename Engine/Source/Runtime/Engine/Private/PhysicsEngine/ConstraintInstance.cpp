@@ -178,9 +178,24 @@ void FConstraintInstance::UpdateDriveTarget()
 }
 
 /** Constructor **/
+FConstraintInstanceBase::FConstraintInstanceBase()
+{
+	Reset();
+}
+
+void FConstraintInstanceBase::Reset()
+{
+	ConstraintIndex = 0;
+#if WITH_CHAOS
+	ConstraintHandle.Reset();
+#endif
+	PhysScene = nullptr;
+}
+
+
+/** Constructor **/
 FConstraintInstance::FConstraintInstance()
-	: ConstraintIndex(0)
-	, PhysScene(nullptr)
+	: FConstraintInstanceBase()
 	, AngularRotationOffset(ForceInitToZero)
 	, bScaleLinearLimits(true)
 	, AverageMass(0.f)

@@ -26,7 +26,7 @@ template <typename FuncType, typename UserPolicy> struct IBaseDelegateInstance;
 template<typename UserPolicy> class TMulticastDelegateBase;
 
 /**
- * Unicast delegate base object.
+ * Unicast delegate template class.
  *
  * Use the various DECLARE_DELEGATE macros to create the actual delegate type, templated to
  * the function signature the delegate is compatible with. Then, you can create an instance
@@ -613,7 +613,7 @@ protected:
 };
 
 /**
- * Multicast delegate base class.
+ * Multicast delegate template base class, used for both normal and event multicast delegates.
  *
  * This class implements the functionality of multicast delegates. It is templated to the function signature
  * that it is compatible with. Use the various DECLARE_MULTICAST_DELEGATE and DECLARE_EVENT macros to create
@@ -969,7 +969,7 @@ public:
 
 
 /**
- * Dynamic delegate base object (UObject-based, serializable).  You'll use the various DECLARE_DYNAMIC_DELEGATE
+ * Dynamic delegate template class (UObject-based, serializable).  You'll use the various DECLARE_DYNAMIC_DELEGATE
  * macros to create the actual delegate type, templated to the function signature the delegate is compatible with.
  * Then, you can create an instance of that class when you want to assign functions to the delegate.
  */
@@ -1040,7 +1040,7 @@ public:
 
 
 /**
- * Dynamic multi-cast delegate base object (UObject-based, serializable).  You'll use the various
+ * Dynamic multi-cast delegate template class (UObject-based, serializable).  You'll use the various
  * DECLARE_DYNAMIC_MULTICAST_DELEGATE macros to create the actual delegate type, templated to the function
  * signature the delegate is compatible with.   Then, you can create an instance of that class when you
  * want to assign functions to the delegate.
