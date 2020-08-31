@@ -449,7 +449,7 @@ public:
 			const TArray<ItemType>& ItemsSourceRef = (*this->ItemsSource);
 
 			const int32 NumItemsPerLine = GetNumItemsPerLine();
-			const int32 CurSelectionIndex = (!TListTypeTraits<ItemType>::IsPtrValid(SelectorItem)) ? 0 : ItemsSourceRef.Find(TListTypeTraits<ItemType>::NullableItemTypeConvertToItemType(SelectorItem));
+			const int32 CurSelectionIndex = (!TListTypeTraits<ItemType>::IsPtrValid(SelectorItem)) ? -1 : ItemsSourceRef.Find(TListTypeTraits<ItemType>::NullableItemTypeConvertToItemType(SelectorItem));
 			int32 AttemptSelectIndex = -1;
 
 			const EUINavigation NavType = InNavigationEvent.GetNavigationType();
@@ -1231,10 +1231,19 @@ public:
 
 				bAtEndOfList = ItemIndex >= ItemsSource->Num() - 1;
 
-				// Note: To account for accrued error from floating point truncation and addition in our sum of dimensions used, 
-				//	we pad the allotted axis just a little to be sure we have filled the available space.
-				const float FloatPrecisionOffset = 0.001f;
-				bHasFilledAvailableArea = ViewLengthUsedSoFar >= MyDimensions.ScrollAxis + FloatPrecisionOffset;
+				if (bIsFirstItem && ViewLengthUsedSoFar >= MyDimensions.ScrollAxis)
+				{
+					// Since there was no sum of floating points, make sure we correctly detect the case where one element
+					// fills up the space.
+					bHasFilledAvailableArea = true;
+				}
+				else
+				{
+					// Note: To account for accrued error from floating point truncation and addition in our sum of dimensions used, 
+					//	we pad the allotted axis just a little to be sure we have filled the available space.
+					const float FloatPrecisionOffset = 0.001f;
+					bHasFilledAvailableArea = ViewLengthUsedSoFar >= MyDimensions.ScrollAxis + FloatPrecisionOffset;
+				}
 			}
 
 			// Handle scenario b.

@@ -12,6 +12,7 @@
 #include "UObject/WeakObjectPtr.h"
 #include "UObject/WeakObjectPtrTemplates.h"
 #include "UObject/UObjectArray.h"
+#include "UObject/FastReferenceCollectorOptions.h"
 
 class UStruct;
 class UField;
@@ -20,7 +21,7 @@ class FLinkerLoad;
 struct COREUOBJECT_API FFieldPath
 {
 	// GC needs access to GetResolvedOwnerItemInternal and ClearCachedFieldInternal
-	template <bool bParallel, typename ReferenceProcessorType, typename CollectorType, typename ArrayPoolType, bool bAutoGenerateTokenStream, bool bIgnoreNoopTokens>
+	template <typename ReferenceProcessorType, typename CollectorType, typename ArrayPoolType, EFastReferenceCollectorOptions Options>
 	friend class TFastReferenceCollector;
 
 	// TWeakFieldPtr needs access to ClearCachedField
@@ -183,9 +184,12 @@ public:
 			FieldPathSerialNumber = GetFieldPathSerialNumber(Owner);
 #endif // WITH_EDITORONLY_DATA
 		}
-		else
+		else if (ResolvedField)
 		{
-			ClearCachedField();
+			// In case this field has been previously resolved, clear the owner as well as it's impossible the original field
+			// will ever come back (it's most likely been deleted) and we don't want to resolve to a newly created one even if its name and class match
+			ResolvedOwner.Reset();
+			ResolvedField = nullptr;
 		}
 	}
 

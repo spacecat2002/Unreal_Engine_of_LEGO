@@ -30,8 +30,8 @@ static TAutoConsoleVariable<int32> CVarVolumetricRenderTargetMode(
 	ECVF_SetByScalability);
 
 static TAutoConsoleVariable<int32> CVarVolumetricRenderTargetUpsamplingMode(
-	TEXT("r.VolumetricRenderTarget.UpsamplingMode"), 3,
-	TEXT("0: bilinear, 1: bilinear + jitter, 2: nearest + jitter + depth test, 3: bilinear + jitter + keep closest"),
+	TEXT("r.VolumetricRenderTarget.UpsamplingMode"), 4,
+	TEXT("0: bilinear, 1: bilinear + jitter, 2: nearest + jitter + depth test, 3: bilinear + jitter + keep closest, 4: bilaterial upsampling"),
 	ECVF_SetByScalability);
 
 static TAutoConsoleVariable<float> CVarVolumetricRenderTargetTemporalFactor(
@@ -49,6 +49,11 @@ bool ShouldViewRenderVolumetricCloudRenderTarget(const FViewInfo& ViewInfo)
 {
 	return CVarVolumetricRenderTarget.GetValueOnRenderThread() && ShouldPipelineCompileVolumetricRenderTargetShaders(ViewInfo.GetShaderPlatform())
 		&& (ViewInfo.ViewState != nullptr) && !(ViewInfo.bIsReflectionCapture || ViewInfo.bIsSceneCapture);
+}
+
+bool IsVolumetricRenderTargetEnabled()
+{
+	return CVarVolumetricRenderTarget.GetValueOnRenderThread() > 0;
 }
 
 static bool ShouldViewComposeVolumetricRenderTarget(const FViewInfo& ViewInfo)
@@ -146,7 +151,7 @@ void FVolumetricRenderTargetViewStateData::Initialise(
 {
 	// Update internal settings
 	TemporalFactor = FMath::Clamp(InTemporalFactor, 0.0f, 1.0f);
-	UpsamplingMode = FMath::Clamp(InUpsamplingMode, 0, 3);
+	UpsamplingMode = FMath::Clamp(InUpsamplingMode, 0, 4);
 	Mode = FMath::Clamp(InMode, 0, 2);
 	UvNoiseScale = InUvNoiseScale;
 
@@ -250,7 +255,7 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracin
 	}
 
 	FRDGTextureRef RDGVolumetricTracingRTDepth = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2DDesc(VolumetricTracingRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
+		FRDGTextureDesc::Create2DDesc(VolumetricTracingRTResolution, PF_G16R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
 			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("RDGVolumetricTracingRTDepth"));
 	return RDGVolumetricTracingRTDepth;
 }
@@ -298,9 +303,18 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateDstVolumetricRec
 	}
 
 	FRDGTextureRef RDGVolumetricVolumetricReconstructRTRTDepth = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2DDesc(VolumetricReconstructRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
+		FRDGTextureDesc::Create2DDesc(VolumetricReconstructRTResolution, PF_G16R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
 		TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("RDGVolumetricVolumetricReconstructRTRTDepth"));
 	return RDGVolumetricVolumetricReconstructRTRTDepth;
+}
+
+TRefCountPtr<IPooledRenderTarget> FVolumetricRenderTargetViewStateData::GetDstVolumetricReconstructRT()
+{
+	return VolumetricReconstructRT[CurrentRT];
+}
+TRefCountPtr<IPooledRenderTarget> FVolumetricRenderTargetViewStateData::GetDstVolumetricReconstructRTDepth()
+{
+	return VolumetricReconstructRTDepth[CurrentRT];
 }
 
 void FVolumetricRenderTargetViewStateData::ExtractDstVolumetricReconstructRT(FRDGBuilder& GraphBuilder, FRDGTextureRef RDGVolumetricVolumetricReconstructRT)
@@ -333,12 +347,22 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateSrcVolumetricRec
 	return GraphBuilder.RegisterExternalTexture(VolumetricReconstructRTDepth[1u - CurrentRT]);
 }
 
-FUintVector4 FVolumetricRenderTargetViewStateData::GetTracingToFullResResolutionScaleBias() const
+FUintVector4 FVolumetricRenderTargetViewStateData::GetTracingCoordToZbufferCoordScaleBias() const
 {
-	// This is used to sample full res data such as depth and avoid extra downsampling for now...
-	const uint32 CombinedDownsampleFactor = VolumetricReconstructRTDownsampleFactor * VolumetricTracingRTDownsampleFactor;
-	return FUintVector4( CombinedDownsampleFactor, CombinedDownsampleFactor,										// Scale is the combined downsample factor
-		CurrentPixelOffset.X * VolumetricReconstructRTDownsampleFactor, CurrentPixelOffset.Y * VolumetricReconstructRTDownsampleFactor);	// Each sample will then sample from full res according to reconstructed RT offset times its downsample factor
+	if (Mode == 2 || Mode == 1)
+	{
+		// In this case, the source depth buffer full resolution depth buffer is the full resolution scene one
+		const uint32 CombinedDownsampleFactor = VolumetricReconstructRTDownsampleFactor * VolumetricTracingRTDownsampleFactor;
+		return FUintVector4(CombinedDownsampleFactor, CombinedDownsampleFactor,																// Scale is the combined downsample factor
+			CurrentPixelOffset.X * VolumetricReconstructRTDownsampleFactor, CurrentPixelOffset.Y * VolumetricReconstructRTDownsampleFactor);// Each sample will then sample from full res according to reconstructed RT offset times its downsample factor
+	}
+
+	// Otherwise, a half resolution depth buffer is used
+	const uint32 SourceDepthBufferRTDownsampleFactor = 2;
+	const uint32 CombinedDownsampleFactor = VolumetricReconstructRTDownsampleFactor * VolumetricTracingRTDownsampleFactor / SourceDepthBufferRTDownsampleFactor;
+	return FUintVector4( CombinedDownsampleFactor, CombinedDownsampleFactor,									// Scale is the combined downsample factor
+		CurrentPixelOffset.X * VolumetricReconstructRTDownsampleFactor / VolumetricReconstructRTDownsampleFactor,	// Each sample will then sample from full res according to reconstructed RT offset times its downsample factor
+		CurrentPixelOffset.Y * VolumetricReconstructRTDownsampleFactor / VolumetricReconstructRTDownsampleFactor);
 }
 
 
@@ -416,6 +440,7 @@ class FReconstructVolumetricRenderTargetPS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, TracingVolumetricDepthTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PreviousFrameVolumetricTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PreviousFrameVolumetricDepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HalfResDepthTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearTextureSampler)
 		RENDER_TARGET_BINDING_SLOTS()
 		SHADER_PARAMETER(FVector4, DstVolumetricTextureSizeAndInvSize)
@@ -461,6 +486,9 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRHICommandListImmediate&
 	FRDGBuilder GraphBuilder(RHICmdList);
 	FRDGTextureRef BlackDummy = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	TRefCountPtr<IPooledRenderTarget> SceneDepthZ = SceneContext.SceneDepthZ;
+
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		FViewInfo& ViewInfo = Views[ViewIndex];
@@ -495,6 +523,8 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRHICommandListImmediate&
 		PassParameters->CurrentTracingPixelOffset = VolumetricCloudRT.GetCurrentTracingPixelOffset();
 		PassParameters->DownSampleFactor = TracingVolumetricCloudRTDownSample;
 		PassParameters->VolumetricRenderTargetMode = VolumetricCloudRT.GetMode();
+		PassParameters->HalfResDepthTexture = VolumetricCloudRT.GetMode() == 0 ? GraphBuilder.RegisterExternalTexture(ViewInfo.HalfResDepthSurfaceCheckerboardMinMax) : GraphBuilder.RegisterExternalTexture(SceneDepthZ);
+
 		GetTextureSafeUvCoordBound(SrcTracingVolumetric, PassParameters->TracingVolumetricTextureValidCoordRect, PassParameters->TracingVolumetricTextureValidUvRect);
 		GetTextureSafeUvCoordBound(PreviousFrameVolumetricTexture, PassParameters->PreviousFrameVolumetricTextureValidCoordRect, PassParameters->PreviousFrameVolumetricTextureValidUvRect);
 		PassParameters->TemporalFactor = FMath::Clamp(CVarVolumetricRenderTargetTemporalFactor.GetValueOnAnyThread(), 0.0f, 1.0f);
@@ -523,9 +553,9 @@ class FComposeVolumetricRTOverScenePS : public FGlobalShader
 	DECLARE_GLOBAL_SHADER(FComposeVolumetricRTOverScenePS);
 	SHADER_USE_PARAMETER_STRUCT(FComposeVolumetricRTOverScenePS, FGlobalShader);
 
-	class FUpsamplingMode : SHADER_PERMUTATION_RANGE_INT("PERMUTATION_UPSAMPLINGMODE", 0, 4);
-	class FLinearDepth : SHADER_PERMUTATION_BOOL("PERMUTATION_LINEARDEPTH");
-	using FPermutationDomain = TShaderPermutationDomain<FUpsamplingMode, FLinearDepth>;
+	class FUpsamplingMode : SHADER_PERMUTATION_RANGE_INT("PERMUTATION_UPSAMPLINGMODE", 0, 5);
+	class FUnderWater : SHADER_PERMUTATION_BOOL("PERMUTATION_UNDERWATER");
+	using FPermutationDomain = TShaderPermutationDomain<FUpsamplingMode, FUnderWater>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
@@ -599,7 +629,7 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRHICommandListImmed
 
 		FComposeVolumetricRTOverScenePS::FPermutationDomain PermutationVector;
 		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FUpsamplingMode>(UpsamplingMode);
-		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FLinearDepth>(0);
+		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FUnderWater>(0);
 		TShaderMapRef<FComposeVolumetricRTOverScenePS> PixelShader(ViewInfo.ShaderMap, PermutationVector);
 
 		FComposeVolumetricRTOverScenePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FComposeVolumetricRTOverScenePS::FParameters>();
@@ -664,7 +694,7 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverSceneUnderWater(FRHIComman
 
 		FComposeVolumetricRTOverScenePS::FPermutationDomain PermutationVector;
 		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FUpsamplingMode>(UpsamplingMode);
-		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FLinearDepth>(1);
+		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FUnderWater>(1);
 		TShaderMapRef<FComposeVolumetricRTOverScenePS> PixelShader(ViewInfo.ShaderMap, PermutationVector);
 
 		FComposeVolumetricRTOverScenePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FComposeVolumetricRTOverScenePS::FParameters>();
@@ -695,5 +725,97 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverSceneUnderWater(FRHIComman
 
 //////////////////////////////////////////////////////////////////////////
 
+
+
+FTemporalRenderTargetState::FTemporalRenderTargetState()
+	: CurrentRT(1)
+	, FrameId(0)
+	, bFirstTimeUsed(true)
+	, bHistoryValid(false)
+	, Resolution(FIntPoint::ZeroValue)
+	, Format(PF_MAX)
+{ 
+}
+
+FTemporalRenderTargetState::~FTemporalRenderTargetState()
+{
+}
+
+void FTemporalRenderTargetState::Initialise(FIntPoint& ResolutionIn, EPixelFormat FormatIn)
+{
+	// Update internal settings
+
+	if (bFirstTimeUsed)
+	{
+		bFirstTimeUsed = false;
+		bHistoryValid = false;
+		FrameId = 0;
+	}
+
+	CurrentRT = 1 - CurrentRT;
+	const uint32 PreviousRT = 1 - CurrentRT;
+
+	FIntVector ResolutionVector = FIntVector(ResolutionIn.X, ResolutionIn.Y, 0);
+	for (int32 i = 0; i < kRenderTargetCount; ++i)
+	{
+		if (RenderTargets[i].IsValid() && (RenderTargets[i]->GetDesc().GetSize() != ResolutionVector || Format != FormatIn))
+		{
+			// Resolution does not match so release target we are going to render in, keep the previous one at a different resolution.
+			RenderTargets[i].SafeRelease();
+		}
+	}
+	Resolution = ResolutionIn;
+	Format = FormatIn;
+
+	// Regular every frame update
+	bHistoryValid = RenderTargets[PreviousRT].IsValid();
+}
+
+FRDGTextureRef FTemporalRenderTargetState::GetOrCreateCurrentRT(FRDGBuilder& GraphBuilder)
+{
+	check(Resolution.X > 0 && Resolution.Y > 0);
+
+	if (RenderTargets[CurrentRT].IsValid())
+	{
+		return GraphBuilder.RegisterExternalTexture(RenderTargets[CurrentRT]);
+	}
+
+	FRDGTextureRef RDGTexture = GraphBuilder.CreateTexture(
+		FRDGTextureDesc::Create2DDesc(Resolution, Format, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)), 
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable, false), TEXT("TemporalRenderTarget"));
+	return RDGTexture;
+}
+void FTemporalRenderTargetState::ExtractCurrentRT(FRDGBuilder& GraphBuilder, FRDGTextureRef RDGTexture)
+{
+	check(Resolution.X > 0 && Resolution.Y > 0);
+
+	GraphBuilder.QueueTextureExtraction(RDGTexture, &RenderTargets[CurrentRT]);
+}
+
+FRDGTextureRef FTemporalRenderTargetState::GetOrCreatePreviousRT(FRDGBuilder& GraphBuilder)
+{
+	check(Resolution.X > 0 && Resolution.Y > 0);
+	const uint32 PreviousRT = 1u - CurrentRT;
+	check(RenderTargets[PreviousRT].IsValid());
+
+	return GraphBuilder.RegisterExternalTexture(RenderTargets[PreviousRT]);
+}
+
+void FTemporalRenderTargetState::Reset()
+{
+	bFirstTimeUsed = false;
+	bHistoryValid = false;
+	FrameId = 0;
+	for (int32 i = 0; i < kRenderTargetCount; ++i)
+	{
+		RenderTargets[i].SafeRelease();
+	}
+	Resolution = FIntPoint::ZeroValue;
+	Format = PF_MAX;
+}
+
+
+
+//////////////////////////////////////////////////////////////////////////
 
 

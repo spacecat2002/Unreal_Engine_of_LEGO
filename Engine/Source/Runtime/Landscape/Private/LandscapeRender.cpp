@@ -846,7 +846,7 @@ void FLandscapeRenderSystem::PrepareView(const FSceneView* View)
 #endif
 	
 	const bool bExecuteInParallel = FApp::ShouldUseThreadingForPerformance()
-		&& GRenderingThread; // Rendering thread is required to safely use rendering resources in parallel.
+		&& GIsThreadedRendering; // Rendering thread is required to safely use rendering resources in parallel.
 
 	if (bExecuteInParallel)
 	{
@@ -975,7 +975,7 @@ void FLandscapeRenderSystem::FetchHeightmapLODBiases()
 		FLandscapeComponentSceneProxy* SceneProxy = SceneProxies[EntityIndex];
 		if (SceneProxy)
 		{
-			if (SceneProxy->HeightmapTexture)
+			if (SceneProxy->HeightmapTexture && SceneProxy->HeightmapTexture->Resource != nullptr)
 			{
 				float SectionLODBias = ((FTexture2DResource*)SceneProxy->HeightmapTexture->Resource)->GetCurrentFirstMip();
 				SectionLODBiases[EntityIndex] = SectionLODBias;
@@ -1090,7 +1090,7 @@ void FLandscapeRenderSystem::BeginFrame()
 	}
 
 	const bool bExecuteInParallel = FApp::ShouldUseThreadingForPerformance()
-		&& GRenderingThread; // Rendering thread is required to safely use rendering resources in parallel.
+		&& GIsThreadedRendering; // Rendering thread is required to safely use rendering resources in parallel.
 
 	if (bExecuteInParallel)
 	{

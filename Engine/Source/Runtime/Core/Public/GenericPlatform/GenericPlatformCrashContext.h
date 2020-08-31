@@ -33,9 +33,12 @@ enum ECrashExitCodes : int32
 
 	/** Used as MonitorExceptCode in analytics to track how often the out-of-process CRC exits because of a failed check. */
 	OutOfProcessReporterCheckFailed = 777007,
+
+	/** The exception code used for ensure, in case a kernel driver callback happens at in a dispatch level where SEH (on windows) is disabled. */
+	UnhandledEnsure = 777008,
 };
 
-/** 
+/**
  * Symbol information associated with a program counter. 
  * FString version.
  * To be used by external tools.
@@ -190,6 +193,8 @@ struct FSessionContext
 	TCHAR 					CrashReportClientRichText[CR_MAX_RICHTEXT_FIELD_CHARS];
 	TCHAR 					GameStateName[CR_MAX_GENERIC_FIELD_CHARS];
 	TCHAR 					CrashConfigFilePath[CR_MAX_DIRECTORY_CHARS];
+	char					PlatformName[CR_MAX_GENERIC_FIELD_CHARS];
+	char					PlatformNameIni[CR_MAX_GENERIC_FIELD_CHARS];
 	FPlatformMemoryStats	MemoryStats;
 };
 
@@ -411,6 +416,9 @@ public:
 
 	/** Attempts to create the output report directory. */
 	static bool CreateCrashReportDirectory(const TCHAR* CrashGUIDRoot, int32 CrashIndex, FString& OutCrashDirectoryAbsolute);
+
+	/** Notify the crash context exit has been requested. */
+	static void SetEngineExit(bool bIsRequestExit);
 
 	/** Sets the process id to that has crashed. On supported platforms this will analyze the given process rather than current. Default is current process. */
 	void SetCrashedProcess(const FProcHandle& Process) { ProcessHandle = Process; }

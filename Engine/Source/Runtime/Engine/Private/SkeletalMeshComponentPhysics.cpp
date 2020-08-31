@@ -566,7 +566,7 @@ void USkeletalMeshComponent::InitArticulated(FPhysScene* PhysScene)
 
 	UPhysicsAsset* const PhysicsAsset = GetPhysicsAsset();
 
-	if(PhysScene == nullptr || PhysicsAsset == nullptr || SkeletalMesh == nullptr)
+	if(PhysScene == nullptr || PhysicsAsset == nullptr || SkeletalMesh == nullptr || !ShouldCreatePhysicsState())
 	{
 		return;
 	}
@@ -1345,6 +1345,7 @@ void USkeletalMeshComponent::OnUpdateTransform(EUpdateTransformFlags UpdateTrans
 				}
 			}
 
+#if WITH_CHAOS
 			if(GEnableKinematicDeferralStartPhysicsCondition)
 			{
 				if (World && (World->TickGroup == ETickingGroup::TG_StartPhysics))
@@ -1352,6 +1353,7 @@ void USkeletalMeshComponent::OnUpdateTransform(EUpdateTransformFlags UpdateTrans
 					AllowDeferral = EAllowKinematicDeferral::AllowDeferral;
 				}
 			}
+#endif
 		}
 
 		UpdateKinematicBonesToAnim(GetComponentSpaceTransforms(), Teleport, false, AllowDeferral);
@@ -1832,7 +1834,7 @@ void USkeletalMeshComponent::SetPhysicsAsset(UPhysicsAsset* InPhysicsAsset, bool
 
 			// Initialize new Physics Asset
 			UWorld* World = GetWorld();
-			if(World && World->GetPhysicsScene() != nullptr && ShouldCreatePhysicsState())
+			if(World && World->GetPhysicsScene() != nullptr)
 			{
 			//	UE_LOG(LogSkeletalMesh, Warning, TEXT("Creating Physics State (%s : %s)"), *GetNameSafe(GetOuter()),  *GetName());			
 				InitArticulated(World->GetPhysicsScene());
@@ -2464,6 +2466,8 @@ void USkeletalMeshComponent::RecreateClothingActors()
 				TArray<UClothingAssetBase*> AssetsInUse;
 				SkeletalMesh->GetClothingAssetsInUse(AssetsInUse);
 
+				ClothingSimulation->FillContext(this, 0.f, ClothingSimulationContext);
+
 				const int32 NumMeshAssets = SkeletalMesh->MeshClothingAssets.Num();
 				for (int32 BaseAssetIndex = 0; BaseAssetIndex < NumMeshAssets; ++BaseAssetIndex)
 				{
@@ -2473,7 +2477,6 @@ void USkeletalMeshComponent::RecreateClothingActors()
 						ClothingSimulation->CreateActor(this, Asset, BaseAssetIndex);
 					}
 				}
-				ClothingSimulation->PostActorCreationInitialize();
 			}
 
 			// Retrieve the cloth sim data, or clear the data if the world isn't ready to sim
@@ -2552,9 +2555,9 @@ void USkeletalMeshComponent::GetWindForCloth_GameThread(FVector& WindDirection, 
 #if WITH_CLOTH_COLLISION_DETECTION
 
 void USkeletalMeshComponent::FindClothCollisions(FClothCollisionData& OutCollisions)
-				{
+{
 	if(ClothingSimulation)
-					{
+	{
 		// Get collisions for this simulation, ignoring any externally added collisions
 		// (i.e. on grab the asset collisions, not environment etc.)
 		ClothingSimulation->GetCollisions(OutCollisions, false);
@@ -2664,8 +2667,8 @@ void USkeletalMeshComponent::CopyClothCollisionsToChildren()
 	{
 		USkeletalMeshComponent* pChild = Cast<USkeletalMeshComponent>(AttachedChild);
 		if(pChild && pChild->ClothingSimulation->ShouldSimulate())
-			{
-				ClothChildren.Add(pChild);
+		{
+			ClothChildren.Add(pChild);
 		}
 	}
 
