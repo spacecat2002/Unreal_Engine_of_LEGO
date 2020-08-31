@@ -1879,6 +1879,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SceneContext.DBufferA = nullptr;
 		SceneContext.DBufferB = nullptr;
 		SceneContext.DBufferC = nullptr;
+		SceneContext.DBufferMask = nullptr;
 	});
 
 	VisualizeVolumetricLightmap(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target);
