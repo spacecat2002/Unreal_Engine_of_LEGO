@@ -1051,8 +1051,22 @@ void FUniformExpressionSet::GetTextureValue(EMaterialTextureParameterType Type, 
 void FUniformExpressionSet::GetTextureValue(int32 Index, const FMaterialRenderContext& Context, const FMaterial& Material, const URuntimeVirtualTexture*& OutValue) const
 {
 	check(IsInParallelRenderingThread());
-	const FMaterialTextureParameterInfo& Parameter = GetTextureParameter(EMaterialTextureParameterType::Virtual, Index);
-	GetTextureParameterValue(Parameter.ParameterInfo, Parameter.TextureIndex, Context, OutValue);
+	const int32 VirtualTexturesNum = GetNumTextures(EMaterialTextureParameterType::Virtual);
+	if (Index < VirtualTexturesNum)
+	{
+		const FMaterialTextureParameterInfo& Parameter = GetTextureParameter(EMaterialTextureParameterType::Virtual, Index);
+		GetTextureParameterValue(Parameter.ParameterInfo, Parameter.TextureIndex, Context, OutValue);
+	}
+	else
+	{
+		static bool bWarnedOnce = false;
+		if (!bWarnedOnce)
+		{
+			UE_LOG(LogMaterial, Warning, TEXT("%s: Requesting an invalid TextureIndex! (%u / %u)"), *Material.GetFriendlyName(), Index, VirtualTexturesNum);
+			bWarnedOnce = true;
+		}
+		OutValue = nullptr;
+	}
 }
 
 void FUniformExpressionSet::FillUniformBuffer(const FMaterialRenderContext& MaterialRenderContext, const FUniformExpressionCache& UniformExpressionCache, uint8* TempBuffer, int TempBufferSize) const
