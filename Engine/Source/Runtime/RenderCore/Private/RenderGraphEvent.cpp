@@ -165,10 +165,10 @@ void FRDGEventScopeStack::EndExecute()
 	}
 }
 
-FRDGGPUStatScopeGuard::FRDGGPUStatScopeGuard(FRDGBuilder& InGraphBuilder, const FName& Name, const FName& StatName)
+FRDGGPUStatScopeGuard::FRDGGPUStatScopeGuard(FRDGBuilder& InGraphBuilder, const FName& Name, const FName& StatName, int32* DrawCallCounter)
 	: GraphBuilder(InGraphBuilder)
 {
-	GraphBuilder.GPUScopeStacks.BeginStatScope(Name, StatName);
+	GraphBuilder.GPUScopeStacks.BeginStatScope(Name, StatName, DrawCallCounter);
 }
 
 FRDGGPUStatScopeGuard::~FRDGGPUStatScopeGuard()
@@ -182,18 +182,18 @@ static void OnPushGPUStat(FRHIComputeCommandList& RHICmdList, const FRDGGPUStatS
 	// GPU stats are currently only supported on the immediate command list.
 	if (RHICmdList.IsImmediate())
 	{
-		FRealtimeGPUProfiler::Get()->PushEvent(static_cast<FRHICommandListImmediate&>(RHICmdList), Scope->Name, Scope->StatName);
+		FRealtimeGPUProfiler::Get()->PushStat(static_cast<FRHICommandListImmediate&>(RHICmdList), Scope->Name, Scope->StatName, Scope->DrawCallCounter);
 	}
 #endif
 }
 
-static void OnPopGPUStat(FRHIComputeCommandList& RHICmdList, const FRDGGPUStatScope*)
+static void OnPopGPUStat(FRHIComputeCommandList& RHICmdList, const FRDGGPUStatScope* Scope)
 {
 #if HAS_GPU_STATS
 	// GPU stats are currently only supported on the immediate command list.
 	if (RHICmdList.IsImmediate())
 	{
-		FRealtimeGPUProfiler::Get()->PopEvent(static_cast<FRHICommandListImmediate&>(RHICmdList));
+		FRealtimeGPUProfiler::Get()->PopStat(static_cast<FRHICommandListImmediate&>(RHICmdList), Scope->DrawCallCounter);
 	}
 #endif
 }
@@ -211,11 +211,11 @@ FRDGGPUStatScopeStack::FRDGGPUStatScopeStack(FRHIComputeCommandList& InRHICmdLis
 	: ScopeStack(InRHICmdList, &OnPushGPUStat, &OnPopGPUStat)
 {}
 
-void FRDGGPUStatScopeStack::BeginScope(const FName& Name, const FName& StatName)
+void FRDGGPUStatScopeStack::BeginScope(const FName& Name, const FName& StatName, int32* DrawCallCounter)
 {
 	if (IsEnabled())
 	{
-		ScopeStack.BeginScope(Name, StatName);
+		ScopeStack.BeginScope(Name, StatName, DrawCallCounter);
 	}
 }
 

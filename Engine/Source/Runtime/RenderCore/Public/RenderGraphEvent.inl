@@ -243,10 +243,10 @@ inline void FRDGGPUScopeStacksByPipeline::EndEventScope()
 	AsyncCompute.Event.EndScope();
 }
 
-inline void FRDGGPUScopeStacksByPipeline::BeginStatScope(const FName& Name, const FName& StatName)
+inline void FRDGGPUScopeStacksByPipeline::BeginStatScope(const FName& Name, const FName& StatName, int32* DrawCallCounter)
 {
-	Graphics.Stat.BeginScope(Name, StatName);
-	AsyncCompute.Stat.BeginScope(Name, StatName);
+	Graphics.Stat.BeginScope(Name, StatName, DrawCallCounter);
+	AsyncCompute.Stat.BeginScope(Name, StatName, DrawCallCounter);
 }
 
 inline void FRDGGPUScopeStacksByPipeline::EndStatScope()

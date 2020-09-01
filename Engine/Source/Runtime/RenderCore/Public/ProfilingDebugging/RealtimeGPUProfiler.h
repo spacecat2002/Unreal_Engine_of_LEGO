@@ -261,6 +261,10 @@ public:
 	void PushEvent(FRHICommandListImmediate& RHICmdList, const FName& Name, const FName& StatName);
 	void PopEvent(FRHICommandListImmediate& RHICmdList);
 
+	/** Push/pop stats which do additional draw call tracking on top of events. */
+	void PushStat(FRHICommandListImmediate& RHICmdList, const FName& Name, const FName& StatName, int32* InNumDrawCallsPtr);
+	void PopStat(FRHICommandListImmediate& RHICmdList, int32* InNumDrawCallsPtr);
+
 private:
 	FRealtimeGPUProfiler();
 
