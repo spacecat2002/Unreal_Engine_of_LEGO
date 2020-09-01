@@ -346,6 +346,10 @@ void FReflectionCaptureMapBuildData::FinalizeLoad()
 	INC_DWORD_STAT_BY(STAT_ReflectionCaptureBuildData, AllocatedSize);
 }
 
+void FReflectionCaptureMapBuildData::AddReferencedObjects(FReferenceCollector& Collector)
+{
+	Collector.AddReferencedObject(EncodedCaptureData);
+}
 
 UMapBuildDataRegistry::UMapBuildDataRegistry(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -449,6 +453,11 @@ void UMapBuildDataRegistry::AddReferencedObjects(UObject* InThis, FReferenceColl
 	check(TypedThis);
 
 	for (TMap<FGuid, FMeshMapBuildData>::TIterator It(TypedThis->MeshBuildData); It; ++It)
+	{
+		It.Value().AddReferencedObjects(Collector);
+	}
+
+	for (TMap<FGuid, FReflectionCaptureMapBuildData>::TIterator It(TypedThis->ReflectionCaptureBuildData); It; ++It)
 	{
 		It.Value().AddReferencedObjects(Collector);
 	}
