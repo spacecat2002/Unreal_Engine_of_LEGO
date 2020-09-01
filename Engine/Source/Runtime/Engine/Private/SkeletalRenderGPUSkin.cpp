@@ -1693,18 +1693,21 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(uint32 Ve
 		MeshObjectColorBuffer = &LODData.StaticVertexBuffers.ColorVertexBuffer;
 	}
 
-	if ((VertexOffsetUsage & uint32(EVertexOffsetUsageType::PreSkinningOffset)) && CompLODInfo->PreSkinningOffsets.Num() == 0)
+	if ((VertexOffsetUsage & uint32(EVertexOffsetUsageType::PreSkinningOffset)) && CompLODInfo && CompLODInfo->PreSkinningOffsets.Num() == 0)
 	{
 		CompLODInfo->PreSkinningOffsets.SetNumZeroed(LODData.GetNumVertices());
 	}
 
-	if ((VertexOffsetUsage & uint32(EVertexOffsetUsageType::PostSkinningOffset)) && CompLODInfo->PostSkinningOffsets.Num() == 0)
+	if ((VertexOffsetUsage & uint32(EVertexOffsetUsageType::PostSkinningOffset)) && CompLODInfo && CompLODInfo->PostSkinningOffsets.Num() == 0)
 	{
 		CompLODInfo->PostSkinningOffsets.SetNumZeroed(LODData.GetNumVertices());
 	}
 
-	VertexOffsetVertexBuffers.Init(VertexOffsetUsage, CompLODInfo->PreSkinningOffsets, CompLODInfo->PostSkinningOffsets);
-	VertexOffsetVertexBuffers.BeginInitResource();
+	if (CompLODInfo)
+	{
+		VertexOffsetVertexBuffers.Init(VertexOffsetUsage, CompLODInfo->PreSkinningOffsets, CompLODInfo->PostSkinningOffsets);
+		VertexOffsetVertexBuffers.BeginInitResource();
+	}
 
 	// Vertex buffers available for the LOD
 	FVertexFactoryBuffers VertexBuffers;
