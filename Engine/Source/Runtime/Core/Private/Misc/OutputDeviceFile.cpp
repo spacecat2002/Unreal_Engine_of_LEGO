@@ -450,7 +450,6 @@ bool FOutputDeviceFile::CreateWriter(uint32 MaxAttempts)
 		} while (!Ar && FileIndex < MaxAttempts);
 	}
 
-	FAsyncWriter* Result = nullptr;
 	if (Ar)
 	{
 		WriterArchive = Ar;
