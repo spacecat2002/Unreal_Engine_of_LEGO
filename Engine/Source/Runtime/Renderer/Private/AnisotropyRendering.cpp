@@ -6,6 +6,8 @@
 #include "ScenePrivate.h"
 #include "DeferredShadingRenderer.h"
 
+DECLARE_GPU_STAT_NAMED(RenderAnisotropyPass, TEXT("Render Anisotropy Pass"));
+
 static bool IsAnisotropyPassCompatible(FMaterialShaderParameters MaterialParameters)
 {
 	return 
@@ -293,9 +295,10 @@ void FDeferredShadingSceneRenderer::RenderAnisotropyPass(
 	bool bDoParallelPass
 	)
 {
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderAnisotropyPass);
+	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderAnisotropyPass);
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderAnisotropyPass, FColor::Emerald);
 	SCOPE_CYCLE_COUNTER(STAT_AnisotropyPassDrawTime);
+	RDG_GPU_STAT_SCOPE(GraphBuilder, RenderAnisotropyPass);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 	if (!SceneContext.GBufferF)
