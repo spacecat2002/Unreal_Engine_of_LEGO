@@ -349,7 +349,7 @@ public:
 
 protected:
 
-	bool IsMaterialPropertyUsed(EMaterialProperty Property, int32 PropertyChunkIndex, const FLinearColor& ReferenceValue, int32 NumComponents);
+	bool IsMaterialPropertyUsed(EMaterialProperty Property, int32 PropertyChunkIndex, const FLinearColor& ReferenceValue, int32 NumComponents) const;
 
 	// only used by GetMaterialShaderCode()
 	// @param Index ECompiledMaterialProperty or EMaterialProperty
@@ -469,6 +469,7 @@ protected:
 	virtual ERHIFeatureLevel::Type GetFeatureLevel() override;
 	virtual EShaderPlatform GetShaderPlatform() override;
 	virtual const ITargetPlatform* GetTargetPlatform() const override;
+	virtual bool IsMaterialPropertyUsed(EMaterialProperty Property, int32 PropertyChunkIndex) const override;
 
 	/** 
 	 * Casts the passed in code to DestType, or generates a compile error if the cast is not valid. 

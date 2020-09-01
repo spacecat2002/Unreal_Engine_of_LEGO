@@ -1701,7 +1701,7 @@ FString FHLSLMaterialTranslator::GetMaterialShaderCode()
 
 // ========== PROTECTED: ========== //
 
-bool FHLSLMaterialTranslator::IsMaterialPropertyUsed(EMaterialProperty Property, int32 PropertyChunkIndex, const FLinearColor& ReferenceValue, int32 NumComponents)
+bool FHLSLMaterialTranslator::IsMaterialPropertyUsed(EMaterialProperty Property, int32 PropertyChunkIndex, const FLinearColor& ReferenceValue, int32 NumComponents) const
 {
 	bool bPropertyUsed = false;
 
@@ -1712,7 +1712,7 @@ bool FHLSLMaterialTranslator::IsMaterialPropertyUsed(EMaterialProperty Property,
 	else
 	{
 		int32 Frequency = (int32)FMaterialAttributeDefinitionMap::GetShaderFrequency(Property);
-		FShaderCodeChunk& PropertyChunk = SharedPropertyCodeChunks[Frequency][PropertyChunkIndex];
+		const FShaderCodeChunk& PropertyChunk = SharedPropertyCodeChunks[Frequency][PropertyChunkIndex];
 
 		// Determine whether the property is used. 
 		// If the output chunk has a uniform expression, it is constant, and GetNumberValue returns the default property value then property isn't used.
@@ -2733,6 +2733,22 @@ EShaderPlatform FHLSLMaterialTranslator::GetShaderPlatform()
 const ITargetPlatform* FHLSLMaterialTranslator::GetTargetPlatform() const
 {
 	return TargetPlatform;
+}
+
+bool FHLSLMaterialTranslator::IsMaterialPropertyUsed(EMaterialProperty Property, int32 PropertyChunkIndex) const
+{
+	if (PropertyChunkIndex == -1)
+	{
+		return false;
+	}
+	else
+	{
+		FVector4 DefaultValue = FMaterialAttributeDefinitionMap::GetDefaultValue(Property);
+		EMaterialValueType ValueType = FMaterialAttributeDefinitionMap::GetValueType(Property);
+		int32 ComponentCount = GetNumComponents(ValueType);
+
+		return IsMaterialPropertyUsed(Property, PropertyChunkIndex, FLinearColor(DefaultValue), ComponentCount);
+	}
 }
 
 /** 
