@@ -274,6 +274,11 @@ void FAnisotropyMeshProcessor::Process(
 
 bool FDeferredShadingSceneRenderer::ShouldRenderAnisotropyPass() const
 {
+	if (IsSimpleForwardShadingEnabled(GetFeatureLevelShaderPlatform(FeatureLevel)))
+	{
+		return false;
+	}
+
 	for (auto& View : Views)
 	{
 		if (View.ShouldRenderView() && View.ParallelMeshDrawCommandPasses[EMeshPass::AnisotropyPass].HasAnyDraw())
