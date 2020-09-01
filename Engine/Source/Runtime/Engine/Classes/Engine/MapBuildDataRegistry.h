@@ -249,6 +249,8 @@ public:
 		return CubemapSize == DefaultAnnotation.CubemapSize && FullHDRCapturedData.Num() == DefaultAnnotation.FullHDRCapturedData.Num();
 	}
 
+	ENGINE_API void AddReferencedObjects(FReferenceCollector& Collector);
+
 	/** Serializer. */
 	friend ENGINE_API FArchive& operator<<(FArchive& Ar,FReflectionCaptureMapBuildData& ReflectionCaptureMapBuildData);
 
