@@ -1052,19 +1052,13 @@ void FUniformExpressionSet::GetTextureValue(int32 Index, const FMaterialRenderCo
 {
 	check(IsInParallelRenderingThread());
 	const int32 VirtualTexturesNum = GetNumTextures(EMaterialTextureParameterType::Virtual);
-	if (Index < VirtualTexturesNum)
+	if (ensure(Index < VirtualTexturesNum))
 	{
 		const FMaterialTextureParameterInfo& Parameter = GetTextureParameter(EMaterialTextureParameterType::Virtual, Index);
 		GetTextureParameterValue(Parameter.ParameterInfo, Parameter.TextureIndex, Context, OutValue);
 	}
 	else
 	{
-		static bool bWarnedOnce = false;
-		if (!bWarnedOnce)
-		{
-			UE_LOG(LogMaterial, Warning, TEXT("%s: Requesting an invalid TextureIndex! (%u / %u)"), *Material.GetFriendlyName(), Index, VirtualTexturesNum);
-			bWarnedOnce = true;
-		}
 		OutValue = nullptr;
 	}
 }
