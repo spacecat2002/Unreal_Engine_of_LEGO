@@ -740,7 +740,7 @@ bool USkeletalMesh::NeedCPUData(int32 LODIndex)const
 
 void USkeletalMesh::InitResources()
 {
-	LLM_SCOPE(ELLMTag::SkeletalMesh);
+	LLM_SCOPE_BYNAME(TEXT("SkeletalMesh/InitResources")); // This is an important test case for SCOPE_BYNAME without a matching LLM_DECLARE_TAG
 
 	UpdateUVChannelData(false);
 
@@ -1528,9 +1528,11 @@ bool USkeletalMesh::IsReadyForFinishDestroy()
 	return ReleaseResourcesFence.IsFenceComplete() && !UpdateStreamingStatus();
 }
 
+LLM_DECLARE_TAG(TEXT("SkeletalMesh/Serialize"), TEXT("Serialize"), TEXT("SkeletalMesh")); // This is an important test case for LLM_DECLARE_TAG
+
 void USkeletalMesh::Serialize( FArchive& Ar )
 {
-	LLM_SCOPE(ELLMTag::SkeletalMesh);
+	LLM_SCOPE_BYNAME(TEXT("SkeletalMesh/Serialize")); // This is an important test case for SCOPE_BYNAME with a matching LLM_DECLARE_TAG
 	DECLARE_SCOPE_CYCLE_COUNTER( TEXT("USkeletalMesh::Serialize"), STAT_SkeletalMesh_Serialize, STATGROUP_LoadTime );
 
 	Super::Serialize(Ar);
