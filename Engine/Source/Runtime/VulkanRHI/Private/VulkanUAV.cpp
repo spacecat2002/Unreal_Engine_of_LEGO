@@ -357,20 +357,29 @@ FShaderResourceViewRHIRef FVulkanDynamicRHI::RHICreateShaderResourceView(const F
 		case FShaderResourceViewInitializer::EType::VertexBufferSRV:
 		{
 			const FShaderResourceViewInitializer::FVertexBufferShaderResourceViewInitializer Desc = Initializer.AsVertexBufferSRV();
-			const uint32 Stride = GPixelFormats[Desc.Format].BlockBytes;
-			FVulkanVertexBuffer* VertexBuffer = ResourceCast(Desc.VertexBuffer);
-			uint32 Size = FMath::Min(VertexBuffer->GetSize() - Desc.StartOffsetBytes, Desc.NumElements * Stride);
-			return new FVulkanShaderResourceView(Device, Desc.VertexBuffer, VertexBuffer, Size, (EPixelFormat)Desc.Format, Desc.StartOffsetBytes);
+			if (Desc.VertexBuffer)
+			{
+				const uint32 Stride = GPixelFormats[Desc.Format].BlockBytes;
+				FVulkanVertexBuffer* VertexBuffer = ResourceCast(Desc.VertexBuffer);
+				uint32 Size = FMath::Min(VertexBuffer->GetSize() - Desc.StartOffsetBytes, Desc.NumElements * Stride);
+				return new FVulkanShaderResourceView(Device, Desc.VertexBuffer, VertexBuffer, Size, (EPixelFormat)Desc.Format, Desc.StartOffsetBytes);
+			}
+			else
+			{
+				return new FVulkanShaderResourceView(Device, nullptr, nullptr, 0, (EPixelFormat)Desc.Format, Desc.StartOffsetBytes);
+			}
 		}
 		case FShaderResourceViewInitializer::EType::StructuredBufferSRV:
 		{
 			const FShaderResourceViewInitializer::FStructuredBufferShaderResourceViewInitializer Desc = Initializer.AsStructuredBufferSRV();
+			check(Desc.StructuredBuffer);
 			FVulkanStructuredBuffer* StructuredBuffer = ResourceCast(Desc.StructuredBuffer);
 			return new FVulkanShaderResourceView(Device, StructuredBuffer, Desc.StartOffsetBytes);
 		}			
 		case FShaderResourceViewInitializer::EType::IndexBufferSRV:
 		{
 			const FShaderResourceViewInitializer::FIndexBufferShaderResourceViewInitializer Desc = Initializer.AsIndexBufferSRV();
+			check(Desc.IndexBuffer);
 			FVulkanIndexBuffer* IndexBuffer = ResourceCast(Desc.IndexBuffer);
 			const uint32 Stride = Desc.IndexBuffer->GetStride();
 			check(Stride == 2 || Stride == 4);
