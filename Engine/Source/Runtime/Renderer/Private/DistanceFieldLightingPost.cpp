@@ -778,6 +778,7 @@ void UpsampleBentNormalAO(
 		RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 		auto* PassParameters = GraphBuilder.AllocParameters<FDistanceFieldAOUpsamplePS::FParameters>();
+		PassParameters->View = View.ViewUniformBuffer;
 		PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
 		PassParameters->DistanceFieldAOBentNormal = DistanceFieldAOBentNormal;
@@ -792,7 +793,7 @@ void UpsampleBentNormalAO(
 			RDG_EVENT_NAME("UpsampleAO"),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[VertexShader, PixelShader, &View, DistanceFieldAOBentNormal, bModulateSceneColor](FRHICommandList& RHICmdList)
+			[VertexShader, PixelShader, PassParameters, &View, DistanceFieldAOBentNormal, bModulateSceneColor](FRHICommandList& RHICmdList)
 		{
 			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 
@@ -816,6 +817,7 @@ void UpsampleBentNormalAO(
 			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			PixelShader->SetParameters(RHICmdList, View, DistanceFieldAOBentNormal->GetPooledRenderTarget());
+			SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 
 			DrawRectangle(
 				RHICmdList,
