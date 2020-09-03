@@ -571,12 +571,14 @@ void FRHIResource::FlushPendingDeletes(bool bFlushDeferredDeletes)
 	check(IsInRenderingThread());
 
 	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+#if RHI_VALIDATION
 	if (GDynamicRHI)
 	{
 		// Submit all remaining work to the GPU. This also ensures that validation RHI barrier tracking
 		// operations have been flushed before we delete any resources they could be referring to.
 		RHICmdList.SubmitCommandsHint();
 	}
+#endif
 	RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 	FRHICommandListExecutor::CheckNoOutstandingCmdLists();
 	if (GDynamicRHI)
