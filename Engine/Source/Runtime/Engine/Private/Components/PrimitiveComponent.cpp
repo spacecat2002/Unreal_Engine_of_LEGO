@@ -3329,6 +3329,7 @@ void UPrimitiveComponent::SetLightingChannels(bool bChannel0, bool bChannel1, bo
 		{
 			SceneProxy->SetLightingChannels_GameThread(LightingChannels);
 		}
+		MarkRenderStateDirty();
 	}
 }
 
