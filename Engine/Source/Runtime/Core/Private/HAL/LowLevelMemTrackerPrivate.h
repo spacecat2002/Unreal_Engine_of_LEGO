@@ -1,8 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "HAL/LowLevelMemTracker.h"
-
 #pragma once
+
+#include "HAL/LowLevelMemTracker.h"
 
 #if ENABLE_LOW_LEVEL_MEM_TRACKER
 #include "Containers/Array.h"
