@@ -334,11 +334,13 @@ TRefCountPtr<FPooledRenderTarget> FRenderTargetPool::FindFreeElementInternal(
 
 	// try to find a suitable element in the pool
 	{
+		const bool bSupportsFastVRAM = FPlatformMemory::SupportsFastVRAMMemory();
+
 		//don't spend time doing 2 passes if the platform doesn't support fastvram
 		uint32 PassCount = 1;
 		if (AliasingMode == 0)
 		{
-			if ((Desc.Flags & TexCreate_FastVRAM) && FPlatformMemory::SupportsFastVRAMMemory())
+			if ((Desc.Flags & TexCreate_FastVRAM) && bSupportsFastVRAM)
 			{
 				PassCount = 2;
 			}
@@ -349,7 +351,7 @@ TRefCountPtr<FPooledRenderTarget> FRenderTargetPool::FindFreeElementInternal(
 		// (easily we can run out of VRam, if this search becomes a performance problem we can optimize or we should use less TexCreate_FastVRAM)
 		for (uint32 Pass = 0; Pass < PassCount; ++Pass)
 		{
-			bool bExactMatch = (Pass == 0); //-V547
+			bool bExactMatch = (Pass == 0) && bSupportsFastVRAM;
     
 			for (uint32 Index = 0, Num = (uint32)PooledRenderTargets.Num(); Index < Num; ++Index)
 			{
