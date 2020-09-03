@@ -3,7 +3,7 @@
 
 #if ENABLE_LOW_LEVEL_MEM_TRACKER
 
-#include "LowLevelMemoryUtils.h"
+#include "LowLevelMemTrackerPrivate.h"
 #include "Misc/AutomationTest.h"
 
 
