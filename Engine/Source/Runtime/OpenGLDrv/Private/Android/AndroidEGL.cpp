@@ -621,19 +621,12 @@ void AndroidEGL::InitBackBuffer()
 {
 	//add check to see if any context was made current. 
 	GLint OnScreenWidth, OnScreenHeight;
-	if (FPlatformMisc::SupportsBackbufferSampling())
-	{
-		glGenFramebuffers(1, &PImplData->ResolveFrameBuffer);
-	}
-	else
-	{
-		PImplData->ResolveFrameBuffer = 0;
-	}
+	PImplData->ResolveFrameBuffer = 0;
 	PImplData->OnScreenColorRenderBuffer = 0;
 	OnScreenWidth = PImplData->eglWidth;
 	OnScreenHeight = PImplData->eglHeight;
 
-	PImplData->RenderingContext.ViewportFramebuffer = GetResolveFrameBuffer();
+	PImplData->RenderingContext.ViewportFramebuffer =GetResolveFrameBuffer();
 	PImplData->SharedContext.ViewportFramebuffer = GetResolveFrameBuffer();
 	PImplData->SingleThreadedContext.ViewportFramebuffer = GetResolveFrameBuffer();
 }

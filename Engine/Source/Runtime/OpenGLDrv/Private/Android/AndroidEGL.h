@@ -34,8 +34,6 @@ struct FPlatformOpenGLContext
 	GLuint		ViewportFramebuffer;
 	EGLSurface	eglSurface;
 	GLuint		DefaultVertexArrayObject;
-	GLuint		BackBufferResource;
-	GLenum		BackBufferTarget;
 
 	FPlatformOpenGLContext()
 	{
@@ -48,8 +46,6 @@ struct FPlatformOpenGLContext
 		eglSurface = EGL_NO_SURFACE;
 		ViewportFramebuffer = 0;
 		DefaultVertexArrayObject = 0;
-		BackBufferResource = 0;
-		BackBufferTarget = 0;
 	}
 };
 
