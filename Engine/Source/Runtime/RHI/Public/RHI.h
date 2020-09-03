@@ -918,6 +918,7 @@ struct FVertexElement
 		Offset = Other.Offset;
 		Type = Other.Type;
 		AttributeIndex = Other.AttributeIndex;
+		Stride = Other.Stride;
 		bUseInstanceIndex = Other.bUseInstanceIndex;
 	}
 
