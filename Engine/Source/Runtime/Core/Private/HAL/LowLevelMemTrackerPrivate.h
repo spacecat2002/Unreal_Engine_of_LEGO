@@ -2,6 +2,8 @@
 
 #include "HAL/LowLevelMemTracker.h"
 
+#pragma once
+
 #if ENABLE_LOW_LEVEL_MEM_TRACKER
 #include "Containers/Array.h"
 #include "Containers/Map.h"
