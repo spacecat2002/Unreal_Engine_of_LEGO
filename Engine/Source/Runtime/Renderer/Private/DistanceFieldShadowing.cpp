@@ -1225,7 +1225,7 @@ void RayTraceHeightFieldShadows(
 	{
 		if (GShadowScatterTileCulling && bHasPrevOutput)
 		{
-			RayTraceShadowsDispatch<DFS_DirectionalLightScatterTileCulling, DFPT_HeightField, true>(RHICmdList, RayTracedShadowsTexture->GetPooledRenderTarget(), View, ProjectedShadowInfo, TileIntersectionResources, PrevOutputTexture->GetRHI());
+			RayTraceShadowsDispatch<DFS_DirectionalLightScatterTileCulling, DFPT_HeightField, true>(RHICmdList, RayTracedShadowsTexture->GetPooledRenderTarget(), View, ProjectedShadowInfo, TileIntersectionResources, TryGetRHI(PrevOutputTexture));
 		}
 		else if (GShadowScatterTileCulling)
 		{
@@ -1233,7 +1233,7 @@ void RayTraceHeightFieldShadows(
 		}
 		else if (bHasPrevOutput)
 		{
-			RayTraceShadowsDispatch<DFS_DirectionalLightTiledCulling, DFPT_HeightField, true>(RHICmdList, RayTracedShadowsTexture->GetPooledRenderTarget(), View, ProjectedShadowInfo, TileIntersectionResources, PrevOutputTexture->GetRHI());
+			RayTraceShadowsDispatch<DFS_DirectionalLightTiledCulling, DFPT_HeightField, true>(RHICmdList, RayTracedShadowsTexture->GetPooledRenderTarget(), View, ProjectedShadowInfo, TileIntersectionResources, TryGetRHI(PrevOutputTexture));
 		}
 		else
 		{
