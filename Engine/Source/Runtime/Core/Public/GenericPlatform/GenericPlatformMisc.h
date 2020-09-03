@@ -1454,11 +1454,6 @@ public:
 	{
 	}
 
-	FORCEINLINE static bool SupportsBackbufferSampling()
-	{
-		return true;
-	}
-
 #if !UE_BUILD_SHIPPING
 	/**
 	 * Returns any platform specific warning messages we want printed on screen

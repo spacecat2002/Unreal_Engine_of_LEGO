@@ -1620,7 +1620,8 @@ inline bool RHINeedsToSwitchVerticalAxis(const FStaticShaderPlatform Platform)
 #endif
 
 	// ES3.1 need to flip when rendering to an RT that will be post processed
-	return IsAndroidOpenGLESPlatform(Platform) && !FPlatformMisc::SupportsBackbufferSampling();
+	return IsOpenGLPlatform(Platform) && IsMobilePlatform(Platform) && !IsPCPlatform(Platform) && !IsMetalMobilePlatform(Platform) && !IsVulkanPlatform(Platform)
+		   && Platform != SP_SWITCH && Platform != SP_SWITCH_FORWARD;
 }
 
 inline bool RHISupportsSeparateMSAAAndResolveTextures(const FStaticShaderPlatform Platform)
