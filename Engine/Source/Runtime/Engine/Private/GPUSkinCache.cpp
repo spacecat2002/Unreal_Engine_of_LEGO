@@ -15,6 +15,7 @@ GPUSkinCache.cpp: Performs skinning on a compute shader into a buffer to avoid v
 #include "ClearQuad.h"
 #include "Shader.h"
 #include "MeshMaterialShader.h"
+#include "RenderGraphResources.h"
 
 DEFINE_STAT(STAT_GPUSkinCache_TotalNumChunks);
 DEFINE_STAT(STAT_GPUSkinCache_TotalNumVertices);
@@ -1145,11 +1146,40 @@ FGPUSkinCache::FRWBuffersAllocation* FGPUSkinCache::TryAllocBuffer(uint32 NumVer
 	return NewAllocation;
 }
 
+void FGPUSkinCache::DoDispatch(FRHICommandListImmediate& RHICmdList)
+{
+	int32 BatchCount = BatchDispatches.Num();
+	INC_DWORD_STAT_BY(STAT_GPUSkinCache_TotalNumChunks, BatchCount);
+
+	RHICmdList.BeginUAVOverlap();
+	{
+		for (int32 i = 0; i < BatchCount; ++i)
+		{
+			FDispatchEntry& DispatchItem = BatchDispatches[i];
+			DispatchUpdateSkinning(RHICmdList, DispatchItem.SkinCacheEntry, DispatchItem.Section, DispatchItem.RevisionNumber);
+		}
+	}
+	RHICmdList.EndUAVOverlap();
+
+	{
+		for (int32 i = 0; i < BatchCount; ++i)
+		{
+			FDispatchEntry& DispatchItem = BatchDispatches[i];
+			DispatchItem.SkinCacheEntry->UpdateVertexFactoryDeclaration(DispatchItem.Section);
+
+			if (DispatchItem.SkinCacheEntry->DispatchData[DispatchItem.Section].IndexBuffer)
+			{
+				DispatchUpdateSkinTangents(RHICmdList, DispatchItem.SkinCacheEntry, DispatchItem.Section);
+			}
+
+			DispatchItem.SkinCacheEntry->UpdateVertexFactoryDeclaration(DispatchItem.Section);
+		}
+	}
+}
 
 void FGPUSkinCache::DoDispatch(FRHICommandListImmediate& RHICmdList, FGPUSkinCacheEntry* SkinCacheEntry, int32 Section, int32 RevisionNumber)
 {
 	INC_DWORD_STAT(STAT_GPUSkinCache_TotalNumChunks);
-	FGPUSkinCacheEntry::FSectionDispatchData& DispatchData = SkinCacheEntry->DispatchData[Section];
 	DispatchUpdateSkinning(RHICmdList, SkinCacheEntry, Section, RevisionNumber);
 	//RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DispatchData.GetRWBuffer());
 	SkinCacheEntry->UpdateVertexFactoryDeclaration(Section);
@@ -1300,10 +1330,131 @@ void FGPUSkinCache::ProcessEntry(
     }
     InOutEntry->DispatchData[Section].SkinType = ClothVertexBuffer ? 2 : (bMorph ? 1 : 0);
 
+	if (bShouldBatchDispatches)
+	{
+		BatchDispatches.Add({
+			InOutEntry,
+			&LodData,
+			RevisionNumber,
+			uint32(Section),
+#if RHI_RAYTRACING
+			Skin->bRequireRecreatingRayTracingGeometry,
+#else
+			false,
+#endif
+			Skin->DoesAnySegmentUsesWorldPositionOffset()
+			});
+	}
+	else
+	{
+		DoDispatch(RHICmdList, InOutEntry, Section, RevisionNumber);
+	}
+}
 
-	DoDispatch(RHICmdList, InOutEntry, Section, RevisionNumber);
+#if RHI_RAYTRACING
+void FGPUSkinCache::ProcessRayTracingGeometryToUpdate(
+	FRHICommandListImmediate& RHICmdList,
+	FGPUSkinCacheEntry* SkinCacheEntry,
+	FSkeletalMeshLODRenderData& LODModel,
+	bool bRequireRecreatingRayTracingGeometry,
+	bool bAnySegmentUsesWorldPositionOffset
+	)
+{
+	if (IsRayTracingEnabled() && GEnableGPUSkinCache && SkinCacheEntry)
+	{
+		FRayTracingGeometry& RayTracingGeometry = SkinCacheEntry->GPUSkin->RayTracingGeometry;
 
-	InOutEntry->UpdateVertexFactoryDeclaration(Section);
+		if (bRequireRecreatingRayTracingGeometry)
+		{
+			FIndexBufferRHIRef IndexBufferRHI = LODModel.MultiSizeIndexContainer.GetIndexBuffer()->IndexBufferRHI;
+			uint32 VertexBufferStride = LODModel.StaticVertexBuffers.PositionVertexBuffer.GetStride();
+
+			//#dxr_todo: do we need support for separate sections in FRayTracingGeometryData?
+			uint32 TrianglesCount = 0;
+			for (int32 SectionIndex = 0; SectionIndex < LODModel.RenderSections.Num(); SectionIndex++)
+			{
+				const FSkelMeshRenderSection& Section = LODModel.RenderSections[SectionIndex];
+				TrianglesCount += Section.NumTriangles;
+			}
+
+			FRayTracingGeometryInitializer Initializer;
+			static const FName DebugName("FSkeletalMeshObjectGPUSkin");
+			static int32 DebugNumber = 0;
+			Initializer.DebugName = FName(DebugName, DebugNumber++);
+
+			FRHIResourceCreateInfo CreateInfo;
+
+			Initializer.IndexBuffer = IndexBufferRHI;
+			Initializer.TotalPrimitiveCount = TrianglesCount;
+			Initializer.GeometryType = RTGT_Triangles;
+			Initializer.bFastBuild = true;
+			Initializer.bAllowUpdate = true;
+
+			Initializer.Segments.Reserve(LODModel.RenderSections.Num());
+			for (const FSkelMeshRenderSection& Section : LODModel.RenderSections)
+			{
+				FRayTracingGeometrySegment Segment;
+				Segment.VertexBuffer = nullptr;
+				Segment.VertexBufferElementType = VET_Float3;
+				Segment.VertexBufferStride = VertexBufferStride;
+				Segment.VertexBufferOffset = 0;
+				Segment.FirstPrimitive = Section.BaseIndex / 3;
+				Segment.NumPrimitives = Section.NumTriangles;
+				Segment.bEnabled = !Section.bDisabled;
+				Initializer.Segments.Add(Segment);
+			}
+
+			FGPUSkinCache::GetRayTracingSegmentVertexBuffers(*SkinCacheEntry, Initializer.Segments);
+
+			// Flush pending resource barriers before BVH is built for the first time
+			TransitionAllToReadable(RHICmdList);
+
+			RayTracingGeometry.SetInitializer(Initializer);
+			RayTracingGeometry.UpdateRHI();
+		}
+		else
+		{
+			// If we are not using world position offset in material, handle BLAS refit here
+			if (!bAnySegmentUsesWorldPositionOffset)
+			{
+				// Refit BLAS with new vertex buffer data
+				FGPUSkinCache::GetRayTracingSegmentVertexBuffers(*SkinCacheEntry, RayTracingGeometry.Initializer.Segments);
+				AddRayTracingGeometryToUpdate(&RayTracingGeometry);
+			}
+			else
+			{
+				// Otherwise, we will run the dynamic ray tracing geometry path, i.e. runnning VSinCS and refit geometry there, so do nothing here
+			}
+		}
+	}
+}
+#endif
+
+void FGPUSkinCache::BeginBatchDispatch(FRHICommandListImmediate& RHICmdList)
+{
+	check(BatchDispatches.Num() == 0);
+	bShouldBatchDispatches = true;
+}
+
+void FGPUSkinCache::EndBatchDispatch(FRHICommandListImmediate& RHICmdList)
+{
+	DoDispatch(RHICmdList);
+
+#if RHI_RAYTRACING
+	if (IsRayTracingEnabled() && GEnableGPUSkinCache)
+	{
+		for (FDispatchEntry& DispatchItem : BatchDispatches)
+		{
+			FGPUSkinCacheEntry* SkinCacheEntry = DispatchItem.SkinCacheEntry;
+			FSkeletalMeshLODRenderData& LODModel = *DispatchItem.LODModel;
+
+			ProcessRayTracingGeometryToUpdate(RHICmdList, SkinCacheEntry, LODModel, DispatchItem.bRequireRecreatingRayTracingGeometry, DispatchItem.bAnySegmentUsesWorldPositionOffset);
+		}
+	}
+#endif
+
+	BatchDispatches.Reset();
+	bShouldBatchDispatches = false;
 }
 
 void FGPUSkinCache::Release(FGPUSkinCacheEntry*& SkinCacheEntry)

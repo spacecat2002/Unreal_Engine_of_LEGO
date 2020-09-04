@@ -23,8 +23,3 @@ void ComputeHairStrandsClustersCulling(
 	const TArray<FViewInfo>& Views,
 	const FHairCullingParams& CullingParameters,
 	FHairStrandClusterData& ClusterDatas);
-
-void ResetHairStrandsClusterToLOD0(
-	FRDGBuilder& GraphBuilder,
-	FGlobalShaderMap& ShaderMap,
-	FHairStrandClusterData& ClusterDatas);

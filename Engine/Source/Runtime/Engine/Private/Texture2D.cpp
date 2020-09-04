@@ -261,12 +261,11 @@ void UTexture2D::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEv
 	}
 #endif // #if WITH_EDITORONLY_DATA
 
-	if (VirtualTextureStreaming &&
-		(PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UTexture2D, AddressX)
-		|| PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UTexture2D, AddressY) )
-		)
+	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UTexture2D, AddressX)
+		|| PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UTexture2D, AddressY))
 	{
-		//When using VT, changing the address mode should trigger a recompile
+		// VT need to recompile shaders when address mode changes
+		// Non-VT still needs to potentially update sampler state in the materials
 		NotifyMaterials();
 	}
 
@@ -914,10 +913,12 @@ void FVirtualTexture2DResource::InitRHI()
 	const int32 MaxLevel = VTData->GetNumMips() - FirstMipToUse - 1;
 	check(MaxLevel >= 0);
 
+	const bool bContinuousUpdate = TextureOwner->IsVirtualTexturedWithContinuousUpdate();
 	const bool bSinglePhysicalSpace = TextureOwner->IsVirtualTexturedWithSinglePhysicalSpace();
 
 	FVTProducerDescription ProducerDesc;
 	ProducerDesc.Name = TextureOwner->GetFName();
+	ProducerDesc.bContinuousUpdate = bContinuousUpdate;
 	ProducerDesc.Dimensions = 2;
 	ProducerDesc.TileSize = VTData->TileSize;
 	ProducerDesc.TileBorderSize = VTData->TileBorderSize;

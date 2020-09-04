@@ -30,9 +30,10 @@ FWidgetProxy::FWidgetProxy(SWidget& InWidget)
 
 int32 FWidgetProxy::Update(const FPaintArgs& PaintArgs, int32 MyIndex, FSlateWindowElementList& OutDrawElements)
 {
-#if WITH_SLATE_DEBUGGING
-	ensure(UpdateFlags == Widget->UpdateFlags);
-#endif
+// Commenting this since it could be triggered in specific cases where Widgte->UpdateFlags in reset but the Widget Proxy is still in the  update list
+//#if WITH_SLATE_DEBUGGING
+//	ensure(UpdateFlags == Widget->UpdateFlags);
+//#endif
 
 	// If Outgoing layer id remains index none, there was no change
 	int32 OutgoingLayerId = INDEX_NONE;

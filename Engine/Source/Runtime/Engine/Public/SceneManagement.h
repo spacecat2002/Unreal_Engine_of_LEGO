@@ -1486,7 +1486,7 @@ public:
 	inline bool GetForceCachedShadowsForMovablePrimitives() const { return bForceCachedShadowsForMovablePrimitives; }
 
 	inline uint32 GetSamplesPerPixel() const { return SamplesPerPixel; }
-
+	inline float GetDeepShadowLayerDistribution() const { return DeepShadowLayerDistribution;  }
 	/**
 	 * Shifts light position and all relevant data by an arbitrary delta.
 	 * Called on world origin changes
@@ -1521,6 +1521,9 @@ public:
 	virtual float GetCloudShadowExtent() const { return 1.0f; }
 	virtual float GetCloudShadowMapResolutionScale() const { return 1.0f; }
 	virtual float GetCloudShadowStrength() const { return 1.0f; }
+	virtual float GetCloudShadowOnAtmosphereStrength() const { return 1.0f; }
+	virtual float GetCloudShadowOnSurfaceStrength() const { return 1.0f; }
+	virtual float GetCloudShadowDepthBias() const { return 0.0f; }
 	virtual FLinearColor GetCloudScatteredLuminanceScale() const { return FLinearColor::White; }
 	virtual bool GetUsePerPixelAtmosphereTransmittance() const { return false; }
 
@@ -1712,6 +1715,9 @@ protected:
 
 	/** Samples per pixel for ray tracing */
 	uint32 SamplesPerPixel;
+
+	/** Deep shadow layer distribution. */
+	float DeepShadowLayerDistribution;
 
 	/** If this is TRUE, the light's mobile movable point light uniform buffer needs to be updated before it can be used for mobile base pass rendering. */
 	bool bMobileMovablePointLightUniformBufferNeedsUpdate;
@@ -2870,7 +2876,8 @@ extern ENGINE_API void DrawFrustumWireframe(
 	uint8 DepthPriority
 	);
 
-void BuildConeVerts(float Angle1, float Angle2, float Scale, float XOffset, uint32 NumSides, TArray<FDynamicMeshVertex>& OutVerts, TArray<uint32>& OutIndices);
+extern ENGINE_API FVector CalcConeVert(float Angle1, float Angle2, float AzimuthAngle);
+extern ENGINE_API void BuildConeVerts(float Angle1, float Angle2, float Scale, float XOffset, uint32 NumSides, TArray<FDynamicMeshVertex>& OutVerts, TArray<uint32>& OutIndices);
 
 void BuildCylinderVerts(const FVector& Base, const FVector& XAxis, const FVector& YAxis, const FVector& ZAxis, float Radius, float HalfHeight, uint32 Sides, TArray<FDynamicMeshVertex>& OutVerts, TArray<uint32>& OutIndices);
 

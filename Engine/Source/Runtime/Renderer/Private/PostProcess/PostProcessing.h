@@ -77,7 +77,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& V
 void AddBasicPostProcessPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View);
 
 // For compatibility with composition graph passes until they are ported to Render Graph.
-class FPostProcessVS : public FScreenPassVS
+class RENDERER_API FPostProcessVS : public FScreenPassVS
 {
 public:
 	FPostProcessVS() = default;

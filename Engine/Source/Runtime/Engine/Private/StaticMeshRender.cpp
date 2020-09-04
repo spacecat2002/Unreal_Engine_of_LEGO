@@ -117,11 +117,6 @@ static TAutoConsoleVariable<int32> CVarRayTracingStaticMeshes(
 	1,
 	TEXT("Include static meshes in ray tracing effects (default = 1 (static meshes enabled in ray tracing))"));
 
-static TAutoConsoleVariable<int32> CVarRayTracingStaticMeshesExcludeImpostors(
-	TEXT("r.RayTracing.Geometry.StaticMeshes.ExcludeImpostors"),
-	0,
-	TEXT("Exclude impostor LOD for static meshes in ray tracing (default = 0)"));
-
 static TAutoConsoleVariable<int32> CVarRayTracingStaticMeshesWPO(
 	TEXT("r.RayTracing.Geometry.StaticMeshes.WPO"),
 	1,
@@ -1672,14 +1667,7 @@ void FStaticMeshSceneProxy::GetDynamicRayTracingInstances(FRayTracingMaterialGat
 	}
 
 	uint8 PrimitiveDPG = GetStaticDepthPriorityGroup();
-	uint32 LODIndex = FMath::Max(GetLOD(Context.ReferenceView), (int32)GetCurrentFirstLODIdx_RenderThread());
-
-	if (CVarRayTracingStaticMeshesExcludeImpostors.GetValueOnRenderThread() == 1)
-	{
-		uint32 MaxLOD = FMath::Max(RenderData->LODResources.Num() - 2, 0);
-		LODIndex = FMath::Min(LODIndex, MaxLOD);
-	}
-
+	const uint32 LODIndex = FMath::Max(GetLOD(Context.ReferenceView), (int32)GetCurrentFirstLODIdx_RenderThread());
 	const FStaticMeshLODResources& LODModel = RenderData->LODResources[LODIndex];
 
 	if (LODModel.GetNumVertices() <= 0)
@@ -1704,16 +1692,16 @@ void FStaticMeshSceneProxy::GetDynamicRayTracingInstances(FRayTracingMaterialGat
 
 	FRayTracingGeometry& Geometry = bEvaluateWPO? DynamicRayTracingGeometries[LODIndex] : RenderData->LODResources[LODIndex].RayTracingGeometry;
 	{
-		FRayTracingInstance RayTracingInstance;
+		FRayTracingInstance &RayTracingInstance = OutRayTracingInstances.AddDefaulted_GetRef();
 	
 		const int32 NumBatches = GetNumMeshBatches();
 
+		RayTracingInstance.Materials.Reserve(LODModel.Sections.Num() * NumBatches);
 		for (int32 BatchIndex = 0; BatchIndex < NumBatches; BatchIndex++)
 		{
-			RayTracingInstance.Materials.Reserve(LODModel.Sections.Num());
 			for(int SectionIndex = 0; SectionIndex < LODModel.Sections.Num(); SectionIndex++)
 			{
-				FMeshBatch Mesh;
+				FMeshBatch &Mesh = RayTracingInstance.Materials.AddDefaulted_GetRef();
 	
 				bool bResult = GetMeshElement(LODIndex, BatchIndex, SectionIndex, PrimitiveDPG, false, false, Mesh);
 				if (!bResult)
@@ -1723,7 +1711,6 @@ void FStaticMeshSceneProxy::GetDynamicRayTracingInstances(FRayTracingMaterialGat
 					Mesh.VertexFactory = &RenderData->LODVertexFactories[LODIndex].VertexFactory;
 				}
 				Mesh.SegmentIndex = SectionIndex;
-				RayTracingInstance.Materials.Add(Mesh);
 			}
 		}
 
@@ -1765,8 +1752,6 @@ void FStaticMeshSceneProxy::GetDynamicRayTracingInstances(FRayTracingMaterialGat
 			RayTracingInstance.Geometry->Initializer.Segments.Num(), 
 			RayTracingInstance.Materials.Num(), 
 			LODIndex);
-
-		OutRayTracingInstances.Add(RayTracingInstance);
 	}
 }
 #endif
@@ -2194,13 +2179,8 @@ float FStaticMeshSceneProxy::GetScreenSize( int32 LODIndex ) const
  */
 int32 FStaticMeshSceneProxy::GetLOD(const FSceneView* View) const 
 {
-#if STATICMESH_ENABLE_DEBUG_RENDERING
-	const TCHAR* StaticMeshName = StaticMesh ? *StaticMesh->GetName() : TEXT("None");
-#else
-	const TCHAR* StaticMeshName = TEXT("Unknown");
-#endif
-
-	if (ensureMsgf(RenderData, TEXT("StaticMesh [%s] missing RenderData."), StaticMeshName))
+	if (ensureMsgf(RenderData, TEXT("StaticMesh [%s] missing RenderData."),
+		(STATICMESH_ENABLE_DEBUG_RENDERING && StaticMesh) ? *StaticMesh->GetName() : TEXT("None")))
 	{
 		int32 CVarForcedLODLevel = GetCVarForceLOD();
 
@@ -2231,13 +2211,8 @@ FLODMask FStaticMeshSceneProxy::GetLODMask(const FSceneView* View) const
 {
 	FLODMask Result;
 
-#if STATICMESH_ENABLE_DEBUG_RENDERING
-	const TCHAR* StaticMeshName = StaticMesh ? *StaticMesh->GetName() : TEXT("None");
-#else
-	const TCHAR* StaticMeshName = TEXT("Unknown");
-#endif
-
-	if (!ensureMsgf(RenderData, TEXT("StaticMesh [%s] missing RenderData."), StaticMeshName))
+	if (!ensureMsgf(RenderData, TEXT("StaticMesh [%s] missing RenderData."),
+		(STATICMESH_ENABLE_DEBUG_RENDERING && StaticMesh) ? *StaticMesh->GetName() : TEXT("None")))
 	{
 		Result.SetLOD(0);
 	}

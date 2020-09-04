@@ -1276,7 +1276,8 @@ bool FMaterialResource::IsPersistent() const { return true; }
 
 FGuid FMaterialResource::GetMaterialId() const
 {
-	return Material->StateId;
+	// It's possible for Material to become null due to AddReferencedObjects
+	return Material ? Material->StateId : FGuid();
 }
 
 ETranslucencyLightingMode FMaterialResource::GetTranslucencyLightingMode() const { return (ETranslucencyLightingMode)Material->TranslucencyLightingMode; }
@@ -1363,6 +1364,7 @@ float FMaterialResource::GetTranslucentShadowStartOffset() const { return Materi
 float FMaterialResource::GetRefractionDepthBiasValue() const { return Material->RefractionDepthBias; }
 float FMaterialResource::GetMaxDisplacement() const { return Material->MaxDisplacement; }
 bool FMaterialResource::ShouldApplyFogging() const { return Material->bUseTranslucencyVertexFog; }
+bool FMaterialResource::ShouldApplyCloudFogging() const { return Material->bApplyCloudFogging; }
 bool FMaterialResource::IsSky() const { return Material->bIsSky; }
 bool FMaterialResource::ComputeFogPerPixel() const {return Material->bComputeFogPerPixel;}
 FString FMaterialResource::GetFriendlyName() const { return *GetNameSafe(Material); } //avoid using the material instance name here, we want materials that share a shadermap to also share a friendly name.

@@ -377,10 +377,10 @@ public:
 	virtual int32 GetHairRootUV() = 0;
 	virtual int32 GetHairBaseColor() = 0;
 	virtual int32 GetHairRoughness() = 0;
-	
-	// Water
-	virtual int32 SceneDepthWithoutWater(int32 Offset, int32 ViewportUV, bool bUseOffset, float FallbackDepth) = 0;
-
+	virtual int32 GetHairDepth() = 0;
+	virtual int32 GetHairCoverage() = 0;
+	virtual int32 GetHairAtlasUVs() = 0;
+	virtual int32 GetHairColorFromMelanin(int32 Melanin, int32 Redness, int32 DyeColor) = 0;
 	virtual int32 CustomPrimitiveData(int32 OutputIndex, EMaterialValueType Type) = 0;
 	virtual int32 ShadingModel(EMaterialShadingModel InSelectedShadingModel) = 0;
 
@@ -648,6 +648,10 @@ public:
 	virtual int32 GetHairRootUV() override { return Compiler->GetHairRootUV(); }
 	virtual int32 GetHairBaseColor() override { return Compiler->GetHairBaseColor(); }
 	virtual int32 GetHairRoughness() override { return Compiler->GetHairRoughness(); }
+	virtual int32 GetHairDepth() override { return Compiler->GetHairDepth(); }
+	virtual int32 GetHairCoverage() override { return Compiler->GetHairCoverage(); }
+	virtual int32 GetHairAtlasUVs() override { return Compiler->GetHairAtlasUVs(); }
+	virtual int32 GetHairColorFromMelanin(int32 Melanin, int32 Redness, int32 DyeColor) override { return Compiler->GetHairColorFromMelanin(Melanin, Redness, DyeColor); }
 
 	virtual int32 RotateScaleOffsetTexCoords(int32 TexCoordCodeIndex, int32 RotationScale, int32 Offset) override
 	{
@@ -724,11 +728,6 @@ public:
 		return Compiler->GetVolumeSampleConservativeDensity();
 	}
 	
-	virtual int32 SceneDepthWithoutWater(int32 Offset, int32 ViewportUV, bool bUseOffset, float FallbackDepth) override
-	{
-		return Compiler->SceneDepthWithoutWater(Offset, ViewportUV, bUseOffset, FallbackDepth);
-	}
-
 	virtual int32 CustomPrimitiveData(int32 OutputIndex, EMaterialValueType Type) override
 	{
 		return Compiler->CustomPrimitiveData(OutputIndex, Type);

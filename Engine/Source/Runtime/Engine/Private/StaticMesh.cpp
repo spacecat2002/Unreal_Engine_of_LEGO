@@ -259,6 +259,8 @@ FArchive& operator<<(FArchive& Ar, FStaticMeshSection& Section)
 	}
 #endif
 
+	Ar << Section.bVisibleInRayTracing;
+
 	return Ar;
 }
 
@@ -2232,7 +2234,7 @@ static void SerializeBuildSettingsForDDC(FArchive& Ar, FMeshBuildSettings& Build
 // differences, etc.) replace the version GUID below with a new one.
 // In case of merge conflicts with DDC versions, you MUST generate a new GUID
 // and set this new GUID as the version.
-#define STATICMESH_DERIVEDDATA_VER TEXT("F9378A28F161444987BACE79B2590E57")
+#define STATICMESH_DERIVEDDATA_VER TEXT("14FB7BD55BAA4C14BCDC7C2AD14BCE50")
 
 static const FString& GetStaticMeshDerivedDataVersion()
 {
@@ -5363,11 +5365,13 @@ void UStaticMesh::BuildFromStaticMeshDescriptions(const TArray<UStaticMeshDescri
 		MeshDescriptions.Emplace(&StaticMeshDescription->GetMeshDescription());
 	}
 
-	BuildFromMeshDescriptions(MeshDescriptions, bBuildSimpleCollision);
+	FBuildMeshDescriptionsParams Params;
+	Params.bBuildSimpleCollision = bBuildSimpleCollision;
+	BuildFromMeshDescriptions(MeshDescriptions, Params);
 }
 
 
-bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*>& MeshDescriptions, bool bBuildSimpleCollision)
+bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*>& MeshDescriptions, const FBuildMeshDescriptionsParams& Params)
 {
 	// Set up
 
@@ -5387,6 +5391,10 @@ bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*
 		ReleaseResourcesFence.Wait();
 	}
 
+#if WITH_EDITOR
+	SetNumSourceModels(MeshDescriptions.Num());
+#endif
+
 	RenderData = MakeUnique<FStaticMeshRenderData>();
 	RenderData->AllocateLODResources(MeshDescriptions.Num());
 
@@ -5397,9 +5405,14 @@ bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*
 	{
 #if WITH_EDITOR
 		// Editor builds cache the mesh description so that it can be preserved during map reloads etc
-		SetNumSourceModels(MeshDescriptions.Num());
-		CreateMeshDescription(LODIndex, *MeshDescriptionPtr);
-		CommitMeshDescription(LODIndex);
+		if (Params.bCommitMeshDescription)
+		{
+			CreateMeshDescription(LODIndex, *MeshDescriptionPtr);
+			FCommitMeshDescriptionParams CommitParams;
+			CommitParams.bMarkPackageDirty = Params.bMarkPackageDirty;
+			CommitParams.bUseHashAsGuid = Params.bUseHashAsGuid;
+			CommitMeshDescription(LODIndex, CommitParams);
+		}
 #endif
 		check(MeshDescriptionPtr != nullptr);
 		FStaticMeshLODResources& LODResources = RenderData->LODResources[LODIndex];
@@ -5456,7 +5469,7 @@ bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*
 	check(BodySetup);
 	BodySetup->InvalidatePhysicsData();
 
-	if (bBuildSimpleCollision)
+	if (Params.bBuildSimpleCollision)
 	{
 		FKBoxElem BoxElem;
 		BoxElem.Center = RenderData->Bounds.Origin;
@@ -5672,10 +5685,16 @@ static int32 GetCollisionVertIndexForMeshVertIndex(int32 MeshVertIndex, TMap<int
 
 bool UStaticMesh::GetPhysicsTriMeshData(struct FTriMeshCollisionData* CollisionData, bool bInUseAllTriData)
 {
+	bool bInCheckComplexCollisionMesh = true;
+	return GetPhysicsTriMeshDataCheckComplex(CollisionData, bInUseAllTriData, bInCheckComplexCollisionMesh);
+}
+
+bool UStaticMesh::GetPhysicsTriMeshDataCheckComplex(struct FTriMeshCollisionData* CollisionData, bool bInUseAllTriData, bool bInCheckComplexCollisionMesh)
+{
 #if WITH_EDITORONLY_DATA
-	if (ComplexCollisionMesh && ComplexCollisionMesh != this)
+	if (ComplexCollisionMesh && ComplexCollisionMesh != this && bInCheckComplexCollisionMesh)
 	{
-		return ComplexCollisionMesh->GetPhysicsTriMeshData(CollisionData, bInUseAllTriData);
+		return ComplexCollisionMesh->GetPhysicsTriMeshDataCheckComplex(CollisionData, bInUseAllTriData, false); // Only one level of recursion
 	}
 #else // #if WITH_EDITORONLY_DATA
 	// the static mesh needs to be tagged for CPUAccess in order to access TriMeshData in runtime mode : 
@@ -5741,12 +5760,18 @@ bool UStaticMesh::GetPhysicsTriMeshData(struct FTriMeshCollisionData* CollisionD
 	return CollisionData->Vertices.Num() > 0 && CollisionData->Indices.Num() > 0;
 }
 
-bool UStaticMesh::ContainsPhysicsTriMeshData(bool bInUseAllTriData) const 
+bool UStaticMesh::ContainsPhysicsTriMeshData(bool bInUseAllTriData) const
+{
+	bool bInCheckComplexCollisionMesh = true;
+	return ContainsPhysicsTriMeshDataCheckComplex(bInUseAllTriData, bInCheckComplexCollisionMesh);
+}
+
+bool UStaticMesh::ContainsPhysicsTriMeshDataCheckComplex(bool bInUseAllTriData, bool bInCheckComplexCollisionMesh) const
 {
 #if WITH_EDITORONLY_DATA
-	if (ComplexCollisionMesh && ComplexCollisionMesh != this)
+	if (ComplexCollisionMesh && ComplexCollisionMesh != this && bInCheckComplexCollisionMesh)
 	{
-		return ComplexCollisionMesh->ContainsPhysicsTriMeshData(bInUseAllTriData);
+		return ComplexCollisionMesh->ContainsPhysicsTriMeshDataCheckComplex(bInUseAllTriData, false); // One level of recursion
 	}
 #else // #if WITH_EDITORONLY_DATA
 	// without editor data, we can't selectively generate a physics mesh for a given LOD index (we're missing access to GetSectionInfoMap()) so force bInUseAllTriData in order to use LOD index 0
@@ -5786,9 +5811,14 @@ bool UStaticMesh::ContainsPhysicsTriMeshData(bool bInUseAllTriData) const
 void UStaticMesh::GetMeshId(FString& OutMeshId)
 {
 #if WITH_EDITORONLY_DATA
+	OutMeshId.Reset();
+	if (ComplexCollisionMesh && ComplexCollisionMesh->RenderData)
+	{
+		OutMeshId = ComplexCollisionMesh->RenderData->DerivedDataKey;
+	}
 	if (RenderData)
 	{
-		OutMeshId = RenderData->DerivedDataKey;
+		OutMeshId.Append(RenderData->DerivedDataKey);
 	}
 #endif
 }

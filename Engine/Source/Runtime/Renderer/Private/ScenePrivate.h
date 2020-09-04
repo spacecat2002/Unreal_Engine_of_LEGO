@@ -801,10 +801,16 @@ private:
 			return GetOrCreateTexture(RHICmdList, CurrentBuffer);
 		}
 
+		int32 GetPreviousPreviousIndex() const
+		{
+			return ((CurrentBuffer-2)+3)%3;
+		}
+
 		/** Return old Render Target*/
 		const TRefCountPtr<IPooledRenderTarget>& GetLastTexture(FRHICommandList& RHICmdList)
 		{
-			return GetOrCreateTexture(RHICmdList, 1 - CurrentBuffer);
+			// "last" frame is actually 2 behind
+			return GetOrCreateTexture(RHICmdList, GetPreviousPreviousIndex());
 		}
 
 		/** Reverse the current/last order of the targets */
@@ -828,7 +834,7 @@ private:
 
 		const FExposureBufferData* GetLastBuffer(FRHICommandListImmediate& RHICmdList)
 		{
-			return GetOrCreateBuffer(RHICmdList, 1 - CurrentBuffer);
+			return GetOrCreateBuffer(RHICmdList, GetPreviousPreviousIndex());
 		}
 
 		void SwapBuffers(FRDGBuilder& GraphBuilder, bool bUpdateLastExposure);
@@ -845,11 +851,15 @@ private:
 		float LastExposure = 0;
 		float LastAverageSceneLuminance = 0; // 0 means invalid. Used for Exposure Compensation Curve.
 
-		TRefCountPtr<IPooledRenderTarget> PooledRenderTarget[2];
-		TUniquePtr<FRHIGPUTextureReadback> ExposureTextureReadback;
+		// Data is triple buffered. When getting the "previous" frame, we actually want the
+		// data from two frames agao, so the actual previous frame is ((CurrentBuffer-1)+3)%3, but 
+		// the frame we actually want to use is ((CurrentBuffer-2)+3)%3;
+		TRefCountPtr<IPooledRenderTarget> PooledRenderTarget[3];
+		TUniquePtr<FRHIGPUTextureReadback> ExposureTextureReadback[3];
 
-		FExposureBufferData ExposureBufferData[2];
-		TUniquePtr<FRHIGPUBufferReadback> ExposureBufferReadback;
+		FExposureBufferData ExposureBufferData[3];
+		TUniquePtr<FRHIGPUBufferReadback> ExposureBufferReadback[3];
+
 	} EyeAdaptationManager;
 
 	// The LUT used by tonemapping.  In stereo this is only computed and stored by the Left Eye.
@@ -973,6 +983,9 @@ public:
 	// Ray Traced Global Illumination Gather Point Data
 	TRefCountPtr<FRDGPooledBuffer> GatherPointsBuffer;
 	FIntVector GatherPointsResolution;
+	// todo: shared definition for maximum gather points per-pixel (32)
+	TStaticArray<FMatrix, 32> GatherPointsViewHistory;
+	uint32 GatherPointsCount;
 
 	// Last valid RTPSO is saved, so it could be used as fallback in future frames if background PSO compilation is enabled.
 	// This RTPSO can be used only if the only difference from previous PSO is the material hit shaders.
@@ -1034,8 +1047,20 @@ public:
 
 	FVolumetricRenderTargetViewStateData VolumetricCloudRenderTarget;
 	FTemporalRenderTargetState VolumetricCloudShadowRenderTarget[NUM_ATMOSPHERE_LIGHTS];
+	TRefCountPtr<IPooledRenderTarget> VolumetricCloudShadowFilteredRenderTarget[NUM_ATMOSPHERE_LIGHTS];
 	FMatrix VolumetricCloudShadowmapPreviousWorldToLightClipMatrix[NUM_ATMOSPHERE_LIGHTS];
-	FVector PreviousFrameAtmosphericLightDirection[NUM_ATMOSPHERE_LIGHTS];
+	FVector VolumetricCloudShadowmapPreviousAtmosphericLightPos[NUM_ATMOSPHERE_LIGHTS];
+	FVector VolumetricCloudShadowmapPreviousAnchorPoint[NUM_ATMOSPHERE_LIGHTS];
+	FVector VolumetricCloudShadowmapPreviousAtmosphericLightDir[NUM_ATMOSPHERE_LIGHTS];
+
+	TRefCountPtr<IPooledRenderTarget> GetVolumetricCloudShadowRenderTarget(uint32 LightIndex)
+	{
+		if (VolumetricCloudShadowFilteredRenderTarget[LightIndex].IsValid())
+		{
+			return VolumetricCloudShadowFilteredRenderTarget[LightIndex];
+		}
+		return VolumetricCloudShadowRenderTarget[LightIndex].CurrentRenderTarget();
+	}
 
 	// call after OnFrameRenderingSetup()
 	virtual uint32 GetCurrentTemporalAASampleIndex() const
@@ -2529,10 +2554,10 @@ public:
 
 	/** If sky light bRealTimeCaptureEnabled is true, used to render the sky env map (sky, sky dome mesh or clouds). */
 	TRefCountPtr<IPooledRenderTarget> CapturedSkyRenderTarget;	// Needs to be a IPooledRenderTarget because it must be created before the View uniform buffer is created.
-	/** If sky light bRealTimeCaptureEnabled is true, use to store the result of the sky env map GGX specular convolution. */
-	TRefCountPtr<IPooledRenderTarget> ConvolvedSkyRenderTarget;
-	/** If the real time sky capture is time sliced, this stores the currently processed/generated sky env map.*/
-	TRefCountPtr<IPooledRenderTarget> ProcessedSkyRenderTarget;
+	/** These store the result of the sky env map GGX specular convolution. */
+	TRefCountPtr<IPooledRenderTarget> ConvolvedSkyRenderTarget[2];
+	/** The index of the ConvolvedSkyRenderTarget to use when rendering meshes. -1 when not initialised. */
+	int32 ConvolvedSkyRenderTargetReadyIndex;
 
 	/** True if no real time reflection capture has been entirely processed. We always enforce a complete one the first frame even with time slicing for correct start up lighting.*/
 	bool bRealTimeSlicedReflectionCaptureFirstFrame;

@@ -2009,6 +2009,20 @@ FRHICOMMAND_MACRO(FRHICommandUpdateRHIResources)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+FRHICOMMAND_MACRO(FRHICommandBackBufferWaitTrackingBeginFrame)
+{
+	uint64 FrameToken;
+
+	FORCEINLINE_DEBUGGABLE FRHICommandBackBufferWaitTrackingBeginFrame(uint64 FrameTokenIn)
+		: FrameToken(FrameTokenIn)
+	{
+	}
+	
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+
 FRHICOMMAND_MACRO(FRHICommandCopyBufferRegion)
 {
 	FRHIVertexBuffer* DestBuffer;
@@ -3474,6 +3488,19 @@ public:
 		}
 		ALLOC_COMMAND(FRHICommandDiscardRenderTargets)(Depth, Stencil, ColorBitMask);
 	}
+
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+	FORCEINLINE_DEBUGGABLE void RHIBackBufferWaitTrackingBeginFrame(uint64 FrameToken)
+	{
+		if (Bypass())
+		{
+			GetContext().RHIBackBufferWaitTrackingBeginFrame(FrameToken);
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandBackBufferWaitTrackingBeginFrame)(FrameToken);
+	}
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+	
 	FORCEINLINE_DEBUGGABLE void CopyBufferRegion(FRHIVertexBuffer* DestBuffer, uint64 DstOffset, FRHIVertexBuffer* SourceBuffer, uint64 SrcOffset, uint64 NumBytes)
 	{
 		// No copy/DMA operation inside render passes

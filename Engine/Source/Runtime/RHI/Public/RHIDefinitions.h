@@ -152,6 +152,7 @@ private:
 		struct FStaticNameMapEntry
 		{
 			FName Name;
+			FName PlatformName;
 			int32 Index;
 		} NameMap[] =
 		{
@@ -167,7 +168,7 @@ private:
 			FPlatform& Platform = Platforms[PlatformIndex];
 			check(Platform.Name == NAME_None); // Check we've not already seen this platform
 
-			Platform.Name = Entry.Name;
+			Platform.Name = Entry.PlatformName;
 			Platform.ShaderPlatform = FName(*FString::Printf(TEXT("SP_%s"), *Entry.Name.ToString()), FNAME_Add);
 			Platform.ShaderFormat = FName(*FString::Printf(TEXT("SF_%s"), *Entry.Name.ToString()), FNAME_Add);
 		}
@@ -312,7 +313,6 @@ class RHI_API FGenericDataDrivenShaderPlatformInfo
 	uint32 bIsConsole: 1;
 	uint32 bIsAndroidOpenGLES: 1;
 
-	uint32 bSupportsDrawIndirect: 1;
 	uint32 bSupportsMobileMultiView: 1;
 	uint32 bSupportsVolumeTextureCompression: 1;
 	uint32 bSupportsDistanceFields: 1; // used for DFShadows and DFAO - since they had the same checks
@@ -338,6 +338,7 @@ class RHI_API FGenericDataDrivenShaderPlatformInfo
 	uint32 bSupportsRTIndexFromVS : 1;
 	uint32 bSupportsWaveOperations : 1; // Whether HLSL SM6 shader wave intrinsics are supported
 	uint32 bRequiresExplicit128bitRT : 1;
+	uint32 bSupportsGen5TemporalAA : 1;
 
 	uint32 bTargetsTiledGPU: 1;
 	uint32 bNeedsOfflineCompiler: 1;
@@ -413,11 +414,6 @@ public:
 	static FORCEINLINE_DEBUGGABLE const bool GetIsAndroidOpenGLES(const FStaticShaderPlatform Platform)
 	{
 		return Infos[Platform].bIsAndroidOpenGLES;
-	}
-
-	static FORCEINLINE_DEBUGGABLE const bool GetSupportsDrawIndirect(const FStaticShaderPlatform Platform)
-	{
-		return Infos[Platform].bSupportsDrawIndirect;
 	}
 
 	static FORCEINLINE_DEBUGGABLE const bool GetSupportsMobileMultiView(const FStaticShaderPlatform Platform)
@@ -538,6 +534,11 @@ public:
 	static FORCEINLINE_DEBUGGABLE const bool GetRequiresExplicit128bitRT(const FStaticShaderPlatform Platform)
 	{
 		return Infos[Platform].bRequiresExplicit128bitRT;
+	}
+
+	static FORCEINLINE_DEBUGGABLE const bool GetSupportsGen5TemporalAA(const FStaticShaderPlatform Platform)
+	{
+		return Infos[Platform].bSupportsGen5TemporalAA;
 	}
 
 private:

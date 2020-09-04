@@ -299,6 +299,9 @@ public:
     virtual void RHISetShadingRate(EVRSShadingRate ShadingRate, EVRSRateCombiner Combiner) final override;
     virtual void RHISetShadingRateImage(FRHITexture* RateImageTexture, EVRSRateCombiner Combiner) final override;
 	virtual void RHIUpdateTextureReference(FRHITextureReference* TextureRef, FRHITexture* NewTexture) final override;
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+	virtual void RHIBackBufferWaitTrackingBeginFrame(uint64 FrameToken) final override;
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 
 	virtual void RHIClearMRTImpl(bool bClearColor, int32 NumClearColors, const FLinearColor* ColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil);
 
@@ -408,7 +411,16 @@ public:
 
 	static inline FD3D12TextureBase* RetrieveTextureBase(FRHITexture* Texture, uint32 GPUIndex)
 	{
-		return Texture ? static_cast<FD3D12TextureBase*>(Texture->GetTextureBaseRHI())->GetLinkedObject(GPUIndex) : nullptr;
+		// If it's the dummy backbuffer then swap with actual current RHI backbuffer right now
+		FRHITexture* RHITexture = Texture;
+		if (RHITexture && RHITexture->GetFlags() & TexCreate_Presentable)
+		{
+			FD3D12BackBufferReferenceTexture2D* BufferBufferReferenceTexture = (FD3D12BackBufferReferenceTexture2D*)RHITexture;
+			FD3D12Viewport* ViewPort = BufferBufferReferenceTexture->GetViewPort();
+			RHITexture = BufferBufferReferenceTexture->IsSDR() ? ViewPort->GetSDRBackBuffer_RHIThread() : ViewPort->GetBackBuffer_RHIThread();
+		}
+
+		return RHITexture ? static_cast<FD3D12TextureBase*>(RHITexture->GetTextureBaseRHI())->GetLinkedObject(GPUIndex) : nullptr;
 	}
 
 	FORCEINLINE_DEBUGGABLE FD3D12TextureBase* RetrieveTextureBase(FRHITexture* Texture)
@@ -784,6 +796,13 @@ public:
 	{
 		ContextRedirect(RHIClearRayTracingBindings(Scene));
 	}
+
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+	virtual void RHIBackBufferWaitTrackingBeginFrame(uint64 FrameToken) final override
+	{
+		ContextRedirect(RHIBackBufferWaitTrackingBeginFrame(FrameToken));
+	}
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 
 	FORCEINLINE void SetPhysicalContext(FD3D12CommandContext* Context)
 	{

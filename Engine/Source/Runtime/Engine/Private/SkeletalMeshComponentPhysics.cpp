@@ -74,7 +74,11 @@ DECLARE_CYCLE_STAT(TEXT("Cloth Writeback"), STAT_ClothWriteback, STATGROUP_Physi
 void FSkeletalMeshComponentClothTickFunction::ExecuteTick(float DeltaTime, enum ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(FSkeletalMeshComponentClothTickFunction_ExecuteTick);
-	FActorComponentTickFunction::ExecuteTickHelper(Target,/*bTickInEditor=*/ false, DeltaTime, TickType, [this](float DilatedTime)
+#if WITH_EDITOR
+	FActorComponentTickFunction::ExecuteTickHelper(Target, Target->bUpdateClothInEditor, DeltaTime, TickType, [this](float DilatedTime)
+#else
+	FActorComponentTickFunction::ExecuteTickHelper(Target,true, DeltaTime, TickType, [this](float DilatedTime)
+#endif
 	{
 		Target->TickClothing(DilatedTime, *this);
 	});
@@ -523,6 +527,81 @@ void USkeletalMeshComponent::OnConstraintBrokenWrapper(int32 ConstraintIndex)
 	OnConstraintBroken.Broadcast(ConstraintIndex);
 }
 
+void USkeletalMeshComponent::InitCollisionRelationships()
+{
+#if WITH_CHAOS
+	if (UPhysicsAsset* const PhysicsAsset = GetPhysicsAsset())
+	{
+		int32 NumDisabledCollisions = PhysicsAsset->CollisionDisableTable.Num();
+		if (NumDisabledCollisions)
+		{
+			TMap<FPhysicsActorHandle, TArray< FPhysicsActorHandle > > DisabledCollisions;
+			for (auto& Elem : PhysicsAsset->CollisionDisableTable)
+			{
+				int32 SourceIndex = Elem.Key.Indices[0];
+				int32 TargetIndex = Elem.Key.Indices[1];
+				bool bDoCollide = !Elem.Value;
+
+				if (auto* SourceBody = Bodies[SourceIndex])
+				{
+					if (auto* TargetBody = Bodies[TargetIndex])
+					{
+						if (FPhysicsActorHandle SourceHandle = SourceBody->GetPhysicsActorHandle())
+						{
+							if (FPhysicsActorHandle TargetHandle = TargetBody->GetPhysicsActorHandle())
+							{
+								if (!DisabledCollisions.Contains(SourceHandle))
+								{
+									DisabledCollisions.Add(SourceHandle, TArray<FPhysicsActorHandle>());
+									DisabledCollisions[SourceHandle].Reserve(NumDisabledCollisions);
+								}
+
+								checkSlow(!DisabledCollisions[SourceHandle].Contains(TargetHandle));
+								DisabledCollisions[SourceHandle].Add(TargetHandle);
+							}
+						}
+					}
+				}
+			}
+			FPhysicsCommand::ExecuteWrite(this, [&]()
+				{
+					FChaosEngineInterface::AddDisabledCollisionsFor_AssumesLocked(DisabledCollisions);
+				});
+		}
+	}
+#endif
+}
+
+void USkeletalMeshComponent::TermCollisionRelationships()
+{
+	if (UPhysicsAsset* const PhysicsAsset = GetPhysicsAsset())
+	{
+		int32 NumDisabledCollisions = PhysicsAsset->CollisionDisableTable.Num();
+		if (NumDisabledCollisions)
+		{
+			TArray< FPhysicsActorHandle > CollisionRelationships;
+			CollisionRelationships.Reserve(Bodies.Num());
+
+			for (auto& Body : Bodies)
+			{
+				if (Body)
+				{
+					if (FPhysicsActorHandle Handle = Body->GetPhysicsActorHandle())
+					{
+						CollisionRelationships.Add(Handle);
+					}
+				}
+			}
+
+			FPhysicsCommand::ExecuteWrite(this, [&]()
+			{
+				FChaosEngineInterface::RemoveDisabledCollisionsFor_AssumesLocked(CollisionRelationships);
+			});
+		}
+	}
+}
+
+
 DECLARE_CYCLE_STAT(TEXT("Init Articulated"), STAT_InitArticulated, STATGROUP_Physics);
 
 int32 USkeletalMeshComponent::FindRootBodyIndex() const
@@ -562,12 +641,12 @@ void USkeletalMeshComponent::InitArticulated(FPhysScene* PhysScene)
 
 	UPhysicsAsset* const PhysicsAsset = GetPhysicsAsset();
 
-	if(PhysScene == nullptr || PhysicsAsset == nullptr || SkeletalMesh == nullptr)
+	if (PhysScene == nullptr || PhysicsAsset == nullptr || SkeletalMesh == nullptr || !ShouldCreatePhysicsState())
 	{
 		return;
 	}
 
-	if(Bodies.Num() > 0)
+	if (Bodies.Num() > 0)
 	{
 		UE_LOG(LogSkeletalMesh, Log, TEXT("USkeletalMeshComponent::InitArticulated : Bodies already created (%s) - call TermArticulated first."), *GetPathName());
 		return;
@@ -587,19 +666,19 @@ void USkeletalMeshComponent::InitArticulated(FPhysScene* PhysScene)
 	RootBodyData.BodyIndex = INDEX_NONE;	//Reset the root body index just in case we need to refind a new one
 	const int32 RootBodyIndex = FindRootBodyIndex();
 
-	if(RootBodyIndex == INDEX_NONE)
+	if (RootBodyIndex == INDEX_NONE)
 	{
-		UE_LOG(LogSkeletalMesh, Log, TEXT("USkeletalMeshComponent::InitArticulated : Could not find root physics body: '%s'"), *GetPathName() );
+		UE_LOG(LogSkeletalMesh, Log, TEXT("USkeletalMeshComponent::InitArticulated : Could not find root physics body: '%s'"), *GetPathName());
 		return;
 	}
 
 	// Set up the map from skelmeshcomp ID to collision disable table
-	uint32 SkelMeshCompID = GetUniqueID();
-	PhysScene->DeferredAddCollisionDisableTable(SkelMeshCompID, &PhysicsAsset->CollisionDisableTable);
-
+#if !WITH_CHAOS
+	PhysScene->DeferredAddCollisionDisableTable(GetUniqueID(), &PhysicsAsset->CollisionDisableTable);
+#endif
 	int32 NumShapes = 0;
 	const int32 NumBodies = PhysicsAsset->SkeletalBodySetups.Num();
-	for(int32 BodyIndex = 0; BodyIndex < NumBodies; ++BodyIndex)
+	for (int32 BodyIndex = 0; BodyIndex < NumBodies; ++BodyIndex)
 	{
 		if (PhysicsAsset->SkeletalBodySetups[BodyIndex])
 		{
@@ -607,11 +686,11 @@ void USkeletalMeshComponent::InitArticulated(FPhysScene* PhysScene)
 		}
 	}
 
-	if(!Aggregate.IsValid() && NumShapes > RagdollAggregateThreshold && NumShapes <= AggregateMaxSize)
+	if (!Aggregate.IsValid() && NumShapes > RagdollAggregateThreshold&& NumShapes <= AggregateMaxSize)
 	{
 		Aggregate = FPhysicsInterface::CreateAggregate(PhysicsAsset->SkeletalBodySetups.Num());
 	}
-	else if(Aggregate.IsValid() && NumShapes > AggregateMaxSize)
+	else if (Aggregate.IsValid() && NumShapes > AggregateMaxSize)
 	{
 		UE_LOG(LogSkeletalMesh, Log, TEXT("USkeletalMeshComponent::InitArticulated : Too many shapes to create aggregate, Max: %u, This: %d"), AggregateMaxSize, NumShapes);
 	}
@@ -621,6 +700,7 @@ void USkeletalMeshComponent::InitArticulated(FPhysScene* PhysScene)
 	// now update root body index because body has BodySetup now
 	SetRootBodyIndex(RootBodyIndex);
 
+	InitCollisionRelationships();
 
 	// Update Flag
 #if WITH_APEX_CLOTHING || WITH_CHAOS_CLOTHING
@@ -839,10 +919,14 @@ void USkeletalMeshComponent::InstantiatePhysicsAsset_Internal(const UPhysicsAsse
 	}
 }
 
+
 void USkeletalMeshComponent::TermArticulated()
 {
 	ResetRootBodyIndex();
 
+#if WITH_CHAOS
+	TermCollisionRelationships();
+#else
 	uint32 SkelMeshCompID = GetUniqueID();
 	UWorld* MyWorld = GetWorld();
 	FPhysScene* PhysScene = (MyWorld ? MyWorld->GetPhysicsScene() : nullptr);
@@ -850,6 +934,7 @@ void USkeletalMeshComponent::TermArticulated()
 	{
 		PhysScene->DeferredRemoveCollisionDisableTable(SkelMeshCompID);
 	}
+#endif
 
 	FPhysicsCommand::ExecuteWrite(this, [&]()
 	{
@@ -1341,6 +1426,7 @@ void USkeletalMeshComponent::OnUpdateTransform(EUpdateTransformFlags UpdateTrans
 				}
 			}
 
+#if WITH_CHAOS
 			if(GEnableKinematicDeferralStartPhysicsCondition)
 			{
 				if (World && (World->TickGroup == ETickingGroup::TG_StartPhysics))
@@ -1348,6 +1434,7 @@ void USkeletalMeshComponent::OnUpdateTransform(EUpdateTransformFlags UpdateTrans
 					AllowDeferral = EAllowKinematicDeferral::AllowDeferral;
 				}
 			}
+#endif
 		}
 
 		UpdateKinematicBonesToAnim(GetComponentSpaceTransforms(), Teleport, false, AllowDeferral);
@@ -1828,7 +1915,7 @@ void USkeletalMeshComponent::SetPhysicsAsset(UPhysicsAsset* InPhysicsAsset, bool
 
 			// Initialize new Physics Asset
 			UWorld* World = GetWorld();
-			if(World && World->GetPhysicsScene() != nullptr && ShouldCreatePhysicsState())
+			if(World && World->GetPhysicsScene() != nullptr)
 			{
 			//	UE_LOG(LogSkeletalMesh, Warning, TEXT("Creating Physics State (%s : %s)"), *GetNameSafe(GetOuter()),  *GetName());			
 				InitArticulated(World->GetPhysicsScene());
@@ -2451,10 +2538,16 @@ void USkeletalMeshComponent::RecreateClothingActors()
 		{
 			// Only create cloth sim actors when the world is ready for it
 			const UWorld* const World = GetWorld();
+#if WITH_EDITORONLY_DATA
+			if (World && (World->bShouldSimulatePhysics || bUpdateClothInEditor) && World->GetPhysicsScene())
+#else
 			if (World && World->bShouldSimulatePhysics && World->GetPhysicsScene())
+#endif
 			{
 				TArray<UClothingAssetBase*> AssetsInUse;
 				SkeletalMesh->GetClothingAssetsInUse(AssetsInUse);
+
+				ClothingSimulation->FillContext(this, 0.f, ClothingSimulationContext);
 
 				const int32 NumMeshAssets = SkeletalMesh->MeshClothingAssets.Num();
 				for (int32 BaseAssetIndex = 0; BaseAssetIndex < NumMeshAssets; ++BaseAssetIndex)
@@ -2465,7 +2558,6 @@ void USkeletalMeshComponent::RecreateClothingActors()
 						ClothingSimulation->CreateActor(this, Asset, BaseAssetIndex);
 					}
 				}
-				ClothingSimulation->PostActorCreationInitialize();
 			}
 
 			// Retrieve the cloth sim data, or clear the data if the world isn't ready to sim
@@ -2544,9 +2636,9 @@ void USkeletalMeshComponent::GetWindForCloth_GameThread(FVector& WindDirection, 
 #if WITH_CLOTH_COLLISION_DETECTION
 
 void USkeletalMeshComponent::FindClothCollisions(FClothCollisionData& OutCollisions)
-				{
+{
 	if(ClothingSimulation)
-					{
+	{
 		// Get collisions for this simulation, ignoring any externally added collisions
 		// (i.e. on grab the asset collisions, not environment etc.)
 		ClothingSimulation->GetCollisions(OutCollisions, false);
@@ -2656,8 +2748,8 @@ void USkeletalMeshComponent::CopyClothCollisionsToChildren()
 	{
 		USkeletalMeshComponent* pChild = Cast<USkeletalMeshComponent>(AttachedChild);
 		if(pChild && pChild->ClothingSimulation->ShouldSimulate())
-			{
-				ClothChildren.Add(pChild);
+		{
+			ClothChildren.Add(pChild);
 		}
 	}
 

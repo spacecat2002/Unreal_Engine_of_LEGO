@@ -353,6 +353,7 @@ FD3D12CommandListHandle FD3D12CommandContext::FlushCommands(bool WaitForCompleti
 #endif
 
 	FD3D12Device* Device = GetParentDevice();
+	const bool bIsCommandListOpen = !CommandListHandle.IsClosed();
 	const bool bHasPendingWork = Device->PendingCommandLists.Num() > 0;
 	const bool bHasDoneWork = HasDoneWork() || bHasPendingWork;
 	const bool bOpenNewCmdList = WaitForCompletion || bHasDoneWork || bHasProfileGPUAction;
@@ -361,24 +362,45 @@ FD3D12CommandListHandle FD3D12CommandContext::FlushCommands(bool WaitForCompleti
 	if (bOpenNewCmdList)
 	{
 		// Close the current command list
-		CloseCommandList();
+		if (bIsCommandListOpen)
+		{
+			CloseCommandList();
+		}
 
 		if (bHasPendingWork)
 		{
-			// Submit all pending command lists and the current command list
-			Device->PendingCommandLists.Add(CommandListHandle);
+			// Submit all pending command lists and the current command list if it was still open
+			if (bIsCommandListOpen)
+			{
+				Device->PendingCommandLists.Add(CommandListHandle);				
+			}
+			else
+			{
+				// otherwise it should be already part of the pending list
+				check(Device->PendingCommandLists.Contains(CommandListHandle));
+
+				// This use case should only happen when force flush is called from the rendering thread using the FScopedRHIThreadStaller
+				// which could insert a flush in between pending command lists
+				check(IsInRenderingThread());
+			}
 			GetCommandListManager().ExecuteCommandLists(Device->PendingCommandLists, WaitForCompletion);
 			Device->PendingCommandLists.Reset();
 		}
 		else
 		{
+			// If there are no pending command lists then we assyme that the current command list is open
+			check(bIsCommandListOpen);
+
 			// Just submit the current command list
 			CommandListHandle.Execute(WaitForCompletion);
 		}
 
-		// Get a new command list to replace the one we submitted for execution. 
-		// Restore the state from the previous command list.
-		OpenCommandList();
+		if (bIsCommandListOpen)
+		{
+			// Get a new command list to replace the one we submitted for execution. 
+			// Restore the state from the previous command list.
+			OpenCommandList();
+		}
 	}
 
 	return CommandListHandle;
@@ -436,6 +458,11 @@ void FD3D12CommandContextBase::RHIBeginFrame()
 		if (ensure(ContextAtIndex))
 		{
 			Device->GetTimestampQueryHeap()->EndQueryBatchAndResolveQueryData(*ContextAtIndex);
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+			uint64 TimeStampFrequency = 0;
+			VERIFYD3D12RESULT(Device->GetCommandListManager().GetTimestampFrequency(&TimeStampFrequency));
+			Device->GetBackBufferWriteBarrierTracker()->ResolveBatches(TimeStampFrequency, false);
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 		}
 
 		FD3D12GlobalOnlineSamplerHeap& SamplerHeap = Device->GetGlobalSamplerHeap();
@@ -538,6 +565,10 @@ void FD3D12CommandContextBase::RHIEndFrame()
 
 		FD3D12CommandContext& DefaultContext = Device->GetDefaultCommandContext();
 		DefaultContext.CommandListHandle.FlushResourceBarriers();
+
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+		Device->GetBackBufferWriteBarrierTracker()->EndBatch(DefaultContext);
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 
 		DefaultContext.ReleaseCommandAllocator();
 		DefaultContext.ClearState();
@@ -668,6 +699,13 @@ void FD3D12CommandContext::RHIBeginScene()
 void FD3D12CommandContext::RHIEndScene()
 {
 }
+
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+void FD3D12CommandContext::RHIBackBufferWaitTrackingBeginFrame(uint64 FrameToken)
+{
+	GetParentDevice()->GetBackBufferWriteBarrierTracker()->BeginBatch(FrameToken);
+}
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 
 #if D3D12_SUPPORTS_PARALLEL_RHI_EXECUTE
 

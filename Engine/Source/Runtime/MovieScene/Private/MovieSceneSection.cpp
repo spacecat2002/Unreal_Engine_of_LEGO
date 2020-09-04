@@ -294,6 +294,10 @@ void UMovieSceneSection::BuildDefaultComponents(UMovieSceneEntitySystemLinker* E
 		{
 			BlendTag = Components->Tags.AdditiveBlend;
 		}
+		else if (BlendType.Get() == EMovieSceneBlendType::AdditiveFromBase)
+		{
+			BlendTag = Components->Tags.AdditiveFromBaseBlend;
+		}
 	}
 
 	const bool bHasEasing = (Easing.GetEaseInDuration() > 0 || Easing.GetEaseOutDuration() > 0);
@@ -304,14 +308,36 @@ void UMovieSceneSection::BuildDefaultComponents(UMovieSceneEntitySystemLinker* E
 	TComponentTypeID<FEasingComponentData> EasingComponentID = Components->Easing;
 	FComponentTypeID RestoreStateTag = Components->Tags.RestoreState;
 
+	const bool bHasForcedTime      = Params.EntityMetaData && Params.EntityMetaData->ForcedTime != TNumericLimits<int32>::Lowest();
+	const bool bHasSectionPreRoll  = Params.EntityMetaData && EnumHasAnyFlags(Params.EntityMetaData->Flags, ESectionEvaluationFlags::PreRoll | ESectionEvaluationFlags::PostRoll);
+	const bool bHasSequencePreRoll = Params.Sequence.bPreRoll || Params.Sequence.bPostRoll;
+
 	OutImportedEntity->AddBuilder(
 		FEntityBuilder()
-		.AddConditional(Components->Easing,  FEasingComponentData{ this }, bHasEasing)
-		.AddConditional(Components->HierarchicalBias, Params.Sequence.HierarchicalBias, Params.Sequence.HierarchicalBias != 0)
-		.AddConditional(Components->Interrogation.InputChannel, Params.Sequence.InterrogationChannel, Params.Sequence.InterrogationChannel.IsValid())
-		.AddTagConditional(Components->Tags.RestoreState, bShouldRestoreState)
-		.AddTagConditional(BlendTag, BlendTag != FComponentTypeID::Invalid())
+		.AddConditional(Components->Easing,                     FEasingComponentData{ this }, bHasEasing)
+		.AddConditional(Components->HierarchicalEasingChannel, uint16(-1), Params.Sequence.bHasHierarchicalEasing)
+		.AddConditional(Components->HierarchicalBias,           Params.Sequence.HierarchicalBias, Params.Sequence.HierarchicalBias != 0)
+		.AddConditional(Components->Interrogation.InputKey,     Params.InterrogationKey, Params.InterrogationKey.IsValid())
+		.AddConditional(Components->EvalTime,                   Params.EntityMetaData ? Params.EntityMetaData->ForcedTime : 0, bHasForcedTime)
+		.AddTagConditional(Components->Tags.RestoreState,       bShouldRestoreState)
+		.AddTagConditional(Components->Tags.FixedTime,          bHasForcedTime)
+		.AddTagConditional(Components->Tags.SectionPreRoll,     bHasSectionPreRoll)
+		.AddTagConditional(Components->Tags.PreRoll,            bHasSequencePreRoll)
+		.AddTagConditional(BlendTag,                            BlendTag != FComponentTypeID::Invalid())
 	);
+
+	if (BlendTag == Components->Tags.AdditiveFromBaseBlend)
+	{
+		const UMovieScene* MovieScene = GetTypedOuter<UMovieScene>();
+		const TRange<FFrameNumber> PlaybackRange = MovieScene->GetPlaybackRange();
+		const TRange<FFrameNumber> TrueRange = GetTrueRange();
+		const FFrameNumber BaseValueEvalTime = TrueRange.HasLowerBound() ? 
+			TrueRange.GetLowerBoundValue() : 
+			(PlaybackRange.HasLowerBound() ? PlaybackRange.GetLowerBoundValue() : FFrameNumber(0));
+		OutImportedEntity->AddBuilder(
+			FEntityBuilder().Add(Components->BaseValueEvalTime, BaseValueEvalTime)
+		);
+	}
 }
 
 bool UMovieSceneSection::TryModify(bool bAlwaysMarkDirty)

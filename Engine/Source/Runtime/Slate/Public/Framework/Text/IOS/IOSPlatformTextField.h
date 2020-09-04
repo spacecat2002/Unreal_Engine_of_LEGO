@@ -35,11 +35,18 @@ typedef FIOSPlatformTextField FPlatformTextField;
 	TWeakPtr<IVirtualKeyboardEntry> TextWidget;
 	FText TextEntry;
     
+    bool bTransitioning;
+    bool bWantsToShow;
+    NSString* CachedTextContents;
+    NSString* CachedPlaceholderContents;
+    FKeyboardConfig CachedKeyboardConfig;
+    
     UIAlertController* AlertController;
 }
 
 -(void)show:(TSharedPtr<IVirtualKeyboardEntry>)InTextWidget text:(NSString*)TextContents placeholder:(NSString*)PlaceholderContents keyboardConfig:(FKeyboardConfig)KeyboardConfig;
 -(void)hide;
+-(void)updateToDesiredState;
 -(bool)hasTextWidget;
 
 @end

@@ -129,6 +129,8 @@ const uint32 kSubsurfaceGroupSize = 8;
 
 ENGINE_API IPooledRenderTarget* GetSubsufaceProfileTexture_RT(FRHICommandListImmediate& RHICmdList);
 
+DECLARE_GPU_STAT(SubsurfaceScattering);
+
 enum class ESubsurfaceMode : uint32
 {
 	// Performs a full resolution scattering filter.
@@ -738,7 +740,7 @@ class FSubsurfaceRecombinePS : public FSubsurfaceShader
 		// high quality mode.
 		const bool bUseHighQuality = (QualityCVar == -1 && View.AntiAliasingMethod != AAM_TemporalAA);
 
-		if (QualityCVar == 1 || bUseHighQuality)
+		if (QualityCVar == 1 || bUseHighQuality || View.Family->GetTemporalUpscalerInterface() != nullptr)
 		{
 			return EQuality::High;
 		}
@@ -750,8 +752,6 @@ class FSubsurfaceRecombinePS : public FSubsurfaceShader
 };
 
 IMPLEMENT_GLOBAL_SHADER(FSubsurfaceRecombinePS, "/Engine/Private/PostProcessSubsurface.usf", "SubsurfaceRecombinePS", SF_Pixel);
-
-DECLARE_GPU_STAT(SubsurfaceScattering)
 
 void AddSubsurfaceViewPass(
 	FRDGBuilder& GraphBuilder,
@@ -838,7 +838,16 @@ void AddSubsurfaceViewPass(
 	FRDGTextureRef QualityHistoryTexture = RegisterExternalRenderTarget(GraphBuilder, QualityHistoryState, SceneColorTextureDescriptor.Extent, TEXT("QualityHistoryTexture"));
 	FRDGTextureRef NewQualityHistoryTexture = nullptr;
 
-	RDG_GPU_STAT_SCOPE(GraphBuilder, SubsurfaceScattering);
+	const TCHAR* SubsurfaceModeNames[uint32(ESubsurfaceMode::MAX)]
+	{
+		TEXT("FullRes"),
+		TEXT("HalfRes"),
+		TEXT("Bypass")
+	};
+	RDG_EVENT_SCOPE(GraphBuilder, "Subsurface%s(CheckerBoard=%u, ForceSeparable=%u) %ux%u", SubsurfaceModeNames[uint32(SubsurfaceMode)], 
+		bCheckerboard, bForceRunningInSeparable,
+		SubsurfaceViewport.Extent.X, SubsurfaceViewport.Extent.Y);
+
 
 	/**
 	 * When in bypass mode, the setup and convolution passes are skipped, but lighting
@@ -1080,7 +1089,7 @@ void AddSubsurfaceViewPass(
 		 */
 		AddDrawScreenPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("SubsurfaceRecombine"),
+			RDG_EVENT_NAME("SubsurfaceRecombine(Quality=%u) %ux%u", RecombineQuality, SceneViewport.Extent.X, SceneViewport.Extent.Y),
 			View,
 			SceneViewport,
 			SceneViewport,
@@ -1152,6 +1161,7 @@ FRDGTextureRef AddSubsurfacePass(
 
 		if (bIsSubsurfaceView)
 		{
+			RDG_GPU_STAT_SCOPE(GraphBuilder, SubsurfaceScattering);
 			RDG_EVENT_SCOPE(GraphBuilder, "SubsurfaceScattering(ViewId=%d)", ViewIndex);
 
 			const FViewInfo& View = Views[ViewIndex];

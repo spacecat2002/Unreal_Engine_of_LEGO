@@ -55,6 +55,7 @@ uint32 GetVendorOptimalGroupSize1D();
 FIntPoint GetVendorOptimalGroupSize2D();
 
 RENDERER_API bool IsHairStrandsSupported(const EShaderPlatform Platform);
+bool IsHairStrandsComposeAfterTranslucency();
 
 FVector4 PackHairRenderInfo(
 	float PrimaryRadiusAtDepth1,

@@ -69,6 +69,7 @@ extern int32 GDX12NVAfterMathEnabled;
 #include "../Public/D3D12Viewport.h"
 #include "../Public/D3D12ConstantBuffer.h"
 #include "D3D12Query.h"
+#include "D3D12TimedIntervalQuery.h"
 #include "D3D12DescriptorCache.h"
 #include "D3D12StateCachePrivate.h"
 typedef FD3D12StateCacheBase FD3D12StateCache;
@@ -99,6 +100,9 @@ typedef FD3D12StateCacheBase FD3D12StateCache;
   #define DEFAULT_BUFFER_POOL_DEFAULT_POOL_SIZE (8 * 1024 * 1024)
 #endif //D3D12_RHI_RAYTRACING
 #endif //DEFAULT_BUFFER_POOL_MAX_ALLOC_SIZE
+
+#define READBACK_BUFFER_POOL_MAX_ALLOC_SIZE (64 * 1024)
+#define READBACK_BUFFER_POOL_DEFAULT_POOL_SIZE (4 * 1024 * 1024)
 
 #define DEFAULT_CONTEXT_UPLOAD_POOL_SIZE (8 * 1024 * 1024)
 #define DEFAULT_CONTEXT_UPLOAD_POOL_MAX_ALLOC_SIZE (4 * 1024 * 1024)

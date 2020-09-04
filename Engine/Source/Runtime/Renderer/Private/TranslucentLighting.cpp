@@ -824,6 +824,7 @@ public:
 		VolumetricCloudWorldToLightClipShadowMatrix.Bind(Initializer.ParameterMap, TEXT("VolumetricCloudWorldToLightClipShadowMatrix"));
 		VolumetricCloudShadowmapFarDepthKm.Bind(Initializer.ParameterMap, TEXT("VolumetricCloudShadowmapFarDepthKm"));
 		VolumetricCloudShadowEnabled.Bind(Initializer.ParameterMap, TEXT("VolumetricCloudShadowEnabled"));
+		VolumetricCloudShadowmapStrength.Bind(Initializer.ParameterMap, TEXT("VolumetricCloudShadowmapStrength"));
 		VolumetricCloudShadowmapTexture.Bind(Initializer.ParameterMap, TEXT("VolumetricCloudShadowmapTexture"));
 		VolumetricCloudShadowmapTextureSampler.Bind(Initializer.ParameterMap, TEXT("VolumetricCloudShadowmapTextureSampler"));
 		AtmospherePerPixelTransmittanceEnabled.Bind(Initializer.ParameterMap, TEXT("AtmospherePerPixelTransmittanceEnabled"));
@@ -889,7 +890,16 @@ public:
 					VolumetricCloudShadowmapTexture,
 					VolumetricCloudShadowmapTextureSampler,
 					TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
-					View.ViewState->VolumetricCloudShadowRenderTarget[LightIndex].CurrentRenderTarget()->GetRenderTargetItem().ShaderResourceTexture);
+					View.ViewState->GetVolumetricCloudShadowRenderTarget(LightIndex)->GetRenderTargetItem().ShaderResourceTexture);
+
+				if (bLight0CloudPerPixelTransmittance)
+				{
+					SetShaderValue(RHICmdList, ShaderRHI, VolumetricCloudShadowmapStrength, AtmosphereLight0Proxy->GetCloudShadowOnAtmosphereStrength());
+				}
+				else if(bLight1CloudPerPixelTransmittance)
+				{
+					SetShaderValue(RHICmdList, ShaderRHI, VolumetricCloudShadowmapStrength, AtmosphereLight1Proxy->GetCloudShadowOnAtmosphereStrength());
+				}
 			}
 			else
 			{
@@ -903,6 +913,7 @@ public:
 					VolumetricCloudShadowmapTextureSampler,
 					TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
 					GBlackTexture->TextureRHI);
+				SetShaderValue(RHICmdList, ShaderRHI, VolumetricCloudShadowmapStrength, 0.0f);
 			}
 		}
 		
@@ -922,6 +933,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, VolumetricCloudWorldToLightClipShadowMatrix);
 	LAYOUT_FIELD(FShaderParameter, VolumetricCloudShadowmapFarDepthKm);
 	LAYOUT_FIELD(FShaderParameter, VolumetricCloudShadowEnabled);
+	LAYOUT_FIELD(FShaderParameter, VolumetricCloudShadowmapStrength);
 	LAYOUT_FIELD(FShaderResourceParameter, VolumetricCloudShadowmapTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, VolumetricCloudShadowmapTextureSampler);
 	LAYOUT_FIELD(FShaderParameter, AtmospherePerPixelTransmittanceEnabled);

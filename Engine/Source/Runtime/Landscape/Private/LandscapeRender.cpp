@@ -846,7 +846,7 @@ void FLandscapeRenderSystem::PrepareView(const FSceneView* View)
 #endif
 	
 	const bool bExecuteInParallel = FApp::ShouldUseThreadingForPerformance()
-		&& GRenderingThread; // Rendering thread is required to safely use rendering resources in parallel.
+		&& GIsThreadedRendering; // Rendering thread is required to safely use rendering resources in parallel.
 
 	if (bExecuteInParallel)
 	{
@@ -973,12 +973,15 @@ void FLandscapeRenderSystem::FetchHeightmapLODBiases()
 	for (int32 EntityIndex = 0; EntityIndex < SceneProxies.Num(); EntityIndex++)
 	{
 		FLandscapeComponentSceneProxy* SceneProxy = SceneProxies[EntityIndex];
-		if (SceneProxy && SceneProxy->HeightmapTexture)
+		if (SceneProxy)
 		{
-			SectionLODBiases[EntityIndex] = SceneProxy->HeightmapTexture->GetNumMips() - SceneProxy->HeightmapTexture->GetNumResidentMips();
+			if (SceneProxy->HeightmapTexture && SceneProxy->HeightmapTexture->Resource != nullptr)
+			{
+				SectionLODBiases[EntityIndex] = SceneProxy->HeightmapTexture->GetNumMips() - SceneProxy->HeightmapTexture->GetNumResidentMips();
 
-			// TODO: support mipmap LOD bias of XY offset map
-			//XYOffsetmapTexture ? ((FTexture2DResource*)XYOffsetmapTexture->Resource)->GetCurrentFirstMip() : 0.0f);
+				// TODO: support mipmap LOD bias of XY offset map
+				//XYOffsetmapTexture ? ((FTexture2DResource*)XYOffsetmapTexture->Resource)->GetCurrentFirstMip() : 0.0f);
+			}
 		}
 	}
 }
@@ -1086,7 +1089,7 @@ void FLandscapeRenderSystem::BeginFrame()
 	}
 
 	const bool bExecuteInParallel = FApp::ShouldUseThreadingForPerformance()
-		&& GRenderingThread; // Rendering thread is required to safely use rendering resources in parallel.
+		&& GIsThreadedRendering; // Rendering thread is required to safely use rendering resources in parallel.
 
 	if (bExecuteInParallel)
 	{

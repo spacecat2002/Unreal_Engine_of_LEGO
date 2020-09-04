@@ -21,6 +21,14 @@
 enum class ERayTracingPrimaryRaysFlag : uint32;
 enum class EVelocityPass : uint32;
 
+enum class EDepthDownsampleMode : uint32
+{
+	Sample0 = 0,
+	Max,
+	Checkerboard,
+	Count
+};
+
 class FSceneTextureParameters;
 class FDistanceFieldAOParameters;
 class UStaticMeshComponent;
@@ -378,6 +386,9 @@ private:
 	/** Renders one of the EDebugViewShaderMode instead of the normal color. */
 	void RenderDebugViewMode(FRDGBuilder& GraphBuilder, const FRenderTargetBindingSlots& RenderTargets);
 
+	/** Updates the downsized depth buffer with the current full resolution depth buffer using a min/max checkerboard pattern. */
+	void UpdateHalfResDepthSurfaceCheckerboardMinMax(FRHICommandList& RHICmdList);
+
 	FRDGTextureRef CopyStencilToLightingChannelTexture(FRDGBuilder& GraphBuilder, FRDGTextureSRVRef SceneStencilTexture);
 
 	/** Injects reflective shadowmaps into LPVs */
@@ -685,6 +696,7 @@ private:
 		FSceneTextureParameters& SceneTextures,
 		FViewInfo& View,
 		int32 UpscaleFactor,
+		int32 SampleIndex,
 		FRDGBufferRef& GatherPointsBuffer,
 		FIntVector& GatherPointsResolution);
 
@@ -775,7 +787,7 @@ private:
 	bool GatherRayTracingWorldInstances(FRHICommandListImmediate& RHICmdList);
 	bool DispatchRayTracingWorldUpdates(FRHICommandListImmediate& RHICmdList);
 	FRayTracingPipelineState* BindRayTracingMaterialPipeline(FRHICommandList& RHICmdList, FViewInfo& View, const TArrayView<FRHIRayTracingShader*>& RayGenShaderTable, FRHIRayTracingShader* DefaultClosestHitShader);
-	FRayTracingPipelineState* BindRayTracingDeferredMaterialGatherPipeline(FRHICommandList& RHICmdList, const FViewInfo& View, FRHIRayTracingShader* RayGenShader);
+	FRayTracingPipelineState* BindRayTracingDeferredMaterialGatherPipeline(FRHICommandList& RHICmdList, const FViewInfo& View, const TArrayView<FRHIRayTracingShader*>& RayGenShaderTable);
 
 	// #dxr_todo: UE-72565: refactor ray tracing effects to not be member functions of DeferredShadingRenderer. Register each effect at startup and just loop over them automatically
 	static void PrepareRayTracingReflections(const FViewInfo& View, const FScene& Scene, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
@@ -789,6 +801,12 @@ private:
 	static void PrepareRayTracingTranslucency(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PrepareRayTracingDebug(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PreparePathTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+
+	// Versions for setting up the deferred material pipeline
+	static void PrepareRayTracingReflectionsDeferredMaterial(const FViewInfo& View, const FScene& Scene, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+	static void PrepareRayTracingDeferredReflectionsDeferredMaterial(const FViewInfo& View, const FScene& Scene, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+	static void PrepareRayTracingGlobalIlluminationDeferredMaterial(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+
 
 	/** Lighting evaluation shader registration */
 	static FRHIRayTracingShader* GetRayTracingLightingMissShader(FViewInfo& View);

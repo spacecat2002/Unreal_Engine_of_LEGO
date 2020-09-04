@@ -374,7 +374,7 @@ public:
 		const FMaterialResource* MaterialResource = Material->GetMaterialResource(Context.Material.GetFeatureLevel());
 		if(MaterialResource && MaterialResource->GetRenderingThreadShaderMap())
 		{
-			static FHashedName NameSubsurfaceProfile(TEXT("__SubsurfaceProfile"));
+			static FName NameSubsurfaceProfile(TEXT("__SubsurfaceProfile"));
 			if (ParameterInfo.Name == NameSubsurfaceProfile)
 			{
 				const USubsurfaceProfile* MySubsurfaceProfileRT = GetSubsurfaceProfileRT();
@@ -958,6 +958,7 @@ UMaterial::UMaterial(const FObjectInitializer& ObjectInitializer)
 	bUseMaterialAttributes = false;
 	bCastRayTracedShadows = true;
 	bUseTranslucencyVertexFog = true;
+	bApplyCloudFogging = false;
 	bIsSky = false;
 	bUsedWithWater = false;
 	BlendableLocation = BL_AfterTonemapping;
@@ -1283,6 +1284,7 @@ void UMaterial::OverrideScalarParameterDefault(const FHashedMaterialParameterInf
 	if (Resource)
 	{
 		Resource->TransientOverrides.SetScalarOverride(ParameterInfo, Value, bOverride);
+
 		const TArrayView<const FMaterialScalarParameterInfo> Parameters = Resource->GetUniformScalarParameterExpressions();
 		bool bShouldRecacheMaterialExpressions = false;
 		// Iterate over each of the material's vector expressions.
@@ -2397,6 +2399,7 @@ bool UMaterial::GetTextureParameterValue_New(const FHashedMaterialParameterInfo&
 	const int32 Index = CachedExpressionData.Parameters.FindParameterIndex(EMaterialParameterType::Texture, ParameterInfo, bOveriddenOnly);
 	if (Index == INDEX_NONE)
 	{
+		OutValue = nullptr;
 		return false;
 	}
 	OutValue = CachedExpressionData.Parameters.TextureValues[Index];
@@ -2494,6 +2497,7 @@ bool UMaterial::GetRuntimeVirtualTextureParameterValue_New(const FHashedMaterial
 	const int32 Index = CachedExpressionData.Parameters.FindParameterIndex(EMaterialParameterType::RuntimeVirtualTexture, ParameterInfo, bOveriddenOnly);
 	if (Index == INDEX_NONE)
 	{
+		OutValue = nullptr;
 		return false;
 	}
 	OutValue = CachedExpressionData.Parameters.RuntimeVirtualTextureValues[Index];
@@ -2605,6 +2609,8 @@ bool UMaterial::GetFontParameterValue_New(const FHashedMaterialParameterInfo& Pa
 	const int32 Index = CachedExpressionData.Parameters.FindParameterIndex(EMaterialParameterType::Font, ParameterInfo, bOveriddenOnly);
 	if (Index == INDEX_NONE)
 	{
+		OutFontValue = nullptr;
+		OutFontPage = INDEX_NONE;
 		return false;
 	}
 	OutFontValue = CachedExpressionData.Parameters.FontValues[Index];
@@ -3092,7 +3098,7 @@ void UMaterial::CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, T
 	ERHIFeatureLevel::Type TargetFeatureLevel = GetMaxSupportedFeatureLevel(ShaderPlatform);
 
 	TArray<bool, TInlineAllocator<EMaterialQualityLevel::Num> > QualityLevelsUsed;
-	GetQualityLevelUsage(QualityLevelsUsed, ShaderPlatform);
+	GetQualityLevelUsageForCooking(QualityLevelsUsed, ShaderPlatform);
 
 	const UShaderPlatformQualitySettings* MaterialQualitySettings = UMaterialShaderQualitySettings::Get()->GetShaderPlatformQualitySettings(ShaderPlatform);
 	bool bNeedDefaultQuality = false;
@@ -3376,7 +3382,7 @@ void UMaterial::BackwardsCompatibilityInputConversion()
 #endif // WITH_EDITOR
 }
 
-void UMaterial::GetQualityLevelUsage(TArray<bool, TInlineAllocator<EMaterialQualityLevel::Num> >& OutQualityLevelsUsed, EShaderPlatform ShaderPlatform)
+void UMaterial::GetQualityLevelUsage(TArray<bool, TInlineAllocator<EMaterialQualityLevel::Num> >& OutQualityLevelsUsed, EShaderPlatform ShaderPlatform, bool bCooking)
 {
 	OutQualityLevelsUsed = CachedExpressionData.QualityLevelsUsed;
 	if (OutQualityLevelsUsed.Num() == 0)
@@ -3389,7 +3395,7 @@ void UMaterial::GetQualityLevelUsage(TArray<bool, TInlineAllocator<EMaterialQual
 		for (int32 Quality = 0; Quality < EMaterialQualityLevel::Num; ++Quality)
 		{
 			const FMaterialQualityOverrides& QualityOverrides = MaterialQualitySettings->GetQualityOverrides((EMaterialQualityLevel::Type)Quality);
-			if (QualityOverrides.bDiscardQualityDuringCook)
+			if (bCooking && QualityOverrides.bDiscardQualityDuringCook)
 			{
 				OutQualityLevelsUsed[Quality] = false;
 			}
@@ -3922,6 +3928,12 @@ bool UMaterial::CanEditChange(const FProperty* InProperty) const
 			return MaterialDomain != MD_DeferredDecal && MaterialDomain != MD_RuntimeVirtualTexture && IsTranslucentBlendMode(BlendMode);
 		}
 
+		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bApplyCloudFogging))
+		{
+			const bool bApplyFogging = bUseTranslucencyVertexFog;
+			return bApplyFogging && MaterialDomain != MD_DeferredDecal && MaterialDomain != MD_RuntimeVirtualTexture && IsTranslucentBlendMode(BlendMode);
+		}
+
 		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bIsSky))
 		{
 			return MaterialDomain != MD_DeferredDecal && MaterialDomain != MD_RuntimeVirtualTexture && GetShadingModels().IsUnlit() && (BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked);
@@ -3960,6 +3972,11 @@ void UMaterial::PreEditChange(FProperty* PropertyThatChanged)
 }
 
 void UMaterial::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	return PostEditChangePropertyInternal(PropertyChangedEvent, EPostEditChangeEffectOnShaders::Default);
+}
+
+void UMaterial::PostEditChangePropertyInternal(FPropertyChangedEvent& PropertyChangedEvent, const EPostEditChangeEffectOnShaders EffectOnShaders)
 {
 	// PreEditChange is not enforced to be called before PostEditChange.
 	// CacheResourceShadersForRendering if called will cause a rendering thread race condition with a debug mechanism (bDeletedThroughDeferredCleanup) if there is no flush or
@@ -4040,7 +4057,7 @@ void UMaterial::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEve
 		UpdateCachedExpressionData();
 
 		// When redirecting an object pointer, we trust that the DDC hash will detect the change and that we don't need to force a recompile.
-		const bool bRegenerateId = PropertyChangedEvent.ChangeType != EPropertyChangeType::Redirected;
+		const bool bRegenerateId = PropertyChangedEvent.ChangeType != EPropertyChangeType::Redirected && EffectOnShaders != EPostEditChangeEffectOnShaders::DoesNotInvalidate;
 		CacheResourceShadersForRendering(bRegenerateId);
 
 		// Ensure that the ReferencedTextureGuids array is up to date.

@@ -202,7 +202,10 @@ FDeferredLightUniformStruct GetDeferredLightParameters(const FSceneView& View, c
 	Parameters.VolumetricScatteringIntensity = LightSceneInfo.Proxy->GetVolumetricScatteringIntensity();
 
 	static auto* ContactShadowsCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.ContactShadows"));
+	static auto* IntensityCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.ContactShadows.NonShadowCastingIntensity"));
+
 	Parameters.ContactShadowLength = 0;
+	Parameters.ContactShadowNonShadowCastingIntensity = 0.0f;
 
 	if (ContactShadowsCVar && ContactShadowsCVar->GetValueOnRenderThread() != 0 && View.Family->EngineShowFlags.ContactShadows)
 	{
@@ -210,6 +213,8 @@ FDeferredLightUniformStruct GetDeferredLightParameters(const FSceneView& View, c
 		// Sign indicates if contact shadow length is in world space or screen space.
 		// Multiply by 2 for screen space in order to preserve old values after introducing multiply by View.ClipToView[1][1] in shader.
 		Parameters.ContactShadowLength *= LightSceneInfo.Proxy->IsContactShadowLengthInWS() ? -1.0f : 2.0f;
+
+		Parameters.ContactShadowNonShadowCastingIntensity = IntensityCVar ? IntensityCVar->GetValueOnRenderThread() : 0.0f;
 	}
 
 	// When rendering reflection captures, the direct lighting of the light is actually the indirect specular from the main view
@@ -331,6 +336,7 @@ struct FRenderLightParams
 	FMatrix Cloud_WorldToLightClipShadowMatrix;
 	float Cloud_ShadowmapFarDepthKm = 0.0f;
 	IPooledRenderTarget* Cloud_ShadowmapTexture = nullptr;
+	float Cloud_ShadowmapStrength = 0.0f;
 };
 
 
@@ -505,6 +511,7 @@ class FDeferredLightPS : public FGlobalShader
 		CloudShadowmapSampler.Bind(Initializer.ParameterMap, TEXT("CloudShadowmapSampler"));
 		CloudShadowmapFarDepthKm.Bind(Initializer.ParameterMap, TEXT("CloudShadowmapFarDepthKm"));
 		CloudShadowmapWorldToLightClipMatrix.Bind(Initializer.ParameterMap, TEXT("CloudShadowmapWorldToLightClipMatrix"));
+		CloudShadowmapStrength.Bind(Initializer.ParameterMap, TEXT("CloudShadowmapStrength"));
 	}
 
 	FDeferredLightPS()
@@ -779,6 +786,12 @@ private:
 					ShaderRHI,
 					CloudShadowmapWorldToLightClipMatrix,
 					RenderLightParams->Cloud_WorldToLightClipShadowMatrix);
+
+				SetShaderValue(
+					RHICmdList,
+					ShaderRHI,
+					CloudShadowmapStrength,
+					RenderLightParams->Cloud_ShadowmapStrength);
 			}
 		}
 	}
@@ -816,6 +829,7 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, CloudShadowmapSampler);
 	LAYOUT_FIELD(FShaderParameter, CloudShadowmapFarDepthKm);
 	LAYOUT_FIELD(FShaderParameter, CloudShadowmapWorldToLightClipMatrix);
+	LAYOUT_FIELD(FShaderParameter, CloudShadowmapStrength);
 };
 
 IMPLEMENT_GLOBAL_SHADER(FDeferredLightPS, "/Engine/Private/DeferredLightPixelShaders.usf", "DeferredLightPixelMain", SF_Pixel);
@@ -2255,19 +2269,21 @@ void FDeferredShadingSceneRenderer::RenderLight(
 				FVolumetricCloudRenderSceneInfo* CloudInfo = Scene->GetVolumetricCloudSceneInfo();
 				const bool VolumetricCloudShadowMap0Valid = View.ViewState && View.ViewState->VolumetricCloudShadowRenderTarget[0].CurrentIsValid();
 				const bool VolumetricCloudShadowMap1Valid = View.ViewState && View.ViewState->VolumetricCloudShadowRenderTarget[1].CurrentIsValid();
-				const bool bLight0CloudPerPixelTransmittance = CloudInfo && VolumetricCloudShadowMap0Valid && AtmosphereLight0Proxy == LightSceneInfo->Proxy;
-				const bool bLight1CloudPerPixelTransmittance = CloudInfo && VolumetricCloudShadowMap1Valid && AtmosphereLight1Proxy == LightSceneInfo->Proxy;
+				const bool bLight0CloudPerPixelTransmittance = CloudInfo && VolumetricCloudShadowMap0Valid && AtmosphereLight0Proxy == LightSceneInfo->Proxy && AtmosphereLight0Proxy && AtmosphereLight0Proxy->GetCloudShadowOnSurfaceStrength() > 0.0f;
+				const bool bLight1CloudPerPixelTransmittance = CloudInfo && VolumetricCloudShadowMap1Valid && AtmosphereLight1Proxy == LightSceneInfo->Proxy && AtmosphereLight1Proxy && AtmosphereLight1Proxy->GetCloudShadowOnSurfaceStrength() > 0.0f;
 				if (bLight0CloudPerPixelTransmittance)
 				{
-					RenderLightParams.Cloud_ShadowmapTexture = View.ViewState->VolumetricCloudShadowRenderTarget[0].CurrentRenderTarget();
+					RenderLightParams.Cloud_ShadowmapTexture = View.ViewState->GetVolumetricCloudShadowRenderTarget(0);
 					RenderLightParams.Cloud_ShadowmapFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapFarDepthKm[0];
 					RenderLightParams.Cloud_WorldToLightClipShadowMatrix = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapWorldToLightClipMatrix[0];
+					RenderLightParams.Cloud_ShadowmapStrength = AtmosphereLight0Proxy->GetCloudShadowOnSurfaceStrength();
 				}
 				else if(bLight1CloudPerPixelTransmittance)
 				{
-					RenderLightParams.Cloud_ShadowmapTexture = View.ViewState->VolumetricCloudShadowRenderTarget[1].CurrentRenderTarget();
+					RenderLightParams.Cloud_ShadowmapTexture = View.ViewState->GetVolumetricCloudShadowRenderTarget(1);
 					RenderLightParams.Cloud_ShadowmapFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapFarDepthKm[1];
 					RenderLightParams.Cloud_WorldToLightClipShadowMatrix = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapWorldToLightClipMatrix[1];
+					RenderLightParams.Cloud_ShadowmapStrength = AtmosphereLight1Proxy->GetCloudShadowOnSurfaceStrength();
 				}
 
 				FDeferredLightPS::FPermutationDomain PermutationVector;

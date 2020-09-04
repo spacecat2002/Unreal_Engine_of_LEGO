@@ -62,6 +62,7 @@
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "RenderTargetPool.h"
 #include "RenderGraphBuilder.h"
+#include "CustomResourcePool.h"
 
 #if WITH_EDITOR
 #include "PIEPreviewDeviceProfileSelectorModule.h"
@@ -332,8 +333,19 @@ void UGameEngine::DetermineGameWindowResolution( int32& ResolutionX, int32& Reso
 	}
 	else
 	{
-		FParse::Value(FCommandLine::Get(), TEXT("ResX="), ResolutionX);
-		FParse::Value(FCommandLine::Get(), TEXT("ResY="), ResolutionY);
+		bool UserSpecifiedWidth = FParse::Value(FCommandLine::Get(), TEXT("ResX="), ResolutionX);
+		bool UserSpecifiedHeight = FParse::Value(FCommandLine::Get(), TEXT("ResY="), ResolutionY);
+
+		const float AspectRatio = 16.0 / 9.0;
+
+		if (UserSpecifiedWidth && !UserSpecifiedHeight)
+		{
+			ResolutionY = int32(ResolutionX / AspectRatio);
+		}
+		else if (UserSpecifiedHeight && !UserSpecifiedHeight)
+		{
+			ResolutionX = int32(ResolutionY * AspectRatio);
+		}
 	}
 
 	//fullscreen is always supported, but don't allow windowed mode on platforms that dont' support it.
@@ -1893,6 +1905,7 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 			
 			GRenderTargetPool.TickPoolElements();
 			FRDGBuilder::TickPoolElements();
+			ICustomResourcePool::TickPoolElements(RHICmdList);
 		});
 	}
 

@@ -118,6 +118,7 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,   bAffectDistanceFieldLighting(InComponent->bAffectDistanceFieldLighting)
 ,	bCastStaticShadow(InComponent->CastShadow && InComponent->bCastStaticShadow)
 ,	bCastVolumetricTranslucentShadow(InComponent->bCastDynamicShadow && InComponent->CastShadow && InComponent->bCastVolumetricTranslucentShadow)
+,	bCastContactShadow(InComponent->CastShadow && InComponent->bCastContactShadow)
 ,	bCastCapsuleDirectShadow(false)
 ,	bCastsDynamicIndirectShadow(false)
 ,	bCastHiddenShadow(InComponent->bCastHiddenShadow)
@@ -375,7 +376,7 @@ void FPrimitiveSceneProxy::UpdateUniformBuffer()
 				SingleCaptureIndex, 
 				bOutputVelocity || AlwaysHasVelocity(),
 				GetCustomPrimitiveData(),
-				bCastDynamicShadow);
+				CastsContactShadow());
 
 		if (UniformBuffer.GetReference())
 		{
