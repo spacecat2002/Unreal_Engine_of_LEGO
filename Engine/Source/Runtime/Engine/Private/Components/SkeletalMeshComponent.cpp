@@ -1927,6 +1927,11 @@ const IClothingSimulation* USkeletalMeshComponent::GetClothingSimulation() const
 	return ClothingSimulation;
 }
 
+const IClothingSimulationContext* USkeletalMeshComponent::GetClothingSimulationContext() const
+{
+	return ClothingSimulationContext;
+}
+
 UClothingSimulationInteractor* USkeletalMeshComponent::GetClothingSimulationInteractor() const
 {
 	return ClothingInteractor;
