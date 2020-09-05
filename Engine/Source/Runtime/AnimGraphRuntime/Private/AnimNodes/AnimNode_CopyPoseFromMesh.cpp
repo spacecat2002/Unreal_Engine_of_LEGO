@@ -11,12 +11,8 @@ FAnimNode_CopyPoseFromMesh::FAnimNode_CopyPoseFromMesh()
 	: SourceMeshComponent(nullptr)
 	, bUseAttachedParent (false)
 	, bCopyCurves (false)
->>>> ORIGINAL //UE4/Dev-Tools-Staging/Engine/Source/Runtime/AnimGraphRuntime/Private/AnimNodes/AnimNode_CopyPoseFromMesh.cpp#3
-==== THEIRS //UE4/Dev-Tools-Staging/Engine/Source/Runtime/AnimGraphRuntime/Private/AnimNodes/AnimNode_CopyPoseFromMesh.cpp#4
 	, bUseMeshPose (false)
-==== YOURS //ep_vp/Engine/Source/Runtime/AnimGraphRuntime/Private/AnimNodes/AnimNode_CopyPoseFromMesh.cpp
 	, bCopyCustomAttributes(false)
-<<<<
 {
 }
 
