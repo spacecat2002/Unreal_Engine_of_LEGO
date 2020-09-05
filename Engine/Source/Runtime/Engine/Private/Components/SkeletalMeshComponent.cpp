@@ -631,7 +631,7 @@ void USkeletalMeshComponent::InitAnim(bool bForceReinit)
 		// Calling this here with true will block this init till that thread completes
 		// and it is safe to continue
 		const bool bBlockOnTask = true; // wait on evaluation task so it is safe to continue with Init
-		const bool bPerformPostAnimEvaluation = false; // Skip post evaluation, it would be wasted work
+		const bool bPerformPostAnimEvaluation = true; // That will swap buffer back to ComponentTransform, and finish evaluate. This is required - otherwise, we won't have a buffer.
 		HandleExistingParallelEvaluationTask(bBlockOnTask, bPerformPostAnimEvaluation);
 
 		bool bBlueprintMismatch = (AnimClass != nullptr) &&
@@ -2363,17 +2363,9 @@ void USkeletalMeshComponent::PostAnimEvaluation(FAnimationEvaluationContext& Eva
 
 	SCOPE_CYCLE_COUNTER(STAT_PostAnimEvaluation);
 
-	if (EvaluationContext.AnimInstance && EvaluationContext.AnimInstance->NeedsUpdate())
+	if (EvaluationContext.AnimInstance)
 	{
 		EvaluationContext.AnimInstance->PostUpdateAnimation();
-	}
-
-	for (UAnimInstance* LinkedInstance : LinkedInstances)
-	{
-		if(LinkedInstance->NeedsUpdate())
-		{
-			LinkedInstance->PostUpdateAnimation();
-		}
 	}
 
 	if (ShouldPostUpdatePostProcessInstance())
@@ -3730,8 +3722,24 @@ void USkeletalMeshComponent::ParallelDuplicateAndInterpolate(FAnimationEvaluatio
 			FAnimationRuntime::LerpBoneTransforms(InAnimEvaluationContext.BoneSpaceTransforms, InAnimEvaluationContext.CachedBoneSpaceTransforms, Alpha, RequiredBones);
 			FillComponentSpaceTransforms(InAnimEvaluationContext.SkeletalMesh, InAnimEvaluationContext.BoneSpaceTransforms, InAnimEvaluationContext.ComponentSpaceTransforms);
 
-			// interpolate curve
-			InAnimEvaluationContext.Curve.LerpTo(InAnimEvaluationContext.CachedCurve, Alpha);
+			if (INTEL_ISPC)
+			{
+#if INTEL_ISPC
+				ispc::LerpCurves(
+					InAnimEvaluationContext.Curve.CurveWeights.GetData(),
+					InAnimEvaluationContext.Curve.ValidCurveWeights.GetData(),
+					InAnimEvaluationContext.CachedCurve.CurveWeights.GetData(),
+					InAnimEvaluationContext.CachedCurve.ValidCurveWeights.GetData(),
+					InAnimEvaluationContext.Curve.CurveWeights.Num(),
+					Alpha
+				);
+#endif
+			}
+			else
+			{
+				// interpolate curve
+				InAnimEvaluationContext.Curve.LerpTo(InAnimEvaluationContext.CachedCurve, Alpha);
+			}
 
 			FCustomAttributesRuntime::InterpolateAttributes(InAnimEvaluationContext.CachedCustomAttributes, InAnimEvaluationContext.CustomAttributes, Alpha);
 		}
@@ -3749,6 +3757,7 @@ void USkeletalMeshComponent::CompleteParallelAnimationEvaluation(bool bDoPostAni
 
 		PostAnimEvaluation(AnimEvaluationContext);
 	}
+	
 	AnimEvaluationContext.Clear();
 }
 
@@ -4064,6 +4073,16 @@ void USkeletalMeshComponent::SetUpdateAnimationInEditor(const bool NewUpdateStat
 		bUpdateAnimationInEditor = NewUpdateState;
 	}
 	#endif
+}
+
+void USkeletalMeshComponent::SetUpdateClothInEditor(const bool NewUpdateState)
+{
+#if WITH_EDITOR
+	if (IsRegistered())
+	{
+		bUpdateClothInEditor = NewUpdateState; 
+	}
+#endif
 }
 
 float USkeletalMeshComponent::GetTeleportRotationThreshold() const

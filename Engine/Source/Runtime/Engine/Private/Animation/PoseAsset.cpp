@@ -65,6 +65,24 @@ void FPoseDataContainer::GetPoseCurve(const FPoseData* PoseData, FBlendedCurve& 
 	}
 }
 
+void FPoseDataContainer::BlendPoseCurve(const FPoseData* PoseData, FBlendedCurve& InOutCurve, float Weight) const
+{
+	if (PoseData)
+	{
+		const TArray<float>& CurveValues = PoseData->CurveData;
+		checkSlow(CurveValues.Num() == Curves.Num());
+
+		for (int32 CurveIndex = 0; CurveIndex < Curves.Num(); ++CurveIndex)
+		{
+			const FAnimCurveBase& Curve = Curves[CurveIndex];
+
+			InOutCurve.Set(Curve.Name.UID, CurveValues[CurveIndex] * Weight + InOutCurve.Get(Curve.Name.UID));
+		}
+	}
+}
+
+
+
 FPoseData* FPoseDataContainer::FindPoseData(FSmartName PoseName)
 {
 	int32 PoseIndex = PoseNames.Find(PoseName);
@@ -475,9 +493,6 @@ void UPoseAsset::GetAnimationCurveOnly(TArray<FName>& InCurveNames, TArray<float
 		const int32 TotalNumberOfValidPoses = IndexToWeightMap.Num();
 		if (TotalNumberOfValidPoses > 0)
 		{
-			TArray<FBlendedCurve> PoseCurves;
-			TArray<float>	CurveWeights;
-
 			//if full pose, we'll have to normalize by weight
 			if (bNormalizeWeight && TotalWeight > 1.f)
 			{
@@ -488,10 +503,6 @@ void UPoseAsset::GetAnimationCurveOnly(TArray<FName>& InCurveNames, TArray<float
 			}
 
 			// collect curves
-			PoseCurves.AddDefaulted(TotalNumberOfValidPoses);
-			CurveWeights.AddUninitialized(TotalNumberOfValidPoses);
-			int32 PoseIndex = 0;
-
 			TArray<uint16> CurveUIDList;
 			CurveUIDList.AddUninitialized(PoseContainer.Curves.Num());
 			for (int32 CurveIndex = 0; CurveIndex < PoseContainer.Curves.Num(); ++CurveIndex)
@@ -499,21 +510,16 @@ void UPoseAsset::GetAnimationCurveOnly(TArray<FName>& InCurveNames, TArray<float
 				CurveUIDList[CurveIndex] = PoseContainer.Curves[CurveIndex].Name.UID;
 			}
 
+			// blend curves
+			FBlendedCurve BlendedCurve;
+			BlendedCurve.InitFrom(&CurveUIDList);
 			for (const TPair<const FPoseData*, float>& ActivePosePair : IndexToWeightMap)
 			{
 				const FPoseData* Pose = ActivePosePair.Key;
 				const float Weight = ActivePosePair.Value;
 
-				CurveWeights[PoseIndex] = Weight;
-				PoseCurves[PoseIndex].InitFrom(&CurveUIDList);
-				PoseContainer.GetPoseCurve(Pose, PoseCurves[PoseIndex]);
-
-				++PoseIndex;
+				PoseContainer.BlendPoseCurve(Pose, BlendedCurve, Weight);
 			}
-
-			// blend curves
-			FBlendedCurve BlendedCurve;
-			BlendCurves(PoseCurves, CurveWeights, BlendedCurve);
 
 			OutCurveNames.Reset();
 			OutCurveValues.Reset();
@@ -609,9 +615,6 @@ bool UPoseAsset::GetAnimationPose(struct FAnimationPoseData& OutAnimationPoseDat
 		if (TotalNumberOfValidPoses > 0)
 		{
 			TArray<FTransform> BlendedBoneTransform;
-			bool bFirstPose = true;
-			TArray<FBlendedCurve> PoseCurves;
-			TArray<float>	CurveWeights;
 
 			//if full pose, we'll have to normalize by weight
 			if (bNormalizeWeight && TotalWeight > 1.f)
@@ -689,23 +692,17 @@ bool UPoseAsset::GetAnimationPose(struct FAnimationPoseData& OutAnimationPoseDat
 				}
 			}
 
-			// collect curves
-			PoseCurves.AddDefaulted(TotalNumberOfValidPoses);
-			CurveWeights.AddUninitialized(TotalNumberOfValidPoses);
-			int32 PoseIndex = 0;
+			// Take the matching curve weights from the selected poses, and blend them using the
+			// weighting that we need from each pose. This is much faster than grabbing each
+			// blend curve and blending them in their entirety, especially when there are very
+			// few active curves for each pose and many curves for the entire pose asset.
 			for (const TPair<const FPoseData*, float>& ActivePosePair : IndexToWeightMap)
 			{
 				const FPoseData* Pose = ActivePosePair.Key;
 				const float Weight = ActivePosePair.Value;
 
-				CurveWeights[PoseIndex] = Weight;
-				PoseCurves[PoseIndex].InitFrom(OutCurve);
-				PoseContainer.GetPoseCurve(Pose, PoseCurves[PoseIndex]);
-				++PoseIndex;
+				PoseContainer.BlendPoseCurve(Pose, OutCurve, Weight);
 			}
-
-			// blend curves
-			BlendCurves(PoseCurves, CurveWeights, OutCurve);
 
 			for (int32 TrackIndex = 0; TrackIndex < TrackNum; ++TrackIndex)
 			{
