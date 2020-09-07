@@ -1431,7 +1431,7 @@ public:
  * List of tasks that can be "joined" into one task which can be waited on or used as a prerequisite.
  * Note, these are FGraphEventRef's, but we manually manage the reference count instead of using a smart pointer
 **/
-class FCompletionList
+class UE_DEPRECATED(4.26, "The feature is deprecated") FCompletionList
 {
 	TLockFreePointerListUnordered<FGraphEvent, 0>	Prerequisites;
 public:
@@ -1486,10 +1486,12 @@ public:
 				STAT_FDelegateGraphTask_WaitOnCompletionList,
 				STATGROUP_TaskGraphTasks);
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			CompleteHandle = FDelegateGraphTask::CreateAndDispatchWhenReady(
 				FDelegateGraphTask::FDelegate::CreateRaw(this, &FCompletionList::ChainWaitForPrerequisites),
 				GET_STATID(STAT_FDelegateGraphTask_WaitOnCompletionList), &PendingHandles, CurrentThread, ENamedThreads::AnyHiPriThreadHiPriTask
 			);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 		return CompleteHandle;
 	}
