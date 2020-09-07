@@ -612,6 +612,7 @@ public:
 	*	CAUTION: This is only legal while executing the task associated with this event.
 	*	@param ThreadToDoGatherOn thread and priority to execute null gather task on
 	**/
+	UE_DEPRECATED(4.26, "The feature is not supported anymore. Please remove the call, there's no replacement.")
 	void SetGatherThreadForDontCompleteUntil(ENamedThreads::Type InThreadToDoGatherOn)
 	{
 		checkThreadGraph(!IsComplete()); // it is not legal to add a DontCompleteUntil after the event has been completed. Basically, this is only legal within a task function.
