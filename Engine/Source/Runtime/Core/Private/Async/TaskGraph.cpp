@@ -80,11 +80,6 @@ static FAutoConsoleVariableRef CVarTestDontCompleteUntilForAlreadyComplete(
 );
 
 CORE_API int32 GEnablePowerSavingThreadPriorityReductionCVar = 0;
-static FAutoConsoleVariableRef CVarEnablePowerSavingThreadPriorityReduction(
-	TEXT("TaskGraph.EnablePowerSavingThreadPriorityReduction"),
-	GEnablePowerSavingThreadPriorityReductionCVar,
-	TEXT("If 1, then high pri thread tasks which are marked EPowerSavingEligibility::Eligible can be dropped to normal priority.")
-);
 
 CORE_API bool GAllowTaskGraphForkMultithreading = true;
 static FAutoConsoleVariableRef CVarEnableForkedMultithreading(

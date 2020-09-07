@@ -212,9 +212,9 @@ namespace ENamedThreads
 
 DECLARE_INTRINSIC_TYPE_LAYOUT(ENamedThreads::Type);
 
-extern CORE_API int32 GEnablePowerSavingThreadPriorityReductionCVar;
+UE_DEPRECATED(4.26, "No longer supported") extern CORE_API int32 GEnablePowerSavingThreadPriorityReductionCVar;
 
-enum class EPowerSavingEligibility : uint8
+enum class UE_DEPRECATED(4.26, "No longer supported") EPowerSavingEligibility : uint8
 {
 	Unknown,
 	Eligible,			// When set high priority tasks are eligible for downgrade to normal priority when power saving is required.
@@ -228,16 +228,14 @@ class CORE_API FAutoConsoleTaskPriority
 	ENamedThreads::Type ThreadPriority;
 	ENamedThreads::Type TaskPriority;
 	ENamedThreads::Type TaskPriorityIfForcedToNormalThreadPriority;
-	EPowerSavingEligibility PowerSavingEligibility;
 	void CommandExecute(const TArray<FString>& Args);
 public:
-	FAutoConsoleTaskPriority(const TCHAR* Name, const TCHAR* Help, ENamedThreads::Type DefaultThreadPriority, ENamedThreads::Type DefaultTaskPriority, ENamedThreads::Type DefaultTaskPriorityIfForcedToNormalThreadPriority = ENamedThreads::UnusedAnchor, EPowerSavingEligibility DefaultPowerSavingEligibility = EPowerSavingEligibility::Eligible)
+	FAutoConsoleTaskPriority(const TCHAR* Name, const TCHAR* Help, ENamedThreads::Type DefaultThreadPriority, ENamedThreads::Type DefaultTaskPriority, ENamedThreads::Type DefaultTaskPriorityIfForcedToNormalThreadPriority = ENamedThreads::UnusedAnchor)
 		: Command(Name, Help, FConsoleCommandWithArgsDelegate::CreateRaw(this, &FAutoConsoleTaskPriority::CommandExecute))
 		, CommandName(Name)
 		, ThreadPriority(DefaultThreadPriority)
 		, TaskPriority(DefaultTaskPriority)
 		, TaskPriorityIfForcedToNormalThreadPriority(DefaultTaskPriorityIfForcedToNormalThreadPriority)
-		, PowerSavingEligibility(DefaultPowerSavingEligibility)
 	{
 		// if you are asking for a hi or background thread priority, you must provide a separate task priority to use if those threads are not available.
 		check(TaskPriorityIfForcedToNormalThreadPriority != ENamedThreads::UnusedAnchor || ThreadPriority == ENamedThreads::NormalThreadPriority);
@@ -247,8 +245,7 @@ public:
 	{
 		// if we don't have the high priority thread that was asked for, or we are downgrading thread priority due to power saving
 		// then use a normal thread priority with the backup task priority
-		if (ThreadPriority == ENamedThreads::HighThreadPriority &&
-			((GEnablePowerSavingThreadPriorityReductionCVar && PowerSavingEligibility == EPowerSavingEligibility::Eligible) || !ENamedThreads::bHasHighPriorityThreads))
+		if (ThreadPriority == ENamedThreads::HighThreadPriority && !ENamedThreads::bHasHighPriorityThreads)
 		{
 			return ENamedThreads::SetTaskPriority(Thread, TaskPriorityIfForcedToNormalThreadPriority);
 		}
