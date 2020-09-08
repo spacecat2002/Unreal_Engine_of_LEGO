@@ -32,11 +32,11 @@ public class VulkanRHI : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core", 
-				"CoreUObject", 
-				"Engine", 
-				"RHI", 
-				"RenderCore", 
+				"Core",
+				"CoreUObject",
+				"Engine",
+				"RHI",
+				"RenderCore",
 				"HeadMountedDisplay",
                 "PreLoadScreen",
 				"BuildSettings"
@@ -65,7 +65,7 @@ public class VulkanRHI : ModuleRules
 				{
 					PrivateIncludePaths.Add(VulkanSDKPath + "/include");
 					PrivateIncludePaths.Add(VulkanSDKPath + "/include/vulkan");
-					PublicAdditionalLibraries.Add(Path.Combine(VulkanSDKPath, "lib", "vulkan"));
+					PublicAdditionalLibraries.Add(Path.Combine(VulkanSDKPath, "lib", "libvulkan.so"));
 				}
 			}
 			else
