@@ -394,8 +394,6 @@ static void Writer_InternalInitializeImpl()
 	GInitialized = true;
 	GStartCycle = TimeGetTimestamp();
 
-	Trace::ThreadRegister(TEXT("GameThread"), 0, -1);
-
 	Writer_InitializePool();
 	Writer_InitializeControl();
 }
