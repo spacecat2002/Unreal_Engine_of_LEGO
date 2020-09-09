@@ -6,15 +6,65 @@
 #include "LowLevelMemTrackerPrivate.h"
 #include "Misc/AutomationTest.h"
 
-
-LLM_DECLARE_TAG(TEXT("LLMTestChildTag1"), NAME_None, TEXT("LLMTestParentTag")); // A test tag to verify that child tags can be declared before parent tags
-LLM_DECLARE_TAG(TEXT("LLMTestParentTag"), NAME_None, NAME_None);
-LLM_DECLARE_TAG(TEXT("LLMTestChildTag2"), NAME_None, TEXT("LLMTestParentTag")); // A test tag to verify that child tags can be declared after parent tags
-
+LLM_DEFINE_TAG(LLMTestParentTag_LLMTestChildTag1, NAME_None, TEXT("LLMTestParentTag")); // A test tag to verify that child tags can be declared before parent tags
+LLM_DEFINE_TAG(LLMTestParentTag, NAME_None, NAME_None);
+LLM_DEFINE_TAG(LLMTestParentTag_LLMTestChildTag2, NAME_None, TEXT("LLMTestParentTag")); // A test tag to verify that child tags can be declared after parent tags
+LLM_DEFINE_TAG(LLMTestParentTag_LLMTestChildTag3); // A test tag to verify that child tags parse their parent tags
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTopologicalSortTest, "System.Core.LLM.TopologicalSort", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLLMScopeTest, "System.Core.LLM.Scope", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter);
+
+bool FLLMScopeTest::RunTest(const FString& Parameters)
+{
+	int* AllocationByNameExisting = nullptr;
+	int* AllocationByNameNew = nullptr;
+	int* AllocationByTag = nullptr;
+	FLowLevelMemTracker& LocalLLM = FLowLevelMemTracker::Get();
+	bool bIsEnabled = FLowLevelMemTracker::IsEnabled();
+	{
+		LLM_SCOPE_BYNAME(TEXT("LLMTestParentTag/LLMTestChildTag1"));
+		AllocationByNameExisting = new int[10];
+		if (bIsEnabled)
+		{
+			TestEqual(TEXT("NameExisting has proper name"), LocalLLM.GetActiveTagData(ELLMTracker::Default)->GetName(), FName(TEXT("LLMTestParentTag_LLMTestChildTag1")));
+			TestEqual(TEXT("NameExisting has proper parent"), LocalLLM.GetActiveTagData(ELLMTracker::Default)->GetParent()->GetName(), FName(TEXT("LLMTestParentTag")));
+		}
+	}
+	{
+		LLM_SCOPE_BYNAME(TEXT("LLMTestParentTag/LLMTestChildTag4"));
+		AllocationByNameNew = new int[10];
+		if (bIsEnabled)
+		{
+			TestEqual(TEXT("NameNew has proper name"), LocalLLM.GetActiveTagData(ELLMTracker::Default)->GetName(), FName(TEXT("LLMTestParentTag_LLMTestChildTag4")));
+			TestEqual(TEXT("NameNew has proper parent"), LocalLLM.GetActiveTagData(ELLMTracker::Default)->GetParent()->GetName(), FName(TEXT("LLMTestParentTag")));
+		}
+	}
+	{
+		LLM_SCOPE_BYTAG(LLMTestParentTag_LLMTestChildTag2);
+		AllocationByTag = new int[10];
+		if (bIsEnabled)
+		{
+			TestEqual(TEXT("ByTag has proper name"), LocalLLM.GetActiveTagData(ELLMTracker::Default)->GetName(), FName(TEXT("LLMTestParentTag_LLMTestChildTag2")));
+			TestEqual(TEXT("ByTag has proper parent"), LocalLLM.GetActiveTagData(ELLMTracker::Default)->GetParent()->GetName(), FName(TEXT("LLMTestParentTag")));
+		}
+	}
+	{
+		LLM_SCOPE_BYTAG(LLMTestParentTag_LLMTestChildTag3);
+		AllocationByTag = new int[10];
+		if (bIsEnabled)
+		{
+			TestEqual(TEXT("Parsed parent tag has proper name"), LocalLLM.GetActiveTagData(ELLMTracker::Default)->GetName(), FName(TEXT("LLMTestParentTag_LLMTestChildTag3")));
+			TestEqual(TEXT("Parsed parent tag has proper parent"), LocalLLM.GetActiveTagData(ELLMTracker::Default)->GetParent()->GetName(), FName(TEXT("LLMTestParentTag")));
+		}
+	}
+	delete[] AllocationByNameExisting;
+	delete[] AllocationByNameNew;
+	delete[] AllocationByTag;
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTopologicalSortTest, "System.Core.LLM.TopologicalSort", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter);
 
 bool FTopologicalSortTest::RunTest(const FString& Parameters)
 {

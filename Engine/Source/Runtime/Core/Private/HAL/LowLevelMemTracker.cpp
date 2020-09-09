@@ -435,6 +435,7 @@ namespace LLMPrivate
 
 	const TCHAR* ToString(ETagReferenceSource ReferenceSource);
 	void SetMemoryStatByFName(FName Name, int64 Amount);
+	void ValidateUniqueName(FStringView UniqueName);
 }
 }
 
@@ -463,7 +464,7 @@ static FName LLMGetTagUniqueName(ELLMTag Tag)
 			for (int32 CreateIndex = LLM_CUSTOM_TAG_START; CreateIndex < LLM_CUSTOM_TAG_END; ++CreateIndex)
 			{
 				UniqueNameBuffer.Reset();
-				UniqueNameBuffer.Appendf(TEXT("ELLMTag_%d"), CreateIndex);
+				UniqueNameBuffer.Appendf(TEXT("ELLMTag%d"), CreateIndex);
 				CustomNames[CreateIndex - LLM_CUSTOM_TAG_START] = FName(UniqueNameBuffer);
 			}
 		}
@@ -733,6 +734,11 @@ void FLowLevelMemTracker::TickInternal()
 	int64 FMallocAmount = DefaultTracker.GetAllocTypeAmount(ELLMAllocType::FMalloc);
 	int64 FMallocPlatformAmount = PlatformTracker.GetTagAmount(FindOrAddTagData(ELLMTag::FMalloc));
 	int64 FMallocUnused = FMallocPlatformAmount - FMallocAmount;
+	if (FMallocPlatformAmount == 0)
+	{
+		// We do not have instrumentation for this allocator, and so can not calculate how much memory it is using internally. Set unused to 0 for this case.
+		FMallocUnused = 0; 
+	}
 	DefaultTracker.SetTagAmountInUpdate(FindOrAddTagData(ELLMTag::FMallocUnused), FMallocUnused, true);
 
 	int64 StaticOverhead = sizeof(FLowLevelMemTracker);
@@ -1246,12 +1252,16 @@ void FLowLevelMemTracker::InitialiseTagDatas()
 {
 	using namespace UE::LLMPrivate;
 
+	TStringBuilder<256> NameBuffer;
 	// Load all the names for the central list of ELLMTags (recording the allocations the FName system makes for the construction of the names)
 #define SET_ELLMTAG_NAMES(Enum,Str,Stat,Group,ParentTag) \
 	{ \
 		ELLMTag EnumTag = ELLMTag::Enum; \
 		int32 Index = static_cast<int32>(EnumTag); \
 		FTagData* TagData = TagDataEnumMap[Index]; \
+		FName TagName = LLMGetTagUniqueName(EnumTag); \
+		TagName.ToString(NameBuffer); \
+		ValidateUniqueName(NameBuffer); \
 		TagData->SetName(LLMGetTagUniqueName(EnumTag)); \
 		TagData->SetDisplayName(Str); \
 		TagData->SetStatName(Stat); \
@@ -1296,7 +1306,7 @@ void FLowLevelMemTracker::InitialiseTagDatas()
 		FLLMTagDeclaration::SetCreationCallback(GlobalRegisterTagDeclaration);
 	}
 
-	// All parents in the ELLMTags and the initial modules' list of LLM_DECLARE_TAG must be contained within that same set, so we can FinishConstruct them now, which we do in UpdateTags
+	// All parents in the ELLMTags and the initial modules' list of LLM_DEFINE_TAG must be contained within that same set, so we can FinishConstruct them now, which we do in UpdateTags
 	bTagAdded = true;
 	UpdateTags();
 }
@@ -1322,7 +1332,8 @@ void FLowLevelMemTracker::ClearTagDatas()
 
 void FLowLevelMemTracker::RegisterTagDeclaration(FLLMTagDeclaration& TagDeclaration)
 {
-	RegisterTagData(TagDeclaration.Name, TagDeclaration.DisplayName, TagDeclaration.ParentTagName, TagDeclaration.StatName, TagDeclaration.SummaryStatName, false, ELLMTag::CustomName, false, UE::LLMPrivate::ETagReferenceSource::Declare);
+	TagDeclaration.ConstructUniqueName();
+	RegisterTagData(TagDeclaration.UniqueName, TagDeclaration.DisplayName, TagDeclaration.ParentTagName, TagDeclaration.StatName, TagDeclaration.SummaryStatName, false, ELLMTag::CustomName, false, UE::LLMPrivate::ETagReferenceSource::Declare);
 }
 
 UE::LLMPrivate::FTagData& FLowLevelMemTracker::RegisterTagData(FName Name, FName DisplayName, FName ParentName, FName StatName, FName SummaryStatName, bool bHasEnumTag, ELLMTag EnumTag, bool bIsStatTag, UE::LLMPrivate::ETagReferenceSource ReferenceSource)
@@ -1331,8 +1342,12 @@ UE::LLMPrivate::FTagData& FLowLevelMemTracker::RegisterTagData(FName Name, FName
 
 	using namespace UE::LLMPrivate;
 
+	TStringBuilder<256> NameBuffer; // If this allocates, that is okay. Set it to something small-as-possible-to-avoid-normally-allocating to prevent adding a lot of stack space in the calling LLM_SCOPE code
+	Name.ToString(NameBuffer);
+
 	if (bHasEnumTag)
 	{
+		ValidateUniqueName(NameBuffer);
 		// EnumTags can specify DisplayName (if they are central or if CustomTag registration provided it); if not, they set DisplayName = UniqueName
 		// Enum tags only specify ParentName explicitly; if no ParentName is provided, they have no parent
 		if (DisplayName.IsNone())
@@ -1342,15 +1357,14 @@ UE::LLMPrivate::FTagData& FLowLevelMemTracker::RegisterTagData(FName Name, FName
 	}
 	else if (bIsStatTag)
 	{
-		// Stat tag unique tags are of the form //GroupName//StatUniqueName///StatDisplayName///<OtherData>. We set LLM UniqueName = <TheEntireString> and LLM DisplayName = StatDisplayName
+		// Stat tag unique names do not have to be validated, because they are never used as parent tags
+		// Stat tag unique names are of the form //GroupName//StatUniqueName///StatDisplayName///<OtherData>. We set LLM UniqueName = <TheEntireString> and LLM DisplayName = StatDisplayName
 		// Stat tags do not specify their parent, and their parent is set to the CustomName aggregator
 		LLMCheck(DisplayName.IsNone());
 		LLMCheck(ParentName.IsNone());
 		DisplayName = Name;
 		ParentName = TagName_CustomName;
 
-		TStringBuilder<256> NameBuffer; // If this allocates, that is okay. Set it to something small-as-possible-to-avoid-normally-allocating to prevent adding a lot of stack space in the calling LLM_SCOPE code
-		Name.ToString(NameBuffer);
 		const TCHAR* Start = FCString::Strstr(NameBuffer.ToString(), TEXT("///"));
 		if (Start)
 		{
@@ -1364,14 +1378,12 @@ UE::LLMPrivate::FTagData& FLowLevelMemTracker::RegisterTagData(FName Name, FName
 	}
 	else
 	{
+		ValidateUniqueName(NameBuffer);
 		// Normal defined-by-name tags supply unique names of the form Grandparent/.../Parent/Name
 		// ParentName and  DisplayName can be provided
 
 		// If both ParentName and /Parent/ are supplied, it is an error if they do not match
 		// All custom name tags have to be children of an ELLMTag. If no parent is set, it defaults to the the proxy parent CustomName
-		TStringBuilder<128> NameBuffer; // If this allocates, that is okay. Set it to something small-as-possible-to-avoid-normally-allocating to prevent adding a lot of stack space in the calling LLM_SCOPE code
-		Name.ToString(NameBuffer);
-		LLMCheckf(NameBuffer.Len() > 0, TEXT("Invalid empty string in LLM custom name tag"));
 		const TCHAR* LeafStart = NameBuffer.ToString();
 		while (true)
 		{
@@ -1466,7 +1478,7 @@ void FLowLevelMemTracker::ReportDuplicateTagName(UE::LLMPrivate::FTagData* TagDa
 	}
 	else
 	{
-		LLMCheckf(false, TEXT("LLM Error: Multiple occurrences of a unique tag name %s in ELLMTag or LLM_DECLARE_TAG. First occurrence: %s. Second occurrence: %s."),
+		LLMCheckf(false, TEXT("LLM Error: Multiple occurrences of a unique tag name %s in ELLMTag or LLM_DEFINE_TAG. First occurrence: %s. Second occurrence: %s."),
 			*TagData->GetName().ToString(), ToString(TagData->GetReferenceSource()), ToString(ReferenceSource));
 	}
 }
@@ -1999,10 +2011,17 @@ FLLMScopeFromPtr::~FLLMScopeFromPtr()
 	LLMRef.GetTracker(Tracker)->PopTag();
 }
 
-FLLMTagDeclaration::FLLMTagDeclaration(FName InName, FName InDisplayName, FName InParentTagName, FName InStatName, FName InSummaryStatName)
-	:Name(InName), DisplayName(InDisplayName), ParentTagName(InParentTagName), StatName(InStatName), SummaryStatName(InSummaryStatName)
+FLLMTagDeclaration::FLLMTagDeclaration(const TCHAR* InCPPName, FName InDisplayName, FName InParentTagName, FName InStatName, FName InSummaryStatName)
+	:CPPName(InCPPName), UniqueName(NAME_None), DisplayName(InDisplayName), ParentTagName(InParentTagName), StatName(InStatName), SummaryStatName(InSummaryStatName)
 {
 	Register();
+}
+
+void FLLMTagDeclaration::ConstructUniqueName()
+{
+	FString NameBuffer(CPPName);
+	NameBuffer.ReplaceCharInline(TEXT('_'), TEXT('/'));
+	UniqueName = FName(*NameBuffer);
 }
 
 void FLLMTagDeclaration::SetCreationCallback(FCreationCallback InCallback)
@@ -2069,7 +2088,7 @@ namespace LLMPrivate
 		case ETagReferenceSource::Scope:
 			return TEXT("LLM_SCOPE");
 		case ETagReferenceSource::Declare:
-			return TEXT("LLM_DECLARE_TAG");
+			return TEXT("LLM_DEFINE_TAG");
 		case ETagReferenceSource::EnumTag:
 			return TEXT("LLM_ENUM_GENERIC_TAGS");
 		case ETagReferenceSource::CustomEnumTag:
@@ -2080,6 +2099,29 @@ namespace LLMPrivate
 			return TEXT("Invalid");
 		}
 	}
+
+	void ValidateUniqueName(FStringView UniqueName)
+	{
+		// Characters that are invalid for c++ names are invalid (other than /), since we use uniquenames (with / replaced by _) as part of the name of the auto-constructed FLLMTagDeclaration variables
+		// _ is invalid since we use an _ to indicate a / in FLLMTagDeclaration
+		// So only Alnum characters or / are allowed, and the first character can not be a number
+		if (UniqueName.Len() == 0)
+		{
+			LLMCheckf(false, TEXT("Invalid length-zero Tag Unique Name"));
+		}
+		else
+		{
+			LLMCheckf(!TChar<TCHAR>::IsDigit(UniqueName[0]), TEXT("Invalid first character is digit in Tag Unique Name '%.*s'"), UniqueName.Len(), UniqueName.GetData());
+		}
+		for (TCHAR c : UniqueName)
+		{
+			if (!TChar<TCHAR>::IsAlnum(c) && c != TEXT('/'))
+			{
+				LLMCheckf(false, TEXT("Invalid character %c in Tag Unique Name '%.*s'"), c, UniqueName.Len(), UniqueName.GetData());
+			}
+		}
+	}
+
 
 	namespace AllocatorPrivate
 	{
@@ -3655,7 +3697,7 @@ namespace LLMPrivate
 				<< TrackerSpec.Name(TrackerNames[(uint8)Tracker]);
 		}
 
-		TStringBuilder<256> NameBuffer;
+		TStringBuilder<1024> NameBuffer;
 		auto SendTagDeclaration = [this, &NameBuffer](const FTagData* TagData)
 		{
 			if (!TagData || DeclaredTags.Contains(TagData))
@@ -3666,7 +3708,7 @@ namespace LLMPrivate
 
 			const FTagData* Parent = TagData->GetParent();
 			NameBuffer.Reset();
-			TagData->GetDisplayName().AppendString(NameBuffer);
+			TagData->AppendDisplayPath(NameBuffer);
 			UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel)
 				<< TagsSpec.TagId(GetTagId(TagData))
 				<< TagsSpec.ParentId(GetTagId(Parent))

@@ -283,10 +283,14 @@ extern FName LLMGetTagStat(ELLMTag Tag);
 /**
  * LLM scope macros
  */
-#define LLM_SCOPE(Tag) FLLMScope SCOPE_NAME(Tag, false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Default);
-#define LLM_PLATFORM_SCOPE(Tag) FLLMScope SCOPE_NAME(Tag, false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Platform);
-#define LLM_SCOPE_BYNAME(Tag) static FName SCOPE_NAME##_Name(Tag); FLLMScope SCOPE_NAME(SCOPE_NAME##_Name, false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Default);
-#define LLM_PLATFORM_SCOPE_BYNAME(Tag) static FName SCOPE_NAME##_Name(Tag); FLLMScope SCOPE_NAME(SCOPE_NAME##_Name, false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Platform);
+#define LLM_SCOPE(Tag)												FLLMScope SCOPE_NAME(Tag, false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Default);
+#define LLM_SCOPE_BYNAME(Tag) static FName PREPROCESSOR_JOIN(LLMScope_Name,__LINE__)(Tag);	\
+																	FLLMScope SCOPE_NAME(PREPROCESSOR_JOIN(LLMScope_Name,__LINE__), false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Default);
+#define LLM_SCOPE_BYTAG(TagDeclName)								FLLMScope SCOPE_NAME(PREPROCESSOR_JOIN(LLMTagDeclaration_, TagDeclName).GetUniqueName(), false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Default);
+#define LLM_PLATFORM_SCOPE(Tag)										FLLMScope SCOPE_NAME(Tag, false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Platform);
+#define LLM_PLATFORM_SCOPE_BYNAME(Tag) static FName PREPROCESSOR_JOIN(LLMScope_Name,__LINE__)(Tag); \
+																	FLLMScope SCOPE_NAME(PREPROCESSOR_JOIN(LLMLLMScope_NameScope,__LINE__), false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Platform);
+#define LLM_PLATFORM_SCOPE_BYTAG(TagDeclName)						FLLMScope SCOPE_NAME(PREPROCESSOR_JOIN(LLMTagDeclaration_, TagDeclName).GetUniqueName(), false /* bIsStatTag */, ELLMTagSet::None, ELLMTracker::Platform);
 
  /**
  * LLM Pause scope macros
@@ -308,13 +312,23 @@ extern FName LLMGetTagStat(ELLMTag Tag);
 #define LLM_DUMP_PLATFORM_TAG()  FLowLevelMemTracker::Get().DumpTag(ELLMTracker::Platform,__FILE__,__LINE__)
 
 /**
- * LLM Tag Declarations. Use these in global or namespace scope to declare properties of a CustomName Tag used in LLM_SCOPEs
- * Use NAME_None for any field that is inapplicable
- * Each Tag name must be unique across all LLM_DECLARE_TAGS and ELLMTags
+ * Define a tag which can be used in LLM_SCOPE_BYTAG or referenced by name in other LLM_SCOPEs.
+ * @param UniqueNameWithUnderscores - Modified version of the name of the tag. Used for looking up by name, must be unique across all tags passed to LLM_DEFINE_TAG, LLM_SCOPE, or ELLMTag.
+ *                                    The modification: the usual separator / for parents must be replaced with _ in LLM_DEFINE_TAGs.
+ * @param DisplayName - (Optional) - The name to display when tracing the tag; joined with "/" to the name of its parent if it has a parent, or NAME_None to use the UniqueName.
+ * @param ParentTagName - (Optional) - The unique name of the parent tag, or NAME_None if it has no parent.
+ * @param StatName - (Optional) - The name of the stat to populate with this tag's amount when publishing LLM data each frame, or NAME_None if no stat should be populated.
+ * @param SummaryStatName - (Optional) - The name of the stat group to add on this tag's amount when publishing LLM data each frame, or NAME_None if no stat group should be added to.
  */
-#define LLM_DECLARE_TAG(UniqueName, DisplayName, ParentTagName) static FLLMTagDeclaration PREPROCESSOR_JOIN(LLMTagDeclaration, __LINE__)(UniqueName, DisplayName, ParentTagName, NAME_None, NAME_None)
-#define LLM_DECLARE_TAG_ALLFIELDS(UniqueName, DisplayName, ParentTagName, StatName, SummaryStatName) static PREPROCESSOR_JOIN(LLMTagDeclaration, __LINE__)(UniqueName, DisplayName, ParentTagName, StatName, SummaryStatName)
+#define LLM_DEFINE_TAG(UniqueNameWithUnderscores, ...) FLLMTagDeclaration PREPROCESSOR_JOIN(LLMTagDeclaration_, UniqueNameWithUnderscores)(TEXT(#UniqueNameWithUnderscores), __VA_ARGS__)
 
+ /**
+  * Declare a tag which is defined elsewhere which can used in LLM_SCOPE_BYTAG or referenced by name in other LLM_SCOPEs.
+  * @param UniqueName - The name of the tag for looking up by name, must be unique across all tags passed to LLM_DEFINE_TAG, LLM_SCOPE, or ELLMTag.
+  * @param ModuleName - (Optional, only in LLM_DECLARE_TAG_API) - The MODULENAME_API symbol to use to declare module linkage, aka ENGINE_API. If omitted, no module linkage will be used and the tag will create link errors if used from another module.
+  */
+#define LLM_DECLARE_TAG(UniqueNameWithUnderscores) extern FLLMTagDeclaration PREPROCESSOR_JOIN(LLMTagDeclaration_, UniqueNameWithUnderscores)
+#define LLM_DECLARE_TAG_API(UniqueNameWithUnderscores, ModuleAPI) extern ModuleAPI FLLMTagDeclaration PREPROCESSOR_JOIN(LLMTagDeclaration_, UniqueNameWithUnderscores)
 
 typedef void*(*LLMAllocFunction)(size_t);
 typedef void(*LLMFreeFunction)(void*, size_t);
@@ -681,7 +695,8 @@ protected:
 class CORE_API FLLMTagDeclaration
 {
 public:
-	FLLMTagDeclaration(const FName InName, const FName InDisplayName, FName InParentTagName, FName InStatName, FName InSummaryStatName);
+	FLLMTagDeclaration(const TCHAR* InCPPName, const FName InDisplayName=NAME_None, FName InParentTagName = NAME_None, FName InStatName = NAME_None, FName InSummaryStatName = NAME_None);
+	FName GetUniqueName() const { return UniqueName; }
 
 protected:
 	typedef void (*FCreationCallback)(FLLMTagDeclaration&);
@@ -693,7 +708,10 @@ protected:
 	void Register();
 
 protected:
-	FName Name;
+	void ConstructUniqueName();
+
+	const TCHAR* CPPName;
+	FName UniqueName;
 	FName DisplayName;
 	FName ParentTagName;
 	FName StatName;
@@ -705,12 +723,15 @@ protected:
 
 
 #else
+
 	#define LLM(...)
 	#define LLM_IF_ENABLED(...)
 	#define LLM_SCOPE(...)
-	#define LLM_PLATFORM_SCOPE(...)
 	#define LLM_SCOPE_BYNAME(...)
+	#define LLM_SCOPE_BYTAG(...)
+	#define LLM_PLATFORM_SCOPE(...)
 	#define LLM_PLATFORM_SCOPE_BYNAME(...)
+	#define LLM_PLATFORM_SCOPE_BYTAG(...)
 	#define LLM_REALLOC_SCOPE(...)
 	#define LLM_REALLOC_PLATFORM_SCOPE(...)
 	#define LLM_SCOPED_PAUSE_TRACKING(...)
@@ -718,7 +739,8 @@ protected:
 	#define LLM_SCOPED_PAUSE_TRACKING_WITH_ENUM_AND_AMOUNT(...)
 	#define LLM_DUMP_TAG()
 	#define LLM_DUMP_PLATFORM_TAG()
+	#define LLM_DEFINE_TAG(...)
 	#define LLM_DECLARE_TAG(...)
-	#define LLM_DECLARE_TAG_ALLFIELDS(...)
+	#define LLM_DECLARE_TAG_API(...)
 
 #endif		// #if ENABLE_LOW_LEVEL_MEM_TRACKER

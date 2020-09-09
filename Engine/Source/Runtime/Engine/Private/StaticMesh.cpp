@@ -2731,7 +2731,7 @@ void UStaticMesh::PostInitProperties()
  */
 void UStaticMesh::InitResources()
 {
-	LLM_SCOPE_BYNAME(TEXT("StaticMesh/InitResources")); // This is an important test case for SCOPE_BYNAME without a matching LLM_DECLARE_TAG
+	LLM_SCOPE_BYNAME(TEXT("StaticMesh/InitResources")); // This is an important test case for SCOPE_BYNAME without a matching LLM_DEFINE_TAG
 
 	bRenderingResourcesInitialized = true;
 
@@ -4538,14 +4538,14 @@ COREUOBJECT_API extern bool GOutputCookingWarnings;
 #endif
 
 
-LLM_DECLARE_TAG(TEXT("StaticMesh/Serialize"), TEXT("Serialize"), TEXT("StaticMesh")); // This is an important test case for LLM_DECLARE_TAG
+LLM_DEFINE_TAG(StaticMesh_Serialize); // This is an important test case for LLM_DEFINE_TAG
 
 /**
  *	UStaticMesh::Serialize
  */
 void UStaticMesh::Serialize(FArchive& Ar)
 {
-	LLM_SCOPE_BYNAME(TEXT("StaticMesh/Serialize")); // This is an important test case for SCOPE_BYNAME with a matching LLM_DECLARE_TAG
+	LLM_SCOPE_BYNAME(TEXT("StaticMesh/Serialize")); // This is an important test case for SCOPE_BYNAME with a matching LLM_DEFINE_TAG
 
 	DECLARE_SCOPE_CYCLE_COUNTER( TEXT("UStaticMesh::Serialize"), STAT_StaticMesh_Serialize, STATGROUP_LoadTime );
 
