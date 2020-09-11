@@ -7,11 +7,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Misc/CoreStats.h"
+#include "Misc/Paths.h"
+#include "Misc/SecureHash.h"
 #include "Stats/Stats.h"
 #include "Templates/RefCounting.h"
-#include "Misc/SecureHash.h"
-#include "Misc/Paths.h"
-#include "Misc/CoreStats.h"
 
 class Error;
 
@@ -106,11 +106,7 @@ struct FShaderCompilerResourceTable
 	/** Hash of the layouts of resource tables at compile time, used for runtime validation. */
 	TArray<uint32> ResourceTableLayoutHashes;
 
-	FShaderCompilerResourceTable()
-		: ResourceTableBits(0)
-		, MaxBoundResourceTable(0)
-	{
-	}
+	FShaderCompilerResourceTable() : ResourceTableBits(0), MaxBoundResourceTable(0) {}
 };
 
 /** Additional compilation settings that can be configured by each FMaterial instance before compilation */
@@ -154,13 +150,12 @@ struct FShaderCompilerInput
 
 	FString DebugExtension;
 
-	// Description of the configuration used when compiling. 
+	// Description of the configuration used when compiling.
 	FString DebugDescription;
 
 	// Compilation Environment
 	FShaderCompilerEnvironment Environment;
-	TRefCountPtr<FShaderCompilerEnvironment> SharedEnvironment;
-
+	TRefCountPtr<FSharedShaderCompilerEnvironment> SharedEnvironment;
 
 	struct FRootParameterBinding
 	{
@@ -184,17 +179,16 @@ struct FShaderCompilerInput
 
 	TArray<FRootParameterBinding> RootParameterBindings;
 
-
 	// Additional compilation settings that can be filled by FMaterial::SetupExtaCompilationSettings
 	// FMaterial::SetupExtaCompilationSettings is usually called by each (*)MaterialShaderType::BeginCompileShader() function
 	FExtraShaderCompilerSettings ExtraSettings;
 
-	FShaderCompilerInput() :
-		Target(SF_NumFrequencies, SP_NumPlatforms),
-		bSkipPreprocessedCache(false),
-		bGenerateDirectCompileFile(false),
-		bCompilingForShaderPipeline(false),
-		bIncludeUsedOutputs(false)
+	FShaderCompilerInput()
+		: Target(SF_NumFrequencies, SP_NumPlatforms),
+		  bSkipPreprocessedCache(false),
+		  bGenerateDirectCompileFile(false),
+		  bCompilingForShaderPipeline(false),
+		  bIncludeUsedOutputs(false)
 	{
 	}
 
@@ -203,7 +197,7 @@ struct FShaderCompilerInput
 	{
 		FString Name;
 
-		if(DebugGroupName == TEXT("Global"))
+		if (DebugGroupName == TEXT("Global"))
 		{
 			Name = VirtualSourceFilePath + TEXT("|") + EntryPointName;
 		}
@@ -216,50 +210,49 @@ struct FShaderCompilerInput
 		return Name;
 	}
 
-	FString GetSourceFilename() const
-	{
-		return FPaths::GetCleanFilename(VirtualSourceFilePath);
-	}
+	FString GetSourceFilename() const { return FPaths::GetCleanFilename(VirtualSourceFilePath); }
 
-	void GatherSharedInputs(TMap<FString,FString>& ExternalIncludes, TArray<FShaderCompilerEnvironment*>& SharedEnvironments)
+	void GatherSharedInputs(TMap<FString, FString>& ExternalIncludes, TArray<TRefCountPtr<FSharedShaderCompilerEnvironment>>& SharedEnvironments)
 	{
 		check(!SharedEnvironment || SharedEnvironment->IncludeVirtualPathToExternalContentsMap.Num() == 0);
 
-		for (TMap<FString, TSharedPtr<FString>>::TConstIterator It(Environment.IncludeVirtualPathToExternalContentsMap); It; ++It)
+		for (const auto& It : Environment.IncludeVirtualPathToExternalContentsMap)
 		{
-			FString* FoundEntry = ExternalIncludes.Find(It.Key());
+			FString* FoundEntry = ExternalIncludes.Find(It.Key);
 
 			if (!FoundEntry)
 			{
-				ExternalIncludes.Add(It.Key(), *It.Value());
+				ExternalIncludes.Add(It.Key, *It.Value);
 			}
 		}
 
 		if (SharedEnvironment)
 		{
-			SharedEnvironments.AddUnique(SharedEnvironment.GetReference());
+			SharedEnvironments.AddUnique(SharedEnvironment);
 		}
 	}
 
-	void SerializeSharedInputs(FArchive& Ar, const TArray<FShaderCompilerEnvironment*>& SharedEnvironments)
+	void SerializeSharedInputs(FArchive& Ar, const TArray<TRefCountPtr<FSharedShaderCompilerEnvironment>>& SharedEnvironments)
 	{
 		check(Ar.IsSaving());
 
 		TArray<FString> ReferencedExternalIncludes;
 		ReferencedExternalIncludes.Empty(Environment.IncludeVirtualPathToExternalContentsMap.Num());
 
-		for (TMap<FString, TSharedPtr<FString>>::TConstIterator It(Environment.IncludeVirtualPathToExternalContentsMap); It; ++It)
+		for (const auto& It : Environment.IncludeVirtualPathToExternalContentsMap)
 		{
-			ReferencedExternalIncludes.Add(It.Key());
+			ReferencedExternalIncludes.Add(It.Key);
 		}
 
 		Ar << ReferencedExternalIncludes;
 
-		int32 SharedEnvironmentIndex = SharedEnvironments.Find(SharedEnvironment.GetReference());
+		int32 SharedEnvironmentIndex = SharedEnvironments.Find(SharedEnvironment);
 		Ar << SharedEnvironmentIndex;
 	}
 
-	void DeserializeSharedInputs(FArchive& Ar, const TMap<FString,TSharedPtr<FString>>& ExternalIncludes, const TArray<FShaderCompilerEnvironment>& SharedEnvironments)
+	void DeserializeSharedInputs(FArchive& Ar,
+								 const TMap<FString, FThreadSafeSharedStringPtr>& ExternalIncludes,
+								 const TArray<FShaderCompilerEnvironment>& SharedEnvironments)
 	{
 		check(Ar.IsLoading());
 
@@ -282,7 +275,7 @@ struct FShaderCompilerInput
 		}
 	}
 
-	friend FArchive& operator<<(FArchive& Ar,FShaderCompilerInput& Input)
+	friend FArchive& operator<<(FArchive& Ar, FShaderCompilerInput& Input)
 	{
 		// Note: this serialize is used to pass between UE4 and the shader compile worker, recompile both when modifying
 		Ar << Input.Target;
@@ -317,16 +310,16 @@ struct FShaderCompilerInput
 	{
 		switch (Target.GetFrequency())
 		{
-		case SF_Vertex:
-		{
-			const FString* UsingTessellationDefine = Environment.GetDefinitions().Find(TEXT("USING_TESSELLATION"));
-			return (UsingTessellationDefine != nullptr && *UsingTessellationDefine == TEXT("1"));
-		}
-		case SF_Hull:
-		case SF_Domain:
-			return true;
-		default:
-			return false;
+			case SF_Vertex:
+			{
+				const FString* UsingTessellationDefine = Environment.GetDefinitions().Find(TEXT("USING_TESSELLATION"));
+				return (UsingTessellationDefine != nullptr && *UsingTessellationDefine == TEXT("1"));
+			}
+			case SF_Hull:
+			case SF_Domain:
+				return true;
+			default:
+				return false;
 		}
 	}
 };
@@ -335,36 +328,40 @@ struct FShaderCompilerInput
 struct FShaderCompilerError
 {
 	FShaderCompilerError(const TCHAR* InStrippedErrorMessage = TEXT(""))
-		: ErrorVirtualFilePath(TEXT(""))
-		, ErrorLineString(TEXT(""))
-		, StrippedErrorMessage(InStrippedErrorMessage)
-		, HighlightedLine(TEXT(""))
-		, HighlightedLineMarker(TEXT(""))
-	{}
+		: ErrorVirtualFilePath(TEXT("")),
+		  ErrorLineString(TEXT("")),
+		  StrippedErrorMessage(InStrippedErrorMessage),
+		  HighlightedLine(TEXT("")),
+		  HighlightedLineMarker(TEXT(""))
+	{
+	}
 
 	FShaderCompilerError(const TCHAR* InVirtualFilePath, const TCHAR* InLineString, const TCHAR* InStrippedErrorMessage)
-		: ErrorVirtualFilePath(InVirtualFilePath)
-		, ErrorLineString(InLineString)
-		, StrippedErrorMessage(InStrippedErrorMessage)
-		, HighlightedLine(TEXT(""))
-		, HighlightedLineMarker(TEXT(""))
-	{}
+		: ErrorVirtualFilePath(InVirtualFilePath),
+		  ErrorLineString(InLineString),
+		  StrippedErrorMessage(InStrippedErrorMessage),
+		  HighlightedLine(TEXT("")),
+		  HighlightedLineMarker(TEXT(""))
+	{
+	}
 
 	FShaderCompilerError(FString&& InStrippedErrorMessage)
-		: ErrorVirtualFilePath(TEXT(""))
-		, ErrorLineString(TEXT(""))
-		, StrippedErrorMessage(MoveTemp(InStrippedErrorMessage))
-		, HighlightedLine(TEXT(""))
-		, HighlightedLineMarker(TEXT(""))
-	{}
+		: ErrorVirtualFilePath(TEXT("")),
+		  ErrorLineString(TEXT("")),
+		  StrippedErrorMessage(MoveTemp(InStrippedErrorMessage)),
+		  HighlightedLine(TEXT("")),
+		  HighlightedLineMarker(TEXT(""))
+	{
+	}
 
 	FShaderCompilerError(FString&& InStrippedErrorMessage, FString&& InHighlightedLine, FString&& InHighlightedLineMarker)
-		: ErrorVirtualFilePath(TEXT(""))
-		, ErrorLineString(TEXT(""))
-		, StrippedErrorMessage(MoveTemp(InStrippedErrorMessage))
-		, HighlightedLine(MoveTemp(InHighlightedLine))
-		, HighlightedLineMarker(MoveTemp(InHighlightedLineMarker))
-	{}
+		: ErrorVirtualFilePath(TEXT("")),
+		  ErrorLineString(TEXT("")),
+		  StrippedErrorMessage(MoveTemp(InStrippedErrorMessage)),
+		  HighlightedLine(MoveTemp(InHighlightedLine)),
+		  HighlightedLineMarker(MoveTemp(InHighlightedLineMarker))
+	{
+	}
 
 	FString ErrorVirtualFilePath;
 	FString ErrorLineString;
@@ -406,15 +403,12 @@ struct FShaderCompilerError
 		float b = a;
 				  ^
 	*/
-	bool HasLineMarker() const
-	{
-		return !HighlightedLine.IsEmpty() && !HighlightedLineMarker.IsEmpty();
-	}
+	bool HasLineMarker() const { return !HighlightedLine.IsEmpty() && !HighlightedLineMarker.IsEmpty(); }
 
 	/** Returns the path of the underlying source file relative to the process base dir. */
 	FString RENDERCORE_API GetShaderSourceFilePath() const;
 
-	friend FArchive& operator<<(FArchive& Ar,FShaderCompilerError& Error)
+	friend FArchive& operator<<(FArchive& Ar, FShaderCompilerError& Error)
 	{
 		return Ar << Error.ErrorVirtualFilePath << Error.ErrorLineString << Error.StrippedErrorMessage << Error.HighlightedLine << Error.HighlightedLineMarker;
 	}
@@ -424,12 +418,7 @@ struct FShaderCompilerError
 struct FShaderCompilerOutput
 {
 	FShaderCompilerOutput()
-	:	NumInstructions(0)
-	,	NumTextureSamplers(0)
-	,	CompileTime(0.0)
-	,	bSucceeded(false)
-	,	bFailedRemovingUnused(false)
-	,	bSupportsQueryingUsedAttributes(false)
+		: NumInstructions(0), NumTextureSamplers(0), CompileTime(0.0), bSucceeded(false), bFailedRemovingUnused(false), bSupportsQueryingUsedAttributes(false)
 	{
 	}
 
@@ -457,7 +446,8 @@ struct FShaderCompilerOutput
 	friend FArchive& operator<<(FArchive& Ar, FShaderCompilerOutput& Output)
 	{
 		// Note: this serialize is used to pass between UE4 and the shader compile worker, recompile both when modifying
-		Ar << Output.ParameterMap << Output.Errors << Output.Target << Output.ShaderCode << Output.NumInstructions << Output.NumTextureSamplers << Output.bSucceeded;
+		Ar << Output.ParameterMap << Output.Errors << Output.Target << Output.ShaderCode << Output.NumInstructions << Output.NumTextureSamplers
+		   << Output.bSucceeded;
 		Ar << Output.bFailedRemovingUnused << Output.bSupportsQueryingUsedAttributes << Output.UsedAttributes;
 		Ar << Output.CompileTime;
 		Ar << Output.OptionalFinalShaderSource;
@@ -496,4 +486,7 @@ extern RENDERCORE_API bool CheckVirtualShaderFilePath(const FString& VirtualPath
  * @param OutFileContents - If true is returned, will contain the contents of the shader file. Can be null.
  * @return True if the file was successfully loaded.
  */
-extern RENDERCORE_API bool LoadShaderSourceFile(const TCHAR* VirtualFilePath, EShaderPlatform ShaderPlatform, FString* OutFileContents, TArray<FShaderCompilerError>* OutCompileErrors);
+extern RENDERCORE_API bool LoadShaderSourceFile(const TCHAR* VirtualFilePath,
+												EShaderPlatform ShaderPlatform,
+												FString* OutFileContents,
+												TArray<FShaderCompilerError>* OutCompileErrors);

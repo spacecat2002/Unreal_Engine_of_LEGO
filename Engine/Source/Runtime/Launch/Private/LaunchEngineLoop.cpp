@@ -3795,6 +3795,10 @@ bool FEngineLoop::LoadStartupCoreModules()
 	FModuleManager::Get().LoadModule(TEXT("PacketHandler"));
 	FModuleManager::Get().LoadModule(TEXT("NetworkReplayStreaming"));
 
+#if !UE_BUILD_SHIPPING && !WITH_EDITOR
+	FModuleManager::Get().LoadModule(TEXT("ODSC"));
+#endif
+
 	return bSuccess;
 }
 

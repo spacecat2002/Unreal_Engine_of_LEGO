@@ -160,7 +160,7 @@ FRegisterPassProcessorCreateFunction RegisterAnisotropyPass(
 	EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView
 	);
 
-void GetAnisotropyPassShaders(
+bool GetAnisotropyPassShaders(
 	const FMaterial& Material,
 	FVertexFactoryType* VertexFactoryType,
 	ERHIFeatureLevel::Type FeatureLevel,
@@ -176,28 +176,60 @@ void GetAnisotropyPassShaders(
 		&& VertexFactoryType->SupportsTessellationShaders()
 		&& MaterialTessellationMode != MTM_NoTessellation;
 
+	FMaterialShaderTypes ShaderTypes;
 	if (bNeedsHSDS)
 	{
-		DomainShader = Material.GetShader<FAnisotropyDS>(VertexFactoryType);
-		HullShader = Material.GetShader<FAnisotropyHS>(VertexFactoryType);
+		ShaderTypes.AddShaderType<FAnisotropyDS>();
+		ShaderTypes.AddShaderType<FAnisotropyHS>();
 	}
+
+	ShaderTypes.AddShaderType<FAnisotropyVS>();
+	ShaderTypes.AddShaderType<FAnisotropyPS>();
 
 	static const auto* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.ShaderPipelines"));
 	const bool bUseShaderPipelines = RHISupportsShaderPipelines(GShaderPlatformForFeatureLevel[FeatureLevel]) && !bNeedsHSDS && CVar && CVar->GetValueOnAnyThread() != 0;
+	if (bUseShaderPipelines)
+	{
+		ShaderTypes.PipelineType = &AnisotropyPipeline;
+	}
 
-	FShaderPipelineRef ShaderPipeline = bUseShaderPipelines ? Material.GetShaderPipeline(&AnisotropyPipeline, VertexFactoryType, false) : FShaderPipelineRef();
-	if (ShaderPipeline.IsValid())
+	FMaterialShaders Shaders;
+	if (!Material.TryGetShaders(ShaderTypes, VertexFactoryType, Shaders))
 	{
-		VertexShader = ShaderPipeline.GetShader<FAnisotropyVS>();
-		PixelShader = ShaderPipeline.GetShader<FAnisotropyPS>();
-		check(VertexShader.IsValid() && PixelShader.IsValid());
+		return false;
 	}
-	else
+
+	Shaders.TryGetHullShader(HullShader);
+	Shaders.TryGetDomainShader(DomainShader);
+	Shaders.TryGetVertexShader(VertexShader);
+	Shaders.TryGetPixelShader(PixelShader);
+
+	return true;
+}
+
+bool FAnisotropyMeshProcessor::TryAddMeshBatch(const FMeshBatch& RESTRICT MeshBatch,
+	uint64 BatchElementMask,
+	const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy,
+	int32 StaticMeshId,
+	const FMaterialRenderProxy& MaterialRenderProxy,
+	const FMaterial& Material)
+{
+	const EBlendMode BlendMode = Material.GetBlendMode();
+	const bool bIsNotTranslucent = (BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked);
+
+	bool bResult = true;
+	if (Material.HasAnisotropyConnected() &&
+		bIsNotTranslucent &&
+		Material.GetShadingModels().HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }))
 	{
-		VertexShader = Material.GetShader<FAnisotropyVS>(VertexFactoryType);
-		PixelShader = Material.GetShader<FAnisotropyPS>(VertexFactoryType);
-		check(VertexShader.IsValid() && PixelShader.IsValid());
+		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, Material, OverrideSettings);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, Material, OverrideSettings);
+
+		bResult = Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, MaterialRenderProxy, Material, MeshFillMode, MeshCullMode);
 	}
+
+	return bResult;
 }
 
 void FAnisotropyMeshProcessor::AddMeshBatch(
@@ -207,22 +239,25 @@ void FAnisotropyMeshProcessor::AddMeshBatch(
 	int32 StaticMeshId /* = -1 */ 
 	)
 {
-	const FMaterialRenderProxy* MaterialRenderProxy = MeshBatch.MaterialRenderProxy;
-	const FMaterial* Material = &MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, MaterialRenderProxy);
-	const EBlendMode BlendMode = Material->GetBlendMode();
-	const bool bIsNotTranslucent = BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked;
-
-	if (MeshBatch.bUseForMaterial && Material->HasAnisotropyConnected() && bIsNotTranslucent && Material->GetShadingModels().HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }))
+	if (MeshBatch.bUseForMaterial)
 	{
-		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
-		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
-		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
-
-		Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
+		const FMaterialRenderProxy* MaterialRenderProxy = MeshBatch.MaterialRenderProxy;
+		while (MaterialRenderProxy)
+		{
+			const FMaterial* Material = MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel);
+			if (Material)
+			{
+				if (TryAddMeshBatch(MeshBatch, BatchElementMask, PrimitiveSceneProxy, StaticMeshId, *MaterialRenderProxy, *Material))
+				{
+					break;
+				}
+			}
+			MaterialRenderProxy = MaterialRenderProxy->GetFallback(FeatureLevel);
+		}
 	}
 }
 
-void FAnisotropyMeshProcessor::Process(
+bool FAnisotropyMeshProcessor::Process(
 	const FMeshBatch& MeshBatch, 
 	uint64 BatchElementMask, 
 	int32 StaticMeshId, 
@@ -240,16 +275,17 @@ void FAnisotropyMeshProcessor::Process(
 		FAnisotropyHS,
 		FAnisotropyDS,
 		FAnisotropyPS> AnisotropyPassShaders;
-
-	GetAnisotropyPassShaders(
+	if (!GetAnisotropyPassShaders(
 		MaterialResource,
 		VertexFactory->GetType(),
 		FeatureLevel,
 		AnisotropyPassShaders.HullShader,
 		AnisotropyPassShaders.DomainShader,
 		AnisotropyPassShaders.VertexShader,
-		AnisotropyPassShaders.PixelShader
-		);
+		AnisotropyPassShaders.PixelShader))
+	{
+		return false;
+	}
 
 	FMeshMaterialShaderElementData ShaderElementData;
 	ShaderElementData.InitializeMeshMaterialData(ViewIfDynamicMeshCommand, PrimitiveSceneProxy, MeshBatch, StaticMeshId, false);
@@ -270,6 +306,8 @@ void FAnisotropyMeshProcessor::Process(
 		EMeshPassFeatures::Default,
 		ShaderElementData
 		);
+
+	return true;
 }
 
 bool FDeferredShadingSceneRenderer::ShouldRenderAnisotropyPass() const

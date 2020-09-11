@@ -259,7 +259,7 @@ void FLightmapDensityMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT Mesh
 			{
 				// Override with the default material for opaque materials that are not two sided
 				MaterialRenderProxy = GEngine->LevelColorationLitMaterial->GetRenderProxy();
-				Material = MaterialRenderProxy->GetMaterial(FeatureLevel);
+				Material = &MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, MaterialRenderProxy);
 			}
 
 			if (!MaterialRenderProxy)

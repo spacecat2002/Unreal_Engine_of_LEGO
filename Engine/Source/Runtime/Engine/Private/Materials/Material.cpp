@@ -325,30 +325,26 @@ public:
 		});
 	}
 
-	// FMaterialRenderProxy interface.
-	virtual const FMaterial& GetMaterialWithFallback(ERHIFeatureLevel::Type InFeatureLevel, const FMaterialRenderProxy*& OutFallbackMaterialRenderProxy) const
+	virtual const FMaterialRenderProxy* GetFallback(ERHIFeatureLevel::Type InFeatureLevel) const override
 	{
-		const FMaterialResource* MaterialResource = Material->GetMaterialResource(InFeatureLevel);
-		if (MaterialResource && MaterialResource->GetRenderingThreadShaderMap())
-		{
-			// Verify that compilation has been finalized, the rendering thread shouldn't be touching it otherwise
-			checkSlow(MaterialResource->GetRenderingThreadShaderMap()->IsCompilationFinalized());
-			// The shader map reference should have been NULL'ed if it did not compile successfully
-			checkSlow(MaterialResource->GetRenderingThreadShaderMap()->CompiledSuccessfully());
-			return *MaterialResource;
+		const FMaterialRenderProxy* Fallback = &GetFallbackRenderProxy();
+		if (Fallback == this)
+		{ 
+			// If we are the default material, must not try to fall back to the default material in an error state as that will be infinite recursion
+			return nullptr;
 		}
-
-		// If we are the default material, must not try to fall back to the default material in an error state as that will be infinite recursion
-		check(!Material->IsDefaultMaterial());
-
-		OutFallbackMaterialRenderProxy = &GetFallbackRenderProxy();
-		return OutFallbackMaterialRenderProxy->GetMaterialWithFallback(InFeatureLevel, OutFallbackMaterialRenderProxy);
+		return Fallback;
 	}
 
-	virtual FMaterial* GetMaterialNoFallback(ERHIFeatureLevel::Type InFeatureLevel) const
+	virtual const FMaterial* GetMaterialNoFallback(ERHIFeatureLevel::Type InFeatureLevel) const override
 	{
 		checkSlow(IsInParallelRenderingThread());
-		return Material->GetMaterialResource(InFeatureLevel);
+		const FMaterial* MaterialResource = Material->GetMaterialResource(InFeatureLevel);
+		if (MaterialResource && MaterialResource->GetRenderingThreadShaderMap())
+		{
+			return MaterialResource;
+		}
+		return nullptr;
 	}
 
 	virtual UMaterialInterface* GetMaterialInterface() const override
@@ -748,8 +744,16 @@ void ProcessSerializedInlineShaderMaps(UMaterialInterface* Owner, TArray<FMateri
 	LLM_SCOPE(ELLMTag::Shaders);
 	check(IsInGameThread());
 
-	UMaterial* OwnerMaterial = Cast<UMaterial>(Owner);
 	UMaterialInstance* OwnerMaterialInstance = Cast<UMaterialInstance>(Owner);
+	UMaterial* OwnerMaterial = nullptr;
+	if (OwnerMaterialInstance)
+	{
+		OwnerMaterial = OwnerMaterialInstance->GetBaseMaterial();
+	}
+	else
+	{
+		OwnerMaterial = CastChecked<UMaterial>(Owner);
+	}
 
 #if WITH_EDITORONLY_DATA
 	const bool bLoadedByCookedMaterial = FPlatformProperties::RequiresCookedData() || Owner->GetOutermost()->bIsCookedForEditor;
@@ -797,6 +801,10 @@ void ProcessSerializedInlineShaderMaps(UMaterialInterface* Owner, TArray<FMateri
 		{
 			if (DesiredQLMaterialResource[FeatureIdx])
 			{
+				const EShaderPlatform ShaderPlatform = GShaderPlatformForFeatureLevel[FeatureIdx];
+				TArray<bool, TInlineAllocator<EMaterialQualityLevel::Num> > QualityLevelsUsed;
+				OwnerMaterial->GetQualityLevelUsage(QualityLevelsUsed, ShaderPlatform);
+
 				// Apply the desired QL shadermap to all QL slots of the output material resource.
 				FMaterialShaderMap* DesiredQLShaderMap = DesiredQLMaterialResource[FeatureIdx]->GetGameThreadShaderMap();
 				check(DesiredQLShaderMap);
@@ -804,8 +812,9 @@ void ProcessSerializedInlineShaderMaps(UMaterialInterface* Owner, TArray<FMateri
 				{
 					if (!OutMaterialResourcesLoaded[QualityLevelIndex][FeatureIdx])
 					{
-						OutMaterialResourcesLoaded[QualityLevelIndex][FeatureIdx] =
-							OwnerMaterialInstance ? OwnerMaterialInstance->AllocatePermutationResource() : OwnerMaterial->AllocateResource();
+						FMaterialResource* NewResource = OwnerMaterialInstance ? OwnerMaterialInstance->AllocatePermutationResource() : OwnerMaterial->AllocateResource();
+						NewResource->SetMaterial(OwnerMaterial, (EMaterialQualityLevel::Type)QualityLevelIndex, QualityLevelsUsed[QualityLevelIndex], (ERHIFeatureLevel::Type)FeatureIdx, OwnerMaterialInstance);
+						OutMaterialResourcesLoaded[QualityLevelIndex][FeatureIdx] = NewResource;
 					}
 					OutMaterialResourcesLoaded[QualityLevelIndex][FeatureIdx]->ReleaseShaderMap();
 					OutMaterialResourcesLoaded[QualityLevelIndex][FeatureIdx]->SetInlineShaderMap(DesiredQLShaderMap);
@@ -814,7 +823,10 @@ void ProcessSerializedInlineShaderMaps(UMaterialInterface* Owner, TArray<FMateri
 		}
 	}
 	else
-	{ 
+	{
+		TArray<bool, TInlineAllocator<EMaterialQualityLevel::Num> > QualityLevelsUsed;
+		OwnerMaterial->GetQualityLevelUsage(QualityLevelsUsed, GMaxRHIShaderPlatform);
+
 #if STORE_ONLY_ACTIVE_SHADERMAPS
 		if (LoadedResources.Num() > 0)
 		{
@@ -823,12 +835,15 @@ void ProcessSerializedInlineShaderMaps(UMaterialInterface* Owner, TArray<FMateri
 			if (LoadedShaderMap)
 			{
 				check(LoadedShaderMap->GetShaderPlatform() == GMaxRHIShaderPlatform);
-				int32 LoadedQualityLevel = LoadedShaderMap->GetShaderMapId().QualityLevel;
-				int32 LoadedFeatureLevel = LoadedShaderMap->GetShaderMapId().FeatureLevel;
+				const EMaterialQualityLevel::Type LoadedQualityLevel = LoadedShaderMap->GetShaderMapId().QualityLevel;
+				const ERHIFeatureLevel::Type LoadedFeatureLevel = LoadedShaderMap->GetShaderMapId().FeatureLevel;
+				check(GShaderPlatformForFeatureLevel[LoadedFeatureLevel] == GMaxRHIShaderPlatform);
+
 				if (!OutMaterialResourcesLoaded[LoadedQualityLevel][LoadedFeatureLevel])
 				{
-					OutMaterialResourcesLoaded[LoadedQualityLevel][LoadedFeatureLevel] =
-						OwnerMaterialInstance ? OwnerMaterialInstance->AllocatePermutationResource() : OwnerMaterial->AllocateResource();
+					FMaterialResource* NewResource = OwnerMaterialInstance ? OwnerMaterialInstance->AllocatePermutationResource() : OwnerMaterial->AllocateResource();
+					NewResource->SetMaterial(OwnerMaterial, LoadedQualityLevel, QualityLevelsUsed[LoadedQualityLevel], LoadedFeatureLevel, OwnerMaterialInstance);
+					OutMaterialResourcesLoaded[LoadedQualityLevel][LoadedFeatureLevel] = NewResource;
 				}
 				OutMaterialResourcesLoaded[LoadedQualityLevel][LoadedFeatureLevel]->SetInlineShaderMap(LoadedShaderMap);
 			}
@@ -847,9 +862,10 @@ void ProcessSerializedInlineShaderMaps(UMaterialInterface* Owner, TArray<FMateri
 
 				if (LoadedShaderMap && LoadedShaderMap->GetShaderPlatform() == GMaxRHIShaderPlatform)
 				{
-					EMaterialQualityLevel::Type LoadedQualityLevel = LoadedShaderMap->GetShaderMapId().QualityLevel;
-					ERHIFeatureLevel::Type LoadedFeatureLevel = LoadedShaderMap->GetShaderMapId().FeatureLevel;
-
+					const EMaterialQualityLevel::Type LoadedQualityLevel = LoadedShaderMap->GetShaderMapId().QualityLevel;
+					const ERHIFeatureLevel::Type LoadedFeatureLevel = LoadedShaderMap->GetShaderMapId().FeatureLevel;
+					check(GShaderPlatformForFeatureLevel[LoadedFeatureLevel] == GMaxRHIShaderPlatform);
+	
 					for (int32 QualityLevelIndex = 0; QualityLevelIndex < EMaterialQualityLevel::Num; QualityLevelIndex++)
 					{
 						// Apply to all resources in the first pass if the shader map does not have a quality level specified
@@ -859,8 +875,9 @@ void ProcessSerializedInlineShaderMaps(UMaterialInterface* Owner, TArray<FMateri
 						{
 							if (!OutMaterialResourcesLoaded[QualityLevelIndex][LoadedFeatureLevel])
 							{
-								OutMaterialResourcesLoaded[QualityLevelIndex][LoadedFeatureLevel] =
-									OwnerMaterialInstance ? OwnerMaterialInstance->AllocatePermutationResource() : OwnerMaterial->AllocateResource();
+								FMaterialResource* NewResource = OwnerMaterialInstance ? OwnerMaterialInstance->AllocatePermutationResource() : OwnerMaterial->AllocateResource();
+								NewResource->SetMaterial(OwnerMaterial, (EMaterialQualityLevel::Type)QualityLevelIndex, QualityLevelsUsed[QualityLevelIndex], LoadedFeatureLevel, OwnerMaterialInstance);
+								OutMaterialResourcesLoaded[QualityLevelIndex][LoadedFeatureLevel] = NewResource;
 							}
 
 							OutMaterialResourcesLoaded[QualityLevelIndex][LoadedFeatureLevel]->SetInlineShaderMap(LoadedShaderMap);
@@ -2985,7 +3002,7 @@ void UMaterial::UpdateMaterialShaderCacheAndTextureReferences()
 
 #endif //WITH_EDITOR
 
-void UMaterial::CacheResourceShadersForRendering(bool bRegenerateId)
+void UMaterial::CacheResourceShadersForRendering(bool bRegenerateId, EMaterialShaderPrecompileMode PrecompileMode)
 {
 #if WITH_EDITOR
 	// Always rebuild the shading model field on recompile
@@ -3042,7 +3059,7 @@ void UMaterial::CacheResourceShadersForRendering(bool bRegenerateId)
 			if (CurrentResource)
 			{
 				ResourcesToCache.Add(MaterialResources[LocalActiveQL][FeatureLevel]);
-				CacheShadersForResources(ShaderPlatform, ResourcesToCache);
+				CacheShadersForResources(ShaderPlatform, ResourcesToCache, PrecompileMode);
 			}
 		}
 
@@ -3105,7 +3122,7 @@ void UMaterial::CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, T
 		}
 	}
 
-	CacheShadersForResources(ShaderPlatform, ResourcesToCache, TargetPlatform);
+	CacheShadersForResources(ShaderPlatform, ResourcesToCache, EMaterialShaderPrecompileMode::Background, TargetPlatform);
 
 	for (int32 ResourceIndex = 0; ResourceIndex < ResourcesToCache.Num(); ResourceIndex++)
 	{
@@ -3113,7 +3130,7 @@ void UMaterial::CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, T
 	}
 }
 
-void UMaterial::CacheShadersForResources(EShaderPlatform ShaderPlatform, const TArray<FMaterialResource*>& ResourcesToCache, const ITargetPlatform* TargetPlatform)
+void UMaterial::CacheShadersForResources(EShaderPlatform ShaderPlatform, const TArray<FMaterialResource*>& ResourcesToCache, EMaterialShaderPrecompileMode PrecompileMode, const ITargetPlatform* TargetPlatform)
 {
 #if WITH_EDITOR
 	check(!HasAnyFlags(RF_NeedPostLoad));
@@ -3121,7 +3138,7 @@ void UMaterial::CacheShadersForResources(EShaderPlatform ShaderPlatform, const T
 	for (int32 ResourceIndex = 0; ResourceIndex < ResourcesToCache.Num(); ResourceIndex++)
 	{
 		FMaterialResource* CurrentResource = ResourcesToCache[ResourceIndex];
-		const bool bSuccess = CurrentResource->CacheShaders(ShaderPlatform, TargetPlatform);
+		const bool bSuccess = CurrentResource->CacheShaders(ShaderPlatform, PrecompileMode, TargetPlatform);
 
 		if (!bSuccess)
 		{
@@ -4113,7 +4130,7 @@ void UMaterial::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEve
 
 		// When redirecting an object pointer, we trust that the DDC hash will detect the change and that we don't need to force a recompile.
 		const bool bRegenerateId = PropertyChangedEvent.ChangeType != EPropertyChangeType::Redirected;
-		CacheResourceShadersForRendering(bRegenerateId);
+		CacheResourceShadersForRendering(bRegenerateId, EMaterialShaderPrecompileMode::None);
 
 		// Ensure that the ReferencedTextureGuids array is up to date.
 		if (GIsEditor)
@@ -4519,33 +4536,45 @@ bool UMaterial::CopyExpressionParameters(UMaterialExpression* Source, UMaterialE
 
 void UMaterial::BeginDestroy()
 {
-#if UE_CHECK_FMATERIAL_LIFETIME
+	TArray<TRefCountPtr<FMaterialResource>> ResourcesToDestroy;
 	for (int32 QualityLevelIndex = 0; QualityLevelIndex < EMaterialQualityLevel::Num; QualityLevelIndex++)
 	{
 		for (int32 FeatureLevelIndex = 0; FeatureLevelIndex < ERHIFeatureLevel::Num; FeatureLevelIndex++)
 		{
-			FMaterialResource* CurrentResource = MaterialResources[QualityLevelIndex][FeatureLevelIndex];
+			FMaterialResource*& CurrentResource = MaterialResources[QualityLevelIndex][FeatureLevelIndex];
 			if (CurrentResource)
 			{
+#if UE_CHECK_FMATERIAL_LIFETIME
 				CurrentResource->SetOwnerBeginDestroyed();
+#endif // UE_CHECK_FMATERIAL_LIFETIME
+				if (CurrentResource->PrepareDestroy_GameThread())
+				{
+					ResourcesToDestroy.Add(CurrentResource);
+				}
 			}
 		}
 	}
-#endif // UE_CHECK_FMATERIAL_LIFETIME
 
 	Super::BeginDestroy();
 
-	if (DefaultMaterialInstance)
+	if (DefaultMaterialInstance || ResourcesToDestroy.Num() > 0)
 	{
 		ReleasedByRT = false;
-
 		FMaterialRenderProxy* LocalResource = DefaultMaterialInstance;
 		FThreadSafeBool* Released = &ReleasedByRT;
 		ENQUEUE_RENDER_COMMAND(BeginDestroyCommand)(
-		[LocalResource, Released](FRHICommandListImmediate& RHICmdList)
+			[ResourcesToDestroy = MoveTemp(ResourcesToDestroy), LocalResource, Released](FRHICommandListImmediate& RHICmdList) mutable
 		{
-			LocalResource->MarkForGarbageCollection();
-			LocalResource->ReleaseResource();
+			if (LocalResource)
+			{
+				LocalResource->MarkForGarbageCollection();
+				LocalResource->ReleaseResource();
+			}
+
+			for (FMaterialResource* Resource : ResourcesToDestroy)
+			{
+				Resource->PrepareDestroy_RenderThread();
+			}
 
 			*Released = true;
 		});
@@ -4566,8 +4595,11 @@ void UMaterial::ReleaseResources()
 		for (int32 FeatureLevelIndex = 0; FeatureLevelIndex < ERHIFeatureLevel::Num; FeatureLevelIndex++)
 		{
 			FMaterialResource*& CurrentResource = MaterialResources[QualityLevelIndex][FeatureLevelIndex];
-			delete CurrentResource;
-			CurrentResource = NULL;
+			if (CurrentResource)
+			{
+				delete CurrentResource;
+				CurrentResource = nullptr;
+			}
 		}
 	}
 #if WITH_EDITOR
@@ -4850,6 +4882,10 @@ void UMaterial::CompileMaterialsForRemoteRecompile(
 
 	// Wait until all compilation is finished and all of the gathered FMaterialResources have their GameThreadShaderMap up to date
 	GShaderCompilingManager->FinishAllCompilation();
+
+	// This is heavy handed, but wait until we've set the render thread shader map before proceeding to delete the FMaterialResource below.
+	// This is code that should be run on the cooker so shouldn't be a big deal.
+	FlushRenderingCommands();
 
 	for(TMap<FString, TArray<FMaterialResource*> >::TIterator It(CompilingResources); It; ++It)
 	{
@@ -5603,7 +5639,7 @@ static void ListSceneColorMaterials()
 		for (TObjectIterator<UMaterialInterface> It; It; ++It)
 		{
 			UMaterialInterface* Mat = *It;
-			const FMaterial* MatRes = Mat->GetRenderProxy()->GetMaterial(FeatureLevel);
+			const FMaterial* MatRes = Mat->GetRenderProxy()->GetMaterialNoFallback(FeatureLevel);
 			if (MatRes && MatRes->RequiresSceneColorCopy_GameThread())
 			{
 				UMaterial* BaseMat = Mat->GetMaterial();
