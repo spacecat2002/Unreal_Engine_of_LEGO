@@ -1190,6 +1190,7 @@ public:
 
 	bool IsCompilationFinalized() const { return bCompilationFinalized; }
 	bool CompiledSuccessfully() const { return bCompiledSuccessfully; }
+	void SetCompiledSuccessfully(bool bSuccess) { bCompiledSuccessfully = bSuccess; }
 	void AddCompilingDependency(FMaterial* Material);
 	void RemoveCompilingDependency(FMaterial* Material);
 
@@ -1975,6 +1976,7 @@ protected:
 
 private:
 	bool ReleaseGameThreadCompilingShaderMap();
+	void ReleaseRenderThreadCompilingShaderMap();
 
 #if WITH_EDITOR
 	/** 

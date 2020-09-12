@@ -53,8 +53,8 @@
 #if WITH_EDITOR
 #include "Rendering/StaticLightingSystemInterface.h"
 #endif
-#if !UE_BUILD_SHIPPING && !WITH_EDITOR
-#include "ODSC.h"
+#if WITH_ODSC
+#include "ODSC/ODSCManager.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "ShaderCompiler"
@@ -4319,12 +4319,10 @@ bool RecompileShaders(const TCHAR* Cmd, FOutputDevice& Ar)
 	// if this platform can't compile shaders, then we try to send a message to a file/cooker server
 	if (FPlatformProperties::RequiresCookedData())
 	{
-#if !UE_BUILD_SHIPPING && !WITH_EDITOR
+#if WITH_ODSC
 		TArray<FString> MaterialsToLoad;
 		bool bCompileChangedShaders = ParseRecompileCommandString(Cmd, MaterialsToLoad);
-
-		FODSCModule& ODSCModule = FModuleManager::LoadModuleChecked<FODSCModule>("ODSC");
-		ODSCModule.AddThreadedRequest(MaterialsToLoad, GMaxRHIShaderPlatform, bCompileChangedShaders);
+		GODSCManager->AddThreadedRequest(MaterialsToLoad, GMaxRHIShaderPlatform, bCompileChangedShaders);
 #endif
 		return true;
 	}

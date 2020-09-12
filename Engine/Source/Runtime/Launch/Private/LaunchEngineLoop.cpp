@@ -169,6 +169,10 @@
 #if WITH_AUTOMATION_WORKER
 	#include "IAutomationWorkerModule.h"
 #endif
+
+#if WITH_ODSC
+	#include "ODSC/ODSCManager.h"
+#endif
 #endif  //WITH_ENGINE
 
 #include "Misc/EmbeddedCommunication.h"
@@ -2574,6 +2578,10 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 		}
 	}
 
+#if WITH_ODSC
+	check(!GODSCManager);
+	GODSCManager = new FODSCManager();
+#endif
 
 	bool bEnableShaderCompile = !FParse::Param(FCommandLine::Get(), TEXT("NoShaderCompile"));
 
@@ -3794,10 +3802,6 @@ bool FEngineLoop::LoadStartupCoreModules()
 
 	FModuleManager::Get().LoadModule(TEXT("PacketHandler"));
 	FModuleManager::Get().LoadModule(TEXT("NetworkReplayStreaming"));
-
-#if !UE_BUILD_SHIPPING && !WITH_EDITOR
-	FModuleManager::Get().LoadModule(TEXT("ODSC"));
-#endif
 
 	return bSuccess;
 }
@@ -5733,6 +5737,15 @@ void FEngineLoop::AppPreExit( )
 		delete GShaderCompilerStats;
 		GShaderCompilerStats = nullptr;
 	}
+
+#if WITH_ODSC
+	if (GODSCManager)
+	{
+		delete GODSCManager;
+		GODSCManager = nullptr;
+	}
+#endif
+
 #endif
 
 #if !(IS_PROGRAM || WITH_EDITOR)

@@ -440,7 +440,11 @@ public class Engine : ModuleRules
 
 		if (Target.bBuildEditor == false && Target.Configuration != UnrealTargetConfiguration.Shipping)
 		{
-			PrivateDependencyModuleNames.Add("ODSC");
+			PublicDefinitions.Add("WITH_ODSC=1");
+		}
+        else
+        {
+			PublicDefinitions.Add("WITH_ODSC=0");
 		}
 	}
 }

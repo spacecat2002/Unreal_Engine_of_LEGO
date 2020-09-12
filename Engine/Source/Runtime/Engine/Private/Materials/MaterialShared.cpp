@@ -47,8 +47,8 @@
 #if WITH_EDITOR
 #include "Rendering/StaticLightingSystemInterface.h"
 #endif
-#if !UE_BUILD_SHIPPING && !WITH_EDITOR
-#include "ODSC.h"
+#if WITH_ODSC
+#include "ODSC/ODSCManager.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "MaterialShared"
@@ -923,6 +923,17 @@ bool FMaterial::ReleaseGameThreadCompilingShaderMap()
 		bReleased = true;
 	}
 	return bReleased;
+}
+
+void FMaterial::ReleaseRenderThreadCompilingShaderMap()
+{
+	checkSlow(IsInGameThread());
+
+	TRefCountPtr<FMaterial> Material = this;
+	ENQUEUE_RENDER_COMMAND(DeferredDestroyMaterial)([Material = MoveTemp(Material)](FRHICommandListImmediate& RHICmdList) mutable
+	{
+		Material->PrepareDestroy_RenderThread();
+	});
 }
 
 FMaterialShaderMap* FMaterial::GetRenderingThreadShaderMap() const 
@@ -2211,19 +2222,6 @@ bool FMaterial::BeginCompileShaderMap(
 
 	if(bSuccess)
 	{
-		if (!IsDefaultMaterial() && GShaderCompilingManager->IsShaderCompilationSkipped())
-		{
-			UE_LOG(LogShaders, Warning, TEXT("Skipping Compilation for %s"), *GetFriendlyName());
-
-			// Provide the shader map with default/empty content and code so the rest of the code can
-			// proceed as normal.
-			NewShaderMap->InitalizeForODSC(Platform, NewCompilationOutput);
-
-			SetGameThreadShaderMap(NewShaderMap);
-
-			return true;
-		}
-
 		// Create a shader compiler environment for the material that will be shared by all jobs from this material
 		TRefCountPtr<FSharedShaderCompilerEnvironment> MaterialEnvironment = new FSharedShaderCompilerEnvironment();
 		MaterialEnvironment->TargetPlatform = TargetPlatform;
@@ -2239,7 +2237,13 @@ bool FMaterial::BeginCompileShaderMap(
 			delete UniformBufferStruct;
 		}
 
-		if (RequiresSynchronousCompilation())
+		const bool bSkipCompilationForODSC = !IsDefaultMaterial() && GShaderCompilingManager->IsShaderCompilationSkipped();
+		if (bSkipCompilationForODSC)
+		{
+			// Force compilation off.
+			PrecompileMode = EMaterialShaderPrecompileMode::None;
+		}
+		else if (RequiresSynchronousCompilation())
 		{
 			// Force sync compilation by material
 			PrecompileMode = EMaterialShaderPrecompileMode::Synchronous;
@@ -2266,6 +2270,23 @@ bool FMaterial::BeginCompileShaderMap(
 			{
 				SetGameThreadShaderMap(nullptr);
 			}
+		}
+		else if (PrecompileMode == EMaterialShaderPrecompileMode::None && bSkipCompilationForODSC)
+		{
+			// We didn't perform a compile so do ODSC specific cleanup here.
+			ReleaseGameThreadCompilingShaderMap();
+			ReleaseRenderThreadCompilingShaderMap();
+
+			NewShaderMap->ReleaseCompilingId();
+			check(NewShaderMap->GetCompilingId() == 0u);
+
+			// Tell the map it was successful even though we didn't compile shaders into.
+			// This ensures the map will be saved and cooked out.
+			NewShaderMap->SetCompiledSuccessfully(true);
+
+			// We didn't compile any shaders but still assign the result
+			NewShaderMap->FinalizeContent();
+			SetGameThreadShaderMap(NewShaderMap);
 		}
 		else
 		{
@@ -2449,7 +2470,7 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 			{
 				bMissingShader = true;
 
-#if !UE_BUILD_SHIPPING && !WITH_EDITOR
+#if WITH_ODSC
 				if (FPlatformProperties::RequiresCookedData())
 				{
 					const FString MaterialName = GetFullPath();
@@ -2461,8 +2482,7 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 						ShaderStageNamesToCompile.Add(ShaderType->GetName());
 					}
 
-					FODSCModule& ODSCModule = FModuleManager::LoadModuleChecked<FODSCModule>("ODSC");
-					ODSCModule.AddThreadedShaderPipelineRequest(ShaderPlatform, MaterialName, VFTypeName, PipelineName, ShaderStageNamesToCompile);
+					GODSCManager->AddThreadedShaderPipelineRequest(ShaderPlatform, MaterialName, VFTypeName, PipelineName, ShaderStageNamesToCompile);
 				}
 				else 
 #endif
@@ -2496,7 +2516,7 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 				}
 				else
 				{
-#if !UE_BUILD_SHIPPING && !WITH_EDITOR
+#if WITH_ODSC
 					if (FPlatformProperties::RequiresCookedData())
 					{
 						bMissingShader = true;
@@ -2507,8 +2527,7 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 						TArray<FString> ShaderStageNamesToCompile;
 						ShaderStageNamesToCompile.Add(ShaderType->GetName());
 
-						FODSCModule& ODSCModule = FModuleManager::LoadModuleChecked<FODSCModule>("ODSC");
-						ODSCModule.AddThreadedShaderPipelineRequest(ShaderPlatform, MaterialName, VFTypeName, PipelineName, ShaderStageNamesToCompile);
+						GODSCManager->AddThreadedShaderPipelineRequest(ShaderPlatform, MaterialName, VFTypeName, PipelineName, ShaderStageNamesToCompile);
 					}
 					else
 #endif
