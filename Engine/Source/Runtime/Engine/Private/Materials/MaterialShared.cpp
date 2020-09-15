@@ -2712,7 +2712,17 @@ void FMaterialVirtualTextureStack::GetTextureValues(const FMaterialRenderContext
 
 void FMaterialVirtualTextureStack::GetTextureValue(const FMaterialRenderContext& Context, const FUniformExpressionSet& UniformExpressionSet, const URuntimeVirtualTexture*& OutValue) const
 {
-	UniformExpressionSet.GetTextureValue(PreallocatedStackTextureIndex, Context, Context.Material, OutValue);
+	OutValue = nullptr;
+	if (NumLayers > 0)
+	{
+		const int32 ParameterIndex = LayerUniformExpressionIndices[0];
+		if (ParameterIndex != INDEX_NONE)
+		{
+			const URuntimeVirtualTexture* Texture = nullptr;
+			UniformExpressionSet.GetTextureValue(ParameterIndex, Context, Context.Material, Texture);
+			OutValue = Texture;
+		}
+	}
 }
 
 void FMaterialVirtualTextureStack::Serialize(FArchive& Ar)
