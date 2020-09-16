@@ -1284,8 +1284,10 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 
 						if (SimpleLightArray.InstanceData.Num() > 0)
 						{
+							FViewInfo& View = Views[ViewIndex];
+							RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 							RDG_EVENT_SCOPE(GraphBuilder, "InjectSimpleLightsTranslucentLighting");
-							InjectSimpleTranslucentVolumeLightingArray(GraphBuilder, SimpleLightArray, Views[ViewIndex], ViewIndex);
+							InjectSimpleTranslucentVolumeLightingArray(GraphBuilder, SimpleLightArray, View, ViewIndex);
 						}
 					}
 				}
@@ -1334,6 +1336,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 							for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 							{
 								FViewInfo& View = Views[ViewIndex];
+								RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 								if (LightSceneInfo->ShouldRenderLight(View))
 								{
@@ -1748,6 +1751,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 						for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 						{
 							FViewInfo& View = Views[ViewIndex];
+							RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 							IScreenSpaceDenoiser::FShadowRayTracingConfig RayTracingConfig;
 							RayTracingConfig.RayCountPerPixel = LightSceneProxy.GetSamplesPerPixel();
@@ -1833,6 +1837,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 						for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 						{
 							const FViewInfo& View = Views[ViewIndex];
+							RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 							View.HeightfieldLightingViewInfo.ClearShadowing(GraphBuilder, View, LightSceneInfo);
 						}
 					
@@ -1855,6 +1860,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 									for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 									{
 										const FViewInfo& View = Views[ViewIndex];
+										SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 
 										FIntRect ScissorRect;
 										if (!LightSceneProxy.GetScissorRect(ScissorRect, View, View.ViewRect))
@@ -1895,6 +1901,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 				{
 					const FViewInfo& View = Views[ViewIndex];
+					RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 					View.HeightfieldLightingViewInfo.ComputeLighting(GraphBuilder, View, LightSceneInfo);
 				}
 
@@ -1922,10 +1929,11 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 				{
 					for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 					{
-						RDG_EVENT_SCOPE(GraphBuilder, "InjectTranslucentVolume");
+						FViewInfo& View = Views[ViewIndex];
+						RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 						// Accumulate this light's unshadowed contribution to the translucency lighting volume
-						InjectTranslucentVolumeLighting(GraphBuilder, LightSceneInfo, nullptr, Views[ViewIndex], ViewIndex);
+						InjectTranslucentVolumeLighting(GraphBuilder, LightSceneInfo, nullptr, View, ViewIndex);
 					}
 				}
 
@@ -2160,6 +2168,7 @@ void FDeferredShadingSceneRenderer::RenderLight(
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		FViewInfo& View = Views[ViewIndex];
+		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 
 		// Ensure the light is valid for this view
 		if (!LightSceneInfo->ShouldRenderLight(View))
@@ -2408,6 +2417,7 @@ void FDeferredShadingSceneRenderer::RenderLightForHair(
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		FViewInfo& View = Views[ViewIndex];
+		RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 		// Ensure the light is valid for this view
 		if (!LightSceneInfo->ShouldRenderLight(View) || ViewIndex >= InHairVisibilityViews->HairDatas.Num())
