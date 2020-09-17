@@ -571,7 +571,7 @@ void FRHIResource::FlushPendingDeletes(bool bFlushDeferredDeletes)
 	check(IsInRenderingThread());
 
 	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
-#if RHI_VALIDATION
+#if ENABLE_RHI_VALIDATION
 	if (GDynamicRHI)
 	{
 		// Submit all remaining work to the GPU. This also ensures that validation RHI barrier tracking
