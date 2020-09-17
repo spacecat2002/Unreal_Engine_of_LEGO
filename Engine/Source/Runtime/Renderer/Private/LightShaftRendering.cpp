@@ -4,7 +4,7 @@
 #include "ScreenPass.h"
 #include "PipelineStateCache.h"
 #include "PostProcess/SceneRenderTargets.h"
-#include "PostProcess/PostProcessTemporalAA.h"
+#include "PostProcess/TemporalAA.h"
 #include "TranslucentRendering.h"
 #include "SceneTextureParameters.h"
 #include "ScenePrivate.h"

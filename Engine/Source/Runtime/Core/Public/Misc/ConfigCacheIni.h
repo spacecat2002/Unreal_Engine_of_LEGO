@@ -391,6 +391,7 @@ public:
 	CORE_API void SetString( const TCHAR* Section, const TCHAR* Key, const TCHAR* Value );
 	CORE_API void SetText( const TCHAR* Section, const TCHAR* Key, const FText& Value );
 	CORE_API void SetInt64( const TCHAR* Section, const TCHAR* Key, const int64 Value );
+	CORE_API void SetArray(const TCHAR* Section, const TCHAR* Key, const TArray<FString>& Value);
 	
 	/**
 	 * Process the contents of an .ini file that has been read into an FString
@@ -594,7 +595,11 @@ public:
 	bool GetText( const TCHAR* Section, const TCHAR* Key, FText& Value, const FString& Filename );
 	bool GetSection( const TCHAR* Section, TArray<FString>& Result, const FString& Filename );
 	bool DoesSectionExist(const TCHAR* Section, const FString& Filename);
-	FConfigSection* GetSectionPrivate( const TCHAR* Section, bool Force, bool Const, const FString& Filename );
+	/**
+	 * @param Force Whether to create the Section on Filename if it did not exist previously.
+	 * @param Const If Const (and not Force), then it will not modify File->Dirty. If not Const (or Force is true), then File->Dirty will be set to true.
+	 */
+	FConfigSection* GetSectionPrivate( const TCHAR* Section, const bool Force, const bool Const, const FString& Filename );
 	void SetString( const TCHAR* Section, const TCHAR* Key, const TCHAR* Value, const FString& Filename );
 	void SetText( const TCHAR* Section, const TCHAR* Key, const FText& Value, const FString& Filename );
 	bool RemoveKey( const TCHAR* Section, const TCHAR* Key, const FString& Filename );

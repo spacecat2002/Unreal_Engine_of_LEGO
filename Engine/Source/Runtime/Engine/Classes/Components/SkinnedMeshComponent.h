@@ -12,6 +12,7 @@
 #include "Engine/TextureStreamingTypes.h"
 #include "Components/MeshComponent.h"
 #include "Containers/SortedMap.h"
+#include "LODSyncInterface.h"
 #include "SkinnedMeshComponent.generated.h"
 
 enum class ESkinCacheUsage : uint8;
@@ -219,7 +220,7 @@ struct FVertexOffsetUsage
 */
 
 UCLASS(hidecategories=Object, config=Engine, editinlinenew, abstract)
-class ENGINE_API USkinnedMeshComponent : public UMeshComponent
+class ENGINE_API USkinnedMeshComponent : public UMeshComponent, public ILODSyncInterface
 {
 	GENERATED_UCLASS_BODY()
 
@@ -1030,8 +1031,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
 	bool IsUsingSkinWeightProfile() const { return bSkinWeightProfileSet == 1;  }
 
-	//TODO: Zabir to fix
-	//UE_DEPRECATED(4.26, "GetVertexOffsetUsage() has been deprecated. Support will be dropped in the future.")
+	UE_DEPRECATED(4.26, "GetVertexOffsetUsage() has been deprecated. Support will be dropped in the future.")
 	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
 	int32 GetVertexOffsetUsage(int32 LODIndex) const;
 
@@ -1469,7 +1469,7 @@ public:
 
 	/**
 	 *	Hides the specified bone with name.  Currently this just enforces a scale of 0 for the hidden bones.
-	 *	Compoared to HideBone By Index - This keeps track of list of bones and update when LOD changes
+	 *	Compared to HideBone By Index - This keeps track of list of bones and update when LOD changes
 	 *
 	 *	@param  BoneName            Name of bone to hide
 	 *	@param	PhysBodyOption		Option for physics bodies that attach to the bones to be hidden
@@ -1479,7 +1479,7 @@ public:
 
 	/**
 	 *	UnHide the specified bone with name.  Currently this just enforces a scale of 0 for the hidden bones.
-	 *	Compoared to HideBone By Index - This keeps track of list of bones and update when LOD changes
+	 *	Compared to HideBone By Index - This keeps track of list of bones and update when LOD changes
 	 *	@param  BoneName            Name of bone to unhide
 	 */
 	UFUNCTION(BlueprintCallable, Category="Components|SkinnedMesh")
@@ -1540,6 +1540,12 @@ private:
 	 * relative transforms.
 	 */
 	bool GetMissingMasterBoneRelativeTransform(int32 InBoneIndex, FMissingMasterBoneCacheEntry& OutInfo) const;
+
+	// BEGIN ILODSyncComponent
+	virtual int32 GetDesiredSyncLOD() const override;
+	virtual void SetSyncLOD(int32 LODIndex) override;
+	virtual int32 GetNumSyncLODs() const override;
+	// END ILODSyncComponent
 
 	// Animation update rate control.
 public:

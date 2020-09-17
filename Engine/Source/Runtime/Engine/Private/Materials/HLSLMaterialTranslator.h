@@ -723,6 +723,10 @@ protected:
 	virtual int32 GetHairRootUV() override;
 	virtual int32 GetHairBaseColor() override;
 	virtual int32 GetHairRoughness() override;
+	virtual int32 GetHairDepth() override;
+	virtual int32 GetHairCoverage() override;
+	virtual int32 GetHairAtlasUVs() override;
+	virtual int32 GetHairColorFromMelanin(int32 Melanin, int32 Redness, int32 DyeColor) override;
 	virtual int32 DistanceToNearestSurface(int32 PositionArg) override;
 	virtual int32 DistanceFieldGradient(int32 PositionArg) override;
 	virtual int32 AtmosphericFogColor(int32 WorldPosition) override;
@@ -735,9 +739,6 @@ protected:
 	virtual int32 SkyAtmosphereViewLuminance() override;
 	virtual int32 SkyAtmosphereAerialPerspective(int32 WorldPosition) override;
 	virtual int32 SkyAtmosphereDistantLightScatteredLuminance() override;
-
-	// Water
-	virtual int32 SceneDepthWithoutWater(int32 Offset, int32 ViewportUV, bool bUseOffset, float FallbackDepth) override;
 
 	virtual int32 GetCloudSampleAltitude() override;
 	virtual int32 GetCloudSampleAltitudeInLayer() override;

@@ -2941,6 +2941,32 @@ void USkinnedMeshComponent::SetCapsuleIndirectShadowMinVisibility(float NewValue
 	}
 }
 
+// @todo: think about consolidating this with UpdateLODStatus_Internal
+int32 USkinnedMeshComponent::GetDesiredSyncLOD() const
+{
+	if (SkeletalMesh && MeshObject)
+	{
+#if WITH_EDITOR
+		const int32 LODBias = GetLODBias();
+#else
+		const int32 LODBias = GSkeletalMeshLODBias;
+#endif
+		return MeshObject->MinDesiredLODLevel + LODBias;
+	}
+
+	return INDEX_NONE;
+}
+
+void USkinnedMeshComponent::SetSyncLOD(int32 LODIndex)
+{
+	SetForcedLOD(LODIndex + 1);
+}
+
+int32 USkinnedMeshComponent::GetNumSyncLODs() const
+{
+	return GetNumLODs();
+}
+
 bool USkinnedMeshComponent::UpdateLODStatus()
 {
 	return UpdateLODStatus_Internal(INDEX_NONE);

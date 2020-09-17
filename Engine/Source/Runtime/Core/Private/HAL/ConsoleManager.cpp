@@ -1738,7 +1738,7 @@ void FConsoleManager::RegisterThreadPropagation(uint32 ThreadId, IConsoleThreadP
 	}
 
 	ThreadPropagationCallback = InCallback;
-	ThreadPropagationThreadId = ThreadId;
+	// `ThreadId` is ignored as only RenderingThread is supported
 }
 
 IConsoleThreadPropagation* FConsoleManager::GetThreadPropagationCallback()
@@ -1748,7 +1748,7 @@ IConsoleThreadPropagation* FConsoleManager::GetThreadPropagationCallback()
 
 bool FConsoleManager::IsThreadPropagationThread()
 {
-	return FPlatformTLS::GetCurrentThreadId() == ThreadPropagationThreadId;
+	return IsInActualRenderingThread();
 }
 
 void FConsoleManager::OnCVarChanged()
@@ -2321,6 +2321,12 @@ static TAutoConsoleVariable<int32> CVarContactShadows(
 	1,
 	TEXT(" 0: disabled.\n")
 	TEXT(" 1: enabled.\n"),
+	ECVF_Scalability | ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<float> CVarContactShadowsNonShadowCastingIntensity(
+	TEXT("r.ContactShadows.NonShadowCastingIntensity"),
+	0.0f,
+	TEXT("Intensity of contact shadows from objects with cast contact shadows disabled. Usually 0 (off).\n"),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
 
 // Changing this causes a full shader recompile

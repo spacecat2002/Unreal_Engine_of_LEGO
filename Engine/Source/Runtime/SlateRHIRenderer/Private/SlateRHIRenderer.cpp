@@ -27,6 +27,7 @@
 #include "EngineModule.h"
 #include "Interfaces/ISlate3DRenderer.h"
 #include "Slate/SlateTextureAtlasInterface.h"
+#include "Types/ReflectionMetadata.h"
 #include "CommonRenderResources.h"
 #include "RenderTargetPool.h"
 #include "RendererUtils.h"
@@ -1120,7 +1121,7 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 
 		if (!ClampedScreenshotRect.IsEmpty())
 		{
-			RHICmdList.ReadSurfaceData(BackBuffer, ScreenshotRect, *OutScreenshotData, FReadSurfaceDataFlags());
+			RHICmdList.ReadSurfaceData(BackBuffer, ClampedScreenshotRect, *OutScreenshotData, FReadSurfaceDataFlags());
 		}
 		else
 		{
@@ -1237,6 +1238,22 @@ void FSlateRHIRenderer::DrawWindows_Private(FSlateDrawBuffer& WindowDrawBuffer)
 			const FVector2D WindowSize = Window->GetViewportSize();
 			if (WindowSize.X > 0 && WindowSize.Y > 0)
 			{
+				// The viewport need to be created at this point  
+				FViewportInfo* ViewInfo = nullptr;
+				{
+					FViewportInfo** FoundViewInfo = WindowToViewportInfo.Find(Window);
+					if (ensure(FoundViewInfo))
+					{
+						ViewInfo = *FoundViewInfo;
+					}
+					else
+					{
+						UE_LOG(LogSlate, Error, TEXT("The ViewportInfo could not be found for Window."));
+						continue;
+					}
+				}
+
+
 				// Add all elements for this window to the element batcher
 				ElementBatcher->AddElements(ElementList);
 
@@ -1261,9 +1278,6 @@ void FSlateRHIRenderer::DrawWindows_Private(FSlateDrawBuffer& WindowDrawBuffer)
 
 				// All elements for this window have been batched and rendering data updated
 				ElementBatcher->ResetBatches();
-
-				// The viewport had better exist at this point  
-				FViewportInfo* ViewInfo = WindowToViewportInfo.FindChecked(Window);
 
 				// Cache off the HDR status
 				ViewInfo->bHDREnabled = RHIGetColorSpace(ViewInfo->ViewportRHI) != EColorSpaceAndEOTF::ERec709_sRGB;

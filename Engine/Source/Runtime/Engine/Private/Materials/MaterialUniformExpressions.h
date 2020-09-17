@@ -216,7 +216,6 @@ public:
 	FMaterialUniformExpressionVectorParameter() {}
 	FMaterialUniformExpressionVectorParameter(const FMaterialParameterInfo& InParameterInfo, int32 InParameterIndex)
 		: ParameterInfo(InParameterInfo)
-		, ParameterName(InParameterInfo.Name)
 		, ParameterIndex(InParameterIndex)
 	{
 		check(InParameterIndex >= 0 && InParameterIndex <= 0xffff);
@@ -234,19 +233,14 @@ public:
 		return false;
 	}
 
-	FMaterialParameterInfo GetParameterInfo() const
-	{
-		return FMaterialParameterInfo(ParameterName, ParameterInfo.Association, ParameterInfo.Index);
-	}
-
-	const FHashedMaterialParameterInfo& GetHashedParameterInfo() const
+	const FHashedMaterialParameterInfo& GetParameterInfo() const
 	{
 		return ParameterInfo;
 	}
 
-	const FName& GetParameterName() const
+	FName GetParameterName() const
 	{
-		return ParameterName;
+		return ParameterInfo.GetName();
 	}
 
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const
@@ -261,7 +255,6 @@ public:
 
 private:
 	FHashedMaterialParameterInfo ParameterInfo;
-	FName ParameterName;
 	int32 ParameterIndex;
 };
 
@@ -275,7 +268,6 @@ public:
 	FMaterialUniformExpressionScalarParameter() {}
 	FMaterialUniformExpressionScalarParameter(const FMaterialParameterInfo& InParameterInfo, int32 InParameterIndex)
 		: ParameterInfo(InParameterInfo)
-		, ParameterName(InParameterInfo.Name)
 		, ParameterIndex(InParameterIndex)
 	{
 		check(InParameterIndex >= 0 && InParameterIndex <= 0xffff);
@@ -293,19 +285,14 @@ public:
 		return false;
 	}
 
-	FMaterialParameterInfo GetParameterInfo() const
-	{
-		return FMaterialParameterInfo(ParameterName, ParameterInfo.Association, ParameterInfo.Index);
-	}
-
-	const FHashedMaterialParameterInfo& GetHashedParameterInfo() const
+	const FHashedMaterialParameterInfo& GetParameterInfo() const
 	{
 		return ParameterInfo;
 	}
 
-	const FName& GetParameterName() const
+	FName GetParameterName() const
 	{
-		return ParameterName;
+		return ParameterInfo.GetName();
 	}
 
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const
@@ -320,7 +307,6 @@ public:
 
 private:
 	FHashedMaterialParameterInfo ParameterInfo;
-	FName ParameterName;
 	int32 ParameterIndex;
 };
 
@@ -363,13 +349,11 @@ public:
 	FMaterialUniformExpressionTextureParameter(const FMaterialParameterInfo& InParameterInfo, int32 InTextureIndex, EMaterialSamplerType InSamplerType, ESamplerSourceMode InSourceMode, bool InVirtualTexture)
 		: Super(InTextureIndex, InSamplerType, InSourceMode, InVirtualTexture)
 		, ParameterInfo(InParameterInfo)
-		, ParameterName(InParameterInfo.Name)
 	{}
 
 	FMaterialUniformExpressionTextureParameter(const FMaterialParameterInfo& InParameterInfo, int32 InTextureIndex, int32 InTextureLayerIndex, int32 InPageTableLayerIndex, EMaterialSamplerType InSamplerType)
 		: Super(InTextureIndex, InTextureLayerIndex, InPageTableLayerIndex, InSamplerType)
 		, ParameterInfo(InParameterInfo)
-		, ParameterName(InParameterInfo.Name)
 	{}
 
 	// FMaterialUniformExpression interface.
@@ -379,7 +363,6 @@ public:
 	{
 		Super::GetTextureParameterInfo(OutParameter);
 		OutParameter.ParameterInfo = ParameterInfo;
-		OutParameter.ParameterName = ParameterName.ToString();
 	}
 
 	virtual bool IsConstant() const
@@ -387,17 +370,12 @@ public:
 		return false;
 	}
 
-	FMaterialParameterInfo GetParameterInfo() const
+	FName GetParameterName() const
 	{
-		return FMaterialParameterInfo(ParameterName, ParameterInfo.Association, ParameterInfo.Index);
+		return ParameterInfo.GetName();
 	}
 
-	const FName& GetParameterName() const
-	{
-		return ParameterName;
-	}
-
-	const FHashedMaterialParameterInfo& GetHashedParameterInfo() const
+	const FHashedMaterialParameterInfo& GetParameterInfo() const
 	{
 		return ParameterInfo;
 	}
@@ -414,7 +392,6 @@ public:
 
 private:
 	FHashedMaterialParameterInfo ParameterInfo;
-	FName ParameterName;
 	int32 ParameterIndex;
 };
 

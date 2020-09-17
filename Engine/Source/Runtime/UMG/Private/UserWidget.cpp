@@ -424,12 +424,17 @@ void UUserWidget::TearDownAnimations()
 {
 	for (UUMGSequencePlayer* Player : ActiveSequencePlayers)
 	{
-		Player->TearDown();
+		if (Player)
+		{
+			Player->TearDown();
+		}
 	}
+
 	for (UUMGSequencePlayer* Player : StoppedSequencePlayers)
 	{
 		Player->TearDown();
 	}
+
 	ActiveSequencePlayers.Empty();
 	StoppedSequencePlayers.Empty();
 }
@@ -992,6 +997,13 @@ void UUserWidget::RemoveFromParent()
 bool UUserWidget::GetIsVisible() const
 {
 	return FullScreenWidget.IsValid();
+}
+
+void UUserWidget::SetVisibility(ESlateVisibility InVisibility)
+{
+	Super::SetVisibility(InVisibility);
+	OnNativeVisibilityChanged.Broadcast(InVisibility);
+	OnVisibilityChanged.Broadcast(InVisibility);
 }
 
 bool UUserWidget::IsInViewport() const

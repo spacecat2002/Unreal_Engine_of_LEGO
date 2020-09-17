@@ -122,7 +122,8 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnPhysScenePostTick,FChaosScene*);
 	FOnPhysScenePostTick OnPhysScenePostTick;
 
-	FGraphEventRef GetCompletionEvent();
+	bool IsCompletionEventComplete() const;
+	FGraphEventArray GetCompletionEvents();
 
 protected:
 
@@ -148,7 +149,7 @@ protected:
 
 	//Engine interface BEGIN
 	virtual float OnStartFrame(float InDeltaTime){ return InDeltaTime; }
-	virtual void OnSyncBodies(Chaos::FPBDRigidDirtyParticlesBufferAccessor& Accessor);
+	virtual void OnSyncBodies(const int32 SolverSyncTimestamp, Chaos::FPBDRigidDirtyParticlesBufferAccessor& Accessor);
 	//Engine interface END
 
 	float MDeltaTime;
@@ -156,8 +157,6 @@ protected:
 	UObject* Owner;
 
 private:
-	void CompleteSceneSimulation(ENamedThreads::Type CurrentThread,const FGraphEventRef& MyCompletionGraphEvent);
-	void CompleteSceneSimulationImp();
 
 	void SetGravity(const Chaos::TVector<float,3>& Acceleration)
 	{
@@ -168,5 +167,5 @@ private:
 	void SyncBodies(TSolver* Solver);
 
 	// Taskgraph control
-	FGraphEventRef CompletionEvent;
+	FGraphEventArray CompletionEvents;
 };

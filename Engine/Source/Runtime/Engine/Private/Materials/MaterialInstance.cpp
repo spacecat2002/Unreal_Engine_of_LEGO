@@ -188,7 +188,7 @@ bool FMaterialInstanceResource::GetScalarValue(
 {
 	checkSlow(IsInParallelRenderingThread());
 
-	static FHashedName NameSubsurfaceProfile(TEXT("__SubsurfaceProfile"));
+	static FName NameSubsurfaceProfile(TEXT("__SubsurfaceProfile"));
 	if (ParameterInfo.Name == NameSubsurfaceProfile)
 	{
 		check(ParameterInfo.Association == EMaterialParameterAssociation::GlobalParameter);
@@ -623,7 +623,7 @@ void UMaterialInstance::InitResources()
 	}
 
 	// Don't use the instance's parent if it has a circular dependency on the instance.
-	if (SafeParent && SafeParent->IsDependent(this))
+	if (SafeParent && SafeParent->IsDependent_Concurrent(this))
 	{
 		SafeParent = NULL;
 	}
@@ -932,6 +932,7 @@ bool UMaterialInstance::GetTextureParameterValue(const FHashedMaterialParameterI
 
 	if (GetReentrantFlag())
 	{
+		OutValue = nullptr;
 		return false;
 	}
 
@@ -962,6 +963,7 @@ bool UMaterialInstance::GetTextureParameterValue(const FHashedMaterialParameterI
 		return Parent->GetTextureParameterValue(ParameterInfo,OutValue,bOveriddenOnly);
 	}
 	
+	OutValue = nullptr;
 	return false;
 }
 
@@ -971,6 +973,7 @@ bool UMaterialInstance::GetRuntimeVirtualTextureParameterValue(const FHashedMate
 
 	if (GetReentrantFlag())
 	{
+		OutValue = nullptr;
 		return false;
 	}
 
@@ -1001,6 +1004,7 @@ bool UMaterialInstance::GetRuntimeVirtualTextureParameterValue(const FHashedMate
 		return Parent->GetRuntimeVirtualTextureParameterValue(ParameterInfo, OutValue, bOveriddenOnly);
 	}
 
+	OutValue = nullptr;
 	return false;
 }
 
@@ -1043,6 +1047,8 @@ bool UMaterialInstance::GetFontParameterValue(const FHashedMaterialParameterInfo
 
 	if (GetReentrantFlag())
 	{
+		OutFontValue = nullptr;
+		OutFontPage = INDEX_NONE;
 		return false;
 	}
 
@@ -1075,6 +1081,8 @@ bool UMaterialInstance::GetFontParameterValue(const FHashedMaterialParameterInfo
 		return Parent->GetFontParameterValue(ParameterInfo, OutFontValue, OutFontPage, bOveriddenOnly);
 	}
 	
+	OutFontValue = nullptr;
+	OutFontPage = INDEX_NONE;
 	return false;
 }
 
@@ -1361,39 +1369,39 @@ void UMaterialInstance::ValidateTextureOverrides(ERHIFeatureLevel::Type InFeatur
 				case EMaterialTextureParameterType::Standard2D:
 					if (!(TextureType & (MCT_Texture2D | MCT_TextureExternal | MCT_TextureVirtual)))
 					{
-						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required 2D texture"), *MaterialName, *TextureInfo.ParameterName, *Texture->GetName());
+						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required 2D texture"), *MaterialName, *TextureInfo.GetParameterName().ToString(), *Texture->GetName());
 					}
 					else if (TextureType & MCT_TextureVirtual)
 					{
-						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" requires non-virtual texture"), *MaterialName, *TextureInfo.ParameterName, *Texture->GetName());
+						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" requires non-virtual texture"), *MaterialName, *TextureInfo.GetParameterName().ToString(), *Texture->GetName());
 					}
 					break;
 				case EMaterialTextureParameterType::Cube:
 					if (!(TextureType & MCT_TextureCube))
 					{
-						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required Cube texture"), *MaterialName, *TextureInfo.ParameterName, *Texture->GetName());
+						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required Cube texture"), *MaterialName, *TextureInfo.GetParameterName().ToString(), *Texture->GetName());
 					}
 					break;
 				case EMaterialTextureParameterType::Array2D:
 					if (!(TextureType & MCT_Texture2DArray))
 					{
-						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required texture array"), *MaterialName, *TextureInfo.ParameterName, *Texture->GetName());
+						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required texture array"), *MaterialName, *TextureInfo.GetParameterName().ToString(), *Texture->GetName());
 					}
 					break;
 				case EMaterialTextureParameterType::Volume:
 					if (!(TextureType & MCT_VolumeTexture))
 					{
-						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required Volume texture"), *MaterialName, *TextureInfo.ParameterName, *Texture->GetName());
+						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required Volume texture"), *MaterialName, *TextureInfo.GetParameterName().ToString(), *Texture->GetName());
 					}
 					break;
 				case EMaterialTextureParameterType::Virtual:
 					if (!(TextureType & (MCT_Texture2D | MCT_TextureExternal | MCT_TextureVirtual)))
 					{
-						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required 2D texture"), *MaterialName, *TextureInfo.ParameterName, *Texture->GetName());
+						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" has invalid type, required 2D texture"), *MaterialName, *TextureInfo.GetParameterName().ToString(), *Texture->GetName());
 					}
 					else if (!(TextureType & MCT_TextureVirtual))
 					{
-						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" requires virtual texture"), *MaterialName, *TextureInfo.ParameterName, *Texture->GetName());
+						UE_LOG(LogMaterial, Error, TEXT("MaterialInstance \"%s\" parameter '%s' assigned texture \"%s\" requires virtual texture"), *MaterialName, *TextureInfo.GetParameterName().ToString(), *Texture->GetName());
 					}
 					break;
 				default:
@@ -1502,8 +1510,8 @@ void UMaterialInstance::OverrideVectorParameterDefault(const FHashedMaterialPara
 		if (SourceMaterialResource)
 		{
 			SourceMaterialResource->TransientOverrides.SetVectorOverride(ParameterInfo, Value, bOverride);
-			const TArrayView<const FMaterialVectorParameterInfo> Parameters = SourceMaterialResource->GetUniformVectorParameterExpressions();
 
+			const TArrayView<const FMaterialVectorParameterInfo> Parameters = SourceMaterialResource->GetUniformVectorParameterExpressions();
 			for (int32 i = 0; i < Parameters.Num(); ++i)
 			{
 				const FMaterialVectorParameterInfo& Parameter = Parameters[i];
@@ -1532,8 +1540,8 @@ void UMaterialInstance::OverrideScalarParameterDefault(const FHashedMaterialPara
 		if (SourceMaterialResource)
 		{
 			SourceMaterialResource->TransientOverrides.SetScalarOverride(ParameterInfo, Value, bOverride);
-			const TArrayView<const FMaterialScalarParameterInfo> Parameters = SourceMaterialResource->GetUniformScalarParameterExpressions();
 
+			const TArrayView<const FMaterialScalarParameterInfo> Parameters = SourceMaterialResource->GetUniformScalarParameterExpressions();
 			for (int32 i = 0; i < Parameters.Num(); ++i)
 			{
 				const FMaterialScalarParameterInfo& Parameter = Parameters[i];
@@ -1648,6 +1656,28 @@ bool UMaterialInstance::IsDependent(UMaterialInterface* TestDependency)
 	}
 }
 
+bool UMaterialInstance::IsDependent_Concurrent(UMaterialInterface* TestDependency, TMicRecursionGuard RecursionGuard)
+{
+	if (TestDependency == this)
+	{
+		return true;
+	}
+	else if (Parent)
+	{
+		if (RecursionGuard.Contains(this))
+		{
+			return true;
+		}
+
+		RecursionGuard.Set(this);
+		return Parent->IsDependent_Concurrent(TestDependency, RecursionGuard);
+	}
+	else
+	{
+		return false;
+	}
+}
+
 void UMaterialInstanceDynamic::CopyScalarAndVectorParameters(const UMaterialInterface& SourceMaterialToCopyFrom, ERHIFeatureLevel::Type FeatureLevel)
 {
 	check(IsInGameThread());
@@ -1676,7 +1706,7 @@ void UMaterialInstanceDynamic::CopyScalarAndVectorParameters(const UMaterialInte
 				if (!ParameterValue)
 				{
 					ParameterValue = new(ScalarParameterValues)FScalarParameterValue;
-					ParameterValue->ParameterInfo = Parameter.GetParameterInfo();
+					ParameterValue->ParameterInfo = FMaterialParameterInfo(Parameter.ParameterInfo);
 				}
 
 				ParameterValue->ParameterValue = Value;
@@ -1698,7 +1728,7 @@ void UMaterialInstanceDynamic::CopyScalarAndVectorParameters(const UMaterialInte
 				if (!ParameterValue)
 				{
 					ParameterValue = new(VectorParameterValues)FVectorParameterValue;
-					ParameterValue->ParameterInfo = Parameter.GetParameterInfo();
+					ParameterValue->ParameterInfo = FMaterialParameterInfo(Parameter.ParameterInfo);
 				}
 
 				ParameterValue->ParameterValue = Value;
@@ -2066,7 +2096,7 @@ void UMaterialInstance::GetStaticParameterValues(FStaticParameterSet& OutStaticP
 
 void UMaterialInstance::GetAllParametersOfType(EMaterialParameterType Type, TArray<FMaterialParameterInfo>& OutParameterInfo, TArray<FGuid>& OutParameterIds) const
 {
-	const UMaterial* Material = GetMaterial();
+	const UMaterial* Material = GetMaterial_Concurrent();
 	int32 NumParameters = CachedLayerParameters.GetNumParameters(Type);
 	if (Material)
 	{
@@ -2816,7 +2846,7 @@ void UMaterialInstance::CacheResourceShadersForCooking(EShaderPlatform ShaderPla
 		UMaterial* BaseMaterial = GetMaterial();
 
 		TArray<bool, TInlineAllocator<EMaterialQualityLevel::Num> > QualityLevelsUsed;
-		BaseMaterial->GetQualityLevelUsage(QualityLevelsUsed, ShaderPlatform);
+		BaseMaterial->GetQualityLevelUsageForCooking(QualityLevelsUsed, ShaderPlatform);
 
 		const UShaderPlatformQualitySettings* MaterialQualitySettings = UMaterialShaderQualitySettings::Get()->GetShaderPlatformQualitySettings(ShaderPlatform);
 		bool bNeedDefaultQuality = false;
@@ -3926,6 +3956,9 @@ void UMaterialInstance::UpdateStaticPermutation(const FStaticParameterSet& NewPa
 
 	if (bHasStaticPermutationResource != bWantsStaticPermutationResource || bParamsHaveChanged || (bBasePropertyOverridesHaveChanged && bWantsStaticPermutationResource) || bForceStaticPermutationUpdate)
 	{
+		// This will flush the rendering thread which is necessary before changing bHasStaticPermutationResource, since the RT is reading from that directly
+		FlushRenderingCommands();
+
 		bHasStaticPermutationResource = bWantsStaticPermutationResource;
 		StaticParameters = CompareParameters;
 
@@ -3939,9 +3972,8 @@ void UMaterialInstance::UpdateStaticPermutation(const FStaticParameterSet& NewPa
 		}
 		else
 		{
-			// This will flush the rendering thread which is necessary before changing bHasStaticPermutationResource, since the RT is reading from that directly
-			// The update context will also make sure any dependent MI's with static parameters get recompiled
-			FMaterialUpdateContext LocalMaterialUpdateContext;
+			// The update context will make sure any dependent MI's with static parameters get recompiled
+			FMaterialUpdateContext LocalMaterialUpdateContext(FMaterialUpdateContext::EOptions::RecreateRenderStates);
 			LocalMaterialUpdateContext.AddMaterialInstance(this);
 		}
 	}
@@ -4413,9 +4445,7 @@ void UMaterialInstance::GetBasePropertyOverridesHash(FSHAHash& OutHash)const
 
 bool UMaterialInstance::HasOverridenBaseProperties()const
 {
-	check(IsInGameThread());
-
-	const UMaterial* Material = GetMaterial();
+	const UMaterial* Material = GetMaterial_Concurrent();
 	if (Parent && Material && Material->bUsedAsSpecialEngineMaterial == false &&
 		((FMath::Abs(GetOpacityMaskClipValue() - Parent->GetOpacityMaskClipValue()) > SMALL_NUMBER) ||
 		(GetBlendMode() != Parent->GetBlendMode()) ||
@@ -4847,7 +4877,7 @@ void UMaterialInstance::CopyMaterialUniformParametersInternal(UMaterialInterface
 					for (const FMaterialScalarParameterInfo& Parameter : ScalarExpressions)
 					{
 						FScalarParameterValue* ParameterValue = new(ScalarParameterValues) FScalarParameterValue;
-						ParameterValue->ParameterInfo.Name = *Parameter.ParameterName;
+						ParameterValue->ParameterInfo.Name = Parameter.ParameterInfo.GetName();
 						Parameter.GetDefaultValue(ParameterValue->ParameterValue);
 					}
 
@@ -4856,7 +4886,7 @@ void UMaterialInstance::CopyMaterialUniformParametersInternal(UMaterialInterface
 					for (const FMaterialVectorParameterInfo& Parameter : VectorExpressions)
 					{
 						FVectorParameterValue* ParameterValue = new(VectorParameterValues) FVectorParameterValue;
-						ParameterValue->ParameterInfo.Name = *Parameter.ParameterName;
+						ParameterValue->ParameterInfo.Name = Parameter.ParameterInfo.GetName();
 						Parameter.GetDefaultValue(ParameterValue->ParameterValue);
 					}
 
@@ -4868,7 +4898,7 @@ void UMaterialInstance::CopyMaterialUniformParametersInternal(UMaterialInterface
 							if (!Parameter.ParameterInfo.Name.IsNone())
 							{
 								FTextureParameterValue* ParameterValue = new(TextureParameterValues) FTextureParameterValue;
-								ParameterValue->ParameterInfo.Name = *Parameter.ParameterName;
+								ParameterValue->ParameterInfo.Name = Parameter.ParameterInfo.GetName();
 								Parameter.GetGameThreadTextureValue(AsMaterial, *MaterialResource, ParameterValue->ParameterValue);
 							}
 						}

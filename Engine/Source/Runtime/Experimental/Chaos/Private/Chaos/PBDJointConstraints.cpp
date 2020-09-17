@@ -77,6 +77,11 @@ namespace Chaos
 		return ConstraintContainer->GetConstraintBatch(ConstraintIndex);
 	}
 
+	bool FPBDJointConstraintHandle::IsConstraintEnabled() const
+	{
+		return ConstraintContainer->IsConstraintEnabled(ConstraintIndex);
+	}
+
 	FVec3 FPBDJointConstraintHandle::GetLinearImpulse() const
 	{
 		return ConstraintContainer->GetConstraintLinearImpulse(ConstraintIndex);
@@ -199,7 +204,7 @@ namespace Chaos
 
 		// If we have a zero degree limit angle, lock the joint, or set a non-zero limit (to avoid division by zero in axis calculations)
 		const FReal MinAngularLimit = 0.01f;
-		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Twist] == 0))
+		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Twist] < MinAngularLimit))
 		{
 			if (bSoftTwistLimitsEnabled)
 			{
@@ -210,7 +215,7 @@ namespace Chaos
 				AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] = EJointMotionType::Locked;
 			}
 		}
-		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing1] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Swing1] == 0))
+		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing1] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Swing1] < MinAngularLimit))
 		{
 			if (bSoftSwingLimitsEnabled)
 			{
@@ -221,7 +226,7 @@ namespace Chaos
 				AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing1] = EJointMotionType::Locked;
 			}
 		}
-		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing2] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Swing2] == 0))
+		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing2] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Swing2] < MinAngularLimit))
 		{
 			if (bSoftSwingLimitsEnabled)
 			{
@@ -1203,7 +1208,8 @@ namespace Chaos
 
 		if ((Particle0->Sleeping() && Particle1->Sleeping())
 			|| (Particle0->IsKinematic() && Particle1->Sleeping()) 
-			|| (Particle0->Sleeping() && Particle1->IsKinematic()))
+			|| (Particle0->Sleeping() && Particle1->IsKinematic())
+			|| (FMath::IsNearlyZero(Solver.InvM(0)) && FMath::IsNearlyZero(Solver.InvM(1))))
 		{
 			return false;
 		}
@@ -1280,7 +1286,8 @@ namespace Chaos
 
 		if ((Particle0->Sleeping() && Particle1->Sleeping())
 			|| (Particle0->IsKinematic() && Particle1->Sleeping())
-			|| (Particle0->Sleeping() && Particle1->IsKinematic()))
+			|| (Particle0->Sleeping() && Particle1->IsKinematic()) 
+			|| (FMath::IsNearlyZero(Solver.InvM(0)) && FMath::IsNearlyZero(Solver.InvM(1))))
 		{
 			return false;
 		}

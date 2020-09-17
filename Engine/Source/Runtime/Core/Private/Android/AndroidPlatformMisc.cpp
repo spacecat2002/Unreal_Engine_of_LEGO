@@ -136,10 +136,17 @@ static char AndroidCpuThermalSensorFileBuf[256] = "";
 static void OverrideCpuThermalSensorFileFromCVar(IConsoleVariable* Var)
 {
 	FString Override = CVarAndroidCPUThermalSensorFilePath.GetValueOnAnyThread();
-	if (Override.Len() < UE_ARRAY_COUNT(AndroidCpuThermalSensorFileBuf))
+	const int32 Len = Override.Len();
+	if (Len == 0)
+	{
+		return;
+	}
+
+	if (Len < UE_ARRAY_COUNT(AndroidCpuThermalSensorFileBuf))
 	{
 		FCStringAnsi::Strcpy(AndroidCpuThermalSensorFileBuf, TCHAR_TO_ANSI(*Override));
-		UE_LOG(LogAndroid, Display, TEXT("Thermal sensor's filepath was set to `%s`"), AndroidCpuThermalSensorFileBuf);
+		UE_LOG(LogAndroid, Display, TEXT("Thermal sensor's filepath was set to `%s`"), *Override);
+		return;
 	}
 
 	UE_LOG(LogAndroid, Display, TEXT("Thermal sensor's filepath is too long, max path is `%u`"), UE_ARRAY_COUNT(AndroidCpuThermalSensorFileBuf));
@@ -153,13 +160,20 @@ static void InitCpuThermalSensor()
 	uint32 Counter = 0;
 	while (true)
 	{
-		char Buf[256];
+		char Buf[256] = "";
 		sprintf(Buf, "/sys/devices/virtual/thermal/thermal_zone%u/type", Counter);
 		if (FILE* File = fopen(Buf, "r"))
 		{
 			fgets(Buf, UE_ARRAY_COUNT(Buf), File);
 			fclose(File);
-			UE_LOG(LogAndroid, Display, TEXT("Detected thermal sensor `%s` at /sys/devices/virtual/thermal/thermal_zone%u/temp"), Buf, Counter);
+			char* Ptr = Buf;
+			while (!iscntrl(*Ptr))		// it appears that zone type string ends up with \n symbol
+			{
+				++Ptr;
+			}
+			*Ptr = 0;
+
+			UE_LOG(LogAndroid, Display, TEXT("Detected thermal sensor `%s` at /sys/devices/virtual/thermal/thermal_zone%u/temp"), ANSI_TO_TCHAR(Buf), Counter);
 			++Counter;
 		}
 		else
@@ -177,7 +191,7 @@ static void InitCpuThermalSensor()
 		if (FILE* File = fopen(SensorFilePath, "r"))
 		{
 			FCStringAnsi::Strcpy(AndroidCpuThermalSensorFileBuf, SensorFilePath);
-			UE_LOG(LogAndroid, Display, TEXT("Selecting thermal sensor located at `%s`"), AndroidCpuThermalSensorFileBuf);
+			UE_LOG(LogAndroid, Display, TEXT("Selecting thermal sensor located at `%s`"), ANSI_TO_TCHAR(AndroidCpuThermalSensorFileBuf));
 			fclose(File);
 			return;
 		}
@@ -1207,7 +1221,8 @@ protected:
 		if (FPlatformAtomics::InterlockedIncrement(&handling_fatal_signal) != 1)
 		{
 			FPlatformProcess::SleepNoStats(60.0f);
-			exit(0);
+			// exit immediately, crash malloc can cause deadlocks when attempting to clean up static objects via exit().
+			_exit(1);
 		}
 	}
 
@@ -1216,6 +1231,9 @@ protected:
 		EnterFatalCrash();
 		FSignalHandler<FFatalSignalHandler>::ForwardSignal(Signal, Info, Context);
 		RestorePreviousTargetSignalHandlers();
+
+		// re-raise the signal for the benefit of the previous handler.
+		raise(Signal);
 	}
 
 	static void HandleTargetSignal(int Signal, siginfo* Info, void* Context)
@@ -1259,7 +1277,8 @@ protected:
 
 		for (int32 i = 0; i < NumTargetSignals; ++i)
 		{
-			sigaction(TargetSignals[i], &Action, &PrevActions[i]);
+			int result = sigaction(TargetSignals[i], &Action, &PrevActions[i]);
+			UE_CLOG(result != 0, LogAndroid, Error, TEXT("sigaction(%d) failed to set: %d, errno = %x "), i, result, errno);
 		}
 		PreviousSignalHandlersValid = true;
 	}
@@ -1270,7 +1289,8 @@ protected:
 		{
 			for (int32 i = 0; i < NumTargetSignals; ++i)
 			{
-				sigaction(TargetSignals[i], &PrevActions[i], NULL);
+				int result = sigaction(TargetSignals[i], &PrevActions[i], NULL);
+				UE_CLOG(result != 0, LogAndroid, Error, TEXT("sigaction(%d) failed to set prev action: %d, errno = %x "), i, result, errno);
 			}
 			PreviousSignalHandlersValid = false;
 		}
@@ -1308,42 +1328,29 @@ bool FAndroidMisc::IsInSignalHandler()
 #endif
 }
 
-void FAndroidMisc::TriggerNonFatalCrashHandler(ECrashContextType InType, const FString& Message)
+void FAndroidMisc::TriggerCrashHandler(ECrashContextType InType, const TCHAR* InErrorMessage, const TCHAR* OverrideCallstack)
 {
-	check(InType == ECrashContextType::Ensure);
+	if (InType != ECrashContextType::Crash)
+	{
+		// we dont flush logs during a fatal signal, malloccrash can cause us to deadlock.
+		if (GLog)
+		{
+			GLog->PanicFlushThreadedLogs();
+			GLog->Flush();
+		}
+		if (GWarn)
+		{
+			GWarn->Flush();
+		}
+		if (GError)
+		{
+			GError->Flush();
+		}
+	}
 
-	if (GLog)
-	{
-		GLog->PanicFlushThreadedLogs();
-		GLog->Flush();
-	}
-	if (GWarn)
-	{
-		GWarn->Flush();
-	}
-	if (GError)
-	{
-		GError->Flush();
-	}
+	FAndroidCrashContext CrashContext(InType, InErrorMessage);
 
-	FAndroidCrashContext CrashContext(InType, *Message);
-
-	CrashContext.CaptureCrashInfo();
-	if (GCrashHandlerPointer)
-	{
-		GCrashHandlerPointer(CrashContext);
-	}
-	else
-	{
-		// call default one
-		DefaultCrashHandler(CrashContext);
-	}
-}
-
-void FAndroidMisc::TriggerCrashHandler(const TCHAR* InErrorMessage, const TCHAR* OverrideCallstack)
-{
-	FAndroidCrashContext CrashContext(ECrashContextType::Crash, InErrorMessage);
-	if(OverrideCallstack)
+	if (OverrideCallstack)
 	{
 		CrashContext.SetOverrideCallstack(OverrideCallstack);
 	}
@@ -2457,12 +2464,6 @@ void FAndroidMisc::BeginNamedEvent(const struct FColor& Color, const TCHAR* Text
 #if FRAMEPRO_ENABLED
 	FFrameProProfiler::PushEvent(Text);
 #endif // FRAMEPRO_ENABLED
-#if CPUPROFILERTRACE_ENABLED
-	if (CpuChannel)
-	{
-		FCpuProfilerTrace::OutputBeginDynamicEvent(Text);
-	}
-#endif
 	if (bUseNativeSystrace ? !ATrace_isEnabled() : TraceMarkerFileDescriptor == -1)
 	{
 		return;
@@ -2490,12 +2491,6 @@ void FAndroidMisc::BeginNamedEvent(const struct FColor& Color, const ANSICHAR* T
 #if FRAMEPRO_ENABLED
 	FFrameProProfiler::PushEvent(Text);
 #endif // FRAMEPRO_ENABLED
-#if CPUPROFILERTRACE_ENABLED
-	if (CpuChannel)
-	{
-		FCpuProfilerTrace::OutputBeginDynamicEvent(Text);
-	}
-#endif
 	if (bUseNativeSystrace ? !ATrace_isEnabled() : TraceMarkerFileDescriptor == -1)
 	{
 		return;
@@ -2509,12 +2504,6 @@ void FAndroidMisc::EndNamedEvent()
 #if FRAMEPRO_ENABLED
 	FFrameProProfiler::PopEvent();
 #endif // FRAMEPRO_ENABLED
-#if CPUPROFILERTRACE_ENABLED
-	if (CpuChannel)
-	{
-		FCpuProfilerTrace::OutputEndEvent();
-	}
-#endif
 	if (bUseNativeSystrace ? !ATrace_isEnabled() : TraceMarkerFileDescriptor == -1)
 	{
 		return;

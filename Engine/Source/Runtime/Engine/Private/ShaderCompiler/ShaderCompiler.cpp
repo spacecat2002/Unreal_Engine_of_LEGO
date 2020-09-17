@@ -2502,8 +2502,6 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 			}
 		}
 
-		check((ShaderMap && Materials) || ProcessIt.Key() == GlobalShaderMapId);
-
 		if (ShaderMap && Materials)
 		{
 			TArray<FString> Errors;
@@ -2644,6 +2642,26 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 				CompilationResults.Empty();
 				ProcessIt.RemoveCurrent();
 			}
+		}
+		else
+		{
+			// CompileID doesn't match GlobalShaderMapId, and doesn't match any currently compiling materials...this is a fatal error
+			UE_LOG(LogShaderCompilers, Error, TEXT("CompileResults: NumJobsQueued %d, FinishedJobs.Num %d, FinalizeJobIndex %d, bAllJobsSucceeded %d"),
+				CompileResults.NumJobsQueued, CompileResults.FinishedJobs.Num(), CompileResults.FinalizeJobIndex, (int32)CompileResults.bAllJobsSucceeded)
+			UE_LOG(LogShaderCompilers, Error, TEXT("ShaderMap: %s"), ShaderMap ? ShaderMap->GetFriendlyName() : TEXT("nullptr"));
+			if (Materials)
+			{
+				UE_LOG(LogShaderCompilers, Error, TEXT("Materials: %d"), Materials->Num());
+				for (FMaterial* Material : *Materials)
+				{
+					UE_LOG(LogShaderCompilers, Error, TEXT("  Material: %s"), Material ? *Material->GetFriendlyName() : TEXT("nullptr"));
+				}
+			}
+			else
+			{
+				UE_LOG(LogShaderCompilers, Error, TEXT("Materials: nullptr"));
+			}
+			UE_LOG(LogShaderCompilers, Fatal, TEXT("Missing ShaderMap/Material for CompileID %d"), ProcessIt.Key());
 		}
 	}
 
@@ -3193,47 +3211,12 @@ bool FShaderCompilingManager::IsShaderCompilerWorkerRunning(FProcHandle & Worker
 	return FPlatformProcess::IsProcRunning(WorkerHandle);
 }
 
-static void GenerateShaderParameterType(FString& Result, const FShaderParametersMetadata::FMember& Member)
-{
-	switch (Member.GetBaseType())
-	{
-	case UBMT_INT32:   Result = TEXT("int"); break;
-	case UBMT_UINT32:  Result = TEXT("uint"); break;
-	case UBMT_FLOAT32:
-		if (Member.GetPrecision() == EShaderPrecisionModifier::Float)
-		{
-			Result = TEXT("float");
-		}
-		else if (Member.GetPrecision() == EShaderPrecisionModifier::Half)
-		{
-			Result = TEXT("half");
-		}
-		else if (Member.GetPrecision() == EShaderPrecisionModifier::Fixed)
-		{
-			Result = TEXT("fixed");
-		}
-		break;
-	default:
-		UE_LOG(LogShaders, Fatal, TEXT("Unrecognized uniform buffer struct member base type."));
-	};
-
-	// Generate the type dimensions for vectors and matrices.
-	if (Member.GetNumRows() > 1)
-	{
-		Result = FString::Printf(TEXT("%s%ux%u"), *Result, Member.GetNumRows(), Member.GetNumColumns());
-	}
-	else if (Member.GetNumColumns() > 1)
-	{
-		Result = FString::Printf(TEXT("%s%u"), *Result, Member.GetNumColumns());
-	}
-}
-
 /* Generates a uniform buffer struct member hlsl declaration using the member's metadata. */
-static void GenerateUniformBufferStructMember(FString& Result, const FShaderParametersMetadata::FMember& Member)
+static void GenerateUniformBufferStructMember(FString& Result, const FShaderParametersMetadata::FMember& Member, EShaderPlatform ShaderPlatform)
 {
 	// Generate the base type name.
 	FString TypeName;
-	GenerateShaderParameterType(TypeName, Member);
+	Member.GenerateShaderParameterType(TypeName, ShaderPlatform);
 
 	// Generate array dimension post fix
 	FString ArrayDim;
@@ -3246,7 +3229,7 @@ static void GenerateUniformBufferStructMember(FString& Result, const FShaderPara
 }
 
 /* Generates the instanced stereo hlsl code that's dependent on view uniform declarations. */
-ENGINE_API void GenerateInstancedStereoCode(FString& Result)
+ENGINE_API void GenerateInstancedStereoCode(FString& Result, EShaderPlatform ShaderPlatform)
 {
 	// Find the InstancedView uniform buffer struct
 	const FShaderParametersMetadata* InstancedView = nullptr;
@@ -3268,7 +3251,7 @@ ENGINE_API void GenerateInstancedStereoCode(FString& Result)
 	{
 		const FShaderParametersMetadata::FMember& Member = StructMembers[MemberIndex];
 		FString MemberDecl;
-		GenerateUniformBufferStructMember(MemberDecl, StructMembers[MemberIndex]);
+		GenerateUniformBufferStructMember(MemberDecl, StructMembers[MemberIndex], ShaderPlatform);
 		Result += FString::Printf(TEXT("\t%s;\r\n"), *MemberDecl);
 	}
 	Result += "};\r\n";
@@ -3327,7 +3310,8 @@ void ValidateShaderFilePath(const FString& VirtualShaderFilePath, const FString&
 		*VirtualShaderFilePath);
 }
 
-static void PullRootShaderParametersLayout(FShaderCompilerInput& CompileInput, const FShaderParametersMetadata& ParametersMetadata, uint16 ByteOffset, const FString& Prefix)
+
+static void PullRootShaderParametersLayout(FShaderCompilerInput& CompileInput, EShaderPlatform ShaderPlatform, const FShaderParametersMetadata& ParametersMetadata, uint16 ByteOffset, const FString& Prefix)
 {
 	for (const FShaderParametersMetadata::FMember& Member : ParametersMetadata.GetMembers())
 	{
@@ -3338,19 +3322,19 @@ static void PullRootShaderParametersLayout(FShaderCompilerInput& CompileInput, c
 		if (BaseType == UBMT_INCLUDED_STRUCT)
 		{
 			check(NumElements == 0);
-			PullRootShaderParametersLayout(CompileInput, *Member.GetStructMetadata(), MemberOffset, Prefix);
+			PullRootShaderParametersLayout(CompileInput, ShaderPlatform, *Member.GetStructMetadata(), MemberOffset, Prefix);
 		}
 		else if (BaseType == UBMT_NESTED_STRUCT && NumElements == 0)
 		{
 			FString NewPrefix = FString::Printf(TEXT("%s%s_"), *Prefix, Member.GetName());
-			PullRootShaderParametersLayout(CompileInput, *Member.GetStructMetadata(), MemberOffset, NewPrefix);
+			PullRootShaderParametersLayout(CompileInput, ShaderPlatform, *Member.GetStructMetadata(), MemberOffset, NewPrefix);
 		}
 		else if (BaseType == UBMT_NESTED_STRUCT && NumElements > 0)
 		{
 			for (uint32 ArrayElementId = 0; ArrayElementId < NumElements; ArrayElementId++)
 			{
 				FString NewPrefix = FString::Printf(TEXT("%s%s_%u_"), *Prefix, Member.GetName(), ArrayElementId);
-				PullRootShaderParametersLayout(CompileInput, *Member.GetStructMetadata(), MemberOffset, NewPrefix);
+				PullRootShaderParametersLayout(CompileInput, ShaderPlatform, *Member.GetStructMetadata(), MemberOffset, NewPrefix);
 			}
 		}
 		else if (
@@ -3360,7 +3344,7 @@ static void PullRootShaderParametersLayout(FShaderCompilerInput& CompileInput, c
 		{
 			FShaderCompilerInput::FRootParameterBinding RootParameterBinding;
 			RootParameterBinding.Name = FString::Printf(TEXT("%s%s"), *Prefix, Member.GetName());
-			GenerateShaderParameterType(RootParameterBinding.ExpectedShaderType, Member);
+			Member.GenerateShaderParameterType(RootParameterBinding.ExpectedShaderType, ShaderPlatform);
 			RootParameterBinding.ByteOffset = MemberOffset;
 			CompileInput.RootParameterBindings.Add(RootParameterBinding);
 		}
@@ -3414,10 +3398,12 @@ void GlobalBeginCompileShader(
 	COOK_STAT(ShaderCompilerCookStats::GlobalBeginCompileShaderCalls++);
 	COOK_STAT(FScopedDurationTimer DurationTimer(ShaderCompilerCookStats::GlobalBeginCompileShaderTimeSec));
 
+	EShaderPlatform ShaderPlatform = EShaderPlatform(Target.Platform);
+
 	TSharedRef<FShaderCompileJob, ESPMode::ThreadSafe> Job = StaticCastSharedRef<FShaderCompileJob>(NewJob);
 	FShaderCompilerInput& Input = Job->Input;
 	Input.Target = Target;
-	Input.ShaderFormat = LegacyShaderPlatformToShaderFormat(EShaderPlatform(Target.Platform));
+	Input.ShaderFormat = LegacyShaderPlatformToShaderFormat(ShaderPlatform);
 	Input.VirtualSourceFilePath = SourceFilename;
 	Input.EntryPointName = FunctionName;
 	Input.bCompilingForShaderPipeline = false;
@@ -3431,7 +3417,7 @@ void GlobalBeginCompileShader(
 
 	if (ShaderType->GetRootParametersMetadata())
 	{
-		PullRootShaderParametersLayout(Input, *ShaderType->GetRootParametersMetadata(), /* ByteOffset = */ 0, FString());
+		PullRootShaderParametersLayout(Input, ShaderPlatform, *ShaderType->GetRootParametersMetadata(), /* ByteOffset = */ 0, FString());
 	}
 
 	// Verify FShaderCompilerInput's file paths are consistent. 
@@ -3563,12 +3549,12 @@ void GlobalBeginCompileShader(
 	// #defines get stripped out by the preprocessor without this. We can override with this
 	Input.Environment.SetDefine(TEXT("COMPILER_DEFINE"), TEXT("#define"));
 
-	if (FSceneInterface::GetShadingPath(GetMaxSupportedFeatureLevel((EShaderPlatform)Target.Platform)) == EShadingPath::Deferred)
+	if (FSceneInterface::GetShadingPath(GetMaxSupportedFeatureLevel(ShaderPlatform)) == EShadingPath::Deferred)
 	{
 		Input.Environment.SetDefine(TEXT("SHADING_PATH_DEFERRED"), 1);
 	}
 
-	const bool bUsingMobileRenderer = FSceneInterface::GetShadingPath(GetMaxSupportedFeatureLevel((EShaderPlatform)Target.Platform)) == EShadingPath::Mobile;
+	const bool bUsingMobileRenderer = FSceneInterface::GetShadingPath(GetMaxSupportedFeatureLevel(ShaderPlatform)) == EShadingPath::Mobile;
 	if (bUsingMobileRenderer)
 	{
 		Input.Environment.SetDefine(TEXT("SHADING_PATH_MOBILE"), 1);
@@ -3589,8 +3575,6 @@ void GlobalBeginCompileShader(
 		const bool bIsMobileMultiViewCVar = CVarMobileMultiView && CVarMobileHDR ?
 			(CVarMobileMultiView->GetValueOnGameThread() != 0 && CVarMobileHDR->GetValueOnGameThread() == 0) : false;
 		const bool bIsODSCapture = CVarODSCapture && (CVarODSCapture->GetValueOnGameThread() != 0);
-
-		const EShaderPlatform ShaderPlatform = static_cast<EShaderPlatform>(Target.Platform);
 
 		bool bIsInstancedStereo = !bUsingMobileRenderer && bIsInstancedStereoCVar && RHISupportsInstancedStereo(ShaderPlatform);
 		bool bIsMobileMultiview = bUsingMobileRenderer && bIsMobileMultiViewCVar;
@@ -3614,18 +3598,18 @@ void GlobalBeginCompileShader(
 		Input.Environment.SetDefine(TEXT("ODS_CAPTURE"), bIsODSCapture);
 	}
 
-	ShaderType->AddReferencedUniformBufferIncludes(Input.Environment, Input.SourceFilePrefix, (EShaderPlatform)Target.Platform);
+	ShaderType->AddReferencedUniformBufferIncludes(Input.Environment, Input.SourceFilePrefix, ShaderPlatform);
 
 	if (VFType)
 	{
-		VFType->AddReferencedUniformBufferIncludes(Input.Environment, Input.SourceFilePrefix, (EShaderPlatform)Target.Platform);
+		VFType->AddReferencedUniformBufferIncludes(Input.Environment, Input.SourceFilePrefix, ShaderPlatform);
 	}
 
 	// Add generated instanced stereo code
 	if (GCachedGeneratedInstancedStereoCode.Get()->Len() == 0)
 	{
 		GCachedGeneratedInstancedStereoCode = MakeShareable(new FString());
-		GenerateInstancedStereoCode(*GCachedGeneratedInstancedStereoCode.Get());
+		GenerateInstancedStereoCode(*GCachedGeneratedInstancedStereoCode.Get(), ShaderPlatform);
 	}
 	
 	Input.Environment.IncludeVirtualPathToExternalContentsMap.Add(TEXT("/Engine/Generated/GeneratedInstancedStereo.ush"), GCachedGeneratedInstancedStereoCode);
@@ -4797,9 +4781,24 @@ void CompileGlobalShaderMap(EShaderPlatform Platform, const ITargetPlatform* Tar
 		{
 			SlowTask.EnterProgressFrame(50);
 
+			// Load from the override global shaders first, this allows us to hot reload in cooked / pak builds
+			TArray<uint8> GlobalShaderData;
+			const bool bAllowOverrideGlobalShaders = !WITH_EDITOR && !UE_BUILD_SHIPPING;
+			if (bAllowOverrideGlobalShaders)
+			{
+				FString OverrideGlobalShaderCacheFilename = GetGlobalShaderCacheOverrideFilename(Platform);
+				FPaths::MakeStandardFilename(OverrideGlobalShaderCacheFilename);
+				bLoadedFromCacheFile = FFileHelper::LoadFileToArray(GlobalShaderData, *OverrideGlobalShaderCacheFilename, FILEREAD_Silent);
+			}
+
 			// is the data already loaded?
-			int64 PreloadedSize;
-			void* PreloadedData = GGlobalShaderPreLoadFile.TakeOwnershipOfLoadedData(&PreloadedSize);
+			int64 PreloadedSize = 0;
+			void* PreloadedData = nullptr;
+			if (!bLoadedFromCacheFile)
+			{
+				PreloadedData = GGlobalShaderPreLoadFile.TakeOwnershipOfLoadedData(&PreloadedSize);
+			}
+
 			if (PreloadedData != nullptr)
 			{
 				FLargeMemoryReader MemoryReader((uint8*)PreloadedData, PreloadedSize, ELargeMemoryReaderFlags::TakeOwnership);
@@ -4807,17 +4806,6 @@ void CompileGlobalShaderMap(EShaderPlatform Platform, const ITargetPlatform* Tar
 			}
 			else
 			{
-				TArray<uint8> GlobalShaderData;
-
-				// Load from the override global shaders first, this allows us to hot reload in cooked / pak builds
-				const bool bAllowOverrideGlobalShaders = !WITH_EDITOR && !UE_BUILD_SHIPPING;
-				if (bAllowOverrideGlobalShaders)
-				{
-					FString OverrideGlobalShaderCacheFilename = GetGlobalShaderCacheOverrideFilename(Platform);
-					FPaths::MakeStandardFilename(OverrideGlobalShaderCacheFilename);
-					bLoadedFromCacheFile = FFileHelper::LoadFileToArray(GlobalShaderData, *OverrideGlobalShaderCacheFilename, FILEREAD_Silent);
-				}
-
 				FString GlobalShaderCacheFilename = FPaths::GetRelativePathToRoot() / GetGlobalShaderCacheFilename(Platform);
 				FPaths::MakeStandardFilename(GlobalShaderCacheFilename);
 				if (!bLoadedFromCacheFile)

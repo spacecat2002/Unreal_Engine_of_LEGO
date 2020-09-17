@@ -663,6 +663,7 @@ enum ETranslucencyVolumeCascade
 	VIEW_UNIFORM_BUFFER_MEMBER_ARRAY(FVector4, TranslucencyLightingVolumeInvSize, [TVC_MAX]) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, TemporalAAParams) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, CircleDOFParams) \
+	VIEW_UNIFORM_BUFFER_MEMBER(uint32, ForceDrawAllVelocities) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, DepthOfFieldSensorWidth) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, DepthOfFieldFocalDistance) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, DepthOfFieldScale) \
@@ -937,6 +938,12 @@ public:
 
 	/** Half of the view's stereo IPD (- for lhs, + for rhs) */
 	float StereoIPD;
+
+	/** Allow cross GPU transfer for this view */
+	bool bAllowCrossGPUTransfer;
+
+	/** Use custom GPUmask */
+	bool bOverrideGPUMask;
 
 	/** The GPU nodes on which to render this view. */
 	FRHIGPUMask GPUMask;

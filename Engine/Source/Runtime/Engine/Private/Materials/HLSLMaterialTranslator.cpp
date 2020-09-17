@@ -1232,6 +1232,7 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 	OutEnvironment.SetDefine(TEXT("USES_DISTORTION"), Material->IsDistorted()); 
 
 	OutEnvironment.SetDefine(TEXT("MATERIAL_ENABLE_TRANSLUCENCY_FOGGING"), Material->ShouldApplyFogging());
+	OutEnvironment.SetDefine(TEXT("MATERIAL_ENABLE_TRANSLUCENCY_CLOUD_FOGGING"), Material->ShouldApplyCloudFogging());
 	OutEnvironment.SetDefine(TEXT("MATERIAL_IS_SKY"), Material->IsSky());
 	OutEnvironment.SetDefine(TEXT("MATERIAL_COMPUTE_FOG_PER_PIXEL"), Material->ComputeFogPerPixel());
 	OutEnvironment.SetDefine(TEXT("MATERIAL_FULLY_ROUGH"), bIsFullyRough || Material->IsFullyRough());
@@ -2988,7 +2989,6 @@ int32 FHLSLMaterialTranslator::ScalarParameter(FName ParameterName, float Defaul
 		ParameterIndex = MaterialCompilationOutput.UniformExpressionSet.UniformScalarParameters.Num();
 		FMaterialScalarParameterInfo& Parameter = MaterialCompilationOutput.UniformExpressionSet.UniformScalarParameters.AddDefaulted_GetRef();
 		Parameter.ParameterInfo = ParameterInfo;
-		Parameter.ParameterName = ParameterName.ToString();
 		Parameter.DefaultValue = DefaultValue;
 	}
 
@@ -3015,7 +3015,6 @@ int32 FHLSLMaterialTranslator::VectorParameter(FName ParameterName, const FLinea
 		ParameterIndex = MaterialCompilationOutput.UniformExpressionSet.UniformVectorParameters.Num();
 		FMaterialVectorParameterInfo& Parameter = MaterialCompilationOutput.UniformExpressionSet.UniformVectorParameters.AddDefaulted_GetRef();
 		Parameter.ParameterInfo = ParameterInfo;
-		Parameter.ParameterName = ParameterName.ToString();
 		Parameter.DefaultValue = DefaultValue;
 	}
 
@@ -6807,6 +6806,40 @@ int32 FHLSLMaterialTranslator::GetHairRoughness()
 	return AddCodeChunk(MCT_Float1, TEXT("MaterialExpressionGetHairRoughness(Parameters)"));
 }
 
+int32 FHLSLMaterialTranslator::GetHairDepth()
+{
+	return AddCodeChunk(MCT_Float1, TEXT("MaterialExpressionGetHairDepth(Parameters)"));
+}
+
+int32 FHLSLMaterialTranslator::GetHairCoverage()
+{
+	return AddCodeChunk(MCT_Float1, TEXT("MaterialExpressionGetHairCoverage(Parameters)"));
+}
+
+int32 FHLSLMaterialTranslator::GetHairAtlasUVs()
+{
+	return AddCodeChunk(MCT_Float2, TEXT("MaterialExpressionGetAtlasUVs(Parameters)"));
+}
+
+int32 FHLSLMaterialTranslator::GetHairColorFromMelanin(int32 Melanin, int32 Redness, int32 DyeColor)
+{
+	if (Melanin == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+
+	if (Redness == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+
+	if (DyeColor == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+	return AddCodeChunk(MCT_Float3, TEXT("MaterialExpressionGetHairColorFromMelanin(%s, %s, %s)"), *GetParameterCode(Melanin), *GetParameterCode(Redness), *GetParameterCode(DyeColor));
+}
+
 int32 FHLSLMaterialTranslator::DistanceToNearestSurface(int32 PositionArg)
 {
 	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::SM5) == INDEX_NONE)
@@ -6909,49 +6942,6 @@ int32 FHLSLMaterialTranslator::SkyAtmosphereDistantLightScatteredLuminance()
 {
 	bUsesSkyAtmosphere = true;
 	return AddCodeChunk(MCT_Float3, TEXT("MaterialExpressionSkyAtmosphereDistantLightScatteredLuminance(Parameters)"));
-}
-
-int32 FHLSLMaterialTranslator::SceneDepthWithoutWater(int32 Offset, int32 ViewportUV, bool bUseOffset, float FallbackDepth)
-{
-	if (ShaderFrequency == SF_Vertex && FeatureLevel <= ERHIFeatureLevel::ES3_1)
-	{
-		// mobile currently does not support this, we need to read a separate copy of the depth, we must disable framebuffer fetch and force scene texture reads.
-		return Errorf(TEXT("Cannot read scene depth from the vertex shader with feature level ES3.1 or below."));
-	}
-
-	if (!Material->GetShadingModels().HasShadingModel(MSM_SingleLayerWater))
-	{
-		return Errorf(TEXT("Can only read scene depth below water when material Shading Model is Single Layer Water."));
-	}
-	
-	if (Material->GetMaterialDomain() != MD_Surface)
-	{
-		return Errorf(TEXT("Can only read scene depth below water when material Domain is set to Surface."));
-	}
-
-	if (IsTranslucentBlendMode(Material->GetBlendMode()))
-	{
-		return Errorf(TEXT("Can only read scene depth below water when material Blend Mode isn't translucent."));
-	}
-
-	if (Offset == INDEX_NONE && bUseOffset)
-	{
-		return INDEX_NONE;
-	}
-
-	AddEstimatedTextureSample();
-
-	const FString UserDepthCode(TEXT("MaterialExpressionSceneDepthWithoutWater(%s, %s)"));
-	const FString FallbackString(FString::SanitizeFloat(FallbackDepth));
-	const int32 TexCoordCode = GetScreenAlignedUV(Offset, ViewportUV, bUseOffset);
-
-	// add the code string
-	return AddCodeChunk(
-		MCT_Float,
-		*UserDepthCode,
-		*GetParameterCode(TexCoordCode),
-		*FallbackString
-	);
 }
 
 int32 FHLSLMaterialTranslator::GetCloudSampleAltitude()

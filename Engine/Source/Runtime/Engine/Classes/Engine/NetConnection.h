@@ -12,6 +12,7 @@
 #include "Serialization/BitWriter.h"
 #include "Misc/NetworkGuid.h"
 #include "GameFramework/OnlineReplStructs.h"
+#include "GameFramework/UpdateLevelVisibilityLevelInfo.h"
 #include "Engine/NetDriver.h"
 #include "Net/DataBunch.h"
 #include "Net/NetPacketNotify.h"
@@ -23,7 +24,7 @@
 #include "Net/Core/Trace/Config.h"
 #include "ReplicationDriver.h"
 #include "Analytics/EngineNetAnalytics.h"
-#include "Net/Core/Misc/PacketTraits.h"
+#include "Net/Common/Packets/PacketTraits.h"
 #include "Net/Core/Misc/ResizableCircularQueue.h"
 #include "Net/NetAnalyticsTypes.h"
 
@@ -231,6 +232,13 @@ struct FDelayedIncomingPacket
 };
 
 #endif //#if DO_ENABLE_NET_TEST
+
+struct FChannelCloseInfo
+{
+	uint32 Id;
+	EChannelCloseReason CloseReason;
+};
+typedef TArray<FChannelCloseInfo, TInlineAllocator<8>> FChannelsToClose;
 
 /** Record of channels with data written into each outgoing packet. */
 struct FWrittenChannelsRecord
@@ -458,14 +466,6 @@ public:
 
 	/** Average lag seen during the last StatPeriod */
 	float AvgLag;
-
-private:
-	// BestLag variable is deprecated. Use AvgLag instead
-	float			BestLag;
-	// BestLagAcc variable is deprecated. Use LagAcc instead
-	double			BestLagAcc;
-
-public:
 
 	/** Total accumulated lag values during the current StatPeriod */
 	double			LagAcc;
@@ -731,9 +731,6 @@ public:
 	/** Called by PlayerController to tell connection about client level visiblity change */
 	ENGINE_API void UpdateLevelVisibility(const struct FUpdateLevelVisibilityLevelInfo& LevelVisibility);
 	
-	UE_DEPRECATED(4.24, "This method will be removed. Use UpdateLevelVisibility that takes an FUpdateLevelVisibilityLevelInfo")
-	ENGINE_API void UpdateLevelVisibility(const FName& PackageName, bool bIsVisible);
-
 #if DO_ENABLE_NET_TEST
 
 	/** Packet settings for testing lag, net errors, etc */
@@ -1302,6 +1299,8 @@ public:
 	/** Called when owning network driver receives NotifyActorDestroyed. */
 	ENGINE_API virtual void NotifyActorDestroyed(AActor* Actor, bool IsSeamlessTravel = false);
 
+	ENGINE_API virtual void NotifyActorChannelCleanedUp(UActorChannel* Channel, EChannelCloseReason CloseReason);
+
 protected:
 
 	bool GetPendingCloseDueToSocketSendFailure() const
@@ -1312,6 +1311,9 @@ protected:
 	ENGINE_API void SetPendingCloseDueToSocketSendFailure();
 
 	void CleanupDormantActorState();
+
+	/** During cleanup this will destroy the actor owned by this connection (generally a PlayerController) */
+	ENGINE_API virtual void DestroyOwningActor();
 
 	/** Called internally to destroy an actor during replay fast-forward when the actor channel index will be recycled */
 	ENGINE_API virtual void DestroyIgnoredActor(AActor* Actor);
@@ -1336,7 +1338,15 @@ private:
 	FName PlayerOnlinePlatformName;
 
 	/** This is an acceleration set that is derived from ClientWorldPackageName and ClientVisibleLevelNames. We use this to quickly test an AActor*'s visibility while replicating. */
-	mutable TMap<UObject*, bool> ClientVisibileActorOuters;
+	mutable TMap<UObject*, bool> ClientVisibleActorOuters;
+
+	/** This is used to capture visibility updates while the server is in transition and deffer the update until the server has completed the transition */
+	TMap<FName, FUpdateLevelVisibilityLevelInfo> PendingUpdateLevelVisibility;
+
+private:
+
+	/** Called by PlayerController to tell connection about client level visibility change */
+	void UpdateLevelVisibilityInternal(const struct FUpdateLevelVisibilityLevelInfo& LevelVisibility);
 
 	/** Called internally to update cached acceleration map */
 	bool UpdateCachedLevelVisibility(ULevel* Level) const;
@@ -1370,7 +1380,7 @@ private:
 	bool ReadPacketInfo(FBitReader& Reader, bool bHasPacketInfoPayload);
 
 	/** Packet was acknowledged as delivered */
-	void ReceivedAck(int32 AckPacketId);
+	void ReceivedAck(int32 AckPacketId, FChannelsToClose& OutChannelsToClose);
 
 	/** Calculate the average jitter while adding the new packet's jitter value */
 	void ProcessJitter(uint32 PacketJitterClockTimeMS);
@@ -1610,6 +1620,8 @@ public:
 	void HandleClientPlayer( APlayerController* PC, UNetConnection* NetConnection ) override;
 	virtual FString LowLevelGetRemoteAddress(bool bAppendPort=false) override { return FString(); }
 	virtual bool ClientHasInitializedLevelFor(const AActor* TestActor) const { return true; }
+
+	virtual void DestroyOwningActor() override { /* Don't destroy the OwningActor since we follow a real PlayerController*/ }
 
 	virtual TSharedPtr<const FInternetAddr> GetRemoteAddr() override { return nullptr; }
 };

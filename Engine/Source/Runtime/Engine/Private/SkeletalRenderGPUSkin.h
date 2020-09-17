@@ -190,7 +190,7 @@ public:
 	/**
 	 * Get Resource Size : mostly copied from InitDynamicRHI - how much they allocate when initialize
 	 */
-	SIZE_T GetResourceSize()
+	SIZE_T GetResourceSize() const
 	{
 		SIZE_T ResourceSize = sizeof(*this);
 
@@ -203,7 +203,24 @@ public:
 			ResourceSize += LodData.GetNumVertices() * sizeof(FMorphGPUSkinVertex);
 		}
 
+		if (NormalizationBufferRHI)
+		{
+			// LOD of the skel mesh is used to find number of vertices in buffer
+			FSkeletalMeshLODRenderData& LodData = SkelMeshRenderData->LODRenderData[LODIdx];
+
+			// Create the buffer rendering resource
+			ResourceSize += LodData.GetNumVertices() * sizeof(int);
+		}
+
 		return ResourceSize;
+	}
+	
+	SIZE_T GetNumVerticies() const
+	{
+		// LOD of the skel mesh is used to find number of vertices in buffer
+		FSkeletalMeshLODRenderData& LodData = SkelMeshRenderData->LODRenderData[LODIdx];
+		// Create the buffer rendering resource
+		return LodData.GetNumVertices();
 	}
 
 	/** Has been updated or not by UpdateMorphVertexBuffer**/
@@ -224,6 +241,12 @@ public:
 		return UAVValue;
 	}
 
+	// @param guaranteed only to be valid if the Normalization Buffer is valid
+	FUnorderedAccessViewRHIRef GetNormalizationUAV() const
+	{
+		return NormalizationBufferUAV;
+	}
+
 	FSkeletalMeshLODRenderData* GetLODRenderData() const { return &SkelMeshRenderData->LODRenderData[LODIdx]; }
 	
 	// section ids that are using this Morph buffer
@@ -242,6 +265,12 @@ private:
 	int32	LODIdx;
 	// parent mesh containing the source data, never 0
 	FSkeletalMeshRenderData* SkelMeshRenderData;
+
+	//temporary buffer used for normalization
+	FVertexBufferRHIRef NormalizationBufferRHI;
+
+	// guaranteed only to be valid if the Normalization Buffer is valid
+	FUnorderedAccessViewRHIRef NormalizationBufferUAV;
 };
 
 /**
@@ -389,6 +418,15 @@ public:
 		}
 	}
 	//~ End FSkeletalMeshObject Interface
+
+	bool DoesAnySegmentUsesWorldPositionOffset() const
+	{
+#if RHI_RAYTRACING
+		return DynamicData ? DynamicData->bAnySegmentUsesWorldPositionOffset : false;
+#else
+		return false;
+#endif
+	}
 
 	FSkinWeightVertexBuffer* GetSkinWeightVertexBuffer(int32 LODIndex) const;
 
@@ -631,17 +669,19 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		MorphVertexBufferParameter.Bind(Initializer.ParameterMap, TEXT("MorphVertexBuffer"));
+		MorphNormalizationBufferParameter.Bind(Initializer.ParameterMap, TEXT("MorphNormalizationBuffer"));
 
 		MorphTargetWeightParameter.Bind(Initializer.ParameterMap, TEXT("MorphTargetWeight"));
 		ThreadOffsetsParameter.Bind(Initializer.ParameterMap, TEXT("ThreadOffsets"));
 		GlobalDispatchOffsetParameter.Bind(Initializer.ParameterMap, TEXT("GlobalDispatchOffset"));
 		PositionScaleParameter.Bind(Initializer.ParameterMap, TEXT("PositionScale"));
+		WeightScaleParameter.Bind(Initializer.ParameterMap, TEXT("WeightScale"));
 
 		VertexIndicesParameter.Bind(Initializer.ParameterMap, TEXT("VertexIndicies"));
 		MorphDeltasParameter.Bind(Initializer.ParameterMap, TEXT("MorphDeltas"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FVector4& LocalScale, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, FMorphVertexBuffer& MorphVertexBuffer);
+	void SetParameters(FRHICommandList& RHICmdList, const FVector4& LocalScale, float WeightScale, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, FMorphVertexBuffer& MorphVertexBuffer);
 	void SetOffsetAndSize(FRHICommandList& RHICmdList, uint32 StartIndex, uint32 EndIndexPlusOne, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, const TArray<float>& MorphTargetWeights);
 
 	void Dispatch(FRHICommandList& RHICmdList, uint32 Size);
@@ -654,12 +694,14 @@ public:
 
 protected:
 	LAYOUT_FIELD(FShaderResourceParameter, MorphVertexBufferParameter);
+	LAYOUT_FIELD(FShaderResourceParameter, MorphNormalizationBufferParameter);
 
 	LAYOUT_FIELD(FShaderParameter, MorphTargetWeightParameter);
 	LAYOUT_FIELD(FShaderParameter, OffsetAndSizeParameter);
 	LAYOUT_FIELD(FShaderParameter, ThreadOffsetsParameter);
 	LAYOUT_FIELD(FShaderParameter, GlobalDispatchOffsetParameter);
 	LAYOUT_FIELD(FShaderParameter, PositionScaleParameter);
+	LAYOUT_FIELD(FShaderParameter, WeightScaleParameter);
 
 	LAYOUT_FIELD(FShaderResourceParameter, VertexIndicesParameter);
 	LAYOUT_FIELD(FShaderResourceParameter, MorphDeltasParameter);
@@ -676,11 +718,9 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		MorphVertexBufferParameter.Bind(Initializer.ParameterMap, TEXT("MorphVertexBuffer"));
-		MorphPermutationBufferParameter.Bind(Initializer.ParameterMap, TEXT("MorphPermutations"));
+		MorphNormalizationBufferParameter.Bind(Initializer.ParameterMap, TEXT("MorphNormalizationBuffer"));
 
-		MorphTargetWeightParameter.Bind(Initializer.ParameterMap, TEXT("MorphTargetWeight"));
-		ThreadOffsetsParameter.Bind(Initializer.ParameterMap, TEXT("ThreadOffsets"));
-		GlobalDispatchOffsetParameter.Bind(Initializer.ParameterMap, TEXT("GlobalDispatchOffset"));
+		WeightScaleParameter.Bind(Initializer.ParameterMap, TEXT("WeightScale"));
 		PositionScaleParameter.Bind(Initializer.ParameterMap, TEXT("PositionScale"));
 	}
 
@@ -689,18 +729,15 @@ public:
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FVector4& LocalScale, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, FMorphVertexBuffer& MorphVertexBuffer);
-	void SetOffsetAndSize(FRHICommandList& RHICmdList, uint32 StartIndex, uint32 EndIndexPlusOne, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, const TArray<float>& InverseAccumulatedWeights);
+	void SetParameters(FRHICommandList& RHICmdList, const FVector4& LocalScale, float InvWeightScale, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, FMorphVertexBuffer& MorphVertexBuffer);
 
 	void Dispatch(FRHICommandList& RHICmdList, uint32 NumVerticies);
 	void EndAllDispatches(FRHICommandList& RHICmdList);
 
 protected:
 	LAYOUT_FIELD(FShaderResourceParameter, MorphVertexBufferParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, MorphPermutationBufferParameter);
+	LAYOUT_FIELD(FShaderResourceParameter, MorphNormalizationBufferParameter);
 
-	LAYOUT_FIELD(FShaderParameter, MorphTargetWeightParameter);
-	LAYOUT_FIELD(FShaderParameter, ThreadOffsetsParameter);
-	LAYOUT_FIELD(FShaderParameter, GlobalDispatchOffsetParameter);
+	LAYOUT_FIELD(FShaderParameter, WeightScaleParameter);
 	LAYOUT_FIELD(FShaderParameter, PositionScaleParameter);
 };

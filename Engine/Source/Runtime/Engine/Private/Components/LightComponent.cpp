@@ -330,6 +330,7 @@ FLightSceneProxy::FLightSceneProxy(const ULightComponent* InLightComponent)
 	, FarShadowCascadeCount(0)
 	, ShadowAmount(1.0f)
 	, SamplesPerPixel(1)
+	, DeepShadowLayerDistribution(InLightComponent->DeepShadowLayerDistribution)
 	, bMobileMovablePointLightUniformBufferNeedsUpdate(false)
 	, bMobileMovablePointLightShouldBeRender(false)
 	, bMobileMovablePointLightShouldCastShadow(false)
@@ -425,6 +426,7 @@ ULightComponentBase::ULightComponentBase(const FObjectInitializer& ObjectInitial
 #if WITH_EDITORONLY_DATA
 	bVisualizeComponent = true;
 #endif
+	DeepShadowLayerDistribution = 0.5f;
 }
 
 ULightComponent::FOnUpdateColorAndBrightness ULightComponent::UpdateColorAndBrightnessEvent;

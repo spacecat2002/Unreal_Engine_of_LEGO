@@ -21,7 +21,7 @@ const FTextureRHIRef& GetMiniFontTexture();
 FRDGTextureRef TryCreateViewFamilyTexture(FRDGBuilder& GraphBuilder, const FSceneViewFamily& ViewFamily);
 
 // The vertex shader used by DrawScreenPass to draw a rectangle.
-class FScreenPassVS : public FGlobalShader
+class RENDERER_API FScreenPassVS : public FGlobalShader
 {
 public:
 	DECLARE_GLOBAL_SHADER(FScreenPassVS);

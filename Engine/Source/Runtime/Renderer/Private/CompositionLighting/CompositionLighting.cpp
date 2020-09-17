@@ -681,9 +681,6 @@ void FCompositionLighting::ProcessAfterBasePass(
 			}
 		}
 	}
-
-	SceneContext.ScreenSpaceGTAOHorizons.SafeRelease();
-	SceneContext.ScreenSpaceGTAODepths.SafeRelease();
 }
 
 

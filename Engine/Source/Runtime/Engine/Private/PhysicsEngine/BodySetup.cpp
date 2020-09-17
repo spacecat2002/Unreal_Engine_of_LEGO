@@ -871,8 +871,8 @@ void UBodySetup::AddShapesToRigidActor_AssumesLocked(
 
 void UBodySetup::RemoveSimpleCollision()
 {
-	AggGeom.EmptyElements();
 	InvalidatePhysicsData();
+	AggGeom.EmptyElements();
 }
 
 void UBodySetup::RescaleSimpleCollision( FVector BuildScale )
@@ -1068,6 +1068,7 @@ void UBodySetup::Serialize(FArchive& Ar)
 	// Levelset Serialization support for BodySetup.
 	if (Ar.CustomVer(FFortniteMainBranchObjectVersion::GUID) >= FFortniteMainBranchObjectVersion::LevelsetSerializationSupportForBodySetup)
 	{
+#if WITH_CHAOS
 		using namespace Chaos;
 		FChaosArchive ChaosAr(Ar);
 
@@ -1108,6 +1109,7 @@ void UBodySetup::Serialize(FArchive& Ar)
 				}
 			}
 		}
+#endif
 	}
 
 
