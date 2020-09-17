@@ -366,8 +366,6 @@ static void Writer_WorkerThread()
 		const uint32 SleepMs = 17;
 		ThreadSleep(SleepMs);
 	}
-
-	Writer_DrainBuffers();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -414,6 +412,15 @@ static void Writer_InternalShutdown()
 		GWorkerThread = 0;
 	}
 
+	Writer_WorkerUpdate();
+	Writer_DrainBuffers();
+
+	if (GDataHandle)
+	{
+		IoClose(GDataHandle);
+		GDataHandle = 0;
+	}
+
 	Writer_ShutdownControl();
 	Writer_ShutdownPool();
 
@@ -448,6 +455,12 @@ void Writer_Initialize(const FInitializeDesc& Desc)
 	{
 		Writer_WorkerCreate();
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void Writer_Shutdown()
+{
+	Writer_InternalShutdown();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
