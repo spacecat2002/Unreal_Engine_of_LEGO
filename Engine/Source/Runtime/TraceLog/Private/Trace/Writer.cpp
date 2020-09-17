@@ -127,7 +127,7 @@ void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void Writer_MemoryFree(void* Address)
+void Writer_MemoryFree(void* Address, uint32 Size)
 {
 	TWriteBufferRedirect<6 << 10> TraceData;
 
