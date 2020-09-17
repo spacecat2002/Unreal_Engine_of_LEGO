@@ -215,17 +215,31 @@ void FShaderCompileJobCollection::SubmitJobs(const TArray<FShaderCommonCompileJo
 {
 	if (InJobs.Num() > 0)
 	{
-		FWriteScopeLock Locker(Lock);
-		for (FShaderCommonCompileJob* Job : InJobs)
+		int32 NumSubmittedJobs[NumShaderCompileJobPriorities] = { 0 };
 		{
-			check(Job->JobIndex != INDEX_NONE);
-			check(Job->Priority != EShaderCompileJobPriority::None);
-			check(Job->PendingPriority == EShaderCompileJobPriority::None);
+			FWriteScopeLock Locker(Lock);
+			for (FShaderCommonCompileJob* Job : InJobs)
+			{
+				check(Job->JobIndex != INDEX_NONE);
+				check(Job->Priority != EShaderCompileJobPriority::None);
+				check(Job->PendingPriority == EShaderCompileJobPriority::None);
 
-			const int32 PriorityIndex = (int32)Job->Priority;
-			NumPendingJobs[PriorityIndex]++;
-			Job->LinkHead(PendingJobs[PriorityIndex]);
-			Job->PendingPriority = Job->Priority;
+				const int32 PriorityIndex = (int32)Job->Priority;
+				NumPendingJobs[PriorityIndex]++;
+				NumSubmittedJobs[PriorityIndex]++;
+				Job->LinkHead(PendingJobs[PriorityIndex]);
+				Job->PendingPriority = Job->Priority;
+			}
+		}
+
+		for (int32 PriorityIndex = 0; PriorityIndex < NumShaderCompileJobPriorities; ++PriorityIndex)
+		{
+			if (NumSubmittedJobs[PriorityIndex] > 0)
+			{
+				UE_LOG(LogShaderCompilers, Display, TEXT("Submitted %d shader compile jobs with '%s' priority"),
+					NumSubmittedJobs[PriorityIndex],
+					ShaderCompileJobPriorityToString((EShaderCompileJobPriority)PriorityIndex));
+			}
 		}
 	}
 }
@@ -241,26 +255,38 @@ int32 FShaderCompileJobCollection::GetNumPendingJobs()
 	return NumJobs;
 }
 
-int32 FShaderCompileJobCollection::GetPendingJobs(EShaderCompileJobPriority InPriority, int32 NumJobsRequested, TArray<FShaderCommonCompileJobPtr>& OutJobs)
+int32 FShaderCompileJobCollection::GetPendingJobs(EShaderCompileJobPriority InPriority, int32 MinNumJobs, int32 MaxNumJobs, TArray<FShaderCommonCompileJobPtr>& OutJobs)
 {
 	const int32 PriorityIndex = (int32)InPriority;
-
-	OutJobs.Reserve(OutJobs.Num() + FMath::Min(NumJobsRequested, NumPendingJobs[PriorityIndex]));
-
-	FWriteScopeLock Locker(Lock);
-
-	const int32 NumJobs = FMath::Min(NumJobsRequested, NumPendingJobs[PriorityIndex]);
-	FShaderCommonCompileJob::TIterator It(PendingJobs[PriorityIndex]);
-	for (int32 i = 0; i < NumJobs; ++i)
+	int32 NumPendingJobsOfPriority = 0;
 	{
-		FShaderCommonCompileJob& Job = *It;
-		It.Next();
-		Job.Unlink();
-		Job.PendingPriority = EShaderCompileJobPriority::None;
-		OutJobs.Add(&Job);
+		FReadScopeLock Locker(Lock);
+		NumPendingJobsOfPriority = NumPendingJobs[PriorityIndex];
 	}
 
-	NumPendingJobs[PriorityIndex] -= NumJobs;
+	if (NumPendingJobsOfPriority < MinNumJobs)
+	{
+		// Not enough jobs
+		return 0;
+	}
+
+	OutJobs.Reserve(OutJobs.Num() + FMath::Min(MaxNumJobs, NumPendingJobsOfPriority));
+	int32 NumJobs = 0;
+	{
+		FWriteScopeLock Locker(Lock);
+		NumJobs = FMath::Min(MaxNumJobs, NumPendingJobs[PriorityIndex]);
+		FShaderCommonCompileJob::TIterator It(PendingJobs[PriorityIndex]);
+		for (int32 i = 0; i < NumJobs; ++i)
+		{
+			FShaderCommonCompileJob& Job = *It;
+			It.Next();
+			Job.Unlink();
+			Job.PendingPriority = EShaderCompileJobPriority::None;
+			OutJobs.Add(&Job);
+		}
+
+		NumPendingJobs[PriorityIndex] -= NumJobs;
+	}
 	return NumJobs;
 }
 
@@ -1391,6 +1417,7 @@ void FShaderCompileThreadRunnableBase::CheckHealth() const
 int32 FShaderCompileThreadRunnable::PullTasksFromQueue()
 {
 	int32 NumActiveThreads = 0;
+	int32 NumJobsStarted[NumShaderCompileJobPriorities] = { 0 };
 	{
 		// Enter the critical section so we can access the input and output queues
 		FScopeLock Lock(&Manager->CompileQueueSection);
@@ -1423,7 +1450,7 @@ int32 FShaderCompileThreadRunnable::PullTasksFromQueue()
 							MaxNumJobs = FMath::Min3(NumJobsPerWorker, NumPendingJobs, Manager->MaxShaderJobBatchSize);
 						}
 
-						Manager->AllJobs.GetPendingJobs((EShaderCompileJobPriority)PriorityIndex, MaxNumJobs, CurrentWorkerInfo.QueuedJobs);
+						NumJobsStarted[PriorityIndex] += Manager->AllJobs.GetPendingJobs((EShaderCompileJobPriority)PriorityIndex, 1, MaxNumJobs, CurrentWorkerInfo.QueuedJobs);
 
 						// Update the worker state as having new tasks that need to be issued					
 						// don't reset worker app ID, because the shadercompileworkers don't shutdown immediately after finishing a single job queue.
@@ -1501,6 +1528,16 @@ int32 FShaderCompileThreadRunnable::PullTasksFromQueue()
 				CurrentWorkerInfo.bComplete = false;
 				CurrentWorkerInfo.QueuedJobs.Empty();
 			}
+		}
+	}
+
+	for (int32 PriorityIndex = 0; PriorityIndex < NumShaderCompileJobPriorities; ++PriorityIndex)
+	{
+		if (NumJobsStarted[PriorityIndex] > 0)
+		{
+			UE_LOG(LogShaderCompilers, Display, TEXT("Started %d 'Local' shader compile jobs with '%s' priority"),
+				NumJobsStarted[PriorityIndex],
+				ShaderCompileJobPriorityToString((EShaderCompileJobPriority)PriorityIndex));
 		}
 	}
 
@@ -2271,7 +2308,7 @@ FShaderCompilingManager::FShaderCompilingManager() :
 	{
 		// Keep high priority jobs on the local machine, to avoid XGE latency
 		XGEThread->SetPriorityRange(EShaderCompileJobPriority::Low, EShaderCompileJobPriority::High);
-		LocalThread->SetPriorityRange(EShaderCompileJobPriority::ForceLocal, EShaderCompileJobPriority::ForceLocal);
+		LocalThread->SetPriorityRange(EShaderCompileJobPriority::Low, EShaderCompileJobPriority::ForceLocal);
 		Threads.Add(MoveTemp(XGEThread));
 	}
 	else

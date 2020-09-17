@@ -32,6 +32,14 @@ namespace XGEShaderCompilerVariables
 		TEXT("2: Force interception mode. Disables XGE shader compiling if XGE controller is not available.\n"),
 		ECVF_Default);
 
+	int32 MinBatchSize = 20;
+	FAutoConsoleVariableRef CVarXGEShaderCompileMinBatchSize(
+		TEXT("r.XGEShaderCompile.MinBatchSize"),
+		MinBatchSize,
+		TEXT("Minimum number of shaders to compile with XGE.\n")
+		TEXT("Smaller number of shaders will compile locally."),
+		ECVF_Default);
+
 	/** Xml Interface specific CVars */
 
 	/** The maximum number of shaders to group into a single XGE task. */
@@ -588,7 +596,18 @@ int32 FShaderCompileXGEThreadRunnable_XmlInterface::CompilingLoop()
 		// Grab as many jobs from the job queue as we can.
 		for (int32 PriorityIndex = MaxPriorityIndex; PriorityIndex >= MinPriorityIndex; --PriorityIndex)
 		{
-			Manager->AllJobs.GetPendingJobs((EShaderCompileJobPriority)PriorityIndex, INT32_MAX, JobQueue);
+			const int32 NumJobs = Manager->AllJobs.GetPendingJobs((EShaderCompileJobPriority)PriorityIndex, XGEShaderCompilerVariables::MinBatchSize, INT32_MAX, JobQueue);
+			if (NumJobs > 0)
+			{
+				UE_LOG(LogShaderCompilers, Display, TEXT("Started %d 'XGE' shader compile jobs with '%s' priority"),
+					NumJobs,
+					ShaderCompileJobPriorityToString((EShaderCompileJobPriority)PriorityIndex));
+			}
+			if (JobQueue.Num() >= XGEShaderCompilerVariables::MinBatchSize)
+			{
+				// Kick a batch with just the higher priority jobs, if it's large enough
+				break;
+			}
 		}
 	}
 
@@ -742,7 +761,17 @@ int32 FShaderCompileXGEThreadRunnable_InterceptionInterface::CompilingLoop()
 	for (int32 PriorityIndex = MaxPriorityIndex; PriorityIndex >= MinPriorityIndex; --PriorityIndex)
 	{
 		// Grab as many jobs from the job queue as we can
-		Manager->AllJobs.GetPendingJobs((EShaderCompileJobPriority)PriorityIndex, INT32_MAX, PendingJobs);
+		const int32 NumJobs = Manager->AllJobs.GetPendingJobs((EShaderCompileJobPriority)PriorityIndex, XGEShaderCompilerVariables::MinBatchSize, INT32_MAX, PendingJobs);
+		if (NumJobs > 0)
+		{
+			UE_LOG(LogShaderCompilers, Display, TEXT("Started %d 'XGE' shader compile jobs with '%s' priority"),
+				NumJobs,
+				ShaderCompileJobPriorityToString((EShaderCompileJobPriority)PriorityIndex));
+		}
+		if (PendingJobs.Num() >= XGEShaderCompilerVariables::MinBatchSize)
+		{
+			break;
+		}
 	}
 
 	if (PendingJobs.Num() > 0)

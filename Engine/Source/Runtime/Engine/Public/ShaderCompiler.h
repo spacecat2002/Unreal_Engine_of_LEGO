@@ -51,6 +51,19 @@ enum class EShaderCompileJobPriority : uint8
 };
 static const int32 NumShaderCompileJobPriorities = (int32)EShaderCompileJobPriority::Num;
 
+inline const TCHAR* ShaderCompileJobPriorityToString(EShaderCompileJobPriority v)
+{
+	switch (v)
+	{
+	case EShaderCompileJobPriority::None: return TEXT("None");
+	case EShaderCompileJobPriority::Low: return TEXT("Low");
+	case EShaderCompileJobPriority::Normal: return TEXT("Normal");
+	case EShaderCompileJobPriority::High: return TEXT("High");
+	case EShaderCompileJobPriority::ForceLocal: return TEXT("ForceLocal");
+	default: checkNoEntry(); return TEXT("");
+	}
+}
+
 /** Stores all of the common information used to compile a shader or pipeline. */
 class FShaderCommonCompileJob : public TIntrusiveLinkedList<FShaderCommonCompileJob>
 {
@@ -251,7 +264,7 @@ public:
 
 	int32 GetNumPendingJobs();
 
-	int32 GetPendingJobs(EShaderCompileJobPriority InPriority, int32 NumJobsRequested, TArray<FShaderCommonCompileJobPtr>& OutJobs);
+	int32 GetPendingJobs(EShaderCompileJobPriority InPriority, int32 MinNumJobs, int32 MaxNumJobs, TArray<FShaderCommonCompileJobPtr>& OutJobs);
 
 private:
 	void InternalAddJob(FShaderCommonCompileJob* Job);
