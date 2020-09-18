@@ -13,7 +13,6 @@ FAnimNode_CopyPoseFromMesh::FAnimNode_CopyPoseFromMesh()
 	, bCopyCurves (false)
 	, bCopyCustomAttributes(false)
 	, bUseMeshPose (false)
-	, bCopyCustomAttributes(false)
 {
 }
 

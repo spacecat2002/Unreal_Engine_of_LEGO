@@ -43,9 +43,6 @@ struct ANIMGRAPHRUNTIME_API FAnimNode_CopyPoseFromMesh : public FAnimNode_Base
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Copy, meta = (NeverAsPin))
 	FName RootBoneToCopy;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Copy, meta = (NeverAsPin))
-	bool bCopyCustomAttributes;
-
 	FAnimNode_CopyPoseFromMesh();
 
 	// FAnimNode_Base interface

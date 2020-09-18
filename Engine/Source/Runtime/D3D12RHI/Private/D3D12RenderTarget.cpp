@@ -230,11 +230,6 @@ void FD3D12CommandContext::RHICopyToResolveTarget(FRHITexture* SourceTextureRHI,
 	{
 		const D3D_FEATURE_LEVEL FeatureLevel = GetParentDevice()->GetParentAdapter()->GetFeatureLevel();
 
-		// Could be back buffer reference texture, so get the correct D3D12 texture here
-		// We know already that it's a FD3D12Texture2D so cast is safe
-		SourceTexture2D = (FD3D12Texture2D*) GetD3D12TextureFromRHITexture(SourceTextureRHI);
-		DestTexture2D = (FD3D12Texture2D*) GetD3D12TextureFromRHITexture(DestTextureRHI);
-
 		check(!SourceTextureCube && !DestTextureCube);
 		if (SourceTexture2D != DestTexture2D)
 		{
