@@ -1667,6 +1667,7 @@ void UAnimSequence::GetBonePose(FAnimationPoseData& OutAnimationPoseData, const 
 #endif // WITH_EDITOR
 
 	DecompressPose(OutPose, CompressedData, ExtractionContext, GetSkeleton(), SequenceLength, Interpolation, bIsBakedAdditive, GetRetargetTransforms(), GetRetargetTransformsSourceName(), RootMotionReset);
+
 	GetCustomAttributes(OutAnimationPoseData, ExtractionContext, false);
 }
 

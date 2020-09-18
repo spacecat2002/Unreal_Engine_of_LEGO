@@ -11,6 +11,7 @@ FAnimNode_CopyPoseFromMesh::FAnimNode_CopyPoseFromMesh()
 	: SourceMeshComponent(nullptr)
 	, bUseAttachedParent (false)
 	, bCopyCurves (false)
+	, bCopyCustomAttributes(false)
 	, bUseMeshPose (false)
 	, bCopyCustomAttributes(false)
 {
