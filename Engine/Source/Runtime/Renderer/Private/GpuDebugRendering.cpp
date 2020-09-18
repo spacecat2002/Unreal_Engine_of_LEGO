@@ -207,7 +207,7 @@ namespace ShaderDrawDebug
 
 	IMPLEMENT_GLOBAL_SHADER(FShaderDrawDebugPS, "/Engine/Private/ShaderDrawDebug.usf", "ShaderDrawDebugPS", SF_Pixel);
 
-	BEGIN_SHADER_PARAMETER_STRUCT(ShaderDrawVSPSParameters, )
+	BEGIN_SHADER_PARAMETER_STRUCT(FShaderDrawVSPSParameters , )
 		SHADER_PARAMETER_STRUCT_INCLUDE(FShaderDrawDebugVS::FParameters, ShaderDrawVSParameters)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FShaderDrawDebugPS::FParameters, ShaderDrawPSParameters)
 	END_SHADER_PARAMETER_STRUCT()
@@ -241,8 +241,8 @@ namespace ShaderDrawDebug
 			FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, *Parameters, FIntVector(1,1,1));
 		});
 
-		GraphBuilder.QueueBufferExtraction(DataBuffer, &View.ShaderDrawData.Buffer, FRDGResourceState::EAccess::Write, FRDGResourceState::EPipeline::Compute);
-		GraphBuilder.QueueBufferExtraction(IndirectBuffer, &View.ShaderDrawData.IndirectBuffer, FRDGResourceState::EAccess::Write, FRDGResourceState::EPipeline::Compute);
+		GraphBuilder.QueueBufferExtraction(DataBuffer, &View.ShaderDrawData.Buffer, ERHIAccess::UAVCompute);
+		GraphBuilder.QueueBufferExtraction(IndirectBuffer, &View.ShaderDrawData.IndirectBuffer, ERHIAccess::UAVCompute);
 
 		GraphBuilder.Execute();
 
@@ -274,8 +274,9 @@ namespace ShaderDrawDebug
 			TShaderMapRef<FShaderDrawDebugVS> VertexShader(View.ShaderMap, PermutationVector);
 			TShaderMapRef<FShaderDrawDebugPS> PixelShader(View.ShaderMap);
 
-			ShaderDrawVSPSParameters* PassParameters = GraphBuilder.AllocParameters<ShaderDrawVSPSParameters>();
+			FShaderDrawVSPSParameters * PassParameters = GraphBuilder.AllocParameters<FShaderDrawVSPSParameters >();
 			PassParameters->ShaderDrawPSParameters.RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ELoad);
+			PassParameters->ShaderDrawPSParameters.RenderTargets.DepthStencil = FDepthStencilBinding(DepthTexture, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilNop);
 			PassParameters->ShaderDrawPSParameters.DepthTexture = DepthTexture;
 			PassParameters->ShaderDrawPSParameters.DepthTextureResolution    = FIntPoint(DepthTexture->Desc.Extent.X, DepthTexture->Desc.Extent.Y);
 			PassParameters->ShaderDrawPSParameters.DepthTextureInvResolution = FVector2D(1.f/DepthTexture->Desc.Extent.X, 1.f / DepthTexture->Desc.Extent.Y);
@@ -337,8 +338,8 @@ namespace ShaderDrawDebug
 			});
 		};
 
-		FRDGBufferRef DataBuffer = GraphBuilder.RegisterExternalBuffer(View.ShaderDrawData.Buffer, TEXT("ShaderDrawDebugDataBuffer"));
-		FRDGBufferRef IndirectBuffer = GraphBuilder.RegisterExternalBuffer(View.ShaderDrawData.IndirectBuffer, TEXT("ShaderDrawDebugIndirectDataBuffer"));
+		FRDGBufferRef DataBuffer = GraphBuilder.RegisterExternalBuffer(View.ShaderDrawData.Buffer);
+		FRDGBufferRef IndirectBuffer = GraphBuilder.RegisterExternalBuffer(View.ShaderDrawData.IndirectBuffer);
 		{
 			RunPass(true, DataBuffer, IndirectBuffer, nullptr, nullptr);
 		}
@@ -399,8 +400,8 @@ namespace ShaderDrawDebug
 
 	void SetParameters(FRDGBuilder& GraphBuilder, const FShaderDrawDebugData& Data, FShaderDrawDebugParameters& OutParameters)
 	{
-		FRDGBufferRef DataBuffer = GraphBuilder.RegisterExternalBuffer(Data.Buffer, TEXT("ShaderDrawDebugDataBuffer"));
-		FRDGBufferRef IndirectBuffer = GraphBuilder.RegisterExternalBuffer(Data.IndirectBuffer, TEXT("ShaderDrawDebugIndirectDataBuffer"));
+		FRDGBufferRef DataBuffer = GraphBuilder.RegisterExternalBuffer(Data.Buffer);
+		FRDGBufferRef IndirectBuffer = GraphBuilder.RegisterExternalBuffer(Data.IndirectBuffer);
 
 		OutParameters.ShaderDrawCursorPos = Data.CursorPosition;
 		OutParameters.ShaderDrawMaxElementCount = GetMaxShaderDrawElementCount();
