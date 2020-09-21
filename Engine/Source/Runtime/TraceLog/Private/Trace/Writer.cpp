@@ -366,7 +366,7 @@ static bool Writer_UpdateConnection()
 
 	Writer_DescribeAnnounce();
 
-	Writer_SendData(HeaderEvents.GetData(), HeaderEvents.GetSize());
+	Writer_SendData(Tid_Header, HeaderEvents.GetData(), HeaderEvents.GetSize());
 
 	return true;
 }
