@@ -14,6 +14,17 @@
 #include <limits.h>
 #include <stdlib.h>
 
+#if PLATFORM_WINDOWS
+#	define TRACE_PRIVATE_STOMP 0 // 1=overflow, 2=underflow
+#	if TRACE_PRIVATE_STOMP
+#	include "Windows/AllowWindowsPlatformTypes.h"
+#		include "Windows/WindowsHWrapper.h"
+#	include "Windows/HideWindowsPlatformTypes.h"
+#	endif
+#else
+#	define TRACE_PRIVATE_STOMP 0
+#endif
+
 namespace Trace {
 namespace Private {
 
@@ -109,6 +120,26 @@ void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 	TWriteBufferRedirect<6 << 10> TraceData;
 
 	void* Ret = nullptr;
+
+#if TRACE_PRIVATE_STOMP
+	static uint8* Base;
+	if (Base == nullptr)
+	{
+		Base = (uint8*)VirtualAlloc(0, 1ull << 40, MEM_RESERVE, PAGE_READWRITE);
+	}
+
+	static SIZE_T PageSize = 4096;
+	Base += PageSize;
+	uint8* NextBase = Base + ((PageSize - 1 + Size) & ~(PageSize - 1));
+	VirtualAlloc(Base, SIZE_T(NextBase - Base), MEM_COMMIT, PAGE_READWRITE);
+#if TRACE_PRIVATE_STOMP == 1
+	Ret = NextBase - Size;
+#elif TRACE_PRIVATE_STOMP == 2
+	Ret = Base;
+#endif
+	Base = NextBase;
+#else // TRACE_PRIVATE_STOMP
+
 #if defined(_MSC_VER)
 	Ret = _aligned_malloc(Size, Alignment);
 #elif (defined(__ANDROID_API__) && __ANDROID_API__ < 28) || defined(__APPLE__)
@@ -116,6 +147,7 @@ void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 #else
 	Ret = aligned_alloc(Alignment, Size);
 #endif
+#endif // TRACE_PRIVATE_STOMP
 
 	if (TraceData.GetSize())
 	{
@@ -129,6 +161,20 @@ void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 ////////////////////////////////////////////////////////////////////////////////
 void Writer_MemoryFree(void* Address, uint32 Size)
 {
+#if TRACE_PRIVATE_STOMP
+	if (Address == nullptr)
+	{
+		return;
+	}
+
+	*(uint8*)Address = 0xfe;
+
+	MEMORY_BASIC_INFORMATION MemInfo;
+	VirtualQuery(Address, &MemInfo, sizeof(MemInfo));
+
+	DWORD Unused;
+	VirtualProtect(MemInfo.BaseAddress, MemInfo.RegionSize, PAGE_READONLY, &Unused);
+#else // TRACE_PRIVATE_STOMP
 	TWriteBufferRedirect<6 << 10> TraceData;
 
 #if defined(_MSC_VER)
@@ -142,6 +188,7 @@ void Writer_MemoryFree(void* Address, uint32 Size)
 		uint32 ThreadId = Writer_GetThreadId();
 		Writer_SendData(ThreadId, TraceData.GetData(), TraceData.GetSize());
 	}
+#endif // TRACE_PRIVATE_STOMP
 }
 
 
