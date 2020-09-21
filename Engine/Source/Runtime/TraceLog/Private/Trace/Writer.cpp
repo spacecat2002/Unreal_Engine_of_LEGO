@@ -360,12 +360,13 @@ static bool Writer_UpdateConnection()
 	}
 
 	// Send the header events
-	{
-		TWriteBufferRedirect<512> HeaderEvents;
-		Writer_LogHeader();
-		Writer_LogTimingHeader();
-		Writer_SendData(Tid_Header, HeaderEvents.GetData(), HeaderEvents.GetSize());
-	}
+	TWriteBufferRedirect<512> HeaderEvents;
+	Writer_LogHeader();
+	Writer_LogTimingHeader();
+
+	Writer_DescribeAnnounce();
+
+	Writer_SendData(HeaderEvents.GetData(), HeaderEvents.GetSize());
 
 	return true;
 }
