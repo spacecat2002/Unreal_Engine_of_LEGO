@@ -198,6 +198,16 @@ static UPTRINT					GDataHandle;		// = 0
 UPTRINT							GPendingDataHandle;	// = 0
 
 ////////////////////////////////////////////////////////////////////////////////
+void Writer_SendDataRaw(const void* Data, uint32 Size)
+{
+	if (!IoWrite(GDataHandle, Data, Size))
+	{
+		IoClose(GDataHandle);
+		GDataHandle = 0;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 {
 	if (!GDataHandle)
@@ -222,11 +232,7 @@ uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 		Packet->ThreadId = uint16(ThreadId & 0x7fff);
 		Packet->PacketSize = uint16(Size);
 
-		if (!IoWrite(GDataHandle, Data, Size))
-		{
-			IoClose(GDataHandle);
-			GDataHandle = 0;
-		}
+		Writer_SendDataRaw(Data, Size);
 
 		return Size;
 	}
@@ -252,11 +258,7 @@ uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 	Packet.PacketSize = Encode(Data, Packet.DecodedSize, Packet.Data, sizeof(Packet.Data));
 	Packet.PacketSize += sizeof(FPacketEncoded);
 
-	if (!IoWrite(GDataHandle, (uint8*)&Packet, Packet.PacketSize))
-	{
-		IoClose(GDataHandle);
-		GDataHandle = 0;
-	}
+	Writer_SendDataRaw(&Packet, Packet.PacketSize);
 
 	return Packet.PacketSize;
 }
