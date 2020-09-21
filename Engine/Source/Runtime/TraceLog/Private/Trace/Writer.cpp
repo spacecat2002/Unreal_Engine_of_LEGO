@@ -323,7 +323,7 @@ static void Writer_LogTimingHeader()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static bool Writer_UpdateData()
+static bool Writer_UpdateConnection()
 {
 	if (!GPendingDataHandle)
 	{
@@ -380,7 +380,7 @@ static volatile bool	GWorkerThreadQuit;	// = false;
 static void Writer_WorkerUpdate()
 {
 	Writer_UpdateControl();
-	Writer_UpdateData();
+	Writer_UpdateConnection();
 	Writer_DescribeAnnounce();
 	Writer_DrainBuffers();
 }
@@ -401,7 +401,7 @@ static void Writer_WorkerThread()
 		ThreadSleep(SleepMs);
 		PrologueMs -= SleepMs;
 
-		if (Writer_UpdateData())
+		if (Writer_UpdateConnection())
 		{
 			break;
 		}
