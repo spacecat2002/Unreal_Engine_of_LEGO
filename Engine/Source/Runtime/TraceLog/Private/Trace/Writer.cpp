@@ -370,8 +370,9 @@ static bool Writer_UpdateConnection()
 	TWriteBufferRedirect<512> HeaderEvents;
 	Writer_LogHeader();
 	Writer_LogTimingHeader();
+	HeaderEvents.Close();
 
-	Writer_DescribeAnnounce();
+	Writer_DescribeEvents();
 
 	Writer_SendData(Tid_Header, HeaderEvents.GetData(), HeaderEvents.GetSize());
 
