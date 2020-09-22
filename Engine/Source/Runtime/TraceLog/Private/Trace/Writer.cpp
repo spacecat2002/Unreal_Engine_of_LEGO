@@ -264,6 +264,40 @@ uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+static void Writer_DescribeEvents()
+{
+	TWriteBufferRedirect<4096> TraceData;
+
+	FEventNode::FIter Iter = FEventNode::ReadNew();
+	while (const FEventNode* Event = Iter.GetNext())
+	{
+		Event->Describe();
+
+		// Flush just in case an NewEvent event will be larger than 512 bytes.
+		if (TraceData.GetSize() >= (TraceData.GetCapacity() - 512))
+		{
+			Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
+			TraceData.Reset();
+		}
+	}
+
+	if (TraceData.GetSize())
+	{
+		Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_AnnounceChannels()
+{
+	FChannel::Iter Iter = FChannel::ReadNew();
+	while (const FChannel* Channel = Iter.GetNext())
+	{
+		Channel->Announce();
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 static void Writer_DescribeAnnounce()
 {
 	if (!GDataHandle)
@@ -271,35 +305,8 @@ static void Writer_DescribeAnnounce()
 		return;
 	}
 
-	// Describe new events
-	{
-		TWriteBufferRedirect<4096> TraceData;
-
-		FEventNode::FIter Iter = FEventNode::ReadNew();
-		while (const FEventNode* Event = Iter.GetNext())
-		{
-			Event->Describe();
-
-			// Flush just in case an NewEvent event will be larger than 512 bytes.
-			if (TraceData.GetSize() >= (TraceData.GetCapacity() - 512))
-			{
-				Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
-				TraceData.Reset();
-			}
-		}
-
-		if (TraceData.GetSize())
-		{
-			Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
-		}
-	}
-
-	// Announce new channels
-	FChannel::Iter Iter = FChannel::ReadNew();
-	while (const FChannel* Channel = Iter.GetNext())
-	{
-		Channel->Announce();
-	}
+	Writer_DescribeEvents();
+	Writer_AnnounceChannels();
 }
 
 
