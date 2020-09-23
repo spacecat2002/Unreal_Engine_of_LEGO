@@ -64,14 +64,6 @@ TRACELOG_API uint32 volatile	GLogSerial;			// = 0;
 
 
 ////////////////////////////////////////////////////////////////////////////////
-enum EKnownThreadIds
-{
-	Tid_NewEvents,
-	Tid_Header,
-	Tid_Process		= 8,
-};
-
-////////////////////////////////////////////////////////////////////////////////
 struct FWriteTlsContext
 {
 				~FWriteTlsContext();
@@ -100,7 +92,7 @@ uint32 FWriteTlsContext::GetThreadId()
 
 	static uint32 volatile Counter;
 	ThreadId = AtomicAddRelaxed(&Counter, 1u) + 1;
-	return ThreadId + Tid_Process;
+	return ThreadId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -264,6 +256,12 @@ uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+uint32 Writer_SendData(uint8* __restrict Data, uint32 Size)
+{
+	return Writer_SendData(0, Data, Size);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 static void Writer_DescribeEvents()
 {
 	TWriteBufferRedirect<4096> TraceData;
@@ -276,14 +274,14 @@ static void Writer_DescribeEvents()
 		// Flush just in case an NewEvent event will be larger than 512 bytes.
 		if (TraceData.GetSize() >= (TraceData.GetCapacity() - 512))
 		{
-			Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
+			Writer_SendData(TraceData.GetData(), TraceData.GetSize());
 			TraceData.Reset();
 		}
 	}
 
 	if (TraceData.GetSize())
 	{
-		Writer_SendData(Tid_NewEvents, TraceData.GetData(), TraceData.GetSize());
+		Writer_SendData(TraceData.GetData(), TraceData.GetSize());
 	}
 }
 
@@ -374,7 +372,7 @@ static bool Writer_UpdateConnection()
 
 	Writer_DescribeEvents();
 
-	Writer_SendData(Tid_Header, HeaderEvents.GetData(), HeaderEvents.GetSize());
+	Writer_SendData(HeaderEvents.GetData(), HeaderEvents.GetSize());
 
 	return true;
 }
