@@ -91,7 +91,7 @@ uint32 FWriteTlsContext::GetThreadId()
 	}
 
 	static uint32 volatile Counter;
-	ThreadId = AtomicAddRelaxed(&Counter, 1u) + 1;
+	ThreadId = AtomicAddRelaxed(&Counter, 1u) + ETransportTid::Bias;
 	return ThreadId;
 }
 
@@ -258,7 +258,7 @@ uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 ////////////////////////////////////////////////////////////////////////////////
 uint32 Writer_SendData(uint8* __restrict Data, uint32 Size)
 {
-	return Writer_SendData(0, Data, Size);
+	return Writer_SendData(ETransportTid::Internal, Data, Size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
