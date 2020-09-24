@@ -6,6 +6,7 @@
 #include "SceneViewExtensionContext.generated.h"
 
 class ISceneViewExtension;
+class FViewport;
 
 /** 
  * Contains information about the context in which this scene view extension will be used. 

@@ -629,6 +629,7 @@ void FD3D12DynamicRHI::Init()
 	}
 #endif
 
+#if !PLATFORM_HOLOLENS
 	// Disable ray tracing for Windows build versions
 	if (GRHISupportsRayTracing
 		&& GMinimumWindowsBuildVersionForRayTracing > 0
@@ -638,6 +639,7 @@ void FD3D12DynamicRHI::Init()
 
 		UE_LOG(LogD3D12RHI, Warning, TEXT("Ray tracing is disabled because it requires Windows 10 version %u"), (uint32)GMinimumWindowsBuildVersionForRayTracing);
 	}
+#endif
 
 #if NV_API_ENABLE
 	if (IsRHIDeviceNVIDIA() && bAllowVendorDevice)
@@ -806,6 +808,26 @@ void FD3D12DynamicRHI::Init()
 	// - Suballocated ones are defer-deleted by their allocators
 	// - Standalones are added to the deferred deletion queue of its parent FD3D12Adapter
 	GRHIForceNoDeletionLatencyForStreamingTextures = !!PLATFORM_WINDOWS;
+
+#if 0//D3D12_RHI_RAYTRACING
+	GRHISupportsRayTracing = GetAdapter().GetD3DRayTracingDevice() != nullptr;
+	GRHISupportsRayTracingMissShaderBindings = true;
+#endif
+
+	D3D12_FEATURE_DATA_D3D12_OPTIONS6 options;
+	HRESULT hr = GetAdapter().GetD3DDevice()->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS6, &options, sizeof(options));
+	if(hr == S_OK)
+	{
+		GVariableRateShadingTier 			= options.VariableShadingRateTier;
+		GRHISupportsVariableRateShading 	= GVariableRateShadingTier != D3D12_VARIABLE_SHADING_RATE_TIER_NOT_SUPPORTED;
+		GVariableRateShadingImageTileSize 	= options.ShadingRateImageTileSize;
+	}
+	else
+	{
+		GVariableRateShadingTier 			= D3D12_VARIABLE_SHADING_RATE_TIER_NOT_SUPPORTED;
+		GRHISupportsVariableRateShading 	= false;
+		GVariableRateShadingImageTileSize 	= 1;
+	}
 
 	// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
 	GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
