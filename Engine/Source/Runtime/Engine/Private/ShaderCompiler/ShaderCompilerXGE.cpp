@@ -278,16 +278,15 @@ void FShaderCompileXGEThreadRunnable_XmlInterface::PostCompletedJobsForBatch(FSh
 	FScopeLock Lock(&Manager->CompileQueueSection);
 	for (const auto& Job : Batch->GetJobs())
 	{
-		FShaderMapCompileResults& ShaderMapResults = Manager->ShaderMapJobs.FindChecked(Job->Id);
+		FShaderMapCompileResults& ShaderMapResults = *Job->PendingShaderMap;
 		ShaderMapResults.FinishedJobs.Add(Job);
 		ShaderMapResults.bAllJobsSucceeded = ShaderMapResults.bAllJobsSucceeded && Job->bSucceeded;
 
-		check(ShaderMapResults.NumPendingJobs > 0);
-		--ShaderMapResults.NumPendingJobs;
+		const int32 NumPendingJobs = ShaderMapResults.NumPendingJobs.Decrement();
+		check(NumPendingJobs >= 0);
 	}
 
-	// Using atomics to update NumOutstandingJobs since it is read outside of the critical section
-	FPlatformAtomics::InterlockedAdd(&Manager->NumOutstandingJobs, -Batch->NumJobs());
+	Manager->AllJobs.SubtractNumOutstandingJobs(Batch->NumJobs());
 }
 
 void FShaderCompileXGEThreadRunnable_XmlInterface::FShaderBatch::AddJob(FShaderCommonCompileJobPtr Job)
@@ -596,7 +595,9 @@ int32 FShaderCompileXGEThreadRunnable_XmlInterface::CompilingLoop()
 		// Grab as many jobs from the job queue as we can.
 		for (int32 PriorityIndex = MaxPriorityIndex; PriorityIndex >= MinPriorityIndex; --PriorityIndex)
 		{
-			const int32 NumJobs = Manager->AllJobs.GetPendingJobs((EShaderCompileJobPriority)PriorityIndex, XGEShaderCompilerVariables::MinBatchSize, INT32_MAX, JobQueue);
+			const EShaderCompileJobPriority Priority = (EShaderCompileJobPriority)PriorityIndex;
+			const int32 MinBatchSize = (Priority == EShaderCompileJobPriority::Low) ? 1 : XGEShaderCompilerVariables::MinBatchSize;
+			const int32 NumJobs = Manager->AllJobs.GetPendingJobs(EShaderCompilerWorkerType::XGE, Priority, MinBatchSize, INT32_MAX, JobQueue);
 			if (NumJobs > 0)
 			{
 				UE_LOG(LogShaderCompilers, Display, TEXT("Started %d 'XGE' shader compile jobs with '%s' priority"),
@@ -761,7 +762,9 @@ int32 FShaderCompileXGEThreadRunnable_InterceptionInterface::CompilingLoop()
 	for (int32 PriorityIndex = MaxPriorityIndex; PriorityIndex >= MinPriorityIndex; --PriorityIndex)
 	{
 		// Grab as many jobs from the job queue as we can
-		const int32 NumJobs = Manager->AllJobs.GetPendingJobs((EShaderCompileJobPriority)PriorityIndex, XGEShaderCompilerVariables::MinBatchSize, INT32_MAX, PendingJobs);
+		const EShaderCompileJobPriority Priority = (EShaderCompileJobPriority)PriorityIndex;
+		const int32 MinBatchSize = (Priority == EShaderCompileJobPriority::Low) ? 1 : XGEShaderCompilerVariables::MinBatchSize;
+		const int32 NumJobs = Manager->AllJobs.GetPendingJobs(EShaderCompilerWorkerType::XGE, Priority, MinBatchSize, INT32_MAX, PendingJobs);
 		if (NumJobs > 0)
 		{
 			UE_LOG(LogShaderCompilers, Display, TEXT("Started %d 'XGE' shader compile jobs with '%s' priority"),
@@ -920,17 +923,16 @@ int32 FShaderCompileXGEThreadRunnable_InterceptionInterface::CompilingLoop()
 				FScopeLock Lock(&Manager->CompileQueueSection);
 				for (const auto& Job : Task->ShaderJobs)
 				{
-					FShaderMapCompileResults& ShaderMapResults = Manager->ShaderMapJobs.FindChecked(Job->Id);
+					FShaderMapCompileResults& ShaderMapResults = *Job->PendingShaderMap;
 					ShaderMapResults.FinishedJobs.Add(Job);
 					ShaderMapResults.bAllJobsSucceeded = ShaderMapResults.bAllJobsSucceeded && Job->bSucceeded;
 
-					check(ShaderMapResults.NumPendingJobs > 0);
-					--ShaderMapResults.NumPendingJobs;
+					const int32 NumPendingJobs = ShaderMapResults.NumPendingJobs.Decrement();
+					check(NumPendingJobs >= 0);
 				}
 			}
 
-			// Using atomics to update NumOutstandingJobs since it is read outside of the critical section
-			FPlatformAtomics::InterlockedAdd(&Manager->NumOutstandingJobs, -Task->ShaderJobs.Num());
+			Manager->AllJobs.SubtractNumOutstandingJobs(Task->ShaderJobs.Num());
 		}
 		else
 		{
@@ -960,7 +962,7 @@ int32 FShaderCompileXGEThreadRunnable_InterceptionInterface::CompilingLoop()
 	FPlatformProcess::Sleep(0.01f);
 
 	// Return true if there is more work to be done.
-	return FPlatformAtomics::InterlockedAdd(&Manager->NumOutstandingJobs, 0) > 0;
+	return Manager->AllJobs.GetNumOutstandingJobs() > 0;
 
 #else
 
