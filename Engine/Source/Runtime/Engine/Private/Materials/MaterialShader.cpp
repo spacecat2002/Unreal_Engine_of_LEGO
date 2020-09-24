@@ -49,9 +49,9 @@ TArray<FMaterialShaderMap*> FMaterialShaderMap::AllMaterialShaderMaps;
  */
 //TMap<TRefCountPtr<FMaterialShaderMap>, TArray<FMaterial*> > FMaterialShaderMap::ShaderMapsBeingCompiled;
 
-static inline bool ShouldCacheMaterialShader(const FMaterialShaderType* ShaderType, EShaderPlatform Platform, const FMaterial* Material, int32 PermutationId)
+static inline bool ShouldCacheMaterialShader(const FMaterialShaderType* ShaderType, EShaderPlatform Platform, EShaderPermutationFlags PermutationFlags, const FMaterial* Material, int32 PermutationId)
 {
-	return ShaderType->ShouldCompilePermutation(Platform, Material, PermutationId) && Material->ShouldCache(Platform, ShaderType, nullptr);
+	return ShaderType->ShouldCompilePermutation(Platform, Material, PermutationId, PermutationFlags) && Material->ShouldCache(Platform, ShaderType, nullptr);
 }
 
 
@@ -859,6 +859,7 @@ void FMaterialShaderMapId::SetShaderDependencies(const TArray<FShaderType*>& Sha
 #endif // WITH_EDITOR
 
 static void PrepareMaterialShaderCompileJob(EShaderPlatform Platform,
+	EShaderPermutationFlags PermutationFlags,
 	const FMaterial* Material,
 	FSharedShaderCompilerEnvironment* MaterialEnvironment,
 	const FShaderPipelineType* ShaderPipeline,
@@ -881,7 +882,7 @@ static void PrepareMaterialShaderCompileJob(EShaderPlatform Platform,
 	Material->SetupExtaCompilationSettings(Platform, NewJob->Input.ExtraSettings);
 
 	// Allow the shader type to modify the compile environment.
-	ShaderType->SetupCompileEnvironment(Platform, Material, Key.PermutationId, ShaderEnvironment);
+	ShaderType->SetupCompileEnvironment(Platform, Material, Key.PermutationId, PermutationFlags, ShaderEnvironment);
 
 	// Compile the shader environment passed in with the shader type's source code.
 	::GlobalBeginCompileShader(
@@ -911,6 +912,7 @@ void FMaterialShaderType::BeginCompileShader(
 	const FMaterial* Material,
 	FSharedShaderCompilerEnvironment* MaterialEnvironment,
 	EShaderPlatform Platform,
+	EShaderPermutationFlags PermutationFlags,
 	TArray<FShaderCommonCompileJobPtr>& NewJobs,
 	const FString& DebugDescription,
 	const FString& DebugExtension
@@ -919,7 +921,7 @@ void FMaterialShaderType::BeginCompileShader(
 	FShaderCompileJob* NewJob = GShaderCompilingManager->PrepareShaderCompileJob(ShaderMapId, FShaderCompileJobKey(this, nullptr, PermutationId), Priority);
 	if (NewJob)
 	{
-		PrepareMaterialShaderCompileJob(Platform, Material, MaterialEnvironment, nullptr, DebugDescription, DebugExtension, NewJob);
+		PrepareMaterialShaderCompileJob(Platform, PermutationFlags, Material, MaterialEnvironment, nullptr, DebugDescription, DebugExtension, NewJob);
 		NewJobs.Add(FShaderCommonCompileJobPtr(NewJob));
 	}
 }
@@ -928,6 +930,7 @@ void FMaterialShaderType::BeginCompileShaderPipeline(
 	EShaderCompileJobPriority Priority,
 	uint32 ShaderMapId,
 	EShaderPlatform Platform,
+	EShaderPermutationFlags PermutationFlags,
 	const FMaterial* Material,
 	FSharedShaderCompilerEnvironment* MaterialEnvironment,
 	const FShaderPipelineType* ShaderPipeline,
@@ -944,7 +947,7 @@ void FMaterialShaderType::BeginCompileShaderPipeline(
 	{
 		for (FShaderCompileJob* StageJob : NewPipelineJob->StageJobs)
 		{
-			PrepareMaterialShaderCompileJob(Platform, Material, MaterialEnvironment, ShaderPipeline, DebugDescription, DebugExtension, StageJob);
+			PrepareMaterialShaderCompileJob(Platform, PermutationFlags, Material, MaterialEnvironment, ShaderPipeline, DebugDescription, DebugExtension, StageJob);
 		}
 		NewJobs.Add(FShaderCommonCompileJobPtr(NewPipelineJob));
 	}
@@ -977,14 +980,14 @@ FShader* FMaterialShaderType::FinishCompileShader(
 	return Shader;
 }
 
-bool FMaterialShaderType::ShouldCompilePermutation(EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters, int32 PermutationId) const
+bool FMaterialShaderType::ShouldCompilePermutation(EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters, int32 PermutationId, EShaderPermutationFlags Flags) const
 {
-	return FShaderType::ShouldCompilePermutation(FMaterialShaderPermutationParameters(Platform, MaterialParameters, PermutationId));
+	return FShaderType::ShouldCompilePermutation(FMaterialShaderPermutationParameters(Platform, MaterialParameters, PermutationId, Flags));
 }
 
-bool FMaterialShaderType::ShouldCompilePipeline(const FShaderPipelineType* ShaderPipelineType, EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters)
+bool FMaterialShaderType::ShouldCompilePipeline(const FShaderPipelineType* ShaderPipelineType, EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters, EShaderPermutationFlags Flags)
 {
-	const FMaterialShaderPermutationParameters Parameters(Platform, MaterialParameters, kUniqueShaderPermutationId);
+	const FMaterialShaderPermutationParameters Parameters(Platform, MaterialParameters, kUniqueShaderPermutationId, Flags);
 	for (const FShaderType* ShaderType : ShaderPipelineType->GetStages())
 	{
 		checkSlow(ShaderType->GetMaterialShaderType());
@@ -996,10 +999,10 @@ bool FMaterialShaderType::ShouldCompilePipeline(const FShaderPipelineType* Shade
 	return true;
 }
 
-void FMaterialShaderType::SetupCompileEnvironment(EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters, int32 PermutationId, FShaderCompilerEnvironment& Environment) const
+void FMaterialShaderType::SetupCompileEnvironment(EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters, int32 PermutationId, EShaderPermutationFlags PermutationFlags, FShaderCompilerEnvironment& Environment) const
 {
 	// Allow the shader type to modify its compile environment.
-	ModifyCompilationEnvironment(FMaterialShaderPermutationParameters(Platform, MaterialParameters, PermutationId), Environment);
+	ModifyCompilationEnvironment(FMaterialShaderPermutationParameters(Platform, MaterialParameters, PermutationId, PermutationFlags), Environment);
 }
 
 /**
@@ -1371,8 +1374,9 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 	uint32 NumVertexFactories = 0;
 
 	const EShaderPlatform ShaderPlatform = GetShaderPlatform();
+	const EShaderPermutationFlags PermutationFlags = ShaderMapId.GetPermutationFlags();
 	const FMaterialShaderParameters MaterialParameters(Material);
-	const FMaterialShaderMapLayout& Layout = AcquireMaterialShaderMapLayout(ShaderPlatform, MaterialParameters);
+	const FMaterialShaderMapLayout& Layout = AcquireMaterialShaderMapLayout(ShaderPlatform, PermutationFlags, MaterialParameters);
 
 #if ALLOW_SHADERMAP_DEBUG_DATA && WITH_EDITOR
 	const FString DebugExtension = FString::Printf(TEXT("_%08x%08x"), ShaderMapId.BaseMaterialId.A, ShaderMapId.BaseMaterialId.B);
@@ -1413,6 +1417,7 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 					CompilingShaderMapId,
 					Shader.PermutationId,
 					ShaderPlatform,
+					PermutationFlags,
 					Material,
 					MaterialEnvironment,
 					MeshLayout.VertexFactoryType,
@@ -1456,6 +1461,7 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 					CompilingShaderMapId,
 					kUniqueShaderPermutationId,
 					ShaderPlatform,
+					PermutationFlags,
 					Material,
 					MaterialEnvironment,
 					MeshLayout.VertexFactoryType,
@@ -1514,6 +1520,7 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 				Material,
 				MaterialEnvironment,
 				ShaderPlatform,
+				PermutationFlags,
 				CompileJobs,
 				GetDebugDescription(),
 				DebugExtension
@@ -1547,6 +1554,7 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 				FMaterialShaderType::BeginCompileShaderPipeline(InPriority,
 					CompilingShaderMapId,
 					ShaderPlatform,
+					PermutationFlags,
 					Material,
 					MaterialEnvironment,
 					Pipeline,
@@ -1877,9 +1885,9 @@ public:
 		return Instance;
 	}
 
-	const FMaterialShaderMapLayout& AcquireLayout(EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters)
+	const FMaterialShaderMapLayout& AcquireLayout(EShaderPlatform Platform, EShaderPermutationFlags Flags, const FMaterialShaderParameters& MaterialParameters)
 	{
-		const uint64 ParameterHash = CityHash64WithSeed((char*)&MaterialParameters, sizeof(MaterialParameters), (uint64)Platform);
+		const uint64 ParameterHash = CityHash64WithSeed((char*)&MaterialParameters, sizeof(MaterialParameters), (uint64)Platform | ((uint64)Flags << 32));
 		
 		int32 Index = INDEX_NONE;
 		{
@@ -1902,7 +1910,7 @@ public:
 				check(MaterialParameterHashes.Num() == ShaderMapLayouts.Num());
 				check(MaterialShaderParameters.Num() == ShaderMapLayouts.Num());
 				Layout.Platform = Platform;
-				CreateLayout(Layout, Platform, MaterialParameters);
+				CreateLayout(Layout, Platform, Flags, MaterialParameters);
 			}
 		}
 
@@ -1922,7 +1930,7 @@ private:
 		return INDEX_NONE;
 	}
 
-	void CreateLayout(FMaterialShaderMapLayout& Layout, EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters)
+	void CreateLayout(FMaterialShaderMapLayout& Layout, EShaderPlatform Platform, EShaderPermutationFlags Flags, const FMaterialShaderParameters& MaterialParameters)
 	{
 		SCOPED_LOADTIMER(FMaterialShaderMapLayoutCache_CreateLayout);
 
@@ -1941,7 +1949,7 @@ private:
 			const int32 PermutationCount = ShaderType->GetPermutationCount();
 			for (int32 PermutationId = 0; PermutationId < PermutationCount; ++PermutationId)
 			{
-				if (ShaderType->ShouldCompilePermutation(Platform, MaterialParameters, PermutationId))
+				if (ShaderType->ShouldCompilePermutation(Platform, MaterialParameters, PermutationId, Flags))
 				{
 					Layout.Shaders.Add(FShaderLayoutEntry(ShaderType, PermutationId));
 
@@ -1958,7 +1966,7 @@ private:
 			for (FShaderPipelineType* ShaderPipelineType : SortedMaterialPipelineTypes)
 			{
 				if (ShaderPipelineType->HasTessellation() == bHasTessellation &&
-					FMaterialShaderType::ShouldCompilePipeline(ShaderPipelineType, Platform, MaterialParameters))
+					FMaterialShaderType::ShouldCompilePipeline(ShaderPipelineType, Platform, MaterialParameters, Flags))
 				{
 					Layout.ShaderPipelines.Add(ShaderPipelineType);
 
@@ -1970,7 +1978,7 @@ private:
 
 		for (FVertexFactoryType* VertexFactoryType : FVertexFactoryType::GetSortedMaterialTypes())
 		{
-			if (!FMeshMaterialShaderType::ShouldCompileVertexFactoryPermutation(VertexFactoryType, Platform, MaterialParameters))
+			if (!FMeshMaterialShaderType::ShouldCompileVertexFactoryPermutation(VertexFactoryType, Platform, MaterialParameters, Flags))
 			{
 				continue;
 			}
@@ -1982,7 +1990,7 @@ private:
 				const int32 PermutationCount = ShaderType->GetPermutationCount();
 				for (int32 PermutationId = 0; PermutationId < PermutationCount; ++PermutationId)
 				{
-					if (ShaderType->ShouldCompilePermutation(Platform, MaterialParameters, VertexFactoryType, PermutationId))
+					if (ShaderType->ShouldCompilePermutation(Platform, MaterialParameters, VertexFactoryType, PermutationId, Flags))
 					{
 						if (!MeshLayout)
 						{
@@ -2002,7 +2010,7 @@ private:
 				for (FShaderPipelineType* ShaderPipelineType : SortedMeshMaterialPipelineTypes)
 				{
 					if (ShaderPipelineType->HasTessellation() == bHasTessellation &&
-						FMeshMaterialShaderType::ShouldCompilePipeline(ShaderPipelineType, Platform, MaterialParameters, VertexFactoryType))
+						FMeshMaterialShaderType::ShouldCompilePipeline(ShaderPipelineType, Platform, MaterialParameters, VertexFactoryType, Flags))
 					{
 						// Now check the completeness of the shader map
 						if (!MeshLayout)
@@ -2029,9 +2037,9 @@ private:
 	FRWLock LayoutLock;
 };
 
-const FMaterialShaderMapLayout& AcquireMaterialShaderMapLayout(EShaderPlatform Platform, const FMaterialShaderParameters& MaterialParameters)
+const FMaterialShaderMapLayout& AcquireMaterialShaderMapLayout(EShaderPlatform Platform, EShaderPermutationFlags Flags, const FMaterialShaderParameters& MaterialParameters)
 {
-	return FMaterialShaderMapLayoutCache::Get().AcquireLayout(Platform, MaterialParameters);
+	return FMaterialShaderMapLayoutCache::Get().AcquireLayout(Platform, Flags, MaterialParameters);
 }
 
 bool FMaterialShaderMap::IsComplete(const FMaterial* Material, bool bSilent)
@@ -2053,7 +2061,7 @@ bool FMaterialShaderMap::IsComplete(const FMaterial* Material, bool bSilent)
 	const EShaderPlatform Platform = LocalContent->GetShaderPlatform();
 	const FMaterialShaderParameters MaterialParameters(Material);
 
-	const FMaterialShaderMapLayout& Layout = AcquireMaterialShaderMapLayout(Platform, MaterialParameters);
+	const FMaterialShaderMapLayout& Layout = AcquireMaterialShaderMapLayout(Platform, ShaderMapId.GetPermutationFlags(), MaterialParameters);
 	if (Layout.ShaderMapHash == LocalContent->ShaderContentHash)
 	{
 		return true;

@@ -564,14 +564,7 @@ void FMaterial::GetShaderMapId(EShaderPlatform Platform, const ITargetPlatform* 
 		OutId.SetShaderDependencies(ShaderTypes, ShaderPipelineTypes, VFTypes, Platform);
 		GetReferencedTexturesHash(Platform, OutId.TextureReferencesHash);
 
-		if (TargetPlatform)
-		{
-			OutId.LayoutParams.InitializeForPlatform(TargetPlatform->IniPlatformName(), TargetPlatform->HasEditorOnlyData());
-		}
-		else
-		{
-			OutId.LayoutParams.InitializeForCurrent();
-		}
+		OutId.LayoutParams.InitializeForPlatform(TargetPlatform);
 #else
 		OutId.QualityLevel = GetQualityLevelForShaderMapId();
 		OutId.FeatureLevel = GetFeatureLevel();
@@ -2376,9 +2369,10 @@ TShaderRef<FShader> FMaterial::GetShader(FMeshMaterialShaderType* ShaderType, FV
 
 				// Get the ShouldCache results that determine whether the shader should be compiled
 				auto ShaderPlatform = GShaderPlatformForFeatureLevel[GetFeatureLevel()];
+				auto ShaderPermutation = GetCurrentShaderPermutationFlags();
 				bool bMaterialShouldCache = ShouldCache(ShaderPlatform, ShaderType, VertexFactoryType);
-				bool bVFShouldCache = FMeshMaterialShaderType::ShouldCompileVertexFactoryPermutation(VertexFactoryType, ShaderPlatform, this);
-				bool bShaderShouldCache = ShaderType->ShouldCompilePermutation(ShaderPlatform, this, VertexFactoryType, PermutationId);
+				bool bVFShouldCache = FMeshMaterialShaderType::ShouldCompileVertexFactoryPermutation(VertexFactoryType, ShaderPlatform, this, ShaderPermutation);
+				bool bShaderShouldCache = ShaderType->ShouldCompilePermutation(ShaderPlatform, this, VertexFactoryType, PermutationId, ShaderPermutation);
 				FString MaterialUsage = GetMaterialUsageDescription();
 
 				int BreakPoint = 0;
@@ -2427,23 +2421,30 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(FMaterial::TryGetShaders);
 	static const auto* CVarShaderPipelines = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.ShaderPipelines"));
+	const bool bIsInGameThread = IsInGameThread();
+	const FMaterialShaderMap* ShaderMap = bIsInGameThread ? GameThreadShaderMap : RenderingThreadShaderMap;
+	const bool bShaderMapComplete = bIsInGameThread ? IsGameThreadShaderMapComplete() : IsRenderingThreadShaderMapComplete();
+	const uint32 CompilingShaderMapId = bIsInGameThread ? GameThreadCompilingShaderMapId : RenderingThreadCompilingShaderMapId;
+
 #if WITH_EDITOR && DO_CHECK
 	// Attempt to get some more info for a rare crash (UE-35937)
 	FMaterialShaderMap* GameThreadShaderMapPtr = GameThreadShaderMap;
-	checkf(RenderingThreadShaderMap, TEXT("RenderingThreadShaderMap was NULL (GameThreadShaderMap is %p). This may relate to bug UE-35937"), GameThreadShaderMapPtr);
+	checkf(ShaderMap, TEXT("RenderingThreadShaderMap was NULL (GameThreadShaderMap is %p). This may relate to bug UE-35937"), GameThreadShaderMapPtr);
 #endif
-	OutShaders.ShaderMap = RenderingThreadShaderMap;
-	const EShaderPlatform ShaderPlatform = RenderingThreadShaderMap->GetShaderPlatform();
+	
+	OutShaders.ShaderMap = ShaderMap;
+	const EShaderPlatform ShaderPlatform = ShaderMap->GetShaderPlatform();
+	const EShaderPermutationFlags PermutationFlags = GetCurrentShaderPermutationFlags();
 	const FShaderMapContent* ShaderMapContent = InVertexFactoryType
-		? static_cast<const FShaderMapContent*>(RenderingThreadShaderMap->GetMeshShaderMap(InVertexFactoryType))
-		: static_cast<const FShaderMapContent*>(RenderingThreadShaderMap->GetContent());
+		? static_cast<const FShaderMapContent*>(ShaderMap->GetMeshShaderMap(InVertexFactoryType))
+		: static_cast<const FShaderMapContent*>(ShaderMap->GetContent());
 
 	TArray<FShaderCommonCompileJobPtr> CompileJobs;
 	bool bMissingShader = false;
 
 	if (InTypes.PipelineType &&
 		RHISupportsShaderPipelines(ShaderPlatform) &&
-		CVarShaderPipelines && CVarShaderPipelines->GetValueOnRenderThread() != 0)
+		CVarShaderPipelines && CVarShaderPipelines->GetValueOnAnyThread(bIsInGameThread) != 0)
 	{
 		FShaderPipeline* Pipeline = ShaderMapContent ? ShaderMapContent->GetShaderPipeline(InTypes.PipelineType) : nullptr;
 		if (Pipeline)
@@ -2455,7 +2456,7 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 				FShader* Shader = Pipeline->GetShader((EShaderFrequency)FrequencyIndex);
 				if (Shader)
 				{
-					check(Shader->GetType(RenderingThreadShaderMap->GetPointerTable()) == ShaderType);
+					check(Shader->GetType(ShaderMap->GetPointerTable()) == ShaderType);
 					OutShaders.Shaders[FrequencyIndex] = (FMaterialShader*)Shader;
 				}
 				else
@@ -2486,16 +2487,16 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 				}
 				else 
 #endif
-				if (RenderingThreadCompilingShaderMapId != 0u)
+				if (CompilingShaderMapId != 0u)
 				{
-					check(!IsRenderingThreadShaderMapComplete());
+					check(!bShaderMapComplete);
 					if (InVertexFactoryType)
 					{
-						FMeshMaterialShaderType::BeginCompileShaderPipeline(EShaderCompileJobPriority::ForceLocal, RenderingThreadCompilingShaderMapId, kUniqueShaderPermutationId, ShaderPlatform, this, RenderingThreadPendingCompilerEnvironment, InVertexFactoryType, InTypes.PipelineType, CompileJobs, FString(), FString());
+						FMeshMaterialShaderType::BeginCompileShaderPipeline(EShaderCompileJobPriority::ForceLocal, CompilingShaderMapId, kUniqueShaderPermutationId, ShaderPlatform, PermutationFlags, this, RenderingThreadPendingCompilerEnvironment, InVertexFactoryType, InTypes.PipelineType, CompileJobs, FString(), FString());
 					}
 					else
 					{
-						FMaterialShaderType::BeginCompileShaderPipeline(EShaderCompileJobPriority::ForceLocal, RenderingThreadCompilingShaderMapId, ShaderPlatform, this, RenderingThreadPendingCompilerEnvironment, InTypes.PipelineType, CompileJobs, FString(), FString());
+						FMaterialShaderType::BeginCompileShaderPipeline(EShaderCompileJobPriority::ForceLocal, CompilingShaderMapId, ShaderPlatform, PermutationFlags, this, RenderingThreadPendingCompilerEnvironment, InTypes.PipelineType, CompileJobs, FString(), FString());
 					}
 				}
 			}
@@ -2532,17 +2533,17 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 					else
 #endif
 					{
-						check(!IsRenderingThreadShaderMapComplete());
+						check(!bShaderMapComplete);
 						bMissingShader = true;
-						if (RenderingThreadCompilingShaderMapId != 0u)
+						if (CompilingShaderMapId != 0u)
 						{
 							if (InVertexFactoryType)
 							{
-								ShaderType->AsMeshMaterialShaderType()->BeginCompileShader(EShaderCompileJobPriority::ForceLocal, RenderingThreadCompilingShaderMapId, PermutationId, ShaderPlatform, this, RenderingThreadPendingCompilerEnvironment, InVertexFactoryType, CompileJobs, FString(), FString());
+								ShaderType->AsMeshMaterialShaderType()->BeginCompileShader(EShaderCompileJobPriority::ForceLocal, CompilingShaderMapId, PermutationId, ShaderPlatform, PermutationFlags, this, RenderingThreadPendingCompilerEnvironment, InVertexFactoryType, CompileJobs, FString(), FString());
 							}
 							else
 							{
-								ShaderType->AsMaterialShaderType()->BeginCompileShader(EShaderCompileJobPriority::ForceLocal, RenderingThreadCompilingShaderMapId, PermutationId, this, RenderingThreadPendingCompilerEnvironment, ShaderPlatform, CompileJobs, FString(), FString());
+								ShaderType->AsMaterialShaderType()->BeginCompileShader(EShaderCompileJobPriority::ForceLocal, CompilingShaderMapId, PermutationId, this, RenderingThreadPendingCompilerEnvironment, ShaderPlatform, PermutationFlags, CompileJobs, FString(), FString());
 							}
 						}
 					}
@@ -2553,10 +2554,16 @@ bool FMaterial::TryGetShaders(const FMaterialShaderTypes& InTypes, const FVertex
 
 	if (CompileJobs.Num() > 0)
 	{
-		GShaderCompilingManager->SubmitJobs(CompileJobs, GetBaseMaterialPathName(), RenderingThreadShaderMap->GetDebugDescription());
+		GShaderCompilingManager->SubmitJobs(CompileJobs, GetBaseMaterialPathName(), ShaderMap->GetDebugDescription());
 	}
 
 	return !bMissingShader;
+}
+
+bool FMaterial::HasShaders(const FMaterialShaderTypes& InTypes, const FVertexFactoryType* InVertexFactoryType) const
+{
+	FMaterialShaders UnusedShaders;
+	return TryGetShaders(InTypes, InVertexFactoryType, UnusedShaders);
 }
 
 FShaderPipelineRef FMaterial::GetShaderPipeline(class FShaderPipelineType* ShaderPipelineType, FVertexFactoryType* VertexFactoryType, bool bFatalIfNotFound) const
@@ -2571,6 +2578,7 @@ FShaderPipelineRef FMaterial::GetShaderPipeline(class FShaderPipelineType* Shade
 			{
 				// Get the ShouldCache results that determine whether the shader should be compiled
 				auto ShaderPlatform = GShaderPlatformForFeatureLevel[GetFeatureLevel()];
+				auto ShaderPermutation = GetCurrentShaderPermutationFlags();
 				FString MaterialUsage = GetMaterialUsageDescription();
 
 				UE_LOG(LogMaterial, Error,
@@ -2586,8 +2594,8 @@ FShaderPipelineRef FMaterial::GetShaderPipeline(class FShaderPipelineType* Shade
 					else if (ShaderType->GetMeshMaterialShaderType())
 					{
 						bool bMaterialShouldCache = ShouldCache(ShaderPlatform, ShaderType->GetMeshMaterialShaderType(), VertexFactoryType);
-						bool bVFShouldCache = FMeshMaterialShaderType::ShouldCompileVertexFactoryPermutation(VertexFactoryType, ShaderPlatform, this);
-						bool bShaderShouldCache = ShaderType->GetMeshMaterialShaderType()->ShouldCompilePermutation(ShaderPlatform, this, VertexFactoryType, kUniqueShaderPermutationId);
+						bool bVFShouldCache = FMeshMaterialShaderType::ShouldCompileVertexFactoryPermutation(VertexFactoryType, ShaderPlatform, this, ShaderPermutation);
+						bool bShaderShouldCache = ShaderType->GetMeshMaterialShaderType()->ShouldCompilePermutation(ShaderPlatform, this, VertexFactoryType, kUniqueShaderPermutationId, ShaderPermutation);
 
 						UE_LOG(LogMaterial, Error, TEXT("%s %s ShouldCache: Mat=%u, VF=%u, Shader=%u"),
 							GetShaderFrequencyString(ShaderType->GetFrequency(), false), ShaderType->GetName(), bMaterialShouldCache, bVFShouldCache, bShaderShouldCache);
@@ -2595,7 +2603,7 @@ FShaderPipelineRef FMaterial::GetShaderPipeline(class FShaderPipelineType* Shade
 					else if (ShaderType->GetMaterialShaderType())
 					{
 						bool bMaterialShouldCache = ShouldCache(ShaderPlatform, ShaderType->GetMaterialShaderType(), VertexFactoryType);
-						bool bShaderShouldCache = ShaderType->GetMaterialShaderType()->ShouldCompilePermutation(ShaderPlatform, this, kUniqueShaderPermutationId);
+						bool bShaderShouldCache = ShaderType->GetMaterialShaderType()->ShouldCompilePermutation(ShaderPlatform, this, kUniqueShaderPermutationId, ShaderPermutation);
 
 						UE_LOG(LogMaterial, Error, TEXT("%s %s ShouldCache: Mat=%u, NO VF, Shader=%u"),
 							GetShaderFrequencyString(ShaderType->GetFrequency(), false), ShaderType->GetName(), bMaterialShouldCache, bShaderShouldCache);
@@ -3354,7 +3362,7 @@ static void AddSortedShaderPipeline(TArray<const FShaderPipelineType*>& Pipeline
 void FMaterial::GetDependentShaderAndVFTypes(EShaderPlatform Platform, TArray<FShaderType*>& OutShaderTypes, TArray<const FShaderPipelineType*>& OutShaderPipelineTypes, TArray<FVertexFactoryType*>& OutVFTypes) const
 {
 	const FMaterialShaderParameters MaterialParameters(this);
-	const FMaterialShaderMapLayout& Layout = AcquireMaterialShaderMapLayout(Platform, MaterialParameters);
+	const FMaterialShaderMapLayout& Layout = AcquireMaterialShaderMapLayout(Platform, GetCurrentShaderPermutationFlags(), MaterialParameters);
 
 	for (const FShaderLayoutEntry& Shader : Layout.Shaders)
 	{
