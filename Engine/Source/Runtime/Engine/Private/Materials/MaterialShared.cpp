@@ -2042,18 +2042,13 @@ bool FMaterial::CacheShaders(const FMaterialShaderMapId& ShaderMapId, EShaderPla
 			}
 		}
 
-		// On-the-fly view shaders are not using ddc currently, as their shadermap is not persistent.
-		// See FMaterialShaderMap::ProcessCompilationResults().
-		if  (GetMaterialShaderMapUsage() != EMaterialShaderMapUsage::DebugViewMode)
+		// Attempt to load from the derived data cache if we are uncooked and don't have any shadermap.
+		// If we have an incomplete shadermap, continue with it to prevent creation of duplicate shadermaps for the same ShaderMapId
+		if (!ShaderMap && !FPlatformProperties::RequiresCookedData())
 		{
-			// Attempt to load from the derived data cache if we are uncooked and don't have any shadermap.
-			// If we have an incomplete shadermap, continue with it to prevent creation of duplicate shadermaps for the same ShaderMapId
-			if (!ShaderMap && !FPlatformProperties::RequiresCookedData())
-			{
-				TRefCountPtr<FMaterialShaderMap> LoadedShaderMap;
-				FMaterialShaderMap::LoadFromDerivedDataCache(this, ShaderMapId, Platform, TargetPlatform, LoadedShaderMap);
-				ShaderMap = LoadedShaderMap;
-			}
+			TRefCountPtr<FMaterialShaderMap> LoadedShaderMap;
+			FMaterialShaderMap::LoadFromDerivedDataCache(this, ShaderMapId, Platform, TargetPlatform, LoadedShaderMap);
+			ShaderMap = LoadedShaderMap;
 		}
 
 		check(!ShaderMap || ShaderMap->GetFrozenContentSize() > 0u);

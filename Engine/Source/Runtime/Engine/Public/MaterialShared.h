@@ -717,7 +717,6 @@ namespace EMaterialShaderMapUsage
 		MaterialExportOpacity,
 		MaterialExportOpacityMask,
 		MaterialExportSubSurfaceColor,
-		DebugViewMode,
 	};
 }
 
