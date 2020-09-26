@@ -48,9 +48,6 @@ public:
 	/** Gets a custom widget for the settings.  This is only for very custom situations. */
 	virtual TSharedPtr<SWidget> GetCustomSettingsWidget() const;
 
-	/** UObject interface */
-	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
-
 protected:
 	/**
 	 * The category name to use, overrides the one detected by looking at the config=... class metadata.
