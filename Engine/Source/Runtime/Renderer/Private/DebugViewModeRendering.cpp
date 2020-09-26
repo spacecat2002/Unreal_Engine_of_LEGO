@@ -234,16 +234,18 @@ void FDebugViewModeMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBa
 	}
 
 	const FMaterialRenderProxy* MaterialRenderProxy = MeshBatch.MaterialRenderProxy;
-	const FMaterial* Material = MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel);
-	if (Material && !DebugViewModeInterface->bNeedsMaterialProperties && FDebugViewModeInterface::AllowFallbackToDefaultMaterial(Material))
+	const FMaterial* BatchMaterial = MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel);
+	if (!BatchMaterial)
+	{
+		return;
+	}
+
+	const FMaterial* Material = BatchMaterial;
+	if (!DebugViewModeInterface->bNeedsMaterialProperties && FDebugViewModeInterface::AllowFallbackToDefaultMaterial(Material))
 	{
 		MaterialRenderProxy = UMaterial::GetDefaultMaterial(MD_Surface)->GetRenderProxy();
 		Material = MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel);
-	}
-
-	if (!Material)
-	{
-		return;
+		check(Material);
 	}
 
 	FVertexFactoryType* VertexFactoryType = MeshBatch.VertexFactory->GetType();
@@ -265,15 +267,15 @@ void FDebugViewModeMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBa
 	Shaders.TryGetDomainShader(DebugViewModePassShaders.DomainShader);
 
 	const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
-	const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
-	const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
+	const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *BatchMaterial, OverrideSettings);
+	const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *BatchMaterial, OverrideSettings);
 
 	FMeshPassProcessorRenderState DrawRenderState;
 	DrawRenderState.SetViewUniformBuffer(ViewUniformBuffer);
 	DrawRenderState.SetPassUniformBuffer(PassUniformBuffer);
 
 	FDebugViewModeInterface::FRenderState InterfaceRenderState;
-	DebugViewModeInterface->SetDrawRenderState(Material->GetBlendMode(), InterfaceRenderState, Scene ? (Scene->GetShadingPath() == EShadingPath::Deferred && Scene->EarlyZPassMode != DDM_NonMaskedOnly) : false);
+	DebugViewModeInterface->SetDrawRenderState(BatchMaterial->GetBlendMode(), InterfaceRenderState, Scene ? (Scene->GetShadingPath() == EShadingPath::Deferred && Scene->EarlyZPassMode != DDM_NonMaskedOnly) : false);
 	DrawRenderState.SetBlendState(InterfaceRenderState.BlendState);
 	DrawRenderState.SetDepthStencilState(InterfaceRenderState.DepthStencilState);
 
@@ -289,7 +291,7 @@ void FDebugViewModeMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBa
 	// Shadermap can be null while shaders are compiling.
 	if (DebugViewModeInterface->bNeedsInstructionCount)
 	{
-		UpdateInstructionCount(ShaderElementData, Material, VertexFactoryType);
+		UpdateInstructionCount(ShaderElementData, BatchMaterial, VertexFactoryType);
 	}
 
 	ShaderElementData.InitializeMeshMaterialData(ViewIfDynamicMeshCommand, PrimitiveSceneProxy, MeshBatch, StaticMeshId, true);

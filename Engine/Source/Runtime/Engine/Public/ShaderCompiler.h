@@ -23,6 +23,7 @@
 class FShaderCompileJob;
 class FShaderPipelineCompileJob;
 class FVertexFactoryType;
+class FMaterialShaderMap;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogShaderCompilers, Log, All);
 

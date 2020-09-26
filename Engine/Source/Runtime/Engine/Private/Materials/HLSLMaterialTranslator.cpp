@@ -4620,7 +4620,7 @@ int32 FHLSLMaterialTranslator::TextureSample(
 	if (bStoreTexCoordScales)
 	{
 		FString SamplingCode = CoerceParameter(SamplingCodeIndex, MCT_Float4);
-		AddCodeChunk(MCT_Float, TEXT("MaterialStoreTexCoordScale(Parameters, %s, %d)"), *SamplingCode, (int)TextureReferenceIndex);
+		AddCodeChunk(MCT_Float, TEXT("MaterialStoreTexSample(Parameters, %s, %d)"), *SamplingCode, (int)TextureReferenceIndex);
 	}
 
 	return SamplingCodeIndex;
