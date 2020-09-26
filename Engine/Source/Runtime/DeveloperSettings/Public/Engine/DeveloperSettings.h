@@ -41,6 +41,8 @@ public:
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnSettingsChanged, UObject*, struct FPropertyChangedEvent&);
 	FOnSettingsChanged& OnSettingChanged();
 
+	/** UObject interface */
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
 	/** Gets a custom widget for the settings.  This is only for very custom situations. */

@@ -31,7 +31,6 @@ FName UDeveloperSettings::GetContainerName() const
 	return ProjectName;
 }
 
-
 FName UDeveloperSettings::GetCategoryName() const
 {
 	static const FName GeneralName(TEXT("General"));
@@ -85,13 +84,15 @@ FText UDeveloperSettings::GetSectionDescription() const
 	return GetClass()->GetToolTipText();
 }
 
+void UDeveloperSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
+{
+	SettingsChangedDelegate.Broadcast(this, PropertyChangedEvent);
+}
 
 UDeveloperSettings::FOnSettingsChanged& UDeveloperSettings::OnSettingChanged()
 {
 	return SettingsChangedDelegate;
 }
-
-
 #endif
 
 TSharedPtr<SWidget> UDeveloperSettings::GetCustomSettingsWidget() const
@@ -99,12 +100,6 @@ TSharedPtr<SWidget> UDeveloperSettings::GetCustomSettingsWidget() const
 	return TSharedPtr<SWidget>();
 }
 
-void UDeveloperSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) 
-{
-#if WITH_EDITOR
-	SettingsChangedDelegate.Broadcast(this, PropertyChangedEvent);
-#endif
-}
 
 #if WITH_EDITOR
 
