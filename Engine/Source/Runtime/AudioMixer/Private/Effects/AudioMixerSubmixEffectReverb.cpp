@@ -112,7 +112,6 @@ void FSubmixEffectReverb::OnProcessAudio(const FSoundEffectSubmixInputData& InDa
 		return;
 	}
 
-	CSV_SCOPED_TIMING_STAT(Audio, SubmixReverb);
 	SCOPE_CYCLE_COUNTER(STAT_AudioMixerSubmixReverb);
 
 	UpdateParameters();
