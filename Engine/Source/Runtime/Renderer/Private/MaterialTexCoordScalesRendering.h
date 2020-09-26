@@ -33,7 +33,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-		return EnumHasAllFlags(Parameters.Flags, EShaderPermutationFlags::HasEditorOnlyData) && AllowDebugViewShaderMode(DVSM_OutputMaterialTextureScales, Parameters.Platform, Parameters.MaterialParameters.FeatureLevel);
+		return ShouldCompileDebugViewModeShader(DVSM_OutputMaterialTextureScales, Parameters);
 	}
 
 	FMaterialTexCoordScalePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):

@@ -49,12 +49,7 @@ public:
 		const FPermutationDomain PermutationVector(Parameters.PermutationId);
 		const bool bQuadOverdraw = PermutationVector.Get<FComplexityAccumulatePS::FQuadOverdraw>() == FComplexityAccumulatePS::EQuadOverdraw::Enable;
 
-		if (EnumHasAllFlags(Parameters.Flags, EShaderPermutationFlags::HasEditorOnlyData) &&
-			AllowDebugViewShaderMode(bQuadOverdraw ? DVSM_QuadComplexity : DVSM_ShaderComplexity, Parameters.Platform, Parameters.MaterialParameters.FeatureLevel))
-		{
-			return true;
-		}
-		return false;
+		return ShouldCompileDebugViewModeShader(bQuadOverdraw ? DVSM_QuadComplexity : DVSM_ShaderComplexity, Parameters);
 	}
 
 	FComplexityAccumulatePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):

@@ -6,6 +6,7 @@
 #include "DebugViewModeHelpers.h"
 #include "DebugViewModeInterface.h"
 #include "MaterialShaderType.h"
+#include "MeshMaterialShader.h"
 #include "ShaderCompiler.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Misc/FeedbackContext.h"
@@ -62,6 +63,38 @@ bool AllowDebugViewShaderMode(EDebugViewShaderMode ShaderMode, EShaderPlatform P
 #else
 	return ShaderMode == DVSM_ShaderComplexity;
 #endif
+}
+
+bool ShouldCompileDebugViewModeShader(EDebugViewShaderMode ShaderMode, const FMeshMaterialShaderPermutationParameters& Parameters)
+{
+	if (!EnumHasAllFlags(Parameters.Flags, EShaderPermutationFlags::HasEditorOnlyData))
+	{
+		// Debug view shaders only in editor
+		return false;
+	}
+
+	if (!AllowDebugViewShaderMode(ShaderMode, Parameters.Platform, Parameters.MaterialParameters.FeatureLevel))
+	{
+		// Don't support this mode
+		return false;
+	}
+
+	const FDebugViewModeInterface* DebugViewModeInterface = FDebugViewModeInterface::GetInterface(ShaderMode);
+	if (!DebugViewModeInterface->bNeedsMaterialProperties &&
+		!Parameters.MaterialParameters.bIsDefaultMaterial &&
+		FDebugViewModeInterface::AllowFallbackToDefaultMaterial(Parameters.MaterialParameters.TessellationMode, Parameters.MaterialParameters.bHasVertexPositionOffsetConnected, Parameters.MaterialParameters.bHasPixelDepthOffsetConnected))
+	{
+		// We can replace this material with the default material
+		return false;
+	}
+
+	if (DebugViewModeInterface->bNeedsOnlyLocalVertexFactor && Parameters.VertexFactoryType->GetFName() != TEXT("FLocalVertexFactory"))
+	{
+		// This debug view mode only needed for local vertex factory
+		return false;
+	}
+
+	return true;
 }
 
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)

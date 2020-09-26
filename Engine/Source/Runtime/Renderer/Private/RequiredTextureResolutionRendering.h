@@ -26,7 +26,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-		return EnumHasAllFlags(Parameters.Flags, EShaderPermutationFlags::HasEditorOnlyData) && AllowDebugViewShaderMode(DVSM_RequiredTextureResolution, Parameters.Platform, Parameters.MaterialParameters.FeatureLevel);
+		return ShouldCompileDebugViewModeShader(DVSM_RequiredTextureResolution, Parameters);
 	}
 
 	FRequiredTextureResolutionPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
