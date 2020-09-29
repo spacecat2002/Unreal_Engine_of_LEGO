@@ -43,15 +43,12 @@ void			Writer_ShutdownControl();
 
 ////////////////////////////////////////////////////////////////////////////////
 UE_TRACE_EVENT_BEGIN($Trace, NewTrace, NoSync)
+	UE_TRACE_EVENT_FIELD(uint64, StartCycle)
+	UE_TRACE_EVENT_FIELD(uint64, CycleFrequency)
 	UE_TRACE_EVENT_FIELD(uint32, Serial)
 	UE_TRACE_EVENT_FIELD(uint16, UserUidBias)
 	UE_TRACE_EVENT_FIELD(uint16, Endian)
 	UE_TRACE_EVENT_FIELD(uint8, PointerSize)
-UE_TRACE_EVENT_END()
-
-UE_TRACE_EVENT_BEGIN($Trace, Timing, NoSync)
-	UE_TRACE_EVENT_FIELD(uint64, StartCycle)
-	UE_TRACE_EVENT_FIELD(uint64, CycleFrequency)
 UE_TRACE_EVENT_END()
 
 
@@ -316,15 +313,9 @@ static void Writer_LogHeader()
 		<< NewTrace.Serial(uint32(GLogSerial)) // should really atomic-load-relaxed here...
 		<< NewTrace.UserUidBias(EKnownEventUids::User)
 		<< NewTrace.Endian(0x524d)
-		<< NewTrace.PointerSize(sizeof(void*));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-static void Writer_LogTimingHeader()
-{
-	UE_TRACE_LOG($Trace, Timing, TraceLogChannel)
-		<< Timing.StartCycle(GStartCycle)
-		<< Timing.CycleFrequency(TimeGetFrequency());
+		<< NewTrace.PointerSize(sizeof(void*))
+		<< NewTrace.StartCycle(GStartCycle)
+		<< NewTrace.CycleFrequency(TimeGetFrequency());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -367,7 +358,6 @@ static bool Writer_UpdateConnection()
 	// Send the header events
 	TWriteBufferRedirect<512> HeaderEvents;
 	Writer_LogHeader();
-	Writer_LogTimingHeader();
 	HeaderEvents.Close();
 
 	Writer_DescribeEvents();
