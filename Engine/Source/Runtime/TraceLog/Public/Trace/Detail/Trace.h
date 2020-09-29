@@ -8,8 +8,10 @@
 
 namespace Trace
 {
-	class FChannel;
-};
+
+class FChannel;
+
+}; // namespace Trace
 
 #define TRACE_PRIVATE_CHANNEL_DEFAULT_ARGS false, "None"
 
