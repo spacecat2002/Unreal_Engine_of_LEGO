@@ -303,8 +303,8 @@ static void Writer_DescribeAnnounce()
 		return;
 	}
 
-	Writer_DescribeEvents();
 	Writer_AnnounceChannels();
+	Writer_DescribeEvents();
 }
 
 
