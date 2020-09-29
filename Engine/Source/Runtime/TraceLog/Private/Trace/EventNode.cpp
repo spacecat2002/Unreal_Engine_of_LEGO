@@ -13,16 +13,23 @@ namespace Private {
 ////////////////////////////////////////////////////////////////////////////////
 void					Writer_InternalInitialize();
 FEventNode* volatile	GNewEventList; // = nullptr;
+FEventNode*				GEventListHead;// = nullptr;
+FEventNode*				GEventListTail;// = nullptr;
 
 
 
 ////////////////////////////////////////////////////////////////////////////////
 const FEventNode* FEventNode::FIter::GetNext()
 {
-	auto* Ret = (const FEventNode*)Inner;
+	auto* Ret = (FEventNode*)Inner;
 	if (Ret != nullptr)
 	{
 		Inner = Ret->Next;
+
+		if (Inner == nullptr)
+		{
+			GEventListTail = Ret;
+		}
 	}
 	return Ret;
 }
@@ -42,6 +49,15 @@ FEventNode::FIter FEventNode::ReadNew()
 	{
 		PlatformYield();
 		EventList = AtomicLoadRelaxed(&GNewEventList);
+	}
+
+	if (GEventListHead == nullptr)
+	{
+		GEventListHead = EventList;
+	}
+	else
+	{
+		GEventListTail->Next = EventList;
 	}
 
 	return { EventList };
