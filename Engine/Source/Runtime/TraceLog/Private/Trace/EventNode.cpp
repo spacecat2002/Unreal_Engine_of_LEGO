@@ -173,6 +173,27 @@ void FEventNode::Describe() const
 	LogScope.Commit();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+void FEventNode::OnConnect()
+{
+	// Re-add known events back as new events so that they get described again
+	if (GEventListHead == nullptr)
+	{
+		return;
+	}
+
+	for (;; PlatformYield())
+	{
+		FEventNode* Node = AtomicLoadRelaxed(&GNewEventList);
+		if (AtomicCompareExchangeRelaxed(&GNewEventList, GEventListHead, Node))
+		{
+			break;
+		}
+	}
+
+	GEventListHead = GEventListTail = nullptr;
+}
+
 } // namespace Private
 } // namespace Trace
 

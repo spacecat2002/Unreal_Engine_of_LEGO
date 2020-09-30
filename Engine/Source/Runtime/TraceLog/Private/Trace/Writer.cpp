@@ -360,6 +360,7 @@ static bool Writer_UpdateConnection()
 	Writer_LogHeader();
 	HeaderEvents.Close();
 
+	FEventNode::OnConnect();
 	Writer_DescribeEvents();
 
 	Writer_SendData(HeaderEvents.GetData(), HeaderEvents.GetSize());
