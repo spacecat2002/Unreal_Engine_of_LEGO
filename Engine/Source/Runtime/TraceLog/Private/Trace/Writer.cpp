@@ -326,6 +326,18 @@ static bool Writer_UpdateConnection()
 		return false;
 	}
 
+	// Is this a close request?
+	if (GPendingDataHandle == ~0ull)
+	{
+		if (GDataHandle)
+		{
+			IoClose(GDataHandle);
+		}
+
+		GDataHandle = 0;
+		GPendingDataHandle = 0;
+	}
+
 	// Reject the pending connection if we've already got a connection
 	if (GDataHandle)
 	{
@@ -570,6 +582,18 @@ bool Writer_WriteTo(const ANSICHAR* Path)
 	}
 
 	GPendingDataHandle = DataHandle;
+	return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+bool Writer_Stop()
+{
+	if (GPendingDataHandle || !GDataHandle)
+	{
+		return false;
+	}
+
+	GPendingDataHandle = ~UPTRINT(0);
 	return true;
 }
 
