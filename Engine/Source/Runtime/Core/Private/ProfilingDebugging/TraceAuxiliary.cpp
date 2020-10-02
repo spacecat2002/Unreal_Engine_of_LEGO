@@ -48,6 +48,7 @@ public:
 	template <class T> void	ReadChannels(T&& Callback) const;
 	void					AddChannels(const TCHAR* ChannelList);
 	bool					Connect(ETraceConnectType Type, const TCHAR* Parameter);
+	bool					Stop();
 	void					EnableChannels();
 	void					DisableChannels();
 
@@ -169,6 +170,19 @@ bool FTraceAuxiliaryImpl::Connect(ETraceConnectType Type, const TCHAR* Parameter
 	EnableChannels();
 
 	State = EState::Tracing;
+	return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+bool FTraceAuxiliaryImpl::Stop()
+{
+	if (!Trace::Stop())
+	{
+		return false;
+	}
+
+	DisableChannels();
+	State = EState::Stopped;
 	return true;
 }
 
@@ -334,8 +348,8 @@ static void TraceAuxiliaryStart(const TArray<FString>& Args)
 ////////////////////////////////////////////////////////////////////////////////
 static void TraceAuxiliaryStop()
 {
-	GTraceAuxiliary.DisableChannels();
-	UE_LOG(LogConsoleResponse, Log, TEXT("Tracing stopped. Use 'Trace.Start' to resume"));
+	GTraceAuxiliary.Stop();
+	UE_LOG(LogConsoleResponse, Log, TEXT("Tracing stopped."));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
