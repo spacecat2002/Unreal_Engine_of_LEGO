@@ -54,9 +54,8 @@ public:
 private:
 	enum class EState : uint8
 	{
-		None,
-		Tracing,
 		Stopped,
+		Tracing,
 	};
 
 	struct FChannel
@@ -73,7 +72,7 @@ private:
 
 	TMap<uint32, FChannel>	Channels;
 	FString					TraceDest;
-	EState					State = EState::None;
+	EState					State = EState::Stopped;
 };
 
 static FTraceAuxiliaryImpl GTraceAuxiliary;
