@@ -100,7 +100,7 @@ class FChannel;
 		Trace::TField<0, decltype(EventProps_Private)::Size, Trace::Attachment> const Attachment_Field = {}; \
 		template <typename... Ts> auto Attachment(Ts... ts) const { Attachment_Field.Set((uint8*)this, Forward<Ts>(ts)...); return true; } \
 		explicit operator bool () const { return true; } \
-		enum { EventFlags = PartialEventFlags|(decltype(EventProps_Private)::MaybeHasAux ? Trace::Private::FEventInfo::Flag_MaybeHasAux : 0), }; \
+		enum { EventFlags = PartialEventFlags|(decltype(EventProps_Private)::NumAuxFields ? Trace::Private::FEventInfo::Flag_MaybeHasAux : 0), }; \
 	};
 
 #define TRACE_PRIVATE_LOG_PRELUDE(EnterFunc, LoggerName, EventName, ChannelsExpr, ...) \

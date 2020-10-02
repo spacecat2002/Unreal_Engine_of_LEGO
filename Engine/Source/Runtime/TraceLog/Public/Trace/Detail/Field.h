@@ -108,7 +108,7 @@ enum class EIndexPack
 {
 	NumFieldsShift	= 8,
 	NumFieldsMask	= (1 << NumFieldsShift) - 1,
-	MaybeHasAux		= 1 << NumFieldsShift,
+	AuxFieldCounter	= 1 << NumFieldsShift,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,7 +133,7 @@ enum class EIndexPack
 template <int InIndex, int InOffset, typename Type>
 struct TField<InIndex, InOffset, Type[]>
 {
-	TRACE_PRIVATE_FIELD(InIndex|int(EIndexPack::MaybeHasAux), InOffset, Type[]);
+	TRACE_PRIVATE_FIELD(InIndex + int(EIndexPack::AuxFieldCounter), InOffset, Type[]);
 
 	static void Set(uint8*, Type const* Data, int32 Count)
 	{
@@ -162,7 +162,7 @@ struct TField<InIndex, InOffset, Type[Count]>
 template <int InIndex, int InOffset>
 struct TField<InIndex, InOffset, Trace::AnsiString>
 {
-	TRACE_PRIVATE_FIELD(InIndex|int(EIndexPack::MaybeHasAux), InOffset, Trace::AnsiString);
+	TRACE_PRIVATE_FIELD(InIndex + int(EIndexPack::AuxFieldCounter), InOffset, Trace::AnsiString);
 
 	FORCENOINLINE static void Set(uint8*, const TCHAR* String, int32 Length=-1)
 	{
@@ -193,7 +193,7 @@ struct TField<InIndex, InOffset, Trace::AnsiString>
 template <int InIndex, int InOffset>
 struct TField<InIndex, InOffset, Trace::WideString>
 {
-	TRACE_PRIVATE_FIELD(InIndex|int(EIndexPack::MaybeHasAux), InOffset, Trace::WideString);
+	TRACE_PRIVATE_FIELD(InIndex + int(EIndexPack::AuxFieldCounter), InOffset, Trace::WideString);
 
 	FORCENOINLINE static void Set(uint8*, const TCHAR* String, int32 Length=-1)
 	{
@@ -234,9 +234,9 @@ struct TField<InNumFields, InSize, EventProps>
 {
 	enum : uint16
 	{
-		NumFields	= InNumFields & int(EIndexPack::NumFieldsMask),
-		Size		= InSize,
-		MaybeHasAux	= !!(InNumFields & int(EIndexPack::MaybeHasAux)),
+		NumFields		= InNumFields & int(EIndexPack::NumFieldsMask),
+		Size			= InSize,
+		NumAuxFields	= (InNumFields >> int(EIndexPack::NumFieldsShift)) & int(EIndexPack::NumFieldsMask),
 	};
 };
 
