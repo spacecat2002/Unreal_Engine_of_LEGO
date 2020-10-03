@@ -55,6 +55,7 @@ UE_TRACE_EVENT_END()
 
 ////////////////////////////////////////////////////////////////////////////////
 static bool						GInitialized;		// = false;
+FStatistics						GTraceStatistics;	// = {};
 uint64							GStartCycle;		// = 0;
 TRACELOG_API uint32 volatile	GLogSerial;			// = 0;
 
@@ -144,6 +145,10 @@ void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 		Writer_SendData(ThreadId, TraceData.GetData(), TraceData.GetSize());
 	}
 
+#if !TRACE_PRIVATE_STATISTICS
+	AtomicIncrement(&GStatistics.MemoryUsed, Size);
+#endif
+
 	return Ret;
 }
 
@@ -178,6 +183,10 @@ void Writer_MemoryFree(void* Address, uint32 Size)
 		Writer_SendData(ThreadId, TraceData.GetData(), TraceData.GetSize());
 	}
 #endif // TRACE_PRIVATE_STOMP
+
+#if !TRACE_PRIVATE_STATISTICS
+	AtomicIncrement(&GStatistics.MemoryUsed, -int64(Size));
+#endif
 }
 
 
@@ -189,6 +198,10 @@ UPTRINT							GPendingDataHandle;	// = 0
 ////////////////////////////////////////////////////////////////////////////////
 void Writer_SendDataRaw(const void* Data, uint32 Size)
 {
+#if TRACE_PRIVATE_STATISTICS
+	GTraceStatistics.BytesSent += Size;
+#endif
+
 	if (!IoWrite(GDataHandle, Data, Size))
 	{
 		IoClose(GDataHandle);
@@ -199,6 +212,10 @@ void Writer_SendDataRaw(const void* Data, uint32 Size)
 ////////////////////////////////////////////////////////////////////////////////
 uint32 Writer_SendData(uint32 ThreadId, uint8* __restrict Data, uint32 Size)
 {
+#if TRACE_PRIVATE_STATISTICS
+	GTraceStatistics.BytesTraced += Size;
+#endif
+
 	if (!GDataHandle)
 	{
 		return 0;
@@ -366,6 +383,10 @@ static bool Writer_UpdateConnection()
 		GDataHandle = 0;
 		return false;
 	}
+
+	// Reset statistics.
+	GTraceStatistics.BytesSent = 0;
+	GTraceStatistics.BytesTraced = 0;
 
 	// Send the header events
 	TWriteBufferRedirect<512> HeaderEvents;

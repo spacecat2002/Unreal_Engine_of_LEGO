@@ -26,9 +26,17 @@ struct FInitializeDesc
 	bool			bUseWorkerThread	= true;
 };
 
+struct FStatistics
+{
+	uint64		BytesSent;
+	uint64		BytesTraced;
+	uint32		MemoryUsed;
+};
+
 UE_TRACE_API void	Initialize(const FInitializeDesc& Desc) UE_TRACE_IMPL();
 UE_TRACE_API void	Shutdown() UE_TRACE_IMPL();
 UE_TRACE_API void	Update() UE_TRACE_IMPL();
+UE_TRACE_API void	GetStatistics(FStatistics& Out) UE_TRACE_IMPL();
 UE_TRACE_API bool	SendTo(const TCHAR* Host, uint32 Port=0) UE_TRACE_IMPL(false);
 UE_TRACE_API bool	WriteTo(const TCHAR* Path) UE_TRACE_IMPL(false);
 UE_TRACE_API bool	Stop() UE_TRACE_IMPL(false);

@@ -20,6 +20,8 @@ bool	Writer_SendTo(const ANSICHAR*, uint32);
 bool	Writer_WriteTo(const ANSICHAR*);
 bool	Writer_Stop();
 
+extern FStatistics GTraceStatistics;
+
 } // namespace Private
 
 
@@ -58,6 +60,12 @@ void Shutdown()
 void Update()
 {
 	Private::Writer_Update();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void GetStatistics(FStatistics& Out)
+{
+	Out = Private::GTraceStatistics;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
