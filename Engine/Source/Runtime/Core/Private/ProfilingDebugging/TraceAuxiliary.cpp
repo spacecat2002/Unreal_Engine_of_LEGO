@@ -374,7 +374,7 @@ static FAutoConsoleCommand TraceAuxiliaryStopCmd(
 
 
 ////////////////////////////////////////////////////////////////////////////////
-UE_TRACE_EVENT_BEGIN(Diagnostics, Session2, Important)
+UE_TRACE_EVENT_BEGIN(Diagnostics, Session2, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Platform)
 	UE_TRACE_EVENT_FIELD(Trace::AnsiString, AppName)
 	UE_TRACE_EVENT_FIELD(Trace::WideString, CommandLine)

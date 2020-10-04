@@ -8,7 +8,7 @@
 
 UE_TRACE_CHANNEL_DEFINE(CountersChannel)
 
-UE_TRACE_EVENT_BEGIN(Counters, Spec, Important)
+UE_TRACE_EVENT_BEGIN(Counters, Spec, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint16, Id)
 	UE_TRACE_EVENT_FIELD(uint8, Type)
 	UE_TRACE_EVENT_FIELD(uint8, DisplayHint)

@@ -14,7 +14,7 @@
 #include "UObject/UObjectGlobals.h"
 #include "Misc/CommandLine.h"
 
-UE_TRACE_EVENT_BEGIN(LoadTime, StartAsyncLoading, Important)
+UE_TRACE_EVENT_BEGIN(LoadTime, StartAsyncLoading, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint64, Cycle)
 UE_TRACE_EVENT_END()
 
@@ -101,7 +101,7 @@ UE_TRACE_EVENT_BEGIN(LoadTime, AsyncPackageImportDependency)
 	UE_TRACE_EVENT_FIELD(const void*, ImportedAsyncPackage)
 UE_TRACE_EVENT_END()
 
-UE_TRACE_EVENT_BEGIN(LoadTime, ClassInfo, Important)
+UE_TRACE_EVENT_BEGIN(LoadTime, ClassInfo, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(const UClass*, Class)
 UE_TRACE_EVENT_END()
 

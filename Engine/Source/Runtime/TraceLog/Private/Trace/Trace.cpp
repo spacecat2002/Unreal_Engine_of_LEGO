@@ -111,7 +111,7 @@ bool ToggleChannel(const TCHAR* ChannelName, bool bEnabled)
 ////////////////////////////////////////////////////////////////////////////////
 UE_TRACE_CHANNEL_EXTERN(TraceLogChannel)
 
-UE_TRACE_EVENT_BEGIN($Trace, ThreadInfo)
+UE_TRACE_EVENT_BEGIN($Trace, ThreadInfo, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint32, SystemId)
 	UE_TRACE_EVENT_FIELD(int32, SortHint)
 	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)

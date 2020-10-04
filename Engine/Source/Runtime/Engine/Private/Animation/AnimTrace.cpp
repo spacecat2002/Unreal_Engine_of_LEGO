@@ -39,7 +39,7 @@ UE_TRACE_EVENT_BEGIN(Animation, TickRecord)
 	UE_TRACE_EVENT_FIELD(bool, IsBlendSpace)
 UE_TRACE_EVENT_END()
 
-UE_TRACE_EVENT_BEGIN(Animation, SkeletalMesh2, Important)
+UE_TRACE_EVENT_BEGIN(Animation, SkeletalMesh2, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint64, Id)
 	UE_TRACE_EVENT_FIELD(int32[], ParentIndices)
 UE_TRACE_EVENT_END()
@@ -189,7 +189,7 @@ UE_TRACE_EVENT_BEGIN(Animation, StateMachineState)
 	UE_TRACE_EVENT_FIELD(float, ElapsedTime)
 UE_TRACE_EVENT_END()
 
-UE_TRACE_EVENT_BEGIN(Animation, Name, Important)
+UE_TRACE_EVENT_BEGIN(Animation, Name, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint32, Id)
 UE_TRACE_EVENT_END()
 

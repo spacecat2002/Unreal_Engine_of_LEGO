@@ -11,7 +11,7 @@
 UE_TRACE_CHANNEL(FrameChannel)
 UE_TRACE_CHANNEL(BookmarkChannel)
 
-UE_TRACE_EVENT_BEGIN(Misc, BookmarkSpec, Important)
+UE_TRACE_EVENT_BEGIN(Misc, BookmarkSpec, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(const void*, BookmarkPoint)
 	UE_TRACE_EVENT_FIELD(int32, Line)
 UE_TRACE_EVENT_END()

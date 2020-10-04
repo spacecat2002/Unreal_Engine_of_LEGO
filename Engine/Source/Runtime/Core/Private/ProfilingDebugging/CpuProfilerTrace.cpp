@@ -14,7 +14,7 @@
 
 UE_TRACE_CHANNEL_DEFINE(CpuChannel)
 
-UE_TRACE_EVENT_BEGIN(CpuProfiler, EventSpec, Important)
+UE_TRACE_EVENT_BEGIN(CpuProfiler, EventSpec, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint32, Id)
 	UE_TRACE_EVENT_FIELD(uint8, CharSize)
 UE_TRACE_EVENT_END()
