@@ -22,7 +22,7 @@ UE_TRACE_EVENT_END()
 UE_TRACE_EVENT_BEGIN(CpuProfiler, EventBatch, NoSync)
 UE_TRACE_EVENT_END()
 
-UE_TRACE_EVENT_BEGIN(CpuProfiler, EndCapture, Important)
+UE_TRACE_EVENT_BEGIN(CpuProfiler, EndCapture)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(CpuProfiler, EndThread, NoSync)
