@@ -49,7 +49,12 @@ uint16 FCountersTrace::OutputInitCounter(const TCHAR* CounterName, ETraceCounter
 
 void FCountersTrace::OutputSetValue(uint16 CounterId, int64 Value)
 {
-	UE_TRACE_LOG(Counters, SetValueInt, CountersChannel && CounterId)
+	if (!CounterId)
+	{
+		return;
+	}
+
+	UE_TRACE_LOG(Counters, SetValueInt, CountersChannel)
 		<< SetValueInt.Cycle(FPlatformTime::Cycles64())
 		<< SetValueInt.Value(Value)
 		<< SetValueInt.CounterId(CounterId);
@@ -57,7 +62,12 @@ void FCountersTrace::OutputSetValue(uint16 CounterId, int64 Value)
 
 void FCountersTrace::OutputSetValue(uint16 CounterId, double Value)
 {
-	UE_TRACE_LOG(Counters, SetValueFloat, CountersChannel && CounterId)
+	if (!CounterId)
+	{
+		return;
+	}
+
+	UE_TRACE_LOG(Counters, SetValueFloat, CountersChannel)
 		<< SetValueFloat.Cycle(FPlatformTime::Cycles64())
 		<< SetValueFloat.Value(Value)
 		<< SetValueFloat.CounterId(CounterId);
