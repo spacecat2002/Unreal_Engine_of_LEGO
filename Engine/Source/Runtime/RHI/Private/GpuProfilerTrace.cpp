@@ -30,7 +30,7 @@ struct
 
 static TSet<uint32> GEventNames;
 
-RHI_API UE_TRACE_CHANNEL_EXTERN(GpuChannel)
+UE_TRACE_CHANNEL_EXTERN(GpuChannel, RHI_API)
 UE_TRACE_CHANNEL_DEFINE(GpuChannel)
 
 UE_TRACE_EVENT_BEGIN(GpuProfiler, EventSpec, NoSync|Important)
