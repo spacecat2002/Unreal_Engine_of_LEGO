@@ -14,6 +14,8 @@ UE_TRACE_CHANNEL(BookmarkChannel)
 UE_TRACE_EVENT_BEGIN(Misc, BookmarkSpec, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(const void*, BookmarkPoint)
 	UE_TRACE_EVENT_FIELD(int32, Line)
+	UE_TRACE_EVENT_FIELD(Trace::WideString, FormatString)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, FileName)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(Misc, Bookmark)
@@ -43,16 +45,14 @@ uint64 FMiscTraceInternal::LastFrameCycle[TraceFrameType_Count] = { 0, 0 };
 
 void FMiscTrace::OutputBookmarkSpec(const void* BookmarkPoint, const ANSICHAR* File, int32 Line, const TCHAR* Format)
 {
-	uint16 FileNameSize = (uint16)(strlen(File) + 1);
-	uint16 FormatStringSize = (uint16)((FCString::Strlen(Format) + 1) * sizeof(TCHAR));
-	auto StringCopyFunc = [FileNameSize, FormatStringSize, File, Format](uint8* Out) {
-		memcpy(Out, File, FileNameSize);
-		memcpy(Out + FileNameSize, Format, FormatStringSize);
-	};
-	UE_TRACE_LOG(Misc, BookmarkSpec, BookmarkChannel, FileNameSize + FormatStringSize)
+	uint16 FileNameSize = uint16(strlen(File));
+	uint16 FormatStringSize = uint16(FCString::Strlen(Format));
+
+	UE_TRACE_LOG(Misc, BookmarkSpec, BookmarkChannel)
 		<< BookmarkSpec.BookmarkPoint(BookmarkPoint)
 		<< BookmarkSpec.Line(Line)
-		<< BookmarkSpec.Attachment(StringCopyFunc);
+		<< BookmarkSpec.FormatString(Format, FormatStringSize)
+		<< BookmarkSpec.FileName(File, FileNameSize);
 }
 
 void FMiscTrace::OutputBookmarkInternal(const void* BookmarkPoint, uint16 EncodedFormatArgsSize, uint8* EncodedFormatArgs)
