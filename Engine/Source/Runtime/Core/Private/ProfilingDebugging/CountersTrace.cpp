@@ -32,7 +32,10 @@ uint16 FCountersTrace::OutputInitCounter(const TCHAR* CounterName, ETraceCounter
 {
 	static TAtomic<uint16> NextId(1);
 	if (!UE_TRACE_CHANNELEXPR_IS_ENABLED(CountersChannel))
+	{
 		return 0;
+	}
+
 	uint16 CounterId = uint16(NextId++);
 	uint16 NameSize = uint16(FCString::Strlen(CounterName));
 	UE_TRACE_LOG(Counters, Spec, CountersChannel)
