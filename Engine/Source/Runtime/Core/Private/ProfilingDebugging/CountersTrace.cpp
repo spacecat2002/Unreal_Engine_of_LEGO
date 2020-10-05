@@ -12,6 +12,7 @@ UE_TRACE_EVENT_BEGIN(Counters, Spec, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint16, Id)
 	UE_TRACE_EVENT_FIELD(uint8, Type)
 	UE_TRACE_EVENT_FIELD(uint8, DisplayHint)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(Counters, SetValueInt)
@@ -33,12 +34,12 @@ uint16 FCountersTrace::OutputInitCounter(const TCHAR* CounterName, ETraceCounter
 	if (!UE_TRACE_CHANNELEXPR_IS_ENABLED(CountersChannel))
 		return 0;
 	uint16 CounterId = uint16(NextId++);
-	uint16 NameSize = (uint16)((FCString::Strlen(CounterName) + 1) * sizeof(TCHAR));
-	UE_TRACE_LOG(Counters, Spec, CountersChannel, NameSize)
+	uint16 NameSize = uint16(FCString::Strlen(CounterName));
+	UE_TRACE_LOG(Counters, Spec, CountersChannel)
 		<< Spec.Id(CounterId)
 		<< Spec.Type(uint8(CounterType))
 		<< Spec.DisplayHint(uint8(CounterDisplayHint))
-		<< Spec.Attachment(CounterName, NameSize);
+		<< Spec.Name(CounterName, NameSize);
 	return CounterId;
 }
 
