@@ -200,8 +200,8 @@ void FCpuProfilerTrace::OutputEndEvent()
 
 uint32 FCpuProfilerTraceInternal::GetNextSpecId()
 {
-	static TAtomic<uint32> NextSpecId(1);
-	return NextSpecId++;
+	static TAtomic<uint32> NextSpecId;
+	return (NextSpecId++) + 1;
 }
 
 uint32 FCpuProfilerTrace::OutputEventType(const TCHAR* Name)
