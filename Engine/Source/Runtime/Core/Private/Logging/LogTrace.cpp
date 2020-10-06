@@ -21,7 +21,7 @@ UE_TRACE_EVENT_BEGIN(Logging, LogMessageSpec, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(const void*, CategoryPointer)
 	UE_TRACE_EVENT_FIELD(int32, Line)
 	UE_TRACE_EVENT_FIELD(uint8, Verbosity)
-	UE_TRACE_EVENT_FIELD(Trace::AnsiString, File)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, FileName)
 	UE_TRACE_EVENT_FIELD(Trace::WideString, FormatString)
 UE_TRACE_EVENT_END()
 
@@ -48,7 +48,7 @@ void FLogTrace::OutputLogMessageSpec(const void* LogPoint, const FLogCategoryBas
 		<< LogMessageSpec.CategoryPointer(Category)
 		<< LogMessageSpec.Line(Line)
 		<< LogMessageSpec.Verbosity(Verbosity)
-		<< LogMessageSpec.File(File, FileNameSize)
+		<< LogMessageSpec.FileName(File, FileNameSize)
 		<< LogMessageSpec.FormatString(Format, FormatStringSize);
 }
 
