@@ -191,6 +191,7 @@ UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(Animation, Name, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint32, Id)
+	UE_TRACE_EVENT_FIELD(Trace::WideString, Name)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(Animation, Notify)
@@ -463,16 +464,12 @@ uint32 FAnimTrace::OutputName(const FName& InName)
 
 	if(bShouldTrace)
 	{
-		int32 NameStringLength = InName.GetStringLength() + 1;
+		TCHAR Buffer[256];
+		int32 NameStringLength = InName.ToString(Buffer);
 
-		auto StringCopyFunc = [NameStringLength, &InName](uint8* Out)
-		{
-			InName.ToString(reinterpret_cast<TCHAR*>(Out), NameStringLength);
-		};
-
-		UE_TRACE_LOG(Animation, Name, AnimationChannel, NameStringLength * sizeof(TCHAR))
+		UE_TRACE_LOG(Animation, Name, AnimationChannel)
 			<< Name.Id(NameId)
-			<< Name.Attachment(StringCopyFunc);
+			<< Name.Name(Buffer, NameStringLength);
 	}
 
 	return NameId;
