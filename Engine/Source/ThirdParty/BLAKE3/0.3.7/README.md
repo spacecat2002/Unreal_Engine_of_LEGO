@@ -14,8 +14,9 @@ BLAKE3 is a cryptographic hash function that is:
   on smaller architectures.
 
 The [chart below](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/benchmarks/bar_chart.py)
-shows BLAKE3's performance on modern server hardware, an Intel Cascade
-Lake-SP 8275CL processor:
+is an example benchmark of 16 KiB inputs on modern server hardware (a Cascade
+Lake-SP 8275CL processor). For more detailed benchmarks, see the
+[BLAKE3 paper](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf).
 
 <p align="center">
 <img src="media/speed.svg" alt="performance graph">
@@ -33,34 +34,34 @@ with BLAKE3.
 This repository is the official implementation of BLAKE3. It includes:
 
 * The [`blake3`](https://crates.io/crates/blake3) Rust crate, which
-  includes optimized SIMD implementations, with runtime CPU feature
-  detection on x86. SSE4.1 and AVX2 are supported in pure Rust. The `c`
-  feature enables C/assembly implementations and AVX-512 support. The
-  `c_neon` feature enables ARM NEON support. Multi-threading is also
-  supported, and the `rayon` feature provides a
-  [Rayon](https://github.com/rayon-rs/rayon)-based implementation.
+  includes optimized implementations for SSE2, SSE4.1, AVX2, AVX-512,
+  and NEON, with automatic runtime CPU feature detection on x86. The
+  `rayon` feature provides multithreading.
 
 * The [`b3sum`](https://crates.io/crates/b3sum) Rust crate, which
-  provides a command line interface. You can install it from
-  [crates.io](https://crates.io/crates/b3sum) with `cargo install
-  b3sum`. It enables the `rayon` and `c` features of the `blake3` crate
-  by default.
+  provides a command line interface. It uses multithreading by default,
+  making it an order of magnitude faster than e.g. `sha256sum` on
+  typical desktop hardware.
 
 * The [C implementation](c), which like the Rust implementation includes
-  SIMD code and dynamic CPU feature detection on x86. Unlike the Rust
-  implementation, it's not currently multi-threaded. The
-  [README](c/README.md) provides build examples.
+  SIMD code and runtime CPU feature detection on x86. Unlike the Rust
+  implementation, it's not currently multithreaded. See
+  [`c/README.md`](c/README.md).
 
 * The [reference implementation](reference_impl/reference_impl.rs),
   which is discussed in Section 5.1 of the [BLAKE3
   paper](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf).
   This implementation is much smaller and simpler than the optimized
   ones above. If you want to see how BLAKE3 works, or you're writing a
-  port that doesn't need multi-threading or SIMD optimizations, start
+  port that doesn't need multithreading or SIMD optimizations, start
   here.
 
-* [![Actions
-  Status](https://github.com/BLAKE3-team/BLAKE3/workflows/tests/badge.svg)](https://github.com/BLAKE3-team/BLAKE3/actions)
+* A [set of test
+  vectors](https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json)
+  that covers extended outputs, all three modes, and a variety of input
+  lengths.
+
+* [![Actions Status](https://github.com/BLAKE3-team/BLAKE3/workflows/tests/badge.svg)](https://github.com/BLAKE3-team/BLAKE3/actions)
 
 BLAKE3 was designed by:
 
@@ -81,11 +82,14 @@ we recommend [Argon2](https://github.com/P-H-C/phc-winner-argon2).*
 
 ### The `b3sum` utility
 
-The `b3sum` utility allows you to process files and data from standard
-input using BLAKE3 in any of its three modes.
-To use `b3sum` on the command line, [install Rust and
+The `b3sum` command line utility prints the BLAKE3 hashes of files or of
+standard input. Prebuilt binaries are available for Linux, Windows, and
+macOS (requiring the [unidentified developer
+workaround](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac))
+on the [releases page](https://github.com/BLAKE3-team/BLAKE3/releases).
+If you've [installed Rust and
 Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html),
-and then run:
+you can also build `b3sum` yourself with:
 
 ```bash
 cargo install b3sum
@@ -94,7 +98,7 @@ cargo install b3sum
 If `rustup` didn't configure your `PATH` for you, you might need to go
 looking for the installed binary in e.g. `~/.cargo/bin`. You can test
 out how fast BLAKE3 is on your machine by creating a big file and
-hashing it, for example as follows:
+hashing it, for example:
 
 ```bash
 # Create a 1 GB file.
@@ -105,7 +109,7 @@ time openssl sha256 /tmp/bigfile
 time b3sum /tmp/bigfile
 ```
 
-### The `blake3` crate
+### The `blake3` crate [![docs.rs](https://docs.rs/blake3/badge.svg)](https://docs.rs/blake3)
 
 To use BLAKE3 from Rust code, add a dependency on the `blake3` crate to
 your `Cargo.toml`. Here's an example of hashing some input bytes:
@@ -127,6 +131,9 @@ let mut output = [0; 1000];
 let mut output_reader = hasher.finalize_xof();
 output_reader.fill(&mut output);
 assert_eq!(&output[..32], hash1.as_bytes());
+
+// Print a hash as hex.
+println!("{}", hash1.to_hex());
 ```
 
 Besides `hash`, BLAKE3 provides two other modes, `keyed_hash` and
@@ -162,14 +169,28 @@ blake3::derive_key(API_CONTEXT, input_key, &mut api_key);
 assert!(email_key != api_key);
 ```
 
+### The C implementation
+
+See [`c/README.md`](c/README.md).
+
+### Other implementations
+
+We post links to third-party bindings and implementations on the
+[@BLAKE3team Twitter account](https://twitter.com/BLAKE3team) whenever
+we hear about them. Some highlights include [an optimized Go
+implementation](https://github.com/zeebo/blake3), [Wasm bindings for
+Node.js and browsers](https://github.com/connor4312/blake3), and [binary
+wheels for Python](https://github.com/oconnor663/blake3-py).
+
 ## Contributing
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Intellectual property
 
-The Rust code is copyright Jack O'Connor, 2019-2020. 
-The C code is copyright Samuel Neves and Jack O'Connor, 2019-2020.
+The Rust code is copyright Jack O'Connor, 2019-2020. The C code is
+copyright Samuel Neves and Jack O'Connor, 2019-2020. The assembly code
+is copyright Samuel Neves, 2019-2020.
 
 This work is released into the public domain with CC0 1.0.
 Alternatively, it is licensed under the Apache License 2.0.
