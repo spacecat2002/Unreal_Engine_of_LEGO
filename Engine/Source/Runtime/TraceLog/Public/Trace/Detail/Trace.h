@@ -108,6 +108,7 @@ class FChannel;
 			Attachment_Field.Set((uint8*)this, Forward<Ts>(ts)...); \
 			return true; \
 		} \
+		typedef Trace::Private::FLogScope LogScopeType; \
 		explicit operator bool () const { return true; } \
 		enum { EventFlags = PartialEventFlags|(EventProps_Meta::NumAuxFields ? Trace::Private::FEventInfo::Flag_MaybeHasAux : 0), }; \
 		template <bool bImportance> static void AreAttachmentsAllowed() { \
@@ -121,7 +122,7 @@ class FChannel;
 
 #define TRACE_PRIVATE_LOG_PRELUDE(EnterFunc, LoggerName, EventName, ChannelsExpr, ...) \
 	if (TRACE_PRIVATE_CHANNELEXPR_IS_ENABLED(ChannelsExpr)) \
-		if (auto LogScope = Trace::Private::TLogScope<F##LoggerName##EventName##Fields>::EnterFunc(__VA_ARGS__)) \
+		if (auto LogScope = F##LoggerName##EventName##Fields::LogScopeType::EnterFunc<F##LoggerName##EventName##Fields>(__VA_ARGS__)) \
 			if (const auto& __restrict EventName = *(F##LoggerName##EventName##Fields*)LogScope.GetPointer())
 
 #define TRACE_PRIVATE_LOG_EPILOG() \

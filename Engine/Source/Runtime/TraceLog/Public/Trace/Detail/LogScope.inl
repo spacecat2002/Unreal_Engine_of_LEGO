@@ -166,27 +166,18 @@ inline void FScopedStampedLogScope::SetActive()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-template <bool>	struct TLogScopeSelector;
-template <>		struct TLogScopeSelector<false>	{ typedef FLogScope Type; };
-template <>		struct TLogScopeSelector<true>	{ typedef FImportantLogScope Type; };
-
-////////////////////////////////////////////////////////////////////////////////
 template <class T>
-auto TLogScope<T>::Enter(uint32 ExtraSize)
+FLogScope FLogScope::Enter(uint32 ExtraSize)
 {
 	uint32 Size = T::GetSize() + ExtraSize;
 	uint32 Uid = T::GetUid();
-
-	using LogScopeType = typename TLogScopeSelector<T::bIsImportant>::Type;
-	return LogScopeType::template EnterImpl<T::EventFlags>(Uid, Size);
+	return EnterImpl<T::EventFlags>(Uid, Size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-FLogScope TLogScope<T>::ScopedEnter(uint32 ExtraSize)
+FLogScope FLogScope::ScopedEnter(uint32 ExtraSize)
 {
-	static_assert(!T::bIsImportant, "Important events cannot be logged with scope");
-
 	uint8 EnterUid = uint8(EKnownEventUids::EnterScope << EKnownEventUids::_UidShift);
 
 	FWriteBuffer* Buffer = Writer_GetBuffer();
@@ -200,15 +191,13 @@ FLogScope TLogScope<T>::ScopedEnter(uint32 ExtraSize)
 
 	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 
-	return Enter(ExtraSize);
+	return Enter<T>(ExtraSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-FLogScope TLogScope<T>::ScopedStampedEnter(uint32 ExtraSize)
+FLogScope FLogScope::ScopedStampedEnter(uint32 ExtraSize)
 {
-	static_assert(!T::bIsImportant, "Important events cannot be logged with scope");
-
 	uint64 Stamp;
 
 	FWriteBuffer* Buffer = Writer_GetBuffer();
@@ -225,7 +214,7 @@ FLogScope TLogScope<T>::ScopedStampedEnter(uint32 ExtraSize)
 
 	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 
-	return Enter(ExtraSize);
+	return Enter<T>(ExtraSize);
 }
 
 } // namespace Private
