@@ -110,6 +110,10 @@ class FChannel;
 		template <bool bImportance> static void AreAttachmentsAllowed() { \
 			static_assert(!bImportance, "Important events cannot have attachments"); \
 		} \
+		static_assert( \
+			!bIsImportant || (EventFlags & Trace::Private::FEventInfo::Flag_NoSync), \
+			"Trace events flagged as Important events must be marked NoSync" \
+		); \
 	};
 
 #define TRACE_PRIVATE_LOG_PRELUDE(EnterFunc, LoggerName, EventName, ChannelsExpr, ...) \
