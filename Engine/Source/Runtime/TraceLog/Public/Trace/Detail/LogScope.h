@@ -18,7 +18,7 @@ class FLogScope
 {
 public:
 	template <uint32 Flags>
-	static FLogScope		Enter(uint32 Uid, uint32 Size);
+	static FLogScope		EnterImpl(uint32 Uid, uint32 Size);
 	uint8*					GetPointer() const;
 	void					Commit() const;
 	void					operator += (const FLogScope&) const;

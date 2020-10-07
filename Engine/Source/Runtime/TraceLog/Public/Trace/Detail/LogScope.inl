@@ -39,7 +39,7 @@ inline void FLogScope::operator += (const FLogScope&) const
 
 ////////////////////////////////////////////////////////////////////////////////
 template <uint32 Flags>
-inline FLogScope FLogScope::Enter(uint32 Uid, uint32 Size)
+inline FLogScope FLogScope::EnterImpl(uint32 Uid, uint32 Size)
 {
 	FLogScope Ret;
 	bool bMaybeHasAux = (Flags & FEventInfo::Flag_MaybeHasAux) != 0;
@@ -178,7 +178,7 @@ auto TLogScope<T>::Enter(uint32 ExtraSize)
 	uint32 Uid = T::GetUid();
 
 	using LogScopeType = typename TLogScopeSelector<T::bIsImportant>::Type;
-	return LogScopeType::template Enter<T::EventFlags>(Uid, Size);
+	return LogScopeType::template EnterImpl<T::EventFlags>(Uid, Size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

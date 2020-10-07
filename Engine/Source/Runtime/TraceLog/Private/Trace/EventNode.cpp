@@ -128,7 +128,7 @@ void FEventNode::Describe() const
 	EventSize += sizeof(FNewEventEvent::Fields[0]) * Info->FieldCount;
 	EventSize += NamesSize;
 
-	FLogScope LogScope = FLogScope::Enter<FEventInfo::Flag_NoSync>(EventUid, EventSize);
+	FLogScope LogScope = FLogScope::EnterImpl<FEventInfo::Flag_NoSync>(EventUid, EventSize);
 	auto& Event = *(FNewEventEvent*)(LogScope.GetPointer());
 
 	// Write event's main properties.
