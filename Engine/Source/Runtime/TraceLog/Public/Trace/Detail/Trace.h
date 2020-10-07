@@ -68,7 +68,7 @@ class FChannel;
 			PartialEventFlags	= (0, ##__VA_ARGS__) & ~Important, \
 		}; \
 		enum : bool { bIsImportant = ((0, ##__VA_ARGS__) & Important) != 0, }; \
-		static constexpr uint32 GetSize() { return decltype(EventProps_Private)::Size; } \
+		static constexpr uint32 GetSize() { return EventProps_Meta::Size; } \
 		static uint32 GetUid() { static uint32 Uid = 0; return (Uid = Uid ? Uid : Initialize()); } \
 		static uint32 FORCENOINLINE Initialize() \
 		{ \
@@ -88,25 +88,28 @@ class FChannel;
 			}(); \
 			return Uid_ThreadSafeInit; \
 		} \
-		Trace::TField<0 /*Index*/, 0 /*Offset*/,
+		typedef Trace::TField<0 /*Index*/, 0 /*Offset*/,
 
 #define TRACE_PRIVATE_EVENT_FIELD(FieldType, FieldName) \
-		FieldType> const FieldName##_Field = Trace::FLiteralName(#FieldName); \
+		FieldType> FieldName##_Meta; \
+		FieldName##_Meta const FieldName##_Field = Trace::FLiteralName(#FieldName); \
 		template <typename... Ts> auto FieldName(Ts... ts) const { FieldName##_Field.Set((uint8*)this, Forward<Ts>(ts)...); return true; } \
-		Trace::TField< \
-			decltype(FieldName##_Field)::Index + 1, \
-			decltype(FieldName##_Field)::Offset + decltype(FieldName##_Field)::Size,
+		typedef Trace::TField< \
+			FieldName##_Meta::Index + 1, \
+			FieldName##_Meta::Offset + FieldName##_Meta::Size,
 
 #define TRACE_PRIVATE_EVENT_END() \
-		Trace::EventProps> const EventProps_Private = {}; \
-		Trace::TField<0, decltype(EventProps_Private)::Size, Trace::Attachment> const Attachment_Field = {}; \
+		Trace::EventProps> EventProps_Meta; \
+		EventProps_Meta const EventProps_Private = {}; \
+		typedef Trace::TField<0, EventProps_Meta::Size, Trace::Attachment> Attachment_Meta; \
+		const Attachment_Meta Attachment_Field = {}; \
 		template <typename... Ts> auto Attachment(Ts... ts) const { \
 			AreAttachmentsAllowed<bIsImportant>(); \
 			Attachment_Field.Set((uint8*)this, Forward<Ts>(ts)...); \
 			return true; \
 		} \
 		explicit operator bool () const { return true; } \
-		enum { EventFlags = PartialEventFlags|(decltype(EventProps_Private)::NumAuxFields ? Trace::Private::FEventInfo::Flag_MaybeHasAux : 0), }; \
+		enum { EventFlags = PartialEventFlags|(EventProps_Meta::NumAuxFields ? Trace::Private::FEventInfo::Flag_MaybeHasAux : 0), }; \
 		template <bool bImportance> static void AreAttachmentsAllowed() { \
 			static_assert(!bImportance, "Important events cannot have attachments"); \
 		} \
