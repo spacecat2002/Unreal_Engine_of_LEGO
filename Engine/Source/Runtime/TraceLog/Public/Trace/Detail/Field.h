@@ -11,6 +11,11 @@
 #include "Templates/UnrealTemplate.h"
 #include "Writer.inl"
 
+/* Statically sized fields (e.g. UE_TRACE_EVENT_FIELD(float[4], Colours)) are
+ * not supported as yet. No call for them. The following define is used to track
+ * where and partially how to implement them */
+#define STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT 0
+
 namespace Trace {
 namespace Private {
 
@@ -48,7 +53,7 @@ struct TFieldType<T[]>
 	};
 };
 
-#if 0
+#if STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT
 template <typename T, int N>
 struct TFieldType<T[N]>
 {
@@ -58,7 +63,7 @@ struct TFieldType<T[N]>
 		Size = sizeof(T[N]),
 	};
 };
-#endif // 0
+#endif // STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT
 
 template <> struct TFieldType<Trace::AnsiString> { enum { Tid  = int(EFieldType::AnsiString), Size = 0, }; };
 template <> struct TFieldType<Trace::WideString> { enum { Tid  = int(EFieldType::WideString), Size = 0, }; };
@@ -136,14 +141,14 @@ struct TField<InIndex, InOffset, Type[]>
 	TRACE_PRIVATE_FIELD(InIndex + int(EIndexPack::AuxFieldCounter), InOffset, Type[]);
 };
 
-#if 0
+#if STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT
 ////////////////////////////////////////////////////////////////////////////////
 template <int InIndex, int InOffset, typename Type, int Count>
 struct TField<InIndex, InOffset, Type[Count]>
 {
 	TRACE_PRIVATE_FIELD(InIndex, InOffset, Type[Count]);
 };
-#endif
+#endif // STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT
 
 ////////////////////////////////////////////////////////////////////////////////
 template <int InIndex, int InOffset>

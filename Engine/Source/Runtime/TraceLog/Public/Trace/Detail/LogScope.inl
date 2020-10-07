@@ -242,6 +242,15 @@ struct FLogScope::FFieldSet<FieldMeta, Type[]>
 	}
 };
 
+#if STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT
+////////////////////////////////////////////////////////////////////////////////
+template <typename FieldMeta, typename Type, int Count>
+struct FLogScope::FFieldSet<FieldMeta, Type[Count]>
+{
+	static void Impl(FLogScope*, Type const* Data, int Num=-1) = delete;
+};
+#endif // STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT
+
 ////////////////////////////////////////////////////////////////////////////////
 template <typename FieldMeta>
 struct FLogScope::FFieldSet<FieldMeta, AnsiString>
