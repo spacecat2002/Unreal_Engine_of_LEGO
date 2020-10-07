@@ -134,15 +134,6 @@ template <int InIndex, int InOffset, typename Type>
 struct TField<InIndex, InOffset, Type[]>
 {
 	TRACE_PRIVATE_FIELD(InIndex + int(EIndexPack::AuxFieldCounter), InOffset, Type[]);
-
-	static void Set(uint8*, Type const* Data, int32 Count)
-	{
-		if (Count > 0)
-		{
-			int32 Size = (Count * sizeof(Type)) & (FAuxHeader::SizeLimit - 1) & ~(sizeof(Type) - 1);
-			Private::Field_WriteAuxData(Index, (const uint8*)Data, Size);
-		}
-	}
 };
 
 #if 0
@@ -151,10 +142,6 @@ template <int InIndex, int InOffset, typename Type, int Count>
 struct TField<InIndex, InOffset, Type[Count]>
 {
 	TRACE_PRIVATE_FIELD(InIndex, InOffset, Type[Count]);
-
-	static void Set(uint8*, Type const* Data, int Count)
-	{
-	}
 };
 #endif
 
@@ -163,30 +150,6 @@ template <int InIndex, int InOffset>
 struct TField<InIndex, InOffset, Trace::AnsiString>
 {
 	TRACE_PRIVATE_FIELD(InIndex + int(EIndexPack::AuxFieldCounter), InOffset, Trace::AnsiString);
-
-	FORCENOINLINE static void Set(uint8*, const TCHAR* String, int32 Length=-1)
-	{
-		if (Length < 0)
-		{
-			Length = 0;
-			for (const TCHAR* c = String; *c; ++c, ++Length);
-		}
-
-		Private::Field_WriteStringAnsi(Index, String, Length);
-	}
-
-	FORCENOINLINE static void Set(uint8*, const ANSICHAR* String, int32 Length=-1)
-	{
-		if (Length < 0)
-		{
-			Length = int32(strlen(String));
-		}
-
-		if (Length)
-		{
-			Private::Field_WriteStringAnsi(Index, String, Length);
-		}
-	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,20 +157,6 @@ template <int InIndex, int InOffset>
 struct TField<InIndex, InOffset, Trace::WideString>
 {
 	TRACE_PRIVATE_FIELD(InIndex + int(EIndexPack::AuxFieldCounter), InOffset, Trace::WideString);
-
-	FORCENOINLINE static void Set(uint8*, const TCHAR* String, int32 Length=-1)
-	{
-		if (Length < 0)
-		{
-			Length = 0;
-			for (const TCHAR* c = String; *c; ++c, ++Length);
-		}
-
-		if (Length)
-		{
-			Private::Field_WriteStringWide(Index, String, Length);
-		}
-	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -215,11 +164,6 @@ template <int InIndex, int InOffset, typename Type>
 struct TField
 {
 	TRACE_PRIVATE_FIELD(InIndex, InOffset, Type);
-
-	static void Set(uint8* Dest, const Type& __restrict Value)
-	{
-		::memcpy(Dest + Offset, &Value, Size);
-	}
 };
 
 #undef TRACE_PRIVATE_FIELD
@@ -246,16 +190,7 @@ enum Attachment {};
 template <int InOffset>
 struct TField<0, InOffset, Attachment>
 {
-	template <typename LambdaType>
-	static void Set(uint8* Dest, LambdaType&& Lambda)
-	{
-		Lambda(Dest + InOffset);
-	}
-
-	static void Set(uint8* Dest, const void* Data, uint32 Size)
-	{
-		::memcpy(Dest + InOffset, Data, Size);
-	}
+	enum { Offset = InOffset };
 };
 
 } // namespace Trace

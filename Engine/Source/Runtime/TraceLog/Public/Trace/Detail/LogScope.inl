@@ -217,6 +217,93 @@ FLogScope FLogScope::ScopedStampedEnter(uint32 ExtraSize)
 	return Enter<T>(ExtraSize);
 }
 
+
+
+////////////////////////////////////////////////////////////////////////////////
+template <typename FieldMeta, typename Type>
+struct FLogScope::FFieldSet
+{
+	static void Impl(FLogScope* Scope, const Type& Value)
+	{
+		uint8* Dest = (uint8*)(Scope->Instance.Ptr) + FieldMeta::Offset;
+		::memcpy(Dest, &Value, sizeof(Type));
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+template <typename FieldMeta, typename Type>
+struct FLogScope::FFieldSet<FieldMeta, Type[]>
+{
+	static void Impl(FLogScope*, Type const* Data, int Num)
+	{
+		static const uint32 Index = FieldMeta::Index & 0x7f;
+		int32 Size = (Num * sizeof(Type)) & (FAuxHeader::SizeLimit - 1) & ~(sizeof(Type) - 1);
+		Field_WriteAuxData(Index, (const uint8*)Data, Size);
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+template <typename FieldMeta>
+struct FLogScope::FFieldSet<FieldMeta, AnsiString>
+{
+	static void Impl(FLogScope*, const ANSICHAR* String, int Length=-1)
+	{
+		if (Length < 0)
+		{
+			Length = int32(strlen(String));
+		}
+
+		static const uint32 Index = FieldMeta::Index & 0x7f;
+		Field_WriteStringAnsi(Index, String, Length);
+	}
+
+	static void Impl(FLogScope*, const TCHAR* String, int Length=-1)
+	{
+		if (Length < 0)
+		{
+			Length = 0;
+			for (const TCHAR* c = String; *c; ++c, ++Length);
+		}
+
+		static const uint32 Index = FieldMeta::Index & 0x7f;
+		Field_WriteStringAnsi(Index, String, Length);
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+template <typename FieldMeta>
+struct FLogScope::FFieldSet<FieldMeta, WideString>
+{
+	static void Impl(FLogScope*, const TCHAR* String, int Length=-1)
+	{
+		if (Length < 0)
+		{
+			Length = 0;
+			for (const TCHAR* c = String; *c; ++c, ++Length);
+		}
+
+		static const uint32 Index = FieldMeta::Index & 0x7f;
+		Field_WriteStringWide(Index, String, Length);
+	}
+};
+
+template <typename FieldMeta>
+struct FLogScope::FFieldSet<FieldMeta, Attachment>
+{
+	template <typename LambdaType>
+	static void Impl(FLogScope* Scope, LambdaType&& Lambda)
+	{
+		uint8* Dest = (uint8*)(Scope->Instance.Ptr) + FieldMeta::Offset;
+		Lambda(Dest);
+	}
+
+	static void Impl(FLogScope* Scope, const void* Data, uint32 Size)
+	{
+		uint8* Dest = (uint8*)(Scope->Instance.Ptr) + FieldMeta::Offset;
+		::memcpy(Dest, Data, Size);
+	}
+};
+
 } // namespace Private
 } // namespace Trace
 

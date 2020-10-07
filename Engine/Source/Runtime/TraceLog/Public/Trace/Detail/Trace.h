@@ -93,7 +93,10 @@ class FChannel;
 #define TRACE_PRIVATE_EVENT_FIELD(FieldType, FieldName) \
 		FieldType> FieldName##_Meta; \
 		FieldName##_Meta const FieldName##_Field = Trace::FLiteralName(#FieldName); \
-		template <typename... Ts> auto FieldName(Ts... ts) const { FieldName##_Field.Set((uint8*)this, Forward<Ts>(ts)...); return true; } \
+		template <typename... Ts> auto FieldName(Ts... ts) const { \
+			LogScopeType::FFieldSet<FieldName##_Meta, FieldType>::Impl((LogScopeType*)this, Forward<Ts>(ts)...); \
+			return true; \
+		} \
 		typedef Trace::TField< \
 			FieldName##_Meta::Index + 1, \
 			FieldName##_Meta::Offset + FieldName##_Meta::Size,
@@ -105,7 +108,7 @@ class FChannel;
 		const Attachment_Meta Attachment_Field = {}; \
 		template <typename... Ts> auto Attachment(Ts... ts) const { \
 			AreAttachmentsAllowed<bIsImportant>(); \
-			Attachment_Field.Set((uint8*)this, Forward<Ts>(ts)...); \
+			LogScopeType::FFieldSet<Attachment_Meta, Trace::Attachment>::Impl((LogScopeType*)this, Forward<Ts>(ts)...); \
 			return true; \
 		} \
 		typedef Trace::Private::FLogScope LogScopeType; \
@@ -123,7 +126,7 @@ class FChannel;
 #define TRACE_PRIVATE_LOG_PRELUDE(EnterFunc, LoggerName, EventName, ChannelsExpr, ...) \
 	if (TRACE_PRIVATE_CHANNELEXPR_IS_ENABLED(ChannelsExpr)) \
 		if (auto LogScope = F##LoggerName##EventName##Fields::LogScopeType::EnterFunc<F##LoggerName##EventName##Fields>(__VA_ARGS__)) \
-			if (const auto& __restrict EventName = *(F##LoggerName##EventName##Fields*)LogScope.GetPointer())
+			if (const auto& __restrict EventName = *(F##LoggerName##EventName##Fields*)(&LogScope))
 
 #define TRACE_PRIVATE_LOG_EPILOG() \
 				LogScope += LogScope

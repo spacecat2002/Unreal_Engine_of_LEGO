@@ -29,6 +29,9 @@ public:
 	const FLogScope&		operator << (bool) const	{ return *this; }
 	constexpr explicit		operator bool () const		{ return true; }
 
+	template <typename FieldMeta, typename Type>
+	struct FFieldSet;
+
 private:
 	template <uint32 Flags>
 	static FLogScope		EnterImpl(uint32 Uid, uint32 Size);
