@@ -606,7 +606,11 @@ bool Writer_WriteTo(const ANSICHAR* Path)
 	return true;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+bool Writer_IsTracing()
+{
+	return (GDataHandle != 0);
+}
+
 bool Writer_Stop()
 {
 	if (GPendingDataHandle || !GDataHandle)
