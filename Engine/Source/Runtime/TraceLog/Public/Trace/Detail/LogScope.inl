@@ -66,7 +66,7 @@ inline void FLogScope::EnterPrelude(uint32 Size, bool bMaybeHasAux)
 		Buffer->Cursor[-1] = 0;
 	}
 
-	Ptr = Buffer->Cursor - Size - int(bMaybeHasAux);
+	Ptr = Buffer->Cursor - Size - int32(bMaybeHasAux);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
