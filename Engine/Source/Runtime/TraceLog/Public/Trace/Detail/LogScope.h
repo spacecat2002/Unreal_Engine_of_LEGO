@@ -38,11 +38,8 @@ private:
 	template <class T> void	EnterPrelude(uint32 Size, bool bMaybeHasAux);
 	void					Enter(uint32 Uid, uint32 Size, bool bMaybeHasAux);
 	void					EnterNoSync(uint32 Uid, uint32 Size, bool bMaybeHasAux);
-	struct
-	{
-		uint8*				Ptr;
-		FWriteBuffer*		Buffer;
-	}						Instance;
+	uint8*					Ptr;
+	FWriteBuffer*			Buffer;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

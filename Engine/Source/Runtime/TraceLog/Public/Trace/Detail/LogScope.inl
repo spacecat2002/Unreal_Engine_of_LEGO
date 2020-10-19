@@ -21,13 +21,12 @@ extern TRACELOG_API uint32 volatile	GLogSerial;
 ////////////////////////////////////////////////////////////////////////////////
 inline uint8* FLogScope::GetPointer() const
 {
-	return Instance.Ptr;
+	return Ptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 inline void FLogScope::Commit() const
 {
-	FWriteBuffer* Buffer = Instance.Buffer;
 	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 }
 
@@ -60,7 +59,7 @@ inline void FLogScope::EnterPrelude(uint32 Size, bool bMaybeHasAux)
 {
 	uint32 AllocSize = sizeof(HeaderType) + Size + int(bMaybeHasAux);
 
-	FWriteBuffer* Buffer = Writer_GetBuffer();
+	Buffer = Writer_GetBuffer();
 	Buffer->Cursor += AllocSize;
 	if (UNLIKELY(Buffer->Cursor > (uint8*)Buffer))
 	{
@@ -73,8 +72,7 @@ inline void FLogScope::EnterPrelude(uint32 Size, bool bMaybeHasAux)
 		Buffer->Cursor[-1] = 0;
 	}
 
-	uint8* Cursor = Buffer->Cursor - Size - int(bMaybeHasAux);
-	Instance = {Cursor, Buffer};
+	Ptr = Buffer->Cursor - Size - int(bMaybeHasAux);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,7 +81,7 @@ inline void FLogScope::Enter(uint32 Uid, uint32 Size, bool bMaybeHasAux)
 	EnterPrelude<FEventHeaderSync>(Size, bMaybeHasAux);
 
 	// Event header
-	auto* Header = (uint16*)(Instance.Ptr - sizeof(FEventHeaderSync::SerialHigh)); // FEventHeader1
+	auto* Header = (uint16*)(Ptr - sizeof(FEventHeaderSync::SerialHigh));
 	*(uint32*)(Header - 1) = uint32(AtomicAddRelaxed(&GLogSerial, 1u));
 	Header[-2] = uint16(Size);
 	Header[-3] = uint16(Uid)|int(EKnownEventUids::Flag_TwoByteUid);
@@ -95,7 +93,7 @@ inline void FLogScope::EnterNoSync(uint32 Uid, uint32 Size, bool bMaybeHasAux)
 	EnterPrelude<FEventHeader>(Size, bMaybeHasAux);
 
 	// Event header
-	auto* Header = (uint16*)(Instance.Ptr);
+	auto* Header = (uint16*)(Ptr);
 	Header[-1] = uint16(Size);
 	Header[-2] = uint16(Uid)|int(EKnownEventUids::Flag_TwoByteUid);
 }
@@ -225,7 +223,7 @@ struct FLogScope::FFieldSet
 {
 	static void Impl(FLogScope* Scope, const Type& Value)
 	{
-		uint8* Dest = (uint8*)(Scope->Instance.Ptr) + FieldMeta::Offset;
+		uint8* Dest = (uint8*)(Scope->Ptr) + FieldMeta::Offset;
 		::memcpy(Dest, &Value, sizeof(Type));
 	}
 };
@@ -302,13 +300,13 @@ struct FLogScope::FFieldSet<FieldMeta, Attachment>
 	template <typename LambdaType>
 	static void Impl(FLogScope* Scope, LambdaType&& Lambda)
 	{
-		uint8* Dest = (uint8*)(Scope->Instance.Ptr) + FieldMeta::Offset;
+		uint8* Dest = (uint8*)(Scope->Ptr) + FieldMeta::Offset;
 		Lambda(Dest);
 	}
 
 	static void Impl(FLogScope* Scope, const void* Data, uint32 Size)
 	{
-		uint8* Dest = (uint8*)(Scope->Instance.Ptr) + FieldMeta::Offset;
+		uint8* Dest = (uint8*)(Scope->Ptr) + FieldMeta::Offset;
 		::memcpy(Dest, Data, Size);
 	}
 };
