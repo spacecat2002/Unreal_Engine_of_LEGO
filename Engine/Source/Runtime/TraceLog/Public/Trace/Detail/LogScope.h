@@ -23,7 +23,7 @@ public:
 	static FLogScope		ScopedEnter(uint32 ExtraSize=0);
 	template <typename EventType>
 	static FLogScope		ScopedStampedEnter(uint32 ExtraSize=0);
-	uint8*					GetPointer() const;
+	void*					GetPointer() const			{ return Ptr; }
 	void					Commit() const;
 	void					operator += (const FLogScope&) const;
 	const FLogScope&		operator << (bool) const	{ return *this; }

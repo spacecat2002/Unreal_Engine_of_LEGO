@@ -19,12 +19,6 @@ namespace Private {
 extern TRACELOG_API uint32 volatile	GLogSerial;
 
 ////////////////////////////////////////////////////////////////////////////////
-inline uint8* FLogScope::GetPointer() const
-{
-	return Ptr;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 inline void FLogScope::Commit() const
 {
 	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
