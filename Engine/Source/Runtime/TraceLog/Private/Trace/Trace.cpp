@@ -20,6 +20,7 @@ bool	Writer_SendTo(const ANSICHAR*, uint32);
 bool	Writer_WriteTo(const ANSICHAR*);
 bool	Writer_IsTracing();
 bool	Writer_Stop();
+uint32	Writer_GetThreadId();
 
 extern FStatistics GTraceStatistics;
 
@@ -119,6 +120,7 @@ bool ToggleChannel(const TCHAR* ChannelName, bool bEnabled)
 UE_TRACE_CHANNEL_EXTERN(TraceLogChannel)
 
 UE_TRACE_EVENT_BEGIN($Trace, ThreadInfo, NoSync|Important)
+	UE_TRACE_EVENT_FIELD(uint32, ThreadId)
 	UE_TRACE_EVENT_FIELD(uint32, SystemId)
 	UE_TRACE_EVENT_FIELD(int32, SortHint)
 	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
@@ -134,7 +136,9 @@ UE_TRACE_EVENT_END()
 ////////////////////////////////////////////////////////////////////////////////
 void ThreadRegister(const TCHAR* Name, uint32 SystemId, int32 SortHint)
 {
+	uint32 ThreadId = Private::Writer_GetThreadId();
 	UE_TRACE_LOG($Trace, ThreadInfo, TraceLogChannel)
+		<< ThreadInfo.ThreadId(ThreadId)
 		<< ThreadInfo.SystemId(SystemId)
 		<< ThreadInfo.SortHint(SortHint)
 		<< ThreadInfo.Name(Name);
