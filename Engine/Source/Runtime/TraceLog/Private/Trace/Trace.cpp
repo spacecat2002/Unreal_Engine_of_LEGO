@@ -124,11 +124,11 @@ UE_TRACE_EVENT_BEGIN($Trace, ThreadInfo, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
 UE_TRACE_EVENT_END()
 
-UE_TRACE_EVENT_BEGIN($Trace, ThreadGroupBegin)
+UE_TRACE_EVENT_BEGIN($Trace, ThreadGroupBegin, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
 UE_TRACE_EVENT_END()
 
-UE_TRACE_EVENT_BEGIN($Trace, ThreadGroupEnd)
+UE_TRACE_EVENT_BEGIN($Trace, ThreadGroupEnd, NoSync|Important)
 UE_TRACE_EVENT_END()
 
 ////////////////////////////////////////////////////////////////////////////////
