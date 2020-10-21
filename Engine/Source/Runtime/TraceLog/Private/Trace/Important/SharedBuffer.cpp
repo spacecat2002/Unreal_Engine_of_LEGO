@@ -93,18 +93,8 @@ FNextSharedBuffer Writer_NextSharedBuffer(FSharedBuffer* Buffer, int32 RegionSta
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static void Writer_RetireSharedBuffer()
+static void Writer_RetireSharedBufferImpl()
 {
-	// Spin until the buffer's no longer being used.
-	for (;; PlatformYield())
-	{
-		int32 TailCursor = AtomicLoadAcquire(&(GTailBuffer->Cursor));
-		if (LIKELY(((TailCursor + 1) & FSharedBuffer::RefInit) == 0))
-		{
-			break;
-		}
-	}
-
 	// Send any unsent data.
 	uint8* Data = (uint8*)GTailBuffer - GTailBuffer->Size + GTailPreSent;
 	if (uint32 SendSize = UPTRINT(GTailBuffer) - UPTRINT(Data) - GTailBuffer->Final)
@@ -117,6 +107,22 @@ static void Writer_RetireSharedBuffer()
 	Writer_MemoryFree(Block, GBlockSize);
 	GTailBuffer = Temp;
 	GTailPreSent = 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void Writer_RetireSharedBuffer()
+{
+	// Spin until the buffer's no longer being used.
+	for (;; PlatformYield())
+	{
+		int32 TailCursor = AtomicLoadAcquire(&(GTailBuffer->Cursor));
+		if (LIKELY(((TailCursor + 1) & FSharedBuffer::RefInit) == 0))
+		{
+			break;
+		}
+	}
+
+	Writer_RetireSharedBufferImpl();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,7 +146,7 @@ void Writer_UpdateSharedBuffers()
 		Cursor = Cursor >> FSharedBuffer::CursorShift;
 		if (Cursor < 0)
 		{
-			Writer_RetireSharedBuffer();
+			Writer_RetireSharedBufferImpl();
 			break;
 		}
 
