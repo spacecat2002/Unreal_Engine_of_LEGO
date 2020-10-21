@@ -159,7 +159,7 @@ inline void FScopedStampedLogScope::SetActive()
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-FLogScope FLogScope::Enter(uint32 ExtraSize)
+FORCENOINLINE FLogScope FLogScope::Enter(uint32 ExtraSize)
 {
 	uint32 Size = T::GetSize() + ExtraSize;
 	uint32 Uid = T::GetUid();
@@ -168,7 +168,7 @@ FLogScope FLogScope::Enter(uint32 ExtraSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-FLogScope FLogScope::ScopedEnter(uint32 ExtraSize)
+FORCENOINLINE FLogScope FLogScope::ScopedEnter(uint32 ExtraSize)
 {
 	uint8 EnterUid = uint8(EKnownEventUids::EnterScope << EKnownEventUids::_UidShift);
 
@@ -188,7 +188,7 @@ FLogScope FLogScope::ScopedEnter(uint32 ExtraSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-FLogScope FLogScope::ScopedStampedEnter(uint32 ExtraSize)
+FORCENOINLINE FLogScope FLogScope::ScopedStampedEnter(uint32 ExtraSize)
 {
 	uint64 Stamp;
 
