@@ -79,6 +79,10 @@ static void Writer_CacheCommit(const FCacheBuffer* Collector)
 		FCacheBuffer* NewBuffer = Writer_CacheCreateBuffer(GCacheBufferSize);
 		NewBuffer->TailNext = &(GCacheActiveBuffer->Next);
 		GCacheActiveBuffer = NewBuffer;
+
+#if TRACE_PRIVATE_STATISTICS
+		GTraceStatistics.CacheWaste += GCacheActiveBuffer->Remaining;
+#endif
 	}
 
 	uint32 Used = GCacheActiveBuffer->Size - GCacheActiveBuffer->Remaining;
@@ -91,6 +95,10 @@ static void Writer_CacheCommit(const FCacheBuffer* Collector)
 
 	Used = sizeof(FPacketEncoded) + OutputSize;
 	GCacheActiveBuffer->Remaining -= Used;
+
+#if TRACE_PRIVATE_STATISTICS
+	GTraceStatistics.CacheUsed += Used;
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

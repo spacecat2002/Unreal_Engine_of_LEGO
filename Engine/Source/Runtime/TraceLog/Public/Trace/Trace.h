@@ -31,6 +31,8 @@ struct FStatistics
 	uint64		BytesSent;
 	uint64		BytesTraced;
 	uint32		MemoryUsed;
+	uint32		CacheUsed;
+	uint32		CacheWaste;
 };
 
 UE_TRACE_API void	Initialize(const FInitializeDesc& Desc) UE_TRACE_IMPL();
