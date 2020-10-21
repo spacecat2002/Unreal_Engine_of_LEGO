@@ -31,6 +31,10 @@ namespace Private {
 ////////////////////////////////////////////////////////////////////////////////
 int32			Encode(const void*, int32, void*, int32);
 uint32			Writer_SendData(uint32, uint8* __restrict, uint32);
+void			Writer_InitializeSharedBuffers();
+void			Writer_ShutdownSharedBuffers();
+void			Writer_UpdateSharedBuffers();
+void			Writer_CacheOnConnect();
 void			Writer_InitializePool();
 void			Writer_ShutdownPool();
 void			Writer_DrainBuffers();
@@ -398,6 +402,8 @@ static bool Writer_UpdateConnection()
 
 	Writer_SendData(HeaderEvents.GetData(), HeaderEvents.GetSize());
 
+	Writer_CacheOnConnect();
+
 	return true;
 }
 
@@ -413,6 +419,7 @@ static void Writer_WorkerUpdate()
 	Writer_UpdateControl();
 	Writer_UpdateConnection();
 	Writer_DescribeAnnounce();
+	Writer_UpdateSharedBuffers();
 	Writer_DrainBuffers();
 }
 
@@ -472,6 +479,7 @@ static void Writer_InternalInitializeImpl()
 	GInitialized = true;
 	GStartCycle = TimeGetTimestamp();
 
+	Writer_InitializeSharedBuffers();
 	Writer_InitializePool();
 	Writer_InitializeControl();
 }
@@ -503,6 +511,7 @@ static void Writer_InternalShutdown()
 
 	Writer_ShutdownControl();
 	Writer_ShutdownPool();
+	Writer_ShutdownSharedBuffers();
 
 	GInitialized = false;
 }
