@@ -51,7 +51,7 @@ inline FLogScope FLogScope::EnterImpl(uint32 Uid, uint32 Size)
 template <class HeaderType>
 inline void FLogScope::EnterPrelude(uint32 Size, bool bMaybeHasAux)
 {
-	uint32 AllocSize = sizeof(HeaderType) + Size + int(bMaybeHasAux);
+	uint32 AllocSize = sizeof(HeaderType) + Size + int32(bMaybeHasAux);
 
 	Buffer = Writer_GetBuffer();
 	Buffer->Cursor += AllocSize;
@@ -78,7 +78,7 @@ inline void FLogScope::Enter(uint32 Uid, uint32 Size, bool bMaybeHasAux)
 	auto* Header = (uint16*)(Ptr - sizeof(FEventHeaderSync::SerialHigh));
 	*(uint32*)(Header - 1) = uint32(AtomicAddRelaxed(&GLogSerial, 1u));
 	Header[-2] = uint16(Size);
-	Header[-3] = uint16(Uid)|int(EKnownEventUids::Flag_TwoByteUid);
+	Header[-3] = uint16(Uid)|int32(EKnownEventUids::Flag_TwoByteUid);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +89,7 @@ inline void FLogScope::EnterNoSync(uint32 Uid, uint32 Size, bool bMaybeHasAux)
 	// Event header
 	auto* Header = (uint16*)(Ptr);
 	Header[-1] = uint16(Size);
-	Header[-2] = uint16(Uid)|int(EKnownEventUids::Flag_TwoByteUid);
+	Header[-2] = uint16(Uid)|int32(EKnownEventUids::Flag_TwoByteUid);
 }
 
 
@@ -226,7 +226,7 @@ struct FLogScope::FFieldSet
 template <typename FieldMeta, typename Type>
 struct FLogScope::FFieldSet<FieldMeta, Type[]>
 {
-	static void Impl(FLogScope*, Type const* Data, int Num)
+	static void Impl(FLogScope*, Type const* Data, int32 Num)
 	{
 		static const uint32 Index = FieldMeta::Index & 0x7f;
 		int32 Size = (Num * sizeof(Type)) & (FAuxHeader::SizeLimit - 1) & ~(sizeof(Type) - 1);
@@ -236,10 +236,10 @@ struct FLogScope::FFieldSet<FieldMeta, Type[]>
 
 #if STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT
 ////////////////////////////////////////////////////////////////////////////////
-template <typename FieldMeta, typename Type, int Count>
+template <typename FieldMeta, typename Type, int32 Count>
 struct FLogScope::FFieldSet<FieldMeta, Type[Count]>
 {
-	static void Impl(FLogScope*, Type const* Data, int Num=-1) = delete;
+	static void Impl(FLogScope*, Type const* Data, int32 Num=-1) = delete;
 };
 #endif // STATICALLY_SIZED_ARRAY_FIELDS_SUPPORT
 
@@ -247,7 +247,7 @@ struct FLogScope::FFieldSet<FieldMeta, Type[Count]>
 template <typename FieldMeta>
 struct FLogScope::FFieldSet<FieldMeta, AnsiString>
 {
-	static void Impl(FLogScope*, const ANSICHAR* String, int Length=-1)
+	static void Impl(FLogScope*, const ANSICHAR* String, int32 Length=-1)
 	{
 		if (Length < 0)
 		{
@@ -258,7 +258,7 @@ struct FLogScope::FFieldSet<FieldMeta, AnsiString>
 		Field_WriteStringAnsi(Index, String, Length);
 	}
 
-	static void Impl(FLogScope*, const TCHAR* String, int Length=-1)
+	static void Impl(FLogScope*, const TCHAR* String, int32 Length=-1)
 	{
 		if (Length < 0)
 		{
@@ -275,7 +275,7 @@ struct FLogScope::FFieldSet<FieldMeta, AnsiString>
 template <typename FieldMeta>
 struct FLogScope::FFieldSet<FieldMeta, WideString>
 {
-	static void Impl(FLogScope*, const TCHAR* String, int Length=-1)
+	static void Impl(FLogScope*, const TCHAR* String, int32 Length=-1)
 	{
 		if (Length < 0)
 		{
