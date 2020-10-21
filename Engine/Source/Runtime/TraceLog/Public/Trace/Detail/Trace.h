@@ -6,6 +6,8 @@
 
 #if UE_TRACE_ENABLED
 
+#include <type_traits>
+
 namespace Trace
 {
 
@@ -65,7 +67,7 @@ class FChannel;
 		{ \
 			Important			= Trace::Private::FEventInfo::Flag_Important, \
 			NoSync				= Trace::Private::FEventInfo::Flag_NoSync, \
-			PartialEventFlags	= (0, ##__VA_ARGS__) & ~Important, \
+			PartialEventFlags	= (0, ##__VA_ARGS__), \
 		}; \
 		enum : bool { bIsImportant = ((0, ##__VA_ARGS__) & Important) != 0, }; \
 		static constexpr uint32 GetSize() { return EventProps_Meta::Size; } \
@@ -111,7 +113,7 @@ class FChannel;
 			LogScopeType::FFieldSet<Attachment_Meta, Trace::Attachment>::Impl((LogScopeType*)this, Forward<Ts>(ts)...); \
 			return true; \
 		} \
-		typedef Trace::Private::FLogScope LogScopeType; \
+		typedef std::conditional<bIsImportant, Trace::Private::FImportantLogScope, Trace::Private::FLogScope>::type LogScopeType; \
 		explicit operator bool () const { return true; } \
 		enum { EventFlags = PartialEventFlags|(EventProps_Meta::NumAuxFields ? Trace::Private::FEventInfo::Flag_MaybeHasAux : 0), }; \
 		template <bool bImportance> static void AreAttachmentsAllowed() { \
