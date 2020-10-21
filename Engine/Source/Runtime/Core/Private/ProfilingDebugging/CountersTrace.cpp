@@ -38,12 +38,12 @@ uint16 FCountersTrace::OutputInitCounter(const TCHAR* CounterName, ETraceCounter
 	static TAtomic<uint16> NextId;
 
 	uint16 CounterId = uint16(NextId++) + 1;
-	uint16 NameSize = uint16(FCString::Strlen(CounterName));
-	UE_TRACE_LOG(Counters, Spec, CountersChannel)
+	uint16 NameLen = uint16(FCString::Strlen(CounterName));
+	UE_TRACE_LOG(Counters, Spec, CountersChannel, NameLen * sizeof(ANSICHAR))
 		<< Spec.Id(CounterId)
 		<< Spec.Type(uint8(CounterType))
 		<< Spec.DisplayHint(uint8(CounterDisplayHint))
-		<< Spec.Name(CounterName, NameSize);
+		<< Spec.Name(CounterName, NameLen);
 	return CounterId;
 }
 

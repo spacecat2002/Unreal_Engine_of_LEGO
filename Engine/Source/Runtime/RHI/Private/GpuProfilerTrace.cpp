@@ -84,7 +84,7 @@ void FGpuProfilerTrace::SpecifyEventByName(const FName& Name)
 		uint32 NameLength = String.Len() + 1;
 		static_assert(sizeof(TCHAR) == sizeof(uint16), "");
 
-		UE_TRACE_LOG(GpuProfiler, EventSpec, GpuChannel)
+		UE_TRACE_LOG(GpuProfiler, EventSpec, GpuChannel, NameLength * sizeof(uint16))
 			<< EventSpec.EventType(Index)
 			<< EventSpec.Name((const uint16*)(*String), NameLength);
 	}

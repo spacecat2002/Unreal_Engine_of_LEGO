@@ -45,14 +45,15 @@ uint64 FMiscTraceInternal::LastFrameCycle[TraceFrameType_Count] = { 0, 0 };
 
 void FMiscTrace::OutputBookmarkSpec(const void* BookmarkPoint, const ANSICHAR* File, int32 Line, const TCHAR* Format)
 {
-	uint16 FileNameSize = uint16(strlen(File));
-	uint16 FormatStringSize = uint16(FCString::Strlen(Format));
+	uint16 FileNameLen = uint16(strlen(File));
+	uint16 FormatStringLen = uint16(FCString::Strlen(Format));
 
-	UE_TRACE_LOG(Misc, BookmarkSpec, BookmarkChannel)
+	uint32 DataSize = (FileNameLen * sizeof(ANSICHAR)) + (FormatStringLen * sizeof(TCHAR));
+	UE_TRACE_LOG(Misc, BookmarkSpec, BookmarkChannel, DataSize)
 		<< BookmarkSpec.BookmarkPoint(BookmarkPoint)
 		<< BookmarkSpec.Line(Line)
-		<< BookmarkSpec.FormatString(Format, FormatStringSize)
-		<< BookmarkSpec.FileName(File, FileNameSize);
+		<< BookmarkSpec.FormatString(Format, FormatStringLen)
+		<< BookmarkSpec.FileName(File, FileNameLen);
 }
 
 void FMiscTrace::OutputBookmarkInternal(const void* BookmarkPoint, uint16 EncodedFormatArgsSize, uint8* EncodedFormatArgs)

@@ -388,7 +388,11 @@ void FTraceAuxiliary::Initialize(const TCHAR* CommandLine)
 #if UE_TRACE_ENABLED
 	// Trace out information about this session. This is done before initialisation
 	// so that it is always sent (all channels are enabled prior to initialisation)
-	UE_TRACE_LOG(Diagnostics, Session2, Trace::TraceLogChannel)
+	uint32 DataSize = 
+		(UE_ARRAY_COUNT(PREPROCESSOR_TO_STRING(UBT_COMPILED_PLATFORM)) * sizeof(ANSICHAR)) +
+		(UE_ARRAY_COUNT(UE_APP_NAME) * sizeof(ANSICHAR)) +
+		(FCString::Strlen(CommandLine) * sizeof(TCHAR));
+	UE_TRACE_LOG(Diagnostics, Session2, Trace::TraceLogChannel, DataSize)
 		<< Session2.Platform(PREPROCESSOR_TO_STRING(UBT_COMPILED_PLATFORM))
 		<< Session2.AppName(UE_APP_NAME)
 		<< Session2.CommandLine(CommandLine)

@@ -166,7 +166,7 @@ void FChannel::Setup(const ANSICHAR* InChannelName, const InitArgs& InArgs)
 ///////////////////////////////////////////////////////////////////////////////
 void FChannel::Announce() const
 {
-	UE_TRACE_LOG(Trace, ChannelAnnounce, TraceLogChannel)
+	UE_TRACE_LOG(Trace, ChannelAnnounce, TraceLogChannel, Name.Len * sizeof(ANSICHAR))
 		<< ChannelAnnounce.Id(Name.Hash)
 		<< ChannelAnnounce.IsEnabled(IsEnabled())
 		<< ChannelAnnounce.ReadOnly(Args.bReadOnly)

@@ -434,7 +434,7 @@ void FAnimTrace::OutputSkeletalMesh(const USkeletalMesh* InMesh)
 		ParentIndices[BoneIndex++] = BoneInfo.ParentIndex;
 	}
 
-	UE_TRACE_LOG(Animation, SkeletalMesh2, AnimationChannel)
+	UE_TRACE_LOG(Animation, SkeletalMesh2, AnimationChannel, ParentIndices.Num() * sizeof(int32))
 		<< SkeletalMesh2.Id(FObjectTrace::GetObjectId(InMesh))
 		<< SkeletalMesh2.ParentIndices(ParentIndices.GetData(), ParentIndices.Num());
 
@@ -467,7 +467,7 @@ uint32 FAnimTrace::OutputName(const FName& InName)
 		TCHAR Buffer[256];
 		int32 NameStringLength = InName.ToString(Buffer);
 
-		UE_TRACE_LOG(Animation, Name, AnimationChannel)
+		UE_TRACE_LOG(Animation, Name, AnimationChannel, NameStringLength * sizeof(TCHAR))
 			<< Name.Id(NameId)
 			<< Name.Name(Buffer, NameStringLength);
 	}

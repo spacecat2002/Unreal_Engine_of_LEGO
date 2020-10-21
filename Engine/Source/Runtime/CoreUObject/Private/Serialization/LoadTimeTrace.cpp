@@ -199,18 +199,18 @@ void FLoadTimeProfilerTracePrivate::OutputAsyncPackageImportDependency(const voi
 void FLoadTimeProfilerTracePrivate::OutputClassInfo(const UClass* Class, const FName& Name)
 {
 	TCHAR Buffer[FName::StringBufferSize];
-	uint16 NameSize = Name.ToString(Buffer);
-	UE_TRACE_LOG(LoadTime, ClassInfo, LoadTimeChannel)
+	uint16 NameLen = Name.ToString(Buffer);
+	UE_TRACE_LOG(LoadTime, ClassInfo, LoadTimeChannel, NameLen * sizeof(ANSICHAR))
 		<< ClassInfo.Class(Class)
-		<< ClassInfo.Name(Buffer, NameSize);
+		<< ClassInfo.Name(Buffer, NameLen);
 }
 
 void FLoadTimeProfilerTracePrivate::OutputClassInfo(const UClass* Class, const TCHAR* Name)
 {
-	uint16 NameSize = uint16(FCString::Strlen(Name));
-	UE_TRACE_LOG(LoadTime, ClassInfo, LoadTimeChannel)
+	uint16 NameLen = uint16(FCString::Strlen(Name));
+	UE_TRACE_LOG(LoadTime, ClassInfo, LoadTimeChannel, NameLen * sizeof(ANSICHAR))
 		<< ClassInfo.Class(Class)
-		<< ClassInfo.Name(Name, NameSize);
+		<< ClassInfo.Name(Name, NameLen);
 }
 
 FLoadTimeProfilerTracePrivate::FCreateExportScope::FCreateExportScope(const void* AsyncPackage, const UObject* const* InObject)

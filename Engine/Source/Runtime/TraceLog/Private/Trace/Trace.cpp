@@ -4,7 +4,9 @@
 
 #if UE_TRACE_ENABLED
 
+#include "Misc/CString.h"
 #include "Trace/Detail/Channel.h"
+
 
 namespace Trace
 {
@@ -137,18 +139,20 @@ UE_TRACE_EVENT_END()
 void ThreadRegister(const TCHAR* Name, uint32 SystemId, int32 SortHint)
 {
 	uint32 ThreadId = Private::Writer_GetThreadId();
-	UE_TRACE_LOG($Trace, ThreadInfo, TraceLogChannel)
+	uint32 NameLen = FCString::Strlen(Name);
+	UE_TRACE_LOG($Trace, ThreadInfo, TraceLogChannel, NameLen * sizeof(ANSICHAR))
 		<< ThreadInfo.ThreadId(ThreadId)
 		<< ThreadInfo.SystemId(SystemId)
 		<< ThreadInfo.SortHint(SortHint)
-		<< ThreadInfo.Name(Name);
+		<< ThreadInfo.Name(Name, NameLen);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void ThreadGroupBegin(const TCHAR* Name)
 {
-	UE_TRACE_LOG($Trace, ThreadGroupBegin, TraceLogChannel)
-		<< ThreadGroupBegin.Name(Name);
+	uint32 NameLen = FCString::Strlen(Name);
+	UE_TRACE_LOG($Trace, ThreadGroupBegin, TraceLogChannel, NameLen * sizeof(ANSICHAR))
+		<< ThreadGroupBegin.Name(Name, NameLen);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
