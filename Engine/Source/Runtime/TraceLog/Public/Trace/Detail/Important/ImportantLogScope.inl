@@ -20,6 +20,8 @@ namespace Private {
 extern TRACELOG_API FSharedBuffer* volatile GSharedBuffer;
 TRACELOG_API FNextSharedBuffer				Writer_NextSharedBuffer(FSharedBuffer*, int32, int32);
 
+
+
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
 FORCENOINLINE FImportantLogScope FImportantLogScope::Enter(uint32 ArrayDataSize)
