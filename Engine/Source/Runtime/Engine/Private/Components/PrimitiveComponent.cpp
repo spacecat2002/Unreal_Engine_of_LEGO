@@ -3736,10 +3736,7 @@ void UPrimitiveComponent::SetRenderCustomDepth(bool bValue)
 	if( bRenderCustomDepth != bValue )
 	{
 		bRenderCustomDepth = bValue;
-		if (SceneProxy)
-		{
-			SceneProxy->SetCustomDepthEnabled_GameThread(bRenderCustomDepth);
-		}
+		MarkRenderStateDirty();
 	}
 }
 
