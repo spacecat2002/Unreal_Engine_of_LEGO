@@ -1794,6 +1794,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	const bool bShouldRenderSkyAtmosphere = ShouldRenderSkyAtmosphere(Scene, ViewFamily.EngineShowFlags);
 	const bool bShouldRenderVolumetricCloud = ShouldRenderVolumetricCloud(Scene, ViewFamily.EngineShowFlags);
+	bool bAsyncComputeVolumetricCloud = IsVolumetricRenderTargetEnabled() && IsVolumetricRenderTargetAsyncCompute();
+	bool bHasHalfResCheckerboardMinMaxDepth = false;
 	bool bVolumetricRenderTargetRequired = bShouldRenderVolumetricCloud;
 
 	if (bVolumetricRenderTargetRequired)
@@ -1842,6 +1844,17 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (bOcclusionBeforeBasePass)
 	{
 		ComputeVolumetricFog(GraphBuilder);
+	}
+
+	// Kick off async compute cloud eraly if all depth has been written in the prepass
+	if (bShouldRenderVolumetricCloud && bAsyncComputeVolumetricCloud && EarlyZPassMode == DDM_AllOpaque)
+	{
+		UpdateHalfResDepthSurfaceCheckerboardMinMax(GraphBuilder, SceneDepthTexture.Resolve);
+		bHasHalfResCheckerboardMinMaxDepth = true;
+
+		bool bSkipVolumetricRenderTarget = false;
+		bool bSkipPerPixelTracing = true;
+		bAsyncComputeVolumetricCloud = RenderVolumetricCloud(GraphBuilder, GetSceneTextureShaderParameters(SceneTextures), bSkipVolumetricRenderTarget, bSkipPerPixelTracing, FRDGTextureMSAA(), SceneDepthTexture, true);
 	}
 
 	FHairStrandsRenderingData* HairDatas = nullptr;
@@ -2000,6 +2013,19 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
 	// End shadow and fog after base pass
+
+	// If not all depth is written during the prepass, kick off async compute cloud after basepass
+	if (bShouldRenderVolumetricCloud && bAsyncComputeVolumetricCloud && EarlyZPassMode != DDM_AllOpaque)
+	{
+		UpdateHalfResDepthSurfaceCheckerboardMinMax(GraphBuilder, SceneDepthTexture.Resolve);
+		bHasHalfResCheckerboardMinMaxDepth = true;
+
+		bool bSkipVolumetricRenderTarget = false;
+		bool bSkipPerPixelTracing = true;
+		bAsyncComputeVolumetricCloud = RenderVolumetricCloud(GraphBuilder, GetSceneTextureShaderParameters(SceneTextures), bSkipVolumetricRenderTarget, bSkipPerPixelTracing, SceneColorTexture, SceneDepthTexture, true);
+	}
+
+	checkSlow(RHICmdList.IsOutsideRenderPass());
 
 	if(GetCustomDepthPassLocation() == 1)
 	{
@@ -2216,7 +2242,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderDeferredReflectionsAndSkyLightingHair(GraphBuilder, HairDatas);
 	}
 
-	if (bShouldRenderVolumetricCloud && IsVolumetricRenderTargetEnabled())
+	if (bShouldRenderVolumetricCloud && IsVolumetricRenderTargetEnabled() && !bHasHalfResCheckerboardMinMaxDepth)
 	{
 		// The checkerboarded half resolution depth texture will be needed.
 		UpdateHalfResDepthSurfaceCheckerboardMinMax(GraphBuilder, SceneDepthTexture.Resolve);
@@ -2224,12 +2250,15 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bShouldRenderVolumetricCloud)
 	{
-		// Generate the volumetric cloud render target
-		bool bSkipVolumetricRenderTarget = false;
-		bool bSkipPerPixelTracing = true;
-		RenderVolumetricCloud(GraphBuilder, GetSceneTextureShaderParameters(SceneTextures), bSkipVolumetricRenderTarget, bSkipPerPixelTracing, SceneColorTexture, SceneDepthTexture);
+		if (!bAsyncComputeVolumetricCloud)
+		{
+			// Generate the volumetric cloud render target
+			bool bSkipVolumetricRenderTarget = false;
+			bool bSkipPerPixelTracing = true;
+			RenderVolumetricCloud(GraphBuilder, GetSceneTextureShaderParameters(SceneTextures), bSkipVolumetricRenderTarget, bSkipPerPixelTracing, SceneColorTexture, SceneDepthTexture, false);
+		}
 		// Reconstruct the volumetric cloud render target to be ready to compose it over the scene
-		ReconstructVolumetricRenderTarget(GraphBuilder);
+		ReconstructVolumetricRenderTarget(GraphBuilder, bAsyncComputeVolumetricCloud);
 	}
 
 	const bool bShouldRenderTranslucency = ShouldRenderTranslucency();
@@ -2294,7 +2323,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		bool bSkipVolumetricRenderTarget = true;
 		bool bSkipPerPixelTracing = false;
-		RenderVolumetricCloud(GraphBuilder, GetSceneTextureShaderParameters(SceneTextures), bSkipVolumetricRenderTarget, bSkipPerPixelTracing, SceneColorTexture, SceneDepthTexture);
+		RenderVolumetricCloud(GraphBuilder, GetSceneTextureShaderParameters(SceneTextures), bSkipVolumetricRenderTarget, bSkipPerPixelTracing, SceneColorTexture, SceneDepthTexture, false);
 	}
 	// or composite the off screen buffer over the scene.
 	if (bVolumetricRenderTargetRequired)
