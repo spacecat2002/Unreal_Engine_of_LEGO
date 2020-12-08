@@ -2399,6 +2399,11 @@ void USkeletalMesh::PostLoadValidateUserSectionData()
 
 #endif // WITH_EDITOR
 
+bool USkeletalMesh::IsPostLoadThreadSafe() const
+{
+	return false;	// PostLoad is not thread safe because of the call to InitMorphTargets, which can call VerifySmartName() that can mutate a shared map in the skeleton.
+}
+
 void USkeletalMesh::PostLoad()
 {
 	LLM_SCOPE(ELLMTag::SkeletalMesh);
