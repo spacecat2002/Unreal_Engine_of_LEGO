@@ -274,6 +274,7 @@ public:
 		SetCollisionGroup(Other.CollisionGroup());
 		SetResimType(Other.ResimType());
 		SetOneWayInteraction(Other.OneWayInteraction());
+		SetCollisionConstraintFlag(Other.CollisionConstraintFlag());
 	}
 
 	template <typename TOther>
@@ -285,7 +286,8 @@ public:
 			&& GravityEnabled() == Other.GravityEnabled()
 			&& CollisionGroup() == Other.CollisionGroup()
 			&& ResimType() == Other.ResimType()
-			&& OneWayInteraction() == Other.OneWayInteraction();
+			&& OneWayInteraction() == Other.OneWayInteraction()
+			&& CollisionConstraintFlag() == Other.CollisionConstraintFlag();
 	}
 
 	bool operator==(const FParticleDynamicMisc& Other) const
@@ -311,6 +313,8 @@ public:
 	EResimType ResimType() const { return MResimType; }
 	void SetResimType(EResimType Type) { MResimType = Type; }
 
+	uint32 CollisionConstraintFlag() const { return MCollisionConstraintFlag; }
+	void SetCollisionConstraintFlag(uint32 InCollisionConstraintFlag) { MCollisionConstraintFlag = InCollisionConstraintFlag; }
 	bool OneWayInteraction() const { return MOneWayInteraction; }
 	void SetOneWayInteraction(bool InOneWayInteraction) { MOneWayInteraction = InOneWayInteraction; }
 
@@ -323,6 +327,8 @@ private:
 	EResimType MResimType;
 
 	bool MGravityEnabled;
+	uint32 MCollisionConstraintFlag = 0;
+
 	bool MOneWayInteraction = false;
 };
 

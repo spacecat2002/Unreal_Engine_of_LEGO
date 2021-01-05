@@ -738,6 +738,7 @@ public:
 	void AddCollisionConstraintFlag(const ECollisionConstraintFlags Flag) { PBDRigidParticles->AddCollisionConstraintFlag(Flag, ParticleIdx); }
 	void RemoveCollisionConstraintFlag(const ECollisionConstraintFlags Flag) { PBDRigidParticles->RemoveCollisionConstraintFlag(Flag, ParticleIdx); }
 	void ClearCollisionConstraintFlag() { PBDRigidParticles->ClearCollisionConstraintFlag(ParticleIdx); }
+	uint32 CollisionConstraintFlag() const { return PBDRigidParticles->CollisionConstraintFlag(ParticleIdx); }
 
 	bool Disabled() const { return PBDRigidParticles->Disabled(ParticleIdx); }
 	bool& Disabled() { return PBDRigidParticles->DisabledRef(ParticleIdx); }
@@ -818,6 +819,7 @@ public:
 		SetGravityEnabled(DynamicMisc.GravityEnabled());
 		SetResimType(DynamicMisc.ResimType());
 		SetOneWayInteraction(DynamicMisc.OneWayInteraction());
+		AddCollisionConstraintFlag((Chaos::ECollisionConstraintFlags)DynamicMisc.CollisionConstraintFlag());
 	}
 
 	void ResetSmoothedVelocities()
@@ -2244,6 +2246,12 @@ public:
 	void SetGravityEnabled(const bool InGravityEnabled)
 	{
 		MMiscData.Modify(true,MDirtyFlags,Proxy,[InGravityEnabled](auto& Data){ Data.SetGravityEnabled (InGravityEnabled);});
+	}
+
+	uint32 CollisionConstraintFlag() const { return MMiscData.Read().CollisionConstraintFlag(); }
+	void SetCollisionConstraintFlag(const uint32 InCollisionConstraintFlag)
+	{
+		MMiscData.Modify(true, MDirtyFlags, Proxy, [InCollisionConstraintFlag](auto& Data) { Data.SetCollisionConstraintFlag(InCollisionConstraintFlag); });
 	}
 	
 	bool OneWayInteraction() const { return MMiscData.Read().OneWayInteraction(); }
