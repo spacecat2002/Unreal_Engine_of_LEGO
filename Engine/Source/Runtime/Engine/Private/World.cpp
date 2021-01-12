@@ -7338,7 +7338,7 @@ void UWorld::GetLightMapsAndShadowMaps(ULevel* Level, TArray<UTexture2D*>& OutLi
 
 			if (Objects.Num())
 			{
-				for (FObjectIterator It; It; ++It)
+				for (FThreadSafeObjectIterator It; It; ++It)
 				{
 					It->Mark(OBJECTMARK_TagExp);
 				}
