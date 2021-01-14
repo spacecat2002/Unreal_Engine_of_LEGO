@@ -104,18 +104,36 @@ uint32 Writer_GetThreadId()
 
 
 ////////////////////////////////////////////////////////////////////////////////
+void*			(*AllocHook)(SIZE_T, uint32);			// = nullptr
+void			(*FreeHook)(void*, SIZE_T, uint32);		// = nullptr
+
+////////////////////////////////////////////////////////////////////////////////
+void Writer_MemorySetHooks(decltype(AllocHook) Alloc, decltype(FreeHook) Free)
+{
+	AllocHook = Alloc;
+	FreeHook = Free;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 {
 	TWriteBufferRedirect<6 << 10> TraceData;
 
 	void* Ret = nullptr;
+	if (AllocHook != nullptr)
+	{
+		Ret = AllocHook(Size, Alignment);
+	}
+	else
+	{
 #if defined(_MSC_VER)
-	Ret = _aligned_malloc(Size, Alignment);
+		Ret = _aligned_malloc(Size, Alignment);
 #elif (defined(__ANDROID_API__) && __ANDROID_API__ < 28) || defined(__APPLE__)
-	posix_memalign(&Ret, Alignment, Size);
+		posix_memalign(&Ret, Alignment, Size);
 #else
-	Ret = aligned_alloc(Alignment, Size);
+		Ret = aligned_alloc(Alignment, Size);
 #endif
+	}
 
 	if (TraceData.GetSize())
 	{
@@ -131,11 +149,18 @@ void Writer_MemoryFree(void* Address)
 {
 	TWriteBufferRedirect<6 << 10> TraceData;
 
+	if (FreeHook != nullptr)
+	{
+		FreeHook(Address, Size, Alignment);
+	}
+	else
+	{
 #if defined(_MSC_VER)
-	_aligned_free(Address);
+		_aligned_free(Address);
 #else
-	free(Address);
+		free(Address);
 #endif
+	}
 
 	if (TraceData.GetSize())
 	{
