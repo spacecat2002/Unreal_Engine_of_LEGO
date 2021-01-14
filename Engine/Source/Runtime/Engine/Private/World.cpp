@@ -4575,7 +4575,9 @@ void UWorld::CleanupWorldInternal(bool bSessionEnded, bool bCleanupResources, UW
 
 	if(FXSystem && bWorldChanged)
 	{
-		FFXSystemInterface::QueueDestroyGPUSimulation(FXSystem);
+		FFXSystemInterface::Destroy( FXSystem );
+		Scene->SetFXSystem(NULL);
+		FXSystem = NULL;
 	}
 }
 
