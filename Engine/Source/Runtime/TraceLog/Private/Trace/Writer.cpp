@@ -151,7 +151,7 @@ void Writer_MemoryFree(void* Address)
 
 	if (FreeHook != nullptr)
 	{
-		FreeHook(Address, Size, Alignment);
+		FreeHook(Address);
 	}
 	else
 	{
