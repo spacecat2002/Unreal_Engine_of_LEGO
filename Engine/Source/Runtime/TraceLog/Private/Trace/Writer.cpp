@@ -105,7 +105,7 @@ uint32 Writer_GetThreadId()
 
 ////////////////////////////////////////////////////////////////////////////////
 void*			(*AllocHook)(SIZE_T, uint32);			// = nullptr
-void			(*FreeHook)(void*, SIZE_T, uint32);		// = nullptr
+void			(*FreeHook)(void*);						// = nullptr
 
 ////////////////////////////////////////////////////////////////////////////////
 void Writer_MemorySetHooks(decltype(AllocHook) Alloc, decltype(FreeHook) Free)
