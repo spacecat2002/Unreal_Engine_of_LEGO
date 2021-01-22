@@ -33,6 +33,9 @@ public:
 	/** [GameThread/RenderThread] Future value of CurrentFirstLODIdx. */
 	uint8 PendingFirstLODIdx;
 
+	/** Runtime LOD bias modifier for this skeletal mesh */
+	uint8 LODBiasModifier;
+
 #if WITH_EDITORONLY_DATA
 	/** UV data used for streaming accuracy debug view modes. In sync for rendering thread */
 	TArray<FMeshUVChannelInfo> UVChannelDataPerMaterial;
