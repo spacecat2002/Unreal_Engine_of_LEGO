@@ -1388,9 +1388,20 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 	const FMaterialShaderMapLayout& Layout = AcquireMaterialShaderMapLayout(ShaderPlatform, PermutationFlags, MaterialParameters);
 
 #if ALLOW_SHADERMAP_DEBUG_DATA && WITH_EDITOR
-	const FString DebugExtension = FString::Printf(TEXT("_%08x%08x"), ShaderMapId.BaseMaterialId.A, ShaderMapId.BaseMaterialId.B);
+	FString DebugExtension(TEXT(""));
+	FString DebugDescription(TEXT(""));
+
+	// DebugExtension and Description make the jobs unnecessarily different. Use them if the job cache is disabled or shader dev mode is on
+	static IConsoleVariable* CVarCacheDisabled = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ShaderCompiler.DisableJobCache"));
+	static IConsoleVariable* CVarShaderDevMode = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ShaderDevelopmentMode"));
+	if ((CVarCacheDisabled && CVarCacheDisabled->GetInt() != 0) || (CVarShaderDevMode && CVarShaderDevMode->GetInt() != 0))
+	{
+		DebugExtension = FString::Printf(TEXT("_%08x%08x"), ShaderMapId.BaseMaterialId.A, ShaderMapId.BaseMaterialId.B);
+		DebugDescription = GetDebugDescription();
+	}
 #else
-	const FString DebugExtension(TEXT(""));
+	FString DebugExtension(TEXT(""));
+	FString DebugDescription(TEXT(""));
 #endif
 
 	// Iterate over all vertex factory types.
@@ -1431,7 +1442,7 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 					MaterialEnvironment,
 					MeshLayout.VertexFactoryType,
 					CompileJobs,
-					GetDebugDescription(),
+					DebugDescription,
 					DebugExtension
 				);
 				//TShaderTypePermutation<const FShaderType> ShaderTypePermutation(ShaderType, Shader.PermutationId);
@@ -1476,7 +1487,7 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 					MeshLayout.VertexFactoryType,
 					Pipeline,
 					CompileJobs,
-					GetDebugDescription(),
+					DebugDescription,
 					DebugExtension);
 			}
 			else
@@ -1531,7 +1542,7 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 				ShaderPlatform,
 				PermutationFlags,
 				CompileJobs,
-				GetDebugDescription(),
+				DebugDescription,
 				DebugExtension
 			);
 
@@ -1568,7 +1579,7 @@ void FMaterialShaderMap::SubmitCompileJobs(uint32 CompilingShaderMapId,
 					MaterialEnvironment,
 					Pipeline,
 					CompileJobs,
-					GetDebugDescription(),
+					DebugDescription,
 					DebugExtension);
 			}
 			else
