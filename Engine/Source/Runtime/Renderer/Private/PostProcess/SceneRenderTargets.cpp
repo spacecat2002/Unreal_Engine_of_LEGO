@@ -35,6 +35,12 @@ static TAutoConsoleVariable<int32> CVarRSMResolution(
 	TEXT("Reflective Shadow Map resolution (used for LPV) - higher values result in less aliasing artifacts, at the cost of performance"),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarNoGBufferDClear(
+	TEXT("r.NoGBufferDClear"),
+	0,
+	TEXT("Do not clear GBuffer D"),
+	ECVF_RenderThreadSafe);
+
 /*-----------------------------------------------------------------------------
 FSceneRenderTargets
 -----------------------------------------------------------------------------*/
@@ -737,7 +743,7 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 	AllocateRenderTargets(RHICmdList, ViewFamily.Views.Num());
 }
 
-int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const
+int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex, int32& OutGBufferDIndex) const
 {
 	int32 MRTCount = 0;
 	OutRenderTargets[MRTCount++] = &GetSceneColor();
@@ -765,8 +771,11 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRen
 		OutVelocityRTIndex = -1;
 	}
 
+	OutGBufferDIndex = INDEX_NONE;
+
 	if (bUseGBuffer)
 	{
+		OutGBufferDIndex = MRTCount;
 		OutRenderTargets[MRTCount++] = &GBufferD;
 
 		if (bAllowStaticLighting)
@@ -783,11 +792,19 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRen
 int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction ColorLoadAction, FRHIRenderPassInfo& OutRenderPassInfo, int32& OutVelocityRTIndex) const
 {
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
+	int32 GBufferDIndex;
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, GBufferDIndex);
 
 	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
 	{
-		OutRenderPassInfo.ColorRenderTargets[MRTIdx].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
+		if (MRTIdx == GBufferDIndex && !!CVarNoGBufferDClear.GetValueOnRenderThread())
+		{
+			OutRenderPassInfo.ColorRenderTargets[MRTIdx].Action = MakeRenderTargetActions(ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::EStore);
+		}
+		else
+		{
+			OutRenderPassInfo.ColorRenderTargets[MRTIdx].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
+		}
 		OutRenderPassInfo.ColorRenderTargets[MRTIdx].RenderTarget = (*RenderTargets[MRTIdx])->GetTargetableRHI();
 		OutRenderPassInfo.ColorRenderTargets[MRTIdx].ArraySlice = -1;
 		OutRenderPassInfo.ColorRenderTargets[MRTIdx].MipIndex = 0;
@@ -799,7 +816,8 @@ int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction Col
 int32 FSceneRenderTargets::GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const
 {
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
+	int32 GBufferDIndex;
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, GBufferDIndex);
 
 	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
 	{
@@ -812,7 +830,8 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(ERenderTargetLoadAction Color
 int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBinding OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const
 {
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
+	int32 GBufferDIndex;
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, GBufferDIndex);
 
 	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
 	{
@@ -826,7 +845,8 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, TS
 {
 	int32 OutVelocityRTIndex = -1;
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	const int32 Count = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
+	int32 GBufferDIndex;
+	const int32 Count = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, GBufferDIndex);
 
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
@@ -839,7 +859,8 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ER
 {
 	int32 OutVelocityRTIndex = -1;
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	const int32 Count = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
+	int32 GBufferDIndex;
+	const int32 Count = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, GBufferDIndex);
 
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
@@ -1119,7 +1140,7 @@ void FSceneRenderTargets::AllocGBufferTargets(FRHICommandList& RHICmdList, EText
 
 		// Create the mask g-buffer (e.g. SSAO, subsurface scattering, wet surface mask, skylight mask, ...).
 		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferDFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | AddTargetableFlags, false));
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferDFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource | AddTargetableFlags | (!!CVarNoGBufferDClear.GetValueOnRenderThread() ? TexCreate_NoFastClear : TexCreate_None), false));
 			Desc.Flags |= GFastVRamConfig.GBufferD;
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferD, TEXT("GBufferD"));
 		}
