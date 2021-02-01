@@ -384,11 +384,7 @@ bool FChaosEngineInterface::IsCcdEnabled(const FPhysicsActorHandle& InActorRefer
 {
 	if (ensure(FChaosEngineInterface::IsValid(InActorReference)))
 	{
-		Chaos::TPBDRigidParticle<float, 3>* Rigid = InActorReference->CastToRigidParticle();
-		if (Rigid)
-		{
-			return Rigid->CCDEnabled();
-		}
+		return InActorReference->GetGameThreadAPI().CCDEnabled();
 	}
 
 	return false;
@@ -481,11 +477,7 @@ void FChaosEngineInterface::SetCcdEnabled_AssumesLocked(const FPhysicsActorHandl
 {
 	if (ensure(FChaosEngineInterface::IsValid(InActorReference)))
 	{
-		Chaos::TPBDRigidParticle<float, 3>* Rigid = InActorReference->CastToRigidParticle();
-		if (Rigid)
-		{
-			Rigid->SetCCDEnabled(bIsCcdEnabled);
-		}
+		InActorReference->GetGameThreadAPI().SetCCDEnabled(bIsCcdEnabled);
 	}
 }
 
