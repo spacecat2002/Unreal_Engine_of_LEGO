@@ -1590,6 +1590,7 @@ void FGenericDataDrivenShaderPlatformInfo::ParseDataDrivenShaderInfo(const FConf
 	Info.bSupportsGen5TemporalAA = GetSectionBool(Section, "bSupportsGen5TemporalAA");
 	Info.bTargetsTiledGPU = GetSectionBool(Section, "bTargetsTiledGPU");
 	Info.bNeedsOfflineCompiler = GetSectionBool(Section, "bNeedsOfflineCompiler");
+	Info.bSupportsAnisotropicMaterials = GetSectionBool(Section, "bSupportsAnisotropicMaterials");
 }
 
 void FGenericDataDrivenShaderPlatformInfo::Initialize()
