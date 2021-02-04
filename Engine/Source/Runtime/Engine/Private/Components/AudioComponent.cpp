@@ -411,6 +411,7 @@ void UAudioComponent::PlayQuantized(
 	if (InClockHandle != nullptr)
 	{
 		Data.QuantizedRequestData = InClockHandle->GetQuartzSubsystem()->CreateDataDataForSchedulePlaySound(InClockHandle, InDelegate, InQuantizationBoundary);
+		UGameplayStatics::PrimeSound(Sound);
 	}
 
 	// validate clock existence 
