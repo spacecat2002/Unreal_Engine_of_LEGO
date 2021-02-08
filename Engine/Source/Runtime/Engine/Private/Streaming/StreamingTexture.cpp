@@ -13,7 +13,7 @@ StreamingTexture.cpp: Definitions of classes used for texture.
 #include "LandscapeComponent.h"
 
 #if PLATFORM_DESKTOP
-int32 GUseMobileLODBiasOnDesktopES31 = 0;
+ENGINE_API int32 GUseMobileLODBiasOnDesktopES31 = 1;
 static FAutoConsoleVariableRef CVarStripSkeletalMeshLodsBelowMinLod(
 	TEXT("r.Streaming.UseMobileLODBiasOnDesktopES31"),
 	GUseMobileLODBiasOnDesktopES31,
