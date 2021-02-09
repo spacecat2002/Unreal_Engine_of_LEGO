@@ -2111,7 +2111,7 @@ private:
 	bool bModulatedShadowsInUse;
 	bool bShouldRenderCustomDepth;
 	bool bRequiresPixelProjectedPlanarRelfectionPass;
-	bool bRequriesAmbientOcclusionPass;
+	bool bRequiresAmbientOcclusionPass;
 	bool bRequiresDistanceField;
 	bool bRequiresDistanceFieldShadowingPass;
 	static FGlobalDynamicIndexBuffer DynamicIndexBuffer;

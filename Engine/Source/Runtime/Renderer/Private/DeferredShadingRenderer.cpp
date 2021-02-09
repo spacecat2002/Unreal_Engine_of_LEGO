@@ -287,7 +287,7 @@ FDeferredShadingSceneRenderer::FDeferredShadingSceneRenderer(const FSceneViewFam
 	bDitheredLODTransitionsUseStencil = StencilLODDitherCVar->GetValueOnAnyThread() != 0;
 }
 
-void BuildHZB(FRDGBuilder& GraphBuilder, const FSceneTextureParameters& SceneTextures, FViewInfo& View);
+void BuildHZB(FRDGBuilder& GraphBuilder, FRDGTextureRef InSceneDepthTexture, FViewInfo& View);
 
 /** 
 * Renders the view family. 
@@ -357,7 +357,7 @@ bool FDeferredShadingSceneRenderer::RenderHzb(
 		if (bSSAO || bHZBOcclusion || bSSR || bSSGI || bHair)
 		{
 			RDG_EVENT_SCOPE(GraphBuilder, "BuildHZB(ViewId=%d)", ViewIndex);
-			BuildHZB(GraphBuilder, SceneTextures, Views[ViewIndex]);
+			BuildHZB(GraphBuilder, SceneTextures.SceneDepthTexture, Views[ViewIndex]);
 		}
 
 		if (bHZBOcclusion && ViewState && ViewState->HZBOcclusionTests.GetNum() != 0)
@@ -2055,7 +2055,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			FViewInfo& View = Views[ViewIndex];
 			RDG_EVENT_SCOPE(GraphBuilder, "BuildHZB_HairUpdate(ViewId=%d)", ViewIndex);
-			BuildHZB(GraphBuilder, SceneTextureParameters, Views[ViewIndex]);
+			BuildHZB(GraphBuilder, SceneTextureParameters.SceneDepthTexture, Views[ViewIndex]);
 		}
 	}
 
