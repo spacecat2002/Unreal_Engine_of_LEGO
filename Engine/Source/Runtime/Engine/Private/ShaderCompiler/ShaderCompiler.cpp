@@ -2447,6 +2447,7 @@ IDistributedBuildController* FShaderCompilingManager::FindRemoteCompilerControll
 	{
 		if (Controller != nullptr && Controller->IsSupported())
 		{
+			Controller->InitializeController();
 			return Controller;
 		}
 	}
