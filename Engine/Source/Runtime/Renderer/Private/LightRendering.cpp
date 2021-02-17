@@ -1499,11 +1499,11 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 				{
 					if (!SharedScreenShadowMaskTexture)
 					{
-						SharedScreenShadowMaskTexture = GraphBuilder.CreateTexture(SharedScreenShadowMaskTextureDesc, TEXT("ShadowMaskTexture"), ERDGTextureFlags::MultiClear);
+						SharedScreenShadowMaskTexture = GraphBuilder.CreateTexture(SharedScreenShadowMaskTextureDesc, TEXT("ShadowMaskTexture"));
 
 						if (bUseHairLighting)
 						{
-							SharedScreenShadowMaskSubPixelTexture = GraphBuilder.CreateTexture(SharedScreenShadowMaskTextureDesc, TEXT("ShadowMaskSubPixelTexture"), ERDGTextureFlags::MultiClear);
+							SharedScreenShadowMaskSubPixelTexture = GraphBuilder.CreateTexture(SharedScreenShadowMaskTextureDesc, TEXT("ShadowMaskSubPixelTexture"));
 						}
 					}
 					ScreenShadowMaskTexture = SharedScreenShadowMaskTexture;
