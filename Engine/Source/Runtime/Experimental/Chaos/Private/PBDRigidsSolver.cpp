@@ -400,7 +400,7 @@ namespace Chaos
 		RemoveDirtyProxy(Proxy);
 
 		// mark proxy timestamp so we avoid trying to pull from sim after deletion
-		Proxy->SetSyncTimestamp(MarshallingManager.GetExternalTimestamp_External());
+		Proxy->MarkDeleted();
 
 		// Null out the particle's proxy pointer
 		Proxy->GetParticle_LowLevel()->SetProxy(nullptr);	//todo: use TUniquePtr for better ownership
@@ -511,7 +511,7 @@ namespace Chaos
 	{
 		check(InProxy);
 		// mark proxy timestamp so we avoid trying to pull from sim after deletion
-		InProxy->SetSyncTimestamp(MarshallingManager.GetExternalTimestamp_External());
+		InProxy->MarkDeleted();
 
 		RemoveDirtyProxy(InProxy);
 
@@ -549,7 +549,7 @@ namespace Chaos
 		RemoveDirtyProxy(JointProxy);
 
 		// mark proxy timestamp so we avoid trying to pull from sim after deletion
-		GTConstraint->GetProxy()->SetSyncTimestamp(MarshallingManager.GetExternalTimestamp_External());
+		GTConstraint->GetProxy()->MarkDeleted();
 
 
 		GTConstraint->SetProxy(static_cast<FJointConstraintPhysicsProxy*>(nullptr));
@@ -583,7 +583,7 @@ namespace Chaos
 		check(SuspensionProxy);
 
 		// mark proxy timestamp so we avoid trying to pull from sim after deletion
-		SuspensionProxy->SetSyncTimestamp(MarshallingManager.GetExternalTimestamp_External());
+		SuspensionProxy->MarkDeleted();
 
 		RemoveDirtyProxy(SuspensionProxy);
 
@@ -1131,6 +1131,9 @@ namespace Chaos
 		
 		// Now that results have been buffered we have completed a solve step so we can broadcast that event
 		EventPostSolve.Broadcast(MLastDt);
+
+
+		Particles.ClearTransientDirty();
 
 	}
 
