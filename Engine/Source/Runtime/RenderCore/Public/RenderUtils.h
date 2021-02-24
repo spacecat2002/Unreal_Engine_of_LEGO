@@ -490,50 +490,6 @@ RENDERCORE_API bool IsMobileDistanceFieldShadowingEnabled(const FStaticShaderPla
 
 RENDERCORE_API bool UseMobileAmbientOcclusion(const FStaticShaderPlatform Platform);
 
-/* Simple cache for RendererSettings ini lookup per shader platform. */
-template<typename Type>
-struct RENDERCORE_API FShaderPlatformCachedIniValue
-{
-	FShaderPlatformCachedIniValue(const TCHAR* InSection, const TCHAR* InKey)
-		: Section(InSection)
-		, Key(InKey)
-	{}
-
-	Type Get(EShaderPlatform ShaderPlatform)
-	{
-		Type* ExistingEntry = CachedValues.Find(ShaderPlatform);
-		if (ExistingEntry != nullptr)
-		{
-			return *ExistingEntry;
-		}
-		else
-		{
-			Type Value = {};
-			FConfigFile PlatformEngineIni;
-			FConfigCacheIni::LoadLocalIniFile(PlatformEngineIni, TEXT("Engine"), true, *ShaderPlatformToPlatformName(ShaderPlatform).ToString());
-			if (PlatformEngineIni.GetValue(Section, Key, Value))
-			{
-				CachedValues.Add(ShaderPlatform, Value);
-			}
-			else
-			{
-				// If it's not in the ini file don't cache, always return the CVar's current value
-				static IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(Key);
-				if (CVar)
-				{
-					CVar->GetValue(Value);
-				}
-			}
-			return Value;
-		}
-	}
-
-private:
-	const TCHAR* Section;
-	const TCHAR* Key;
-	TMap<EShaderPlatform, Type> CachedValues;
-};
-
 /** Returns if ForwardShading is enabled. Only valid for the current platform (otherwise call ITargetPlatform::UsesForwardShading()). */
 inline bool IsForwardShadingEnabled(const FStaticShaderPlatform Platform)
 {

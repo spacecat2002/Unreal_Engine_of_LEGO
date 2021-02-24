@@ -1482,13 +1482,12 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 		}
 
 		{
-			static FShaderPlatformCachedIniValue<int32> MobileEnableMovableSpotlightsIniValue(TEXT("/Script/Engine.RendererSettings"), TEXT("r.Mobile.EnableMovableSpotlights"));
-			static FShaderPlatformCachedIniValue<int32> MobileEnableMovableSpotlightsShadowIniValue(TEXT("/Script/Engine.RendererSettings"), TEXT("r.Mobile.EnableMovableSpotlightsShadow"));
-
-			bool bMobileEnableMovableSpotlights = (MobileEnableMovableSpotlightsIniValue.Get(Platform) != 0);
+			static IConsoleVariable* CVarMobileEnableMovableSpotlights = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlights"));
+			bool bMobileEnableMovableSpotlights = CVarMobileEnableMovableSpotlights ? (CVarMobileEnableMovableSpotlights->GetInt() != 0) : false;
 			KeyString += (bMobileEnableMovableSpotlights) ? TEXT("_MSPTL") : TEXT("");
 
-			bool bMobileEnableMovableSpotlightsShadow = (MobileEnableMovableSpotlightsShadowIniValue.Get(Platform) != 0);
+			static IConsoleVariable* CVarMobileEnableMovableSpotlightsShadow = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlightsShadow"));
+			bool bMobileEnableMovableSpotlightsShadow = CVarMobileEnableMovableSpotlightsShadow ? (CVarMobileEnableMovableSpotlightsShadow->GetInt() != 0) : false;
 			KeyString += (bMobileEnableMovableSpotlights && bMobileEnableMovableSpotlightsShadow) ? TEXT("S") : TEXT("");
 		}
 		

@@ -52,7 +52,6 @@
 #include "ShaderCore.h"
 #include "DistributedBuildInterface/Public/DistributedBuildControllerInterface.h"
 #include "Misc/ScopeRWLock.h"
-#include "RenderUtils.h"
 #if WITH_EDITOR
 #include "Rendering/StaticLightingSystemInterface.h"
 #endif
@@ -4616,13 +4615,12 @@ void GlobalBeginCompileShader(
 
 	if (IsMobilePlatform((EShaderPlatform)Target.Platform))
 	{
-		static FShaderPlatformCachedIniValue<int32> MobileEnableMovableSpotlightsIniValue(TEXT("/Script/Engine.RendererSettings"), TEXT("r.Mobile.EnableMovableSpotlights"));
-		static FShaderPlatformCachedIniValue<int32> MobileEnableMovableSpotlightsShadowIniValue(TEXT("/Script/Engine.RendererSettings"), TEXT("r.Mobile.EnableMovableSpotlightsShadow"));
-
-		bool bMobileEnableMovableSpotlights = (MobileEnableMovableSpotlightsIniValue.Get((EShaderPlatform)Target.Platform) != 0);
+		static IConsoleVariable* CVarMobileEnableMovableSpotlights = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlights"));
+		bool bMobileEnableMovableSpotlights = CVarMobileEnableMovableSpotlights ? (CVarMobileEnableMovableSpotlights->GetInt() != 0) : false;
 		Input.Environment.SetDefine(TEXT("PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS"), bMobileEnableMovableSpotlights ? 1 : 0);
 
-		bool bMobileEnableMovableSpotlightsShadow = (MobileEnableMovableSpotlightsShadowIniValue.Get((EShaderPlatform)Target.Platform) != 0);
+		static IConsoleVariable* CVarMobileEnableMovableSpotlightsShadow = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlightsShadow"));
+		bool bMobileEnableMovableSpotlightsShadow = CVarMobileEnableMovableSpotlightsShadow ? (CVarMobileEnableMovableSpotlightsShadow->GetInt() != 0) : false;
 		Input.Environment.SetDefine(TEXT("PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS_SHADOW"), bMobileEnableMovableSpotlights && bMobileEnableMovableSpotlightsShadow ? 1 : 0);
 	}
 
