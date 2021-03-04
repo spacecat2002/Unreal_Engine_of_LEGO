@@ -490,6 +490,8 @@ RENDERCORE_API bool IsMobileDistanceFieldShadowingEnabled(const FStaticShaderPla
 
 RENDERCORE_API bool UseMobileAmbientOcclusion(const FStaticShaderPlatform Platform);
 
+RENDERCORE_API bool SupportsDesktopTemporalAA(const FStaticShaderPlatform Platform);
+
 /* Simple cache for RendererSettings ini lookup per shader platform. */
 template<typename Type>
 struct RENDERCORE_API FShaderPlatformCachedIniValue

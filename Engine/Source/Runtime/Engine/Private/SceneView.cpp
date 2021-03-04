@@ -827,7 +827,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 
 	SetupAntiAliasingMethod();
 
-	if ((AntiAliasingMethod == AAM_TemporalAA && GetFeatureLevel() >= ERHIFeatureLevel::SM5) &&
+	if ((AntiAliasingMethod == AAM_TemporalAA) &&
 		(CVarEnableTemporalUpsample.GetValueOnAnyThread() || (Family && Family->GetTemporalUpscalerInterface() != nullptr)))
 	{
 		PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::TemporalUpscale;
@@ -858,7 +858,6 @@ bool FSceneView::VerifyMembersChecks() const
 {
 	if (PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale)
 	{
-		checkf(GetFeatureLevel() >= ERHIFeatureLevel::SM5, TEXT("Temporal upsample is SM5 only."));
 		checkf(AntiAliasingMethod == AAM_TemporalAA, TEXT("ScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale requires AntiAliasingMethod == AAM_TemporalAA"));
 	}
 
@@ -929,7 +928,7 @@ void FSceneView::SetupAntiAliasingMethod()
 		}
 
 		// Overides the anti aliasing method to temporal AA when using a custom temporal upscaler.
-		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5 && Family->GetTemporalUpscalerInterface() != nullptr)
+		if (Family->GetTemporalUpscalerInterface() != nullptr)
 		{
 			AntiAliasingMethod = AAM_TemporalAA;
 		}

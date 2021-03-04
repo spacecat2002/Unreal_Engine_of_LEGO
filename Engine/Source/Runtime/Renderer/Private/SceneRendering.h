@@ -47,6 +47,7 @@ struct FSceneWithoutWaterTextures;
 struct FHairStrandsVisibilityViews;
 struct FSortedLightSetSceneInfo;
 struct FHairStrandsRenderingData;
+enum class EVelocityPass : uint32;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
 
@@ -1693,6 +1694,8 @@ public:
 
 	virtual void Render(FRHICommandListImmediate& RHICmdList) = 0;
 	virtual void RenderHitProxies(FRHICommandListImmediate& RHICmdList) {}
+	virtual bool ShouldRenderVelocities() const { return false; }
+	virtual bool SupportsMSAA() const { return true; }
 
 	/** Creates a scene renderer based on the current feature level. */
 	static FSceneRenderer* CreateSceneRenderer(const FSceneViewFamily* InViewFamily, FHitProxyConsumer* HitProxyConsumer);
@@ -2014,6 +2017,14 @@ protected:
 
 	void SetupSceneReflectionCaptureBuffer(FRHICommandListImmediate& RHICmdList);
 
+	void RenderVelocities(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef& VelocityTexture,
+		const FSceneTextureShaderParameters& SceneTextures,
+		EVelocityPass VelocityPass,
+		bool bForceVelocity);
+
 private:
 	void ComputeFamilySize();
 
@@ -2054,6 +2065,10 @@ public:
 	virtual void Render(FRHICommandListImmediate& RHICmdList) override;
 
 	virtual void RenderHitProxies(FRHICommandListImmediate& RHICmdList) override;
+
+	virtual bool ShouldRenderVelocities() const override;
+
+	virtual bool SupportsMSAA() const override;
 
 	bool RenderInverseOpacity(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 
@@ -2148,6 +2163,7 @@ private:
 	bool bRequiresDistanceField;
 	bool bRequiresDistanceFieldShadowingPass;
 	bool bIsFullPrepassEnabled;
+	bool bShouldRenderVelocities;
 	static FGlobalDynamicIndexBuffer DynamicIndexBuffer;
 	static FGlobalDynamicVertexBuffer DynamicVertexBuffer;
 	static TGlobalResource<FGlobalDynamicReadBuffer> DynamicReadBuffer;
