@@ -1740,7 +1740,7 @@ void UAssetRegistryImpl::PrioritizeSearchPath(const FString& PathToPrioritize)
 void UAssetRegistryImpl::AssetCreated(UObject* NewAsset)
 {
 	checkf(GIsEditor, TEXT("Updating the AssetRegistry is only available in editor"));
-	if (ensure(NewAsset) && NewAsset->IsAsset())
+	if (ensure(NewAsset) && NewAsset->IsAsset() && !ShouldSkipAsset(NewAsset))
 	{
 		// Add the newly created object to the package file cache because its filename can already be
 		// determined by its long package name.
@@ -1759,7 +1759,7 @@ void UAssetRegistryImpl::AssetCreated(UObject* NewAsset)
 		AddAssetPath(*FPackageName::GetLongPackagePath(NewPackageName));
 
 		// Let subscribers know that the new asset was added to the registry
-		AssetAddedEvent.Broadcast(FAssetData(NewAsset));
+		AssetAddedEvent.Broadcast(FAssetData(NewAsset, true /* bAllowBlueprintClass */));
 
 		// Notify listeners that an asset was just created
 		InMemoryAssetCreatedEvent.Broadcast(NewAsset);
@@ -1769,7 +1769,7 @@ void UAssetRegistryImpl::AssetCreated(UObject* NewAsset)
 void UAssetRegistryImpl::AssetDeleted(UObject* DeletedAsset)
 {
 	checkf(GIsEditor, TEXT("Updating the AssetRegistry is only available in editor"));
-	if (ensure(DeletedAsset) && DeletedAsset->IsAsset())
+	if (ensure(DeletedAsset) && DeletedAsset->IsAsset() && !ShouldSkipAsset(DeletedAsset))
 	{
 		UPackage* DeletedObjectPackage = DeletedAsset->GetOutermost();
 		if (DeletedObjectPackage != nullptr)
@@ -1792,7 +1792,7 @@ void UAssetRegistryImpl::AssetDeleted(UObject* DeletedAsset)
 			}
 		}
 
-		FAssetData AssetDataDeleted = FAssetData(DeletedAsset);
+		FAssetData AssetDataDeleted = FAssetData(DeletedAsset, true /* bAllowBlueprintClass */);
 
 #if WITH_EDITOR
 		if (bInitialSearchCompleted && AssetDataDeleted.IsRedirector())
@@ -1813,7 +1813,7 @@ void UAssetRegistryImpl::AssetDeleted(UObject* DeletedAsset)
 void UAssetRegistryImpl::AssetRenamed(const UObject* RenamedAsset, const FString& OldObjectPath)
 {
 	checkf(GIsEditor, TEXT("Updating the AssetRegistry is only available in editor"));
-	if (ensure(RenamedAsset) && RenamedAsset->IsAsset())
+	if (ensure(RenamedAsset) && RenamedAsset->IsAsset() && !ShouldSkipAsset(RenamedAsset))
 	{
 		// Add the renamed object to the package file cache because its filename can already be
 		// determined by its long package name.
@@ -1840,7 +1840,7 @@ void UAssetRegistryImpl::AssetRenamed(const UObject* RenamedAsset, const FString
 		// Add the path to the Path Tree, in case it wasn't already there
 		AddAssetPath(*FPackageName::GetLongPackagePath(NewPackageName));
 
-		AssetRenamedEvent.Broadcast(FAssetData(RenamedAsset), OldObjectPath);
+		AssetRenamedEvent.Broadcast(FAssetData(RenamedAsset, true /* bAllowBlueprintClass */), OldObjectPath);
 	}
 }
 
@@ -2996,7 +2996,7 @@ void UAssetRegistryImpl::ProcessLoadedAssetsToUpdateCache(const double TickStart
 
 		AssetDataObjectPathsUpdatedOnLoad.Add(ObjectPath);
 
-		FAssetData NewAssetData = FAssetData(LoadedAsset);
+		FAssetData NewAssetData = FAssetData(LoadedAsset, true /* bAllowBlueprintClass */);
 
 		if (NewAssetData.TagsAndValues != (*CachedData)->TagsAndValues)
 		{
