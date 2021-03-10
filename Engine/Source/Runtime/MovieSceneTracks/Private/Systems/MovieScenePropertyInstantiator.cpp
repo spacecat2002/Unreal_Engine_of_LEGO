@@ -541,6 +541,7 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 			NewEntityType[Composite] = (Params.PropertyInfo->EmptyChannels[Index] != true);
 		}
 		NewEntityType.Set(Params.PropertyDefinition->PropertyType);
+
 		if (Params.PropertyInfo->bWantsRestoreState)
 		{
 			NewEntityType.Set(BuiltInComponents->Tags.RestoreState);
