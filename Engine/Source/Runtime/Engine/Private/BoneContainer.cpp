@@ -16,6 +16,9 @@ FBoneContainer::FBoneContainer()
 , AssetSkeletalMesh(nullptr)
 , AssetSkeleton(nullptr)
 , RefSkeleton(nullptr)
+#if DO_CHECK
+, CalculatedForLOD(INDEX_NONE)
+#endif
 , bDisableRetargeting(false)
 , bUseRAWData(false)
 , bUseSourceData(false)
@@ -32,6 +35,9 @@ FBoneContainer::FBoneContainer(const TArray<FBoneIndexType>& InRequiredBoneIndex
 , AssetSkeletalMesh(nullptr)
 , AssetSkeleton(nullptr)
 , RefSkeleton(nullptr)
+#if DO_CHECK
+, CalculatedForLOD(INDEX_NONE)
+#endif
 , bDisableRetargeting(false)
 , bUseRAWData(false)
 , bUseSourceData(false)
@@ -59,6 +65,10 @@ void FBoneContainer::Initialize(const FCurveEvaluationOption& CurveEvalOption)
 	USkeletalMesh* AssetSkeletalMeshObj = Cast<USkeletalMesh>(AssetObj);
 	USkeleton* AssetSkeletonObj = nullptr;
 
+#if DO_CHECK
+	CalculatedForLOD = CurveEvalOption.LODIndex;
+#endif
+	
 	if (AssetSkeletalMeshObj)
 	{
 		RefSkeleton = &AssetSkeletalMeshObj->GetRefSkeleton();
