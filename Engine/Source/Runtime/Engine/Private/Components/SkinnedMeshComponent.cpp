@@ -3027,7 +3027,7 @@ bool USkinnedMeshComponent::UpdateLODStatus_Internal(int32 InMasterPoseComponent
 #endif
 
 		int32 MinLodIndex = ComputeMinLOD();
-		int32 MaxLODIndex = 0;
+		int32 MaxLODIndex = MinLodIndex;
 		if (MeshObject)
 		{
 			MaxLODIndex = MeshObject->GetSkeletalMeshRenderData().LODRenderData.Num() - 1;
