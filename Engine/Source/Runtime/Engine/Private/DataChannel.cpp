@@ -3461,16 +3461,6 @@ void UActorChannel::WriteContentBlockHeader( UObject* Obj, FNetBitWriter &Bunch,
 			Bunch.WriteBit( 0 );
 			UClass *ObjClass = Obj->GetClass();
 			Bunch << ObjClass;
-
-			UObject* ObjOuter = Obj->GetOuter();
-			// If the subobject's outer is the not the actor (and the outer is supported for networking),
-			// then serialize the object's outer to rebuild the outer chain on the client.
-			const bool bActorIsOuter = (ObjOuter == Actor) || (!Obj->IsSupportedForNetworking());
-			Bunch.WriteBit(bActorIsOuter ? 1 : 0);
-			if (!bActorIsOuter)
-			{
-				Bunch << ObjOuter;
-			}
 		}
 	}
 
@@ -3722,43 +3712,14 @@ UObject* UActorChannel::ReadContentBlockHeader( FInBunch & Bunch, bool& bObjectD
 		}
 	}
 
-	UObject* ObjOuter = Actor;
-	if (Connection->EngineNetworkProtocolVersion >= HISTORY_SUBOBJECT_OUTER_CHAIN)
-	{ 
-		const bool bActorIsOuter = Bunch.ReadBit() != 0;
-	
-		if (Bunch.IsError())
-		{
-			UE_LOG(LogNetTraffic, Error, TEXT("UActorChannel::ReadContentBlockHeader: Bunch.IsError() == true after reading actor is outer bit. Actor: %s"), *Actor->GetName());
-			return nullptr;
-		}
-
-		if (!bActorIsOuter)
-		{
-			// If the channel's actor isn't the object's outer, serialize the object's outer here
-			Bunch << ObjOuter;
-
-			if (Bunch.IsError())
-			{
-				UE_LOG(LogNetTraffic, Error, TEXT("UActorChannel::ReadContentBlockHeader: Bunch.IsError() == true after serializing the subobject's outer. Actor: %s"), *Actor->GetName());
-				return nullptr;
-			}
-
-			if (!ensureMsgf(ObjOuter != nullptr, TEXT("UActorChannel::ReadContentBlockHeader: Unable to serialize subobject's outer. Ensure that subobjects are replicated top-down, so outers are received first. Class: %s, Actor: %s"), *GetNameSafe(SubObjClass), *GetNameSafe(Actor)))
-			{
-				return nullptr;
-			}
-		}
-	}
-
 	if ( SubObj == NULL )
 	{
 		check( !IsServer );
 
 		// Construct the sub-object
-		UE_LOG( LogNetTraffic, Log, TEXT( "UActorChannel::ReadContentBlockHeader: Instantiating sub-object. Class: %s, Actor: %s, Outer: %s" ), *SubObjClass->GetName(), *Actor->GetName(), *ObjOuter->GetName() );
-
-		SubObj = NewObject< UObject >(ObjOuter, SubObjClass);
+		UE_LOG(LogNetTraffic, Log, TEXT("UActorChannel::ReadContentBlockHeader: Instantiating sub-object. Class: %s, Actor: %s"), *SubObjClass->GetName(), *Actor->GetName());
+		
+		SubObj = NewObject< UObject >(Actor, SubObjClass);
 
 		// Sanity check some things
 		check( SubObj != NULL );
