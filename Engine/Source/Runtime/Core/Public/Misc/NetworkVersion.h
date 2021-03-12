@@ -48,6 +48,7 @@ enum EEngineNetworkVersionHistory
 	HISTORY_JITTER_IN_HEADER = 14,					// Bump version since we added jitter clock time to packet headers and removed remote saturation
 	HISTORY_CLASSNETCACHE_FULLNAME = 15,			// Bump version to use full paths in GetNetFieldExportGroupForClassNetCache
 	HISTORY_REPLAY_DORMANCY = 16,					// Bump version to support dormancy properly in replays
+	HISTORY_SUBOBJECT_OUTER_CHAIN = 17,				// Bump version to support subobject outer chains matching on client and server
 	// New history items go above here.
 
 	HISTORY_ENGINENETVERSION_PLUS_ONE,
