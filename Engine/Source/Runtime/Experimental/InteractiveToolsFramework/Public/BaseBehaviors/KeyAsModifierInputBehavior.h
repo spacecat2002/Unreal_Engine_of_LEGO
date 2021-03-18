@@ -12,7 +12,10 @@
 
 /**
  * UKeyAsModifierInputBehavior converts a specific key press/release into
- * a "Modifier" toggle via the IModifierToggleBehaviorTarget interface
+ * a "Modifier" toggle via the IModifierToggleBehaviorTarget interface. It does
+ * not capture the key press; rather, it updates the modifier its WantsCapture call.
+ * This means that the modifier won't be updated if another behavior captures the
+ * keyboard.
  */
 UCLASS()
 class INTERACTIVETOOLSFRAMEWORK_API UKeyAsModifierInputBehavior : public UInputBehavior
@@ -36,13 +39,14 @@ public:
 	virtual void Initialize(IModifierToggleBehaviorTarget* Target, int ModifierID, const FKey& ModifierKey);
 
 	/**
-	 * WantsCapture() will only return capture request if this function returns true (or is null)
-	 * Intended to be used for alt/ctrl/cmd/shift modifiers on the main ModifierKey
+	 * Initialize this behavior with the given Target
+	 * @param Target implementor of modifier-toggle behavior
+	 * @param ModifierID integer ID that identifiers the modifier toggle
+	 * @param ModifierCheckFunc the function that will be checked to set the the modifier.
 	 */
-	TFunction<bool(const FInputDeviceState&)> ModifierCheckFunc = nullptr;
+	void Initialize(IModifierToggleBehaviorTarget* TargetIn, int ModifierID, TFunction<bool(const FInputDeviceState&)> ModifierCheckFunc);
 
 	// UInputBehavior implementation
-
 	virtual FInputCaptureRequest WantsCapture(const FInputDeviceState& Input) override;
 	virtual FInputCaptureUpdate BeginCapture(const FInputDeviceState& Input, EInputCaptureSide Side) override;
 	virtual FInputCaptureUpdate UpdateCapture(const FInputDeviceState& Input, const FInputCaptureData& Data) override;
@@ -53,12 +57,6 @@ protected:
 	/** Modifier Target object */
 	IModifierToggleBehaviorTarget* Target;
 
-	/** Key that is used as modifier */
-	FKey ModifierKey;
-
 	/** Modifier set for this behavior, internally initialized with check on ModifierKey */
 	FInputBehaviorModifierStates Modifiers;
-
-	/** The key that was pressed to activate capture */
-	FKey PressedButton;
 };
