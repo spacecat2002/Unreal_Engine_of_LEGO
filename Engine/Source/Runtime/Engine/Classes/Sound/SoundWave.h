@@ -196,7 +196,7 @@ struct FSoundWaveSpectralDataPerSound
 
 	// The current playback time of this sound wave
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpectralData")
-	float PlaybackTime;
+	float PlaybackTime =0.0f;
 
 	// The sound wave this spectral data is associated with
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpectralData")
@@ -210,11 +210,11 @@ struct FSoundWaveEnvelopeDataPerSound
 
 	// The current envelope of the playing sound
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EnvelopeData")
-	float Envelope;
+	float Envelope = 0.0f;
 
 	// The current playback time of this sound wave
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EnvelopeData")
-	float PlaybackTime;
+	float PlaybackTime = 0.0f;
 
 	// The sound wave this envelope data is associated with
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EnvelopeData")
@@ -239,11 +239,11 @@ struct FSoundWaveSpectralDataEntry
 
 	// The magnitude of the spectrum at this frequency
 	UPROPERTY()
-	float Magnitude;
+	float Magnitude=0.0f;
 
 	// The normalized magnitude of the spectrum at this frequency
 	UPROPERTY()
-	float NormalizedMagnitude;
+	float NormalizedMagnitude=0.0f;
 };
 
 
