@@ -32,7 +32,7 @@ public class Grpc : ModuleRules
 			{
 				Linkage = "-static-md";
 			}
-			Toolset = "-v142";
+			Toolset = "-v140";
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Linux)
 		{
@@ -58,7 +58,6 @@ public class Grpc : ModuleRules
 		if (!Directory.Exists(VcPackageRoot))
 		{
 			throw new DirectoryNotFoundException(VcPackageRoot);
-			return;
 		}
 
 		string LibraryExtension = string.Empty;
@@ -81,7 +80,6 @@ public class Grpc : ModuleRules
 			if (!File.Exists(LibraryPath))
 			{
 				throw new FileNotFoundException(LibraryPath);
-				return;
 			}
 			PublicAdditionalLibraries.Add(LibraryPath);
 		}
@@ -92,7 +90,6 @@ public class Grpc : ModuleRules
 			if (!Directory.Exists(IncludePath))
 			{
 				throw new DirectoryNotFoundException(IncludePath);
-				return;
 			}
 
 			PublicIncludePaths.Add(Path.Combine(VcPackageRoot, "include"));
@@ -103,7 +100,7 @@ public class Grpc : ModuleRules
 	{
 		Type = ModuleType.External;
 
-		if (Target.Platform != UnrealTargetPlatform.Win64 || Target.WindowsPlatform.Compiler == WindowsCompiler.Clang)
+		if (Target.Platform != UnrealTargetPlatform.Win64)
 		{
 			// Currently only supported for Win64
 			return;
@@ -111,11 +108,7 @@ public class Grpc : ModuleRules
 
 		PublicDependencyModuleNames.Add("OpenSSL");
 		PublicDependencyModuleNames.Add("zlib");
-
-		// protobuf
-		AddVcPackage(Target, "protobuf", true,
-			"libprotobuf"
-		);
+		PublicDependencyModuleNames.Add("Protobuf");
 
 		// abseil
 		AddVcPackage(Target, "abseil", false,
