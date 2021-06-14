@@ -109,6 +109,7 @@ public class Grpc : ModuleRules
 
 		PublicDependencyModuleNames.Add("OpenSSL");
 		PublicDependencyModuleNames.Add("zlib");
+		PublicDependencyModuleNames.Add("Re2");
 		PublicDependencyModuleNames.Add("Protobuf");
 
 		// abseil
@@ -192,9 +193,6 @@ public class Grpc : ModuleRules
 
 		// c-ares
 		AddVcPackage(Target, "c-ares", false, "cares");
-
-		// re2
-		AddVcPackage(Target, "re2", false, "re2");
 
 		// upb (micro-pb)
 		AddVcPackage(Target, "upb", false,
