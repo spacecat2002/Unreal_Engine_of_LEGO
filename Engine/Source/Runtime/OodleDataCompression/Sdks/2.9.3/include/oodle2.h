@@ -26,12 +26,12 @@
 //  the DLL is incompatible when MAJOR is bumped
 //  MINOR is for internal revs and bug fixes that don't affect API compatibility
 #define OODLE2_VERSION_MAJOR            9
-#define OODLE2_VERSION_MINOR            2
+#define OODLE2_VERSION_MINOR            3
 
 // OodleVersion string is 1 . MAJOR . MINOR
 //  don't make it from macros cuz the doc tool has to parse the string literal
 
-#define OodleVersion "2.9.2"    /*
+#define OodleVersion "2.9.3"    /*
 */
 
 //-----------------------------------------------------
@@ -1310,7 +1310,6 @@ OO_BOOL OodleLZ_Compressor_RespectsDictionarySize(OodleLZ_Compressor compressor)
 OOINLINEFUNC OO_BOOL OodleLZ_Compressor_IsNewLZFamily(OodleLZ_Compressor compressor)
 {
     const OO_U32 set =
-        OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_None) |
         OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Kraken) |
         OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Leviathan) |
         OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Mermaid) |
