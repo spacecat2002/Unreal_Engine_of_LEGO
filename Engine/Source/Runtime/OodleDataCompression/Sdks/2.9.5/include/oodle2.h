@@ -26,12 +26,12 @@
 //  the DLL is incompatible when MAJOR is bumped
 //  MINOR is for internal revs and bug fixes that don't affect API compatibility
 #define OODLE2_VERSION_MAJOR            9
-#define OODLE2_VERSION_MINOR            3
+#define OODLE2_VERSION_MINOR            5
 
 // OodleVersion string is 1 . MAJOR . MINOR
 //  don't make it from macros cuz the doc tool has to parse the string literal
 
-#define OodleVersion "2.9.3"    /*
+#define OodleVersion "2.9.5"    /*
 */
 
 //-----------------------------------------------------
@@ -889,7 +889,7 @@ OOFUNC1 OO_SINTa OOFUNC2 OodleLZ_Decompress(const void * compBuf,OO_SINTa compBu
     About fuzz safety:
     
     OodleLZ_Decompress is guaranteed not to crash even if the data is corrupted when _fuzzSafe_ is set to OodleLZ_FuzzSafe_Yes.
-    When _fuzzSafe_ is Yes, the target buffer (_rawBuf_ and _rawLen_) will never be overrun.  Note that corrupted day might not
+    When _fuzzSafe_ is Yes, the target buffer (_rawBuf_ and _rawLen_) will never be overrun.  Note that corrupted data might not
     be detected (the return value might indicate success).
 
     Fuzz Safe decodes will not crash on corrupt data.  They may or may not return failure, and produce garbage output.
