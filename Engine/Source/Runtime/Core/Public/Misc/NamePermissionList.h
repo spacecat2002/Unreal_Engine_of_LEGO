@@ -8,51 +8,51 @@
 #include "Delegates/Delegate.h"
 
 /** List of owner names that requested a specific item filtered, allows unregistering specific set of changes by a given plugin or system */
-typedef TArray<FName> FBlacklistOwners;
+typedef TArray<FName> FPermissionListOwners;
 
-class CORE_API FBlacklistNames : public TSharedFromThis<FBlacklistNames>
+class CORE_API FNamePermissionList : public TSharedFromThis<FNamePermissionList>
 {
 public:
-	FBlacklistNames();
-	~FBlacklistNames() {}
+	FNamePermissionList() {}
+	virtual ~FNamePermissionList() {}
 
 	/** Returns true if passes filter restrictions using exact match */
 	bool PassesFilter(const FName Item) const;
 
 	/** 
-	 * Add item to blacklist, this specific item will be filtered out.
+	 * Add item to DenyList, this specific item will be filtered out.
 	 * @return whether the filters changed.
 	 */
-	bool AddBlacklistItem(const FName OwnerName, const FName Item);
+	bool AddDenyListItem(const FName OwnerName, const FName Item);
 
 	/**
-	 * Add item to whitelist after which all items not in the whitelist will be filtered out.
+	 * Add item to allowlist after which all items not in the allowlist will be filtered out.
 	 * @return whether the filters changed.
 	 */
-	bool AddWhitelistItem(const FName OwnerName, const FName Item);
+	bool AddAllowListItem(const FName OwnerName, const FName Item);
 
 	/**
-	 * Removes a previously-added item from the blacklist.
+	 * Removes a previously-added item from the DenyList.
 	 * @return whether the filters changed.
 	 */
-	bool RemoveBlacklistItem(const FName OwnerName, const FName Item);
+	bool RemoveDenyListItem(const FName OwnerName, const FName Item);
 
 	/**
-	 * Removes a previously-added item from the whitelist.
+	 * Removes a previously-added item from the allowlist.
 	 * @return whether the filters changed.
 	 */
-	bool RemoveWhitelistItem(const FName OwnerName, const FName Item);
+	bool RemoveAllowListItem(const FName OwnerName, const FName Item);
 
 	/**
 	 * Set to filter out all items.
 	 * @return whether the filters changed.
 	 */
-	bool AddBlacklistAll(const FName OwnerName);
+	bool AddDenyListAll(const FName OwnerName);
 	
 	/** True if has filters active */
 	bool HasFiltering() const;
 
-	/** Gathers the names of all the owners in this blacklist. */
+	/** Gathers the names of all the owners in this DenyList. */
 	TArray<FName> GetOwnerNames() const;
 
 	/** 
@@ -71,22 +71,22 @@ public:
 	 * Add the specified filters to this one.
 	 * @return whether the filters changed.
 	 */
-	bool Append(const FBlacklistNames& Other);
+	bool Append(const FNamePermissionList& Other);
 
 	/**
 	* Unregisters specified owners then adds specified filters in one operation (to avoid multiple filters changed events).
 	* @return whether the filters changed.
 	*/
-	bool UnregisterOwnersAndAppend(const TArray<FName>& OwnerNamesToRemove, const FBlacklistNames& FiltersToAdd);
+	bool UnregisterOwnersAndAppend(const TArray<FName>& OwnerNamesToRemove, const FNamePermissionList& FiltersToAdd);
 
-	/** Get raw blacklist */
-	const TMap<FName, FBlacklistOwners>& GetBlacklist() const { return Blacklist; }
+	/** Get raw DenyList */
+	const TMap<FName, FPermissionListOwners>& GetDenyList() const { return DenyList; }
 	
-	/** Get raw whitelist */
-	const TMap<FName, FBlacklistOwners>& GetWhitelist() const { return Whitelist; }
+	/** Get raw allowlist */
+	const TMap<FName, FPermissionListOwners>& GetAllowList() const { return AllowList; }
 
 	/** Are all items set to be filtered out */
-	bool IsBlacklistAll() const { return BlacklistAll.Num() > 0; }
+	bool IsDenyListAll() const { return DenyListAll.Num() > 0; }
 
 	/** Triggered when filter changes */
 	FSimpleMulticastDelegate& OnFilterChanged() { return OnFilterChangedDelegate; }
@@ -94,26 +94,26 @@ public:
 protected:
 
 	/** List if items to filter out */
-	TMap<FName, FBlacklistOwners> Blacklist;
+	TMap<FName, FPermissionListOwners> DenyList;
 
 	/** List of items to allow, if not empty all items will be filtered out unless they are in the list */
-	TMap<FName, FBlacklistOwners> Whitelist;
+	TMap<FName, FPermissionListOwners> AllowList;
 
 	/** List of owner names that requested all items to be filtered out */
-	FBlacklistOwners BlacklistAll;
+	FPermissionListOwners DenyListAll;
 
 	/** Triggered when filter changes */
 	FSimpleMulticastDelegate OnFilterChangedDelegate;
 
 	/** Temporarily prevent delegate from being triggered */
-	bool bSuppressOnFilterChanged;
+	bool bSuppressOnFilterChanged = false;
 };
 
-class CORE_API FBlacklistPaths : public TSharedFromThis<FBlacklistPaths>
+class CORE_API FPathPermissionList : public TSharedFromThis<FPathPermissionList>
 {
 public:
-	FBlacklistPaths();
-	~FBlacklistPaths() {}
+	FPathPermissionList() {}
+	virtual ~FPathPermissionList() {}
 	
 	/** Returns true if passes filter restrictions using exact match */
 	bool PassesFilter(const FStringView Item) const;
@@ -134,51 +134,51 @@ public:
 	bool PassesStartsWithFilter(const TCHAR* Item, const bool bAllowParentPaths = false) const;
 
 	/** 
-	 * Add item to blacklist, this specific item will be filtered out.
+	 * Add item to DenyList, this specific item will be filtered out.
 	 * @return whether the filters changed.
 	 */
-	bool AddBlacklistItem(const FName OwnerName, const FStringView Item);
+	bool AddDenyListItem(const FName OwnerName, const FStringView Item);
 
 	/**
-	 * Add item to blacklist, this specific item will be filtered out.
+	 * Add item to DenyList, this specific item will be filtered out.
 	 * @return whether the filters changed.
 	 */
-	bool AddBlacklistItem(const FName OwnerName, const FName Item);
+	bool AddDenyListItem(const FName OwnerName, const FName Item);
 
 	/**
-	 * Add item to blacklist, this specific item will be filtered out.
+	 * Add item to DenyList, this specific item will be filtered out.
 	 * @return whether the filters changed.
 	 */
-	bool AddBlacklistItem(const FName OwnerName, const TCHAR* Item);
+	bool AddDenyListItem(const FName OwnerName, const TCHAR* Item);
 
 	/**
-	 * Add item to whitelist after which all items not in the whitelist will be filtered out.
+	 * Add item to allowlist after which all items not in the allowlist will be filtered out.
 	 * @return whether the filters changed.
 	 */
-	bool AddWhitelistItem(const FName OwnerName, const FStringView Item);
+	bool AddAllowListItem(const FName OwnerName, const FStringView Item);
 
 	/**
-	 * Add item to whitelist after which all items not in the whitelist will be filtered out.
+	 * Add item to allowlist after which all items not in the allowlist will be filtered out.
 	 * @return whether the filters changed.
 	 */
-	bool AddWhitelistItem(const FName OwnerName, const FName Item);
+	bool AddAllowListItem(const FName OwnerName, const FName Item);
 
 	/**
-	 * Add item to whitelist after which all items not in the whitelist will be filtered out.
+	 * Add item to allowlist after which all items not in the allowlist will be filtered out.
 	 * @return whether the filters changed.
 	 */
-	bool AddWhitelistItem(const FName OwnerName, const TCHAR* Item);
+	bool AddAllowListItem(const FName OwnerName, const TCHAR* Item);
 
 	/**
 	 * Set to filter out all items.
 	 * @return whether the filters changed.
 	 */
-	bool AddBlacklistAll(const FName OwnerName);
+	bool AddDenyListAll(const FName OwnerName);
 	
 	/** True if has filters active */
 	bool HasFiltering() const;
 
-	/** Gathers the names of all the owners in this blacklist. */
+	/** Gathers the names of all the owners in this DenyList. */
 	TArray<FName> GetOwnerNames() const;
 
 	/**
@@ -197,30 +197,30 @@ public:
 	 * Add the specified filters to this one. Rules are not applied, direct append lists.
 	 * @return whether the filters changed.
 	 */
-	bool Append(const FBlacklistPaths& Other);
+	bool Append(const FPathPermissionList& Other);
 
 	/**
 	 * Combine two filters.
-	 * Result will contain all blacklisted paths combined.
-	 * Result will contain whitelisted paths that pass both filters.
+	 * Result will contain all DenyList paths combined.
+	 * Result will contain AllowList paths that pass both filters.
 	 * @return new combined filter.
 	 */
-	FBlacklistPaths CombinePathFilters(const FBlacklistPaths& OtherFilter) const;
+	FPathPermissionList CombinePathFilters(const FPathPermissionList& OtherFilter) const;
 
 	/**
 	* Unregisters specified owners then adds specified filters in one operation (to avoid multiple filters changed events).
 	* @return whether the filters changed.
 	*/
-	bool UnregisterOwnersAndAppend(const TArray<FName>& OwnerNamesToRemove, const FBlacklistPaths& FiltersToAdd);
+	bool UnregisterOwnersAndAppend(const TArray<FName>& OwnerNamesToRemove, const FPathPermissionList& FiltersToAdd);
 
-	/** Get raw blacklist */
-	const TMap<FString, FBlacklistOwners>& GetBlacklist() const { return Blacklist; }
+	/** Get raw DenyList */
+	const TMap<FString, FPermissionListOwners>& GetDenyList() const { return DenyList; }
 	
-	/** Get raw whitelist */
-	const TMap<FString, FBlacklistOwners>& GetWhitelist() const { return Whitelist; }
+	/** Get raw allowlist */
+	const TMap<FString, FPermissionListOwners>& GetAllowList() const { return AllowList; }
 
 	/** Are all items set to be filtered out */
-	bool IsBlacklistAll() const { return BlacklistAll.Num() > 0; }
+	bool IsDenyListAll() const { return DenyListAll.Num() > 0; }
 	
 	/** Triggered when filter changes */
 	FSimpleMulticastDelegate& OnFilterChanged() { return OnFilterChangedDelegate; }
@@ -228,17 +228,17 @@ public:
 protected:
 
 	/** List if items to filter out */
-	TMap<FString, FBlacklistOwners> Blacklist;
+	TMap<FString, FPermissionListOwners> DenyList;
 
 	/** List of items to allow, if not empty all items will be filtered out unless they are in the list */
-	TMap<FString, FBlacklistOwners> Whitelist;
+	TMap<FString, FPermissionListOwners> AllowList;
 
 	/** List of owner names that requested all items to be filtered out */
-	FBlacklistOwners BlacklistAll;
+	FPermissionListOwners DenyListAll;
 	
 	/** Triggered when filter changes */
 	FSimpleMulticastDelegate OnFilterChangedDelegate;
 
 	/** Temporarily prevent delegate from being triggered */
-	bool bSuppressOnFilterChanged;
+	bool bSuppressOnFilterChanged = false;
 };
