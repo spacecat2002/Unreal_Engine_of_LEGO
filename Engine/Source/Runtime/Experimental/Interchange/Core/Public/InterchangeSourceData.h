@@ -18,7 +18,7 @@
  * Stream (TODO)
  */
 
-UCLASS(BlueprintType, Blueprintable)
+UCLASS(BlueprintType, Blueprintable, Experimental)
 class INTERCHANGECORE_API UInterchangeSourceData : public UObject
 {
 	 GENERATED_BODY()

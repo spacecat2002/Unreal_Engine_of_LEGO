@@ -9,7 +9,7 @@
 #include "InterchangeResultsContainer.generated.h"
 
 
-UCLASS()
+UCLASS(Experimental)
 class INTERCHANGECORE_API UInterchangeResultsContainer : public UObject
 {
 	GENERATED_BODY()

@@ -8,7 +8,7 @@
 
 #include "InterchangePipelineConfigurationBase.generated.h"
 
-UENUM(BlueprintType)
+UENUM(BlueprintType, Experimental)
 enum class EInterchangePipelineConfigurationDialogResult : uint8
 {
 	Cancel		UMETA(DisplayName = "Cancel"),
@@ -16,7 +16,7 @@ enum class EInterchangePipelineConfigurationDialogResult : uint8
 	ImportAll	UMETA(DisplayName = "Import All"),
 };
 
-UCLASS(BlueprintType, Blueprintable)
+UCLASS(BlueprintType, Blueprintable, Experimental)
 class INTERCHANGEENGINE_API UInterchangePipelineConfigurationBase : public UObject
 {
 	GENERATED_BODY()
