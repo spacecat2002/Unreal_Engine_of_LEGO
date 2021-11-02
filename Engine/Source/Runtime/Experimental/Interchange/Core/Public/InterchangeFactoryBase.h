@@ -26,7 +26,7 @@ enum class EReimportStrategyFlags : uint8
 	ApplyEditorChangedProperties //Always apply all pipeline properties, but leave the properties modified in editor since the last import
 };
 
-UCLASS(BlueprintType, Blueprintable, Abstract)
+UCLASS(BlueprintType, Blueprintable, Abstract, Experimental)
 class INTERCHANGECORE_API UInterchangeFactoryBase : public UObject
 {
 	GENERATED_BODY()

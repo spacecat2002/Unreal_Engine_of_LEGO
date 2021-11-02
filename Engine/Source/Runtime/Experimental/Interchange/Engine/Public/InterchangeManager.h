@@ -236,7 +236,7 @@ namespace UE
 	} //ns interchange
 } //ns UE
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, Experimental)
 struct FImportAssetParameters
 {
 	GENERATED_USTRUCT_BODY()
@@ -276,7 +276,7 @@ struct FImportAssetParameters
 	FOnImportDoneNative OnSceneImportDoneNative;
 };
 
-UCLASS(Transient, BlueprintType)
+UCLASS(Transient, BlueprintType, Experimental)
 class INTERCHANGEENGINE_API UInterchangeManager : public UObject
 {
 	GENERATED_BODY()

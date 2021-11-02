@@ -23,7 +23,7 @@ enum class EInterchangeResultType
 /**
  * Base class for the result from an Interchange operation.
  */
-UCLASS()
+UCLASS(Experimental)
 class INTERCHANGECORE_API UInterchangeResult : public UObject
 {
 	GENERATED_BODY()

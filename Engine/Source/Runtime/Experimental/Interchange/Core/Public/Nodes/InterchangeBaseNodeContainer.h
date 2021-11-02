@@ -19,7 +19,7 @@
  *
  * Translators are filling this container and the Import/Export managers are reading it to execute the import/export process
  */
- UCLASS(BlueprintType)
+ UCLASS(BlueprintType, Experimental)
 class INTERCHANGECORE_API UInterchangeBaseNodeContainer : public UObject
 {
 	GENERATED_BODY()
