@@ -11,7 +11,7 @@
 
 #include "InterchangeTranslatorBase.generated.h"
 
-UCLASS(BlueprintType, Blueprintable, Abstract)
+UCLASS(BlueprintType, Blueprintable, Abstract, Experimental)
 class INTERCHANGECORE_API UInterchangeTranslatorBase : public UObject
 {
 	GENERATED_BODY()
