@@ -7,7 +7,7 @@
 #include "UObject/ObjectMacros.h"
 #include "MaterialExpressionThinTranslucentMaterialOutput.generated.h"
 
-/** Material output expression for writing single layer water volume material properties. */
+/** Material output expression for setting absorption properties of thin translucent materials. */
 UCLASS(MinimalAPI, collapsecategories, hidecategories = Object)
 class UMaterialExpressionThinTranslucentMaterialOutput : public UMaterialExpressionCustomOutput
 {
