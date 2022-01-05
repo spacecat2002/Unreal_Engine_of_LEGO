@@ -43,10 +43,10 @@ namespace Chaos
 
 	FORCEINLINE_DEBUGGABLE bool TooManyOverlapQueryCells(const TAABB<FReal, 3>& AABB, FReal DirtyElementGridCellSizeInv, int32 MaximumOverlap)
 	{
-		int64 XsampleCount = GetDirtyCellIndexFromWorldCoordinate(AABB.Max().X, DirtyElementGridCellSizeInv) - GetDirtyCellIndexFromWorldCoordinate(AABB.Min().X, DirtyElementGridCellSizeInv) + 1;
-		int64 YsampleCount = GetDirtyCellIndexFromWorldCoordinate(AABB.Max().Y, DirtyElementGridCellSizeInv) - GetDirtyCellIndexFromWorldCoordinate(AABB.Min().Y, DirtyElementGridCellSizeInv) + 1;
+		uint64 XsampleCount = GetDirtyCellIndexFromWorldCoordinate(AABB.Max().X, DirtyElementGridCellSizeInv) - GetDirtyCellIndexFromWorldCoordinate(AABB.Min().X, DirtyElementGridCellSizeInv) + 1;
+		uint64 YsampleCount = GetDirtyCellIndexFromWorldCoordinate(AABB.Max().Y, DirtyElementGridCellSizeInv) - GetDirtyCellIndexFromWorldCoordinate(AABB.Min().Y, DirtyElementGridCellSizeInv) + 1;
 
-		if (XsampleCount * YsampleCount <= (int64)MaximumOverlap)
+		if (XsampleCount * YsampleCount <= (uint64)MaximumOverlap)
 		{
 			return false;
 		}
