@@ -329,6 +329,16 @@ bool FTriangleMeshImplicitObject::ContactManifoldImp(const GeomType& QueryGeom, 
 	bool bResult = false;
 
 	const auto& WorldScaleGeom = ScaleGeomIntoWorldHelper(QueryGeom, TriMeshScale);
+	const FVec3 InvTriMeshScale = FVec3(FReal(1) / TriMeshScale.X, FReal(1) / TriMeshScale.Y, FReal(1) / TriMeshScale.Z);
+
+	// IMPORTANT QueryTM comes with a invscaled translation so we need a version of the TM with world space translation to properly compute the bounds
+	FRigidTransform3 TriMeshToGeomNoScale{ QueryTM };
+	TriMeshToGeomNoScale.SetTranslation(TriMeshToGeomNoScale.GetTranslation() * TriMeshScale);
+	// NOTE: BVH test is done in tri-mesh local space (whereas collision detection is done in world space becaused you can't non-uniformly scale all shapes)
+	FAABB3 QueryBounds = WorldScaleGeom.BoundingBox();
+	QueryBounds = QueryBounds.TransformedAABB(TriMeshToGeomNoScale);
+	QueryBounds.ThickenSymmetrically(FVec3(WorldThickness));
+	QueryBounds.Scale(InvTriMeshScale);
 
 	TRigidTransform<FReal, 3> WorldScaleQueryTM;
 	ScaleTransformHelper(TriMeshScale, QueryTM, WorldScaleQueryTM);
@@ -367,13 +377,8 @@ bool FTriangleMeshImplicitObject::ContactManifoldImp(const GeomType& QueryGeom, 
 	auto OverlapTriangle = [&](const FVec3& A, const FVec3& B, const FVec3& C,
 		FPBDCollisionConstraint& Constraint)
 	{
-		const FVec3 AB = B - A;
-		const FVec3 AC = C - A;
-
-		const FVec3 Offset = FVec3::CrossProduct(AB, AC);
-
 		FTriangle TriangleConvex(A, B, C);
-		Collisions::ConstructConvexConvexOneShotManifold(QueryGeom, QueryTM, TriangleConvex, FRigidTransform3::Identity, 0, Constraint);
+		Collisions::ConstructConvexConvexOneShotManifold(WorldScaleGeom, WorldScaleQueryTM, TriangleConvex, FRigidTransform3::Identity, 0, Constraint);
 	};
 
 	auto LambdaHelper = [&](const auto& Elements)
@@ -381,13 +386,6 @@ bool FTriangleMeshImplicitObject::ContactManifoldImp(const GeomType& QueryGeom, 
 		FReal LocalContactPhi = FLT_MAX;
 		FVec3 LocalContactLocation, LocalContactNormal;
 
-		// NOTE: BVH test is done in tri-mesh local space (whereas collision detection is done in world space becaused you can't non-uniformly scale all shapes)
-		// We must apply the local-space scaled thickness after transforming the world bounds into local space
-		const FVec3 LocalThickness = FVec3(WorldThickness / TriMeshScale.X, WorldThickness / TriMeshScale.Y, WorldThickness / TriMeshScale.Z);
-
-		FAABB3 QueryBounds = QueryGeom.BoundingBox();
-		QueryBounds = QueryBounds.TransformedAABB(QueryTM);
-		QueryBounds.ThickenSymmetrically(LocalThickness);
 		const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
 
 		for (int32 TriIdx : PotentialIntersections)
@@ -446,6 +444,16 @@ bool FTriangleMeshImplicitObject::GJKContactPointImp(const QueryGeomType& QueryG
 	bool bResult = false;
 
 	const auto& WorldScaleGeom = ScaleGeomIntoWorldHelper(QueryGeom, TriMeshScale);
+	const FVec3 InvTriMeshScale = FVec3(FReal(1) / TriMeshScale.X, FReal(1) / TriMeshScale.Y, FReal(1) / TriMeshScale.Z);
+
+	// IMPORTANT QueryTM comes with a invscaled translation so we need a version of the TM with world space translation to properly compute the bounds
+	FRigidTransform3 TriMeshToGeomNoScale{ QueryTM };
+	TriMeshToGeomNoScale.SetTranslation(TriMeshToGeomNoScale.GetTranslation() * TriMeshScale);
+	// NOTE: BVH test is done in tri-mesh local space (whereas collision detection is done in world space becaused you can't non-uniformly scale all shapes)
+	FAABB3 QueryBounds = WorldScaleGeom.BoundingBox();
+	QueryBounds = QueryBounds.TransformedAABB(TriMeshToGeomNoScale);
+	QueryBounds.ThickenSymmetrically(FVec3(WorldThickness));
+	QueryBounds.Scale(InvTriMeshScale);
 
 	TRigidTransform<FReal, 3> WorldScaleQueryTM;
 	ScaleTransformHelper(TriMeshScale, QueryTM, WorldScaleQueryTM);
@@ -477,13 +485,6 @@ bool FTriangleMeshImplicitObject::GJKContactPointImp(const QueryGeomType& QueryG
 		FReal LocalContactPhi = FLT_MAX;
 		FVec3 LocalContactLocation, LocalContactNormal;
 
-		// NOTE: BVH test is done in tri-mesh local space (whereas collision detection is done in world space becaused you can't non-uniformly scale all shapes)
-		// We must apply the local-space scaled thickness after transforming the world bounds into local space
-		const FVec3 LocalThickness = FVec3(WorldThickness / TriMeshScale.X, WorldThickness / TriMeshScale.Y, WorldThickness / TriMeshScale.Z);
-
-		FAABB3 QueryBounds = QueryGeom.BoundingBox();
-		QueryBounds = QueryBounds.TransformedAABB(QueryTM);
-		QueryBounds.ThickenSymmetrically(LocalThickness);
 		const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
 
 		for (int32 TriIdx : PotentialIntersections)
@@ -686,14 +687,44 @@ void FTriangleMeshImplicitObject::VisitTriangles(const FAABB3& QueryBounds, cons
 	}
 }
 
+void FTriangleMeshImplicitObject::VisitTriangle(int32 TriangleIndex, const TFunction<void(const FTriangle& Triangle)>& Visitor) const
+{
+	const auto TriangleProducer = [&](int32 TriIdx, const auto& Elements)
+	{
+		TVec3<FReal> A, B, C;
+		TransformVertsHelper(FVec3(1), TriIdx, MParticles, Elements, A, B, C);
+
+		Visitor(FTriangle(A, B, C));
+	};
+
+	if (MElements.RequiresLargeIndices())
+	{
+		return TriangleProducer(TriangleIndex, MElements.GetLargeIndexBuffer());
+	}
+	else
+	{
+		return TriangleProducer(TriangleIndex, MElements.GetSmallIndexBuffer());
+	}
+}
 
 template <typename QueryGeomType>
 bool FTriangleMeshImplicitObject::OverlapGeomImp(const QueryGeomType& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD, FVec3 TriMeshScale) const
 {
 	bool bResult = false;
-	FAABB3 QueryBounds = QueryGeom.BoundingBox();
-	QueryBounds.Thicken(Thickness);
-	QueryBounds = QueryBounds.TransformedAABB(QueryTM);
+
+	const auto& WorldScaleQueryGeom = ScaleGeomIntoWorldHelper(QueryGeom, TriMeshScale);
+
+	const FVec3 InvTriMeshScale = FVec3(FReal(1) / TriMeshScale.X, FReal(1) / TriMeshScale.Y, FReal(1) / TriMeshScale.Z);
+
+	// IMPORTANT QueryTM comes with a invscaled translation so we need a version of the TM with world space translation to properly compute the bounds
+	FRigidTransform3 TriMeshToGeomNoScale{ QueryTM };
+	TriMeshToGeomNoScale.SetTranslation(TriMeshToGeomNoScale.GetTranslation() * TriMeshScale);
+	// NOTE: BVH test is done in tri-mesh local space (whereas collision detection is done in world space becaused you can't non-uniformly scale all shapes)
+	FAABB3 QueryBounds = WorldScaleQueryGeom.BoundingBox();
+	QueryBounds = QueryBounds.TransformedAABB(TriMeshToGeomNoScale);
+	QueryBounds.ThickenSymmetrically(FVec3(Thickness));
+	QueryBounds.Scale(InvTriMeshScale);
+
 	const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
 
 	if (OutMTD)
@@ -701,8 +732,6 @@ bool FTriangleMeshImplicitObject::OverlapGeomImp(const QueryGeomType& QueryGeom,
 		OutMTD->Normal = FVec3(0.0);
 		OutMTD->Penetration = TNumericLimits<FReal>::Lowest();
 	}
-
-	const auto& WorldScaleQueryGeom = ScaleGeomIntoWorldHelper(QueryGeom, TriMeshScale);
 
 	TRigidTransform<FReal, 3> WorldScaleQueryTM;
 	ScaleTransformHelper(TriMeshScale, QueryTM, WorldScaleQueryTM);
