@@ -2646,7 +2646,7 @@ namespace Chaos
 			if (PairContacts != nullptr)
 			{
 				// See if the particles have the same relative transform and can have their constraint fully restored
-				const bool bCanRestore = IsWithinManifoldRestorationThreshold(PairContacts->GetParticle0Transform(), ParticleWorldTransform0, PairContacts->GetParticle1Transform(), ParticleWorldTransform1);
+				const bool bCanRestore = PairContacts->CanBeRestored() && IsWithinManifoldRestorationThreshold(PairContacts->GetParticle0Transform(), ParticleWorldTransform0, PairContacts->GetParticle1Transform(), ParticleWorldTransform1);
 
 				if (bCanRestore)
 				{

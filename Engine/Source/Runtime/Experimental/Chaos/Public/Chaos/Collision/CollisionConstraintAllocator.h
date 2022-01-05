@@ -55,6 +55,7 @@ namespace Chaos
 			, CreationEpoch(InEpoch)
 			, Epoch(InEpoch)
 		{
+			UpdateLastSeenRootGeometries();
 		}
 		
 		FParticlePairCollisionsKey GetKey() const
@@ -96,6 +97,7 @@ namespace Chaos
 			ParticleTransforms[0] =  InParticleTransform0;
 			ParticleTransforms[1] = InParticleTransform1;
 			Constraints.Reset();
+			UpdateLastSeenRootGeometries();
 		}
 
 		/**
@@ -105,6 +107,18 @@ namespace Chaos
 		{
 			Epoch = InEpoch;
 			Constraints.Reset();
+			UpdateLastSeenRootGeometries();
+		}
+
+		/**
+		 * @brief check if thios can be restored
+		*/
+		bool CanBeRestored() const
+		{
+			return (
+				(LastSeenRootGeometry0 == Particle0->Geometry().Get()) && 
+				(LastSeenRootGeometry1 == Particle1->Geometry().Get())
+				);
 		}
 
 		/**
@@ -166,6 +180,13 @@ namespace Chaos
 		}
 
 	private:
+		void UpdateLastSeenRootGeometries()
+		{
+			LastSeenRootGeometry0 = Particle0->Geometry().Get();
+			LastSeenRootGeometry1 = Particle1->Geometry().Get();
+		}
+
+	private:
 		FParticlePairCollisionsKey Key;
 		const FGeometryParticleHandle* Particle0;
 		const FGeometryParticleHandle* Particle1;
@@ -181,6 +202,12 @@ namespace Chaos
 
 		// The tick counter when the contacts were last used (for pruning)
 		int32 Epoch;
+
+		// this is used as amechanism to detect if particles have changed geometry
+		// @todo(chaos) this is a hack as the infrastructure to properly handle that is current being built
+		const FImplicitObject* LastSeenRootGeometry0;
+		const FImplicitObject* LastSeenRootGeometry1;
+
 	};
 
 
