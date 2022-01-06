@@ -199,6 +199,7 @@ UGeometryCollectionComponent::UGeometryCollectionComponent(const FObjectInitiali
 	, ClusterGroupIndex(0)
 	, MaxClusterLevel(100)
 	, DamageThreshold({250.0})
+	, bUseSizeSpecificDamageThreshold(false)
 	, ClusterConnectionType_DEPRECATED(EClusterConnectionTypeEnum::Chaos_MinimalSpanningSubsetDelaunayTriangulation)
 	, CollisionGroup(0)
 	, CollisionSampleFraction(1.0)
@@ -2046,6 +2047,7 @@ void UGeometryCollectionComponent::RegisterAndInitializePhysicsProxy()
 		SimulationParameters.EnableClustering = EnableClustering;
 		SimulationParameters.ClusterGroupIndex = EnableClustering ? ClusterGroupIndex : 0;
 		SimulationParameters.MaxClusterLevel = MaxClusterLevel;
+		SimulationParameters.bUseSizeSpecificDamageThresholds = bUseSizeSpecificDamageThreshold;
 		SimulationParameters.DamageThreshold = DamageThreshold;
 		SimulationParameters.ClusterConnectionMethod = (Chaos::FClusterCreationParameters::EConnectionMethod)ClusterCollectionType;
 		SimulationParameters.CollisionGroup = CollisionGroup;

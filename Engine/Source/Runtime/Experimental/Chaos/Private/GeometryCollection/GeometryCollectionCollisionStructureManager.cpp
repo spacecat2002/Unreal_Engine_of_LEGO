@@ -285,25 +285,6 @@ FCollisionStructureManager::NewImplicitConvex(
 
 FCollisionStructureManager::FImplicit*
 FCollisionStructureManager::NewImplicitCapsule(
-	const float Radius,
-	const float Length,
-	const float CollisionObjectReduction,
-	const ECollisionTypeEnum CollisionType)
-{
-	if (Length < SMALL_NUMBER)
-	{
-		// make a more optimized shape : sphere
-		return FCollisionStructureManager::NewImplicitSphere(Radius, CollisionObjectReduction, CollisionType);
-	}
-	
-	const Chaos::FReal HalfLength = (Chaos::FReal)Length * (Chaos::FReal)0.5;
-	Chaos::FImplicitObject* Implicit = new Chaos::FCapsule(Chaos::FVec3(0, 0, -HalfLength), Chaos::FVec3(0, 0, +HalfLength), Radius * (1 - CollisionObjectReduction / 100.f));
-	UpdateImplicitFlags(Implicit, CollisionType);
-	return Implicit;
-}
-
-FCollisionStructureManager::FImplicit*
-FCollisionStructureManager::NewImplicitCapsule(
 	const FBox& CollisionBounds,
 	const float CollisionObjectReduction,
 	const ECollisionTypeEnum CollisionType)
@@ -342,6 +323,19 @@ FCollisionStructureManager::NewImplicitCapsule(
 	Chaos::FVec3 X2 = BBoxCenter + HalfLengthVector;
 
 	Chaos::FImplicitObject* Implicit = new Chaos::FCapsule(X1, X2, Radius * (1 - CollisionObjectReduction / 100.f));
+	UpdateImplicitFlags(Implicit, CollisionType);
+	return Implicit;
+}
+
+FCollisionStructureManager::FImplicit*
+FCollisionStructureManager::NewImplicitCapsule(
+	const float Radius,
+	const float Length,
+	const float CollisionObjectReduction,
+	const ECollisionTypeEnum CollisionType)
+{
+	const Chaos::FReal HalfLength = (Chaos::FReal)Length * (Chaos::FReal)0.5;
+	Chaos::FImplicitObject* Implicit = new Chaos::FCapsule(Chaos::FVec3(0, 0, -HalfLength), Chaos::FVec3(0, 0, +HalfLength), Radius * (1 - CollisionObjectReduction / 100.f));
 	UpdateImplicitFlags(Implicit, CollisionType);
 	return Implicit;
 }
