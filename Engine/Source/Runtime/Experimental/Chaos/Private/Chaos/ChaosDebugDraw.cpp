@@ -1444,8 +1444,10 @@ namespace Chaos
 
 		void DrawSpatialAccelerationStructure(const ISpatialAcceleration<FAccelerationStructureHandle, FReal, 3>& InSpatialAccelerationStructure, const FChaosDebugDrawSettings* InSettings)
 		{
+		#if !UE_BUILD_SHIPPING
 			FSpatialDebugDrawInterface DebugDrawInterface(GetChaosDebugDrawSettings(InSettings));
 			InSpatialAccelerationStructure.DebugDraw(&DebugDrawInterface);
+		#endif
 		}
 #endif
 	}
