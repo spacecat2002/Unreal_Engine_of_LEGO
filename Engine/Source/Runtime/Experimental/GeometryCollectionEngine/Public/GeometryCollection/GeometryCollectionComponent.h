@@ -463,9 +463,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering")
 	int32 MaxClusterLevel;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering", meta = (EditCondition = "!bUseSizeSpecificDamageThreshold"))
+	TArray<float> DamageThreshold;
+
 	/** Damage threshold for clusters at different levels. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering")
-	TArray<float> DamageThreshold;
+	bool bUseSizeSpecificDamageThreshold;
 
 	/** */
 	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Connection types are defined on the asset now."))
