@@ -370,7 +370,8 @@ namespace Chaos
 			// Decide if we want to attempt to solve the constraints in parallel - this requires coloring the graph which
 			// is expensive, so we need to get a good number of contacts per color (per level) for it to be worthwhile.
 			// @todo(chaos): if enabled here, it should get disabled again if the level/coloring doesn't produce enough parallelism
-			bUseColor = (ConstraintGraph->GetIslandParticles(Island).Num() > ChaosCollisionColorMinParticles);
+			// EPIC : ccaillaud : disable coloring for now as this has the potential to cause issue as this boolean is updated on a different thread than it is used 
+			bUseColor = false; // (ConstraintGraph->GetIslandParticles(Island).Num() > ChaosCollisionColorMinParticles);
 
 			// @todo(chaos): disable coloring, but still generate levels and ordering, when we don't need parallelism
 			GraphColor.ComputeColor(Dt, Island, *ConstraintGraph, Constraints.GetContainerId());
