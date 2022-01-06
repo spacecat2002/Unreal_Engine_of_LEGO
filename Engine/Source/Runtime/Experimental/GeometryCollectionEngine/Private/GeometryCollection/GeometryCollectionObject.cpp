@@ -94,6 +94,7 @@ FGeometryCollectionCollisionTypeData::FGeometryCollectionCollisionTypeData()
 	, ImplicitType(EImplicitTypeEnum::Chaos_Implicit_Box)
 	, LevelSet()
 	, CollisionParticles()
+	, CollisionObjectReductionPercentage(0.0f)
 {
 }
 
