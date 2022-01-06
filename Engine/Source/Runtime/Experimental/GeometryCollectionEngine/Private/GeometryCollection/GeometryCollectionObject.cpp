@@ -119,7 +119,6 @@ FGeometryCollectionSizeSpecificData::FGeometryCollectionSizeSpecificData()
 
 bool FGeometryCollectionSizeSpecificData::Serialize(FArchive& Ar)
 {
-	Ar.UsingCustomVersion(FReleaseObjectVersion::GUID);
 	Ar.UsingCustomVersion(FPhysicsObjectVersion::GUID);
 	return false;	//We only have this function to mark custom GUID. Still want serialize tagged properties
 }
