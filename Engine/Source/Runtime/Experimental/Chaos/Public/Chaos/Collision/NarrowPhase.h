@@ -38,7 +38,7 @@ namespace Chaos
 		/**
 		 * /param CullDistance The contact separation at which we ignore the constraint
 		 */
-		void GenerateCollisions(FReal Dt, TGeometryParticleHandle<FReal, 3>* Particle0, TGeometryParticleHandle<FReal, 3>* Particle1, const FReal CullDistance)
+		void GenerateCollisions(FReal Dt, TGeometryParticleHandle<FReal, 3>* Particle0, TGeometryParticleHandle<FReal, 3>* Particle1, const FReal CullDistance, const bool bForceDisableCCD)
 		{
 			SCOPE_CYCLE_COUNTER_NAROWPHASE();
 			if (ensure(Particle0 && Particle1))
@@ -47,6 +47,8 @@ namespace Chaos
 				FConstGenericParticleHandle P1 = Particle1;
 				const FRigidTransform3 ParticleTransform0 = FParticleUtilitiesPQ::GetActorWorldTransform(P0);
 				const FRigidTransform3 ParticleTransform1 = FParticleUtilitiesPQ::GetActorWorldTransform(P1);
+
+				Context.bForceDisableCCD = bForceDisableCCD;
 
 				// @todo(mlentine): Collision particles should exist optionally on geometry particles not rigid dynamic particles
 				Collisions::ConstructConstraints(

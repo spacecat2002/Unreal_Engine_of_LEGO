@@ -212,11 +212,11 @@ namespace Chaos
 		void SetRemovalFilterSettings(const FSolverRemovalFilterSettings& InRemovalFilterSettings) { GetEventFilters()->GetRemovalFilter()->UpdateFilterSettings(InRemovalFilterSettings); }
 
 		/**/
-		FJointConstraints& GetJointConstraints() { return JointConstraints; }
-		const FJointConstraints& GetJointConstraints() const { return JointConstraints; }
+		FJointConstraints& GetJointConstraints() { return MEvolution->GetJointConstraints(); }
+		const FJointConstraints& GetJointConstraints() const { return MEvolution->GetJointConstraints(); }
 
-		FPBDSuspensionConstraints& GetSuspensionConstraints() { return SuspensionConstraints; }
-		const FPBDSuspensionConstraints& GetSuspensionConstraints() const { return SuspensionConstraints; }
+		FPBDSuspensionConstraints& GetSuspensionConstraints() { return MEvolution->GetSuspensionConstraints(); }
+		const FPBDSuspensionConstraints& GetSuspensionConstraints() const { return MEvolution->GetSuspensionConstraints(); }
 
 		/**/
 		FPBDRigidsEvolution* GetEvolution() { return MEvolution.Get(); }
@@ -354,15 +354,6 @@ namespace Chaos
 		TSharedPtr<FCriticalSection> MCurrentLock;
 		TArray< FGeometryCollectionPhysicsProxy* > GeometryCollectionPhysicsProxies_Internal; // PT
 		TArray< FJointConstraintPhysicsProxy* > JointConstraintPhysicsProxies_Internal; // PT
-
-		//
-		//  Constraints
-		//
-		FPBDJointConstraints JointConstraints;
-		TPBDConstraintIslandRule<FPBDJointConstraints> JointConstraintRule;
-
-		FPBDSuspensionConstraints SuspensionConstraints;
-		TPBDConstraintIslandRule<FPBDSuspensionConstraints> SuspensionConstraintRule;
 
 		TUniquePtr<FPerSolverFieldSystem> PerSolverField;
 

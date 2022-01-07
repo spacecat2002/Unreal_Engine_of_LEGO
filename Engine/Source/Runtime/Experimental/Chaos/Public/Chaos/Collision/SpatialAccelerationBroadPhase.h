@@ -416,7 +416,7 @@ namespace Chaos
 
 				// Generate constraints for the potentially overlapping shape pairs. Also run collision detection to generate
 				// the contact position and normal (for contacts within CullDistance) for use in collision callbacks.
-				NarrowPhase.GenerateCollisions(Dt, Particle1, Particle2, NetCullDistance);
+				NarrowPhase.GenerateCollisions(Dt, Particle1, Particle2, NetCullDistance, false);
 			}
 
 			return true;
