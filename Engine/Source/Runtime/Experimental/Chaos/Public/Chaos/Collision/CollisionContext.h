@@ -17,6 +17,7 @@ namespace Chaos
 			: bFilteringEnabled(true)
 			, bDeferUpdate(false)
 			, bAllowManifolds(false)
+			, bForceDisableCCD(false)
 			, CollisionAllocator(nullptr)
 		{
 		}
@@ -31,6 +32,9 @@ namespace Chaos
 
 		// Whether to use manifolds where supported [default: false]
 		bool bAllowManifolds;
+
+		// Force disable CCD
+		bool bForceDisableCCD;
 
 		FCollisionConstraintAllocator* CollisionAllocator;
 	};
