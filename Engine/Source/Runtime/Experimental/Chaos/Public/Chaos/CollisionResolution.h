@@ -7,6 +7,9 @@
 #include "Chaos/Collision/PBDCollisionConstraint.h"
 #include "Chaos/ParticleHandleFwd.h"
 
+
+extern bool CCDAlwaysSweepRemainingDT;
+
 namespace Chaos
 {
 	template <typename T, int d>
