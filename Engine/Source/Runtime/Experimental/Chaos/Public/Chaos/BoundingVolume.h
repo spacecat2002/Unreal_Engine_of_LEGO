@@ -1063,6 +1063,14 @@ private:
 			}
 		}
 
+#if ENABLE_NAN_DIAGNOSTIC
+		if (!ensure(!GlobalBox.Min().ContainsNaN() && !GlobalBox.Max().ContainsNaN()))
+		{
+			UE_LOG(LogChaos, Error, TEXT("BoundingVolume computed invalid GlobalBox from bounds: GlobalBox.Min(): (%f, %f, %f), GlobalBox.Max(): (%f, %f, %f)"),
+				GlobalBox.Min().X, GlobalBox.Min().Y, GlobalBox.Min().Z, GlobalBox.Max().X, GlobalBox.Max().Y, GlobalBox.Max().Z);
+		}
+#endif
+
 		MGrid = TUniformGrid<T, d>(GlobalBox.Min(), GlobalBox.Max(), Cells);
 		MElements = TArrayND<TArray<FCellElement>, d>(MGrid);
 

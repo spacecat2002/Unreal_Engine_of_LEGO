@@ -18,33 +18,6 @@
 
 //PRAGMA_DISABLE_OPTIMIZATION
 
-#if 0
-DECLARE_STATS_GROUP(TEXT("ChaosManifold"), STATGROUP_ChaosManifold, STATCAT_Advanced);
-
-DECLARE_CYCLE_STAT(TEXT("Manifold::Manifold"), STAT_Collisions_Manifold, STATGROUP_ChaosManifold);
-DECLARE_CYCLE_STAT(TEXT("Manifold::ManifoldGJK"), STAT_Collisions_ManifoldGJK, STATGROUP_ChaosManifold);
-DECLARE_CYCLE_STAT(TEXT("Manifold::ManifoldEdgeEdge"), STAT_Collisions_ManifoldEdgeEdge, STATGROUP_ChaosManifold);
-DECLARE_CYCLE_STAT(TEXT("Manifold::ManifoldClip"), STAT_Collisions_ManifoldClip, STATGROUP_ChaosManifold);
-DECLARE_CYCLE_STAT(TEXT("Manifold::ManifoldReduce"), STAT_Collisions_ManifoldReduce, STATGROUP_ChaosManifold);
-DECLARE_CYCLE_STAT(TEXT("Manifold::ManifoldFaceVertex"), STAT_Collisions_ManifoldFaceVertex, STATGROUP_ChaosManifold);
-#define SCOPE_CYCLE_COUNTER_MANIFOLD() SCOPE_CYCLE_COUNTER(STAT_Collisions_Manifold)
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_GJK() SCOPE_CYCLE_COUNTER(STAT_Collisions_ManifoldGJK)
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_ADDEDGEEDGE() SCOPE_CYCLE_COUNTER(STAT_Collisions_ManifoldEdgeEdge)
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_CLIP() SCOPE_CYCLE_COUNTER(STAT_Collisions_ManifoldClip)
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_REDUCE() SCOPE_CYCLE_COUNTER(STAT_Collisions_ManifoldReduce)
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_ADDFACEVERTEX() SCOPE_CYCLE_COUNTER(STAT_Collisions_ManifoldFaceVertex)
-#else
-#define SCOPE_CYCLE_COUNTER_MANIFOLD()
-#define SCOPE_CYCLE_COUNTER_MANIFOLDGJK()
-#define SCOPE_CYCLE_COUNTER_MANIFOLD()
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_GJK()
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_ADDEDGEEDGE()
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_CLIP()
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_REDUCE()
-#define SCOPE_CYCLE_COUNTER_MANIFOLD_ADDFACEVERTEX()
-#endif
-
-
 namespace Chaos
 {
 	FRealSingle Chaos_Collision_Manifold_PlaneContactNormalEpsilon = 0.01f;
