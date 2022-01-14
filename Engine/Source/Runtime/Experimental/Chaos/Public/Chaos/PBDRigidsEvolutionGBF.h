@@ -174,6 +174,8 @@ namespace Chaos
 		FORCEINLINE FPBDSuspensionConstraints& GetSuspensionConstraints() { return SuspensionConstraints; }
 		FORCEINLINE const FPBDSuspensionConstraints& GetSuspensionConstraints() const { return SuspensionConstraints; }
 
+		void DestroyParticleCollisionsInAllocator(FGeometryParticleHandle* Particle);
+
 		CHAOS_API inline void EndFrame(FReal Dt)
 		{
 			Particles.GetNonDisabledDynamicView().ParallelFor([&](auto& Particle, int32 Index) {
@@ -192,7 +194,7 @@ namespace Chaos
 			FPerParticleEtherDrag EtherDragRule;
 			FPerParticlePBDEulerStep EulerStepRule;
 
-			const FReal BoundsThickness = GetBroadPhase().GetBoundsThickness();
+			const FReal BoundsThickness = GetNarrowPhase().GetBoundsExpansion();
 			const FReal MaxAngularSpeedSq = CVars::HackMaxAngularVelocity * CVars::HackMaxAngularVelocity;
 			const FReal MaxSpeedSq = CVars::HackMaxVelocity * CVars::HackMaxVelocity;
 			InParticles.ParallelFor([&](auto& GeomParticle, int32 Index) {
@@ -288,6 +290,9 @@ namespace Chaos
 		CHAOS_API void SetCurrentStepResimCache(IResimCacheBase* InCurrentStepResimCache);
 
 		CHAOS_API FSpatialAccelerationBroadPhase& GetBroadPhase() { return BroadPhase; }
+		CHAOS_API FNarrowPhase& GetNarrowPhase() { return NarrowPhase; }
+
+		CHAOS_API void TransferJointConstraintCollisions();
 
 	protected:
 

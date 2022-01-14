@@ -193,7 +193,7 @@ namespace Chaos
 		void SetCollisionPushOutPairIterations(const int32 InNumIterations) { GetEvolution()->GetCollisionConstraints().SetPushOutPairIterations(InNumIterations); }
 		void SetJointPairIterations(const int32 InNumIterations) { GetJointConstraints().SetNumPairIterations(InNumIterations); }
 		void SetJointPushOutPairIterations(const int32 InNumIterations) {GetJointConstraints().SetNumPushOutPairIterations(InNumIterations); }
-		void SetCollisionCullDistance(const FReal InCullDistance) { GetEvolution()->GetBroadPhase().SetBoundsThickness(InCullDistance); }
+		void SetCollisionCullDistance(const FReal InCullDistance) { GetEvolution()->GetNarrowPhase().SetBoundsExpansion(InCullDistance); }
 		void SetCollisionMaxPushOutVelocity(const FReal InMaxPushOutVelocity) { GetEvolution()->GetCollisionConstraints().SetMaxPushOutVelocity(InMaxPushOutVelocity); }
 		void SetUseContactGraph(const bool bInUseContactGraph) { GetEvolution()->GetCollisionConstraintsRule().SetUseContactGraph(bInUseContactGraph); }
 
@@ -342,6 +342,7 @@ namespace Chaos
 		FReal FloorHeight;
 
 		FParticlesType Particles;
+		FParticleUniqueIndicesMultithreaded UniqueIndices;
 		TUniquePtr<FPBDRigidsEvolution> MEvolution;
 		TUniquePtr<FEventManager> MEventManager;
 		TUniquePtr<FSolverEventFilters> MSolverEventFilters;
@@ -374,6 +375,8 @@ namespace Chaos
 		{
 			FSingleParticlePhysicsProxy* Proxy;
 			int32 DestroyOnStep;
+			FGeometryParticleHandle* Handle;
+			FUniqueIdx UniqueIdx;
 		};
 
 		TArray<FPendingDestroyInfo> PendingDestroyPhysicsProxy;

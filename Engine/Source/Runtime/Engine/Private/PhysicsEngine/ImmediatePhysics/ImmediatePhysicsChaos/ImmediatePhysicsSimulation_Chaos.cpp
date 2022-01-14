@@ -107,7 +107,7 @@ FAutoConsoleVariableRef CVarChaosImmPhysJointPairIterations(TEXT("p.Chaos.ImmPhy
 FAutoConsoleVariableRef CVarChaosImmPhysJointPushOutPairIterations(TEXT("p.Chaos.ImmPhys.Joint.PushOutPairIterations"), ChaosImmediate_Joint_PushOutPairIterations, TEXT("Override joint push-out pair iterations (if >= 0)"));
 FAutoConsoleVariableRef CVarChaosImmPhysJointSwingTwistAngleTolerance(TEXT("p.Chaos.ImmPhys.Joint.SwingTwistAngleTolerance"), ChaosImmediate_Joint_SwingTwistAngleTolerance, TEXT("SwingTwistAngleTolerance."));
 FAutoConsoleVariableRef CVarChaosImmPhysJointPositionTolerance(TEXT("p.Chaos.ImmPhys.Joint.PositionTolerance"), ChaosImmediate_Joint_PositionTolerance, TEXT("PositionTolerance."));
-FAutoConsoleVariableRef CVarChaosImmPhysJointAngleTolerance(TEXT("p.Chaos.ImmPhys.Joint.AngleTolerance"), ChaosImmediate_Joint_AngleTolerance, TEXT("PositionTolerance."));
+FAutoConsoleVariableRef CVarChaosImmPhysJointAngleTolerance(TEXT("p.Chaos.ImmPhys.Joint.AngleTolerance"), ChaosImmediate_Joint_AngleTolerance, TEXT("AngleTolerance."));
 FAutoConsoleVariableRef CVarChaosImmPhysJointEnableTwistLimits(TEXT("p.Chaos.ImmPhys.Joint.EnableTwistLimits"), ChaosImmediate_Joint_EnableTwistLimits, TEXT("EnableTwistLimits."));
 FAutoConsoleVariableRef CVarChaosImmPhysJointEnableSwingLimits(TEXT("p.Chaos.ImmPhys.Joint.EnableSwingLimits"), ChaosImmediate_Joint_EnableSwingLimits, TEXT("EnableSwingLimits."));
 FAutoConsoleVariableRef CVarChaosImmPhysJointEnableDrives(TEXT("p.Chaos.ImmPhys.Joint.EnableDrives"), ChaosImmediate_Joint_EnableDrives, TEXT("EnableDrives."));
@@ -216,21 +216,48 @@ FAutoConsoleVariableRef CVarChaosImmPhysScale(TEXT("p.Chaos.ImmPhys.DebugDraw.Sc
 
 namespace ImmediatePhysics_Chaos
 {
+
+	class FSimpleParticleUniqueIndices : public Chaos::IParticleUniqueIndices
+	{
+	public:
+		Chaos::FUniqueIdx GenerateUniqueIdx() override
+		{
+			if (FreeIndices.Num())
+			{
+				const int32 FreeIndex = FreeIndices.Pop();
+				return Chaos::FUniqueIdx(FreeIndex);
+			}
+
+			Chaos::FUniqueIdx NewUniqueIndex(NextUniqueIndex);
+			NextUniqueIndex++;
+			return NewUniqueIndex;
+		}
+
+		void ReleaseIdx(Chaos::FUniqueIdx Unique) override
+		{
+			ensure(Unique.IsValid());
+			FreeIndices.Add(Unique.Idx);
+		}
+
+		~FSimpleParticleUniqueIndices() = default;
+
+	private:
+		int32 NextUniqueIndex; // this includes all valid and freed indices
+		TArray<int32> FreeIndices;
+	};
+
+
 	struct FSimulation::FImplementation
 	{
 	public:
-		using FCollisionConstraints = Chaos::FPBDCollisionConstraints;
-		using FCollisionDetector = Chaos::FParticlePairCollisionDetector;
-		using FParticleHandle = Chaos::FGeometryParticleHandle;
 		using FParticlePair = Chaos::TVec2<Chaos::FGeometryParticleHandle*>;
-		using FRigidParticleSOAs = Chaos::FPBDRigidsSOAs;
 
 		FImplementation()
-			: Particles()
+			: Particles(UniqueIndices)
 			, Joints()
 			, Collisions(Particles, CollidedParticles, ParticleMaterials, PerParticleMaterials, 0, 0, ChaosImmediate_Collision_CullDistance)
-			, BroadPhase(&ActivePotentiallyCollidingPairs, nullptr, nullptr, ChaosImmediate_Collision_CullDistance)
-			, NarrowPhase()
+			, BroadPhase(&ActivePotentiallyCollidingPairs, nullptr, nullptr)
+			, NarrowPhase(ChaosImmediate_Collision_CullDistance, FReal(0), Collisions.GetConstraintAllocator())
 			, CollisionDetector(BroadPhase, NarrowPhase, Collisions)
 			, JointsRule(0, Joints)
 			, CollisionsRule(1, Collisions)
@@ -265,14 +292,15 @@ namespace ImmediatePhysics_Chaos
 		Chaos::TArrayCollectionArray<Chaos::FVec3> ParticlePrevXs;
 		Chaos::TArrayCollectionArray<Chaos::FRotation3> ParticlePrevRs;
 
-		FRigidParticleSOAs Particles;
+		FSimpleParticleUniqueIndices UniqueIndices;
+		Chaos::FPBDRigidsSOAs Particles;
 		Chaos::FPBDJointConstraints Joints;
-		FCollisionConstraints Collisions;
-		Chaos::FParticlePairBroadPhase BroadPhase;
+		Chaos::FPBDCollisionConstraints Collisions;
+		Chaos::FBasicBroadPhase BroadPhase;
 		Chaos::FNarrowPhase NarrowPhase;
-		FCollisionDetector CollisionDetector;
+		Chaos::FBasicCollisionDetector CollisionDetector;
 		Chaos::TSimpleConstraintRule<Chaos::FPBDJointConstraints> JointsRule;
-		Chaos::TSimpleConstraintRule<FCollisionConstraints> CollisionsRule;
+		Chaos::TSimpleConstraintRule<Chaos::FPBDCollisionConstraints> CollisionsRule;
 		Chaos::FPBDMinEvolution Evolution;
 
 		/** Mapping from entity index to handle */
@@ -285,7 +313,7 @@ namespace ImmediatePhysics_Chaos
 
 		/** Slow to access. */
 		// @todo(ccaulfield): Optimize
-		TMap<const FParticleHandle*, TSet<const FParticleHandle*>> IgnoreCollisionParticlePairTable;
+		TMap<const Chaos::FGeometryParticleHandle*, TSet<const Chaos::FGeometryParticleHandle*>> IgnoreCollisionParticlePairTable;
 
 		TArray<FParticlePair> PotentiallyCollidingPairs;
 
@@ -316,7 +344,6 @@ namespace ImmediatePhysics_Chaos
 		Implementation->NarrowPhase.GetContext().bFilteringEnabled = false;
 		Implementation->NarrowPhase.GetContext().bDeferUpdate = true;
 		Implementation->NarrowPhase.GetContext().bAllowManifolds = false;
-		Implementation->NarrowPhase.GetContext().CollisionAllocator = &Implementation->Collisions.GetConstraintAllocator();
 
 
 #if CHAOS_DEBUG_DRAW
@@ -594,7 +621,7 @@ namespace ImmediatePhysics_Chaos
 					FActorHandle* ActorHandle1 = Implementation->ActorHandles[ActorHandleIndex1];
 					FGeometryParticleHandle* Particle1 = ActorHandle1->GetParticle();
 
-					const TSet<const typename FImplementation::FParticleHandle*>* Particle0IgnoreSet = Implementation->IgnoreCollisionParticlePairTable.Find(Particle0);
+					const TSet<const typename Chaos::FGeometryParticleHandle*>* Particle0IgnoreSet = Implementation->IgnoreCollisionParticlePairTable.Find(Particle0);
 					bool bIgnoreActorHandlePair = (Particle0IgnoreSet != nullptr) && Particle0IgnoreSet->Contains(Particle1);
 					if (!bIgnoreActorHandlePair)
 					{
@@ -764,9 +791,9 @@ namespace ImmediatePhysics_Chaos
 			Implementation->Collisions.SetCollisionsEnabled(ChaosImmediate_Collision_Enabled != 0);
 			Implementation->CollisionsRule.SetPriority(ChaosImmediate_Collision_Priority);
 
-			Implementation->BroadPhase.SetCullDustance(ChaosImmediate_Collision_CullDistance);
 			Implementation->Evolution.SetBoundsExtension(ChaosImmediate_Evolution_BoundsExtension);
 
+			Implementation->NarrowPhase.SetBoundsExpansion(ChaosImmediate_Collision_CullDistance);
 			Implementation->NarrowPhase.GetContext().bDeferUpdate = (ChaosImmediate_Collision_DeferNarrowPhase != 0);
 			Implementation->NarrowPhase.GetContext().bAllowManifolds = (ChaosImmediate_Collision_UseManifolds != 0);
 
@@ -861,7 +888,7 @@ namespace ImmediatePhysics_Chaos
 			}
 			if ((ChaosImmediate_DebugDrawBounds >= MinDebugLevel) && (ChaosImmediate_DebugDrawBounds <= MaxDebugLevel))
 			{
-				DebugDraw::DrawParticleBounds(Implementation->SimulationSpace.Transform, Implementation->Particles.GetActiveStaticParticlesView(), 0.0f, 0.0f, 0.0f, &ChaosImmPhysDebugDebugDrawSettings);
+				DebugDraw::DrawParticleBounds(Implementation->SimulationSpace.Transform, Implementation->Particles.GetActiveStaticParticlesView(), 0.0f, &ChaosImmPhysDebugDebugDrawSettings);
 			}
 		}
 #endif
@@ -887,7 +914,7 @@ namespace ImmediatePhysics_Chaos
 			}
 			if ((ChaosImmediate_DebugDrawBounds >= MinDebugLevel) && (ChaosImmediate_DebugDrawBounds <= MaxDebugLevel))
 			{
-				DebugDraw::DrawParticleBounds(Implementation->SimulationSpace.Transform, Implementation->Particles.GetActiveKinematicParticlesView(), 0.0f, 0.0f, 0.0f, &ChaosImmPhysDebugDebugDrawSettings);
+				DebugDraw::DrawParticleBounds(Implementation->SimulationSpace.Transform, Implementation->Particles.GetActiveKinematicParticlesView(), 0.0f, &ChaosImmPhysDebugDebugDrawSettings);
 			}
 		}
 #endif
@@ -913,7 +940,7 @@ namespace ImmediatePhysics_Chaos
 			}
 			if ((ChaosImmediate_DebugDrawBounds >= MinDebugLevel) && (ChaosImmediate_DebugDrawBounds <= MaxDebugLevel))
 			{
-				DebugDraw::DrawParticleBounds(Implementation->SimulationSpace.Transform, Implementation->Particles.GetActiveParticlesView(), 0.0f, 0.0f, 0.0f, &ChaosImmPhysDebugDebugDrawSettings);
+				DebugDraw::DrawParticleBounds(Implementation->SimulationSpace.Transform, Implementation->Particles.GetActiveParticlesView(), 0.0f, &ChaosImmPhysDebugDebugDrawSettings);
 			}
 		}
 #endif
@@ -927,7 +954,7 @@ namespace ImmediatePhysics_Chaos
 		{
 			if ((ChaosImmediate_DebugDrawCollisions >= MinDebugLevel) && (ChaosImmediate_DebugDrawCollisions <= MaxDebugLevel))
 			{
-				DebugDraw::DrawCollisions(Implementation->SimulationSpace.Transform, Implementation->Collisions, ColorScale, &ChaosImmPhysDebugDebugDrawSettings);
+				DebugDraw::DrawCollisions(Implementation->SimulationSpace.Transform, Implementation->Collisions.GetConstraintAllocator(), ColorScale, &ChaosImmPhysDebugDebugDrawSettings);
 			}
 			if ((ChaosImmediate_DebugDrawJoints >= MinDebugLevel) && (ChaosImmediate_DebugDrawJoints <= MaxDebugLevel))
 			{

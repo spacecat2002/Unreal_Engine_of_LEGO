@@ -77,6 +77,9 @@ namespace Chaos
 		int32 ChaosSolverSuspensionPriority = 0;
 		FAutoConsoleVariableRef CVarChaosSolverSuspensionPriority(TEXT("p.Chaos.Solver.Suspension.Priority"), ChaosSolverSuspensionPriority, TEXT("Set constraint priority. Larger values are evaluated later [def:0]"));
 
+		bool DoTransferJointConstraintCollisions = true;
+		FAutoConsoleVariableRef CVarDoTransferJointConstraintCollisions(TEXT("p.Chaos.Solver.Joint.TransferCollisions"), DoTransferJointConstraintCollisions, TEXT("Allows joints to apply collisions to the parent from the child when the Joints TransferCollisionScale is not 0 [def:true]"));
+
 		DECLARE_CYCLE_STAT(TEXT("FPBDRigidsEvolutionGBF::AdvanceOneTimeStep"), STAT_Evolution_AdvanceOneTimeStep, STATGROUP_Chaos);
 		DECLARE_CYCLE_STAT(TEXT("FPBDRigidsEvolutionGBF::UnclusterUnions"), STAT_Evolution_UnclusterUnions, STATGROUP_Chaos);
 		DECLARE_CYCLE_STAT(TEXT("FPBDRigidsEvolutionGBF::Integrate"), STAT_Evolution_Integrate, STATGROUP_Chaos);
@@ -264,7 +267,7 @@ void FPBDRigidsEvolutionGBF::AdvanceOneTimeStepImpl(const FReal Dt, const FSubSt
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Evolution_CCD);
 		CSV_SCOPED_TIMING_STAT(PhysicsVerbose, CCD);
-		CCDManager.ApplyConstraintsPhaseCCD(Dt, NarrowPhase.GetContext().CollisionAllocator, Particles.GetActiveParticlesView().Num());
+		CCDManager.ApplyConstraintsPhaseCCD(Dt, &CollisionConstraints.GetConstraintAllocator(), Particles.GetActiveParticlesView().Num());
 	}
 
 	{
@@ -545,8 +548,8 @@ FPBDRigidsEvolutionGBF::FPBDRigidsEvolutionGBF(FPBDRigidsSOAs& InParticles,THand
 	, SuspensionConstraintRule(SuspensionConstraints, ChaosSolverSuspensionPriority)
 	, CollisionConstraints(InParticles, Collided, PhysicsMaterials, PerParticlePhysicsMaterials, DefaultNumCollisionPairIterations, DefaultNumCollisionPushOutPairIterations, DefaultRestitutionThreshold)
 	, CollisionRule(CollisionConstraints, ChaosSolverCollisionPriority)
-	, BroadPhase(InParticles, DefaultCollisionCullDistance, BoundsThicknessVelocityMultiplier)
-	, NarrowPhase()
+	, BroadPhase(InParticles)
+	, NarrowPhase(DefaultCollisionCullDistance, BoundsThicknessVelocityMultiplier, CollisionConstraints.GetConstraintAllocator())
 	, CollisionDetector(BroadPhase, NarrowPhase, CollisionConstraints)
 	, PostIntegrateCallback(nullptr)
 	, PreApplyCallback(nullptr)
@@ -593,13 +596,13 @@ FPBDRigidsEvolutionGBF::FPBDRigidsEvolutionGBF(FPBDRigidsSOAs& InParticles,THand
 	NarrowPhase.GetContext().bFilteringEnabled = true;
 	NarrowPhase.GetContext().bDeferUpdate = false;
 	NarrowPhase.GetContext().bAllowManifolds = false;
-	NarrowPhase.GetContext().CollisionAllocator = &CollisionConstraints.GetConstraintAllocator();
 }
 
 FPBDRigidsEvolutionGBF::~FPBDRigidsEvolutionGBF()
 {
+	// Not sure we need to reset the indices since all the particles and constraints are going to be destroyed
+	//GetConstraintGraph().ResetIndices();
 }
-
 
 void FPBDRigidsEvolutionGBF::Serialize(FChaosArchive& Ar)
 {
@@ -614,6 +617,184 @@ TUniquePtr<IResimCacheBase> FPBDRigidsEvolutionGBF::CreateExternalResimCache() c
 void FPBDRigidsEvolutionGBF::SetCurrentStepResimCache(IResimCacheBase* InCurrentStepResimCache)
 {
 	CurrentStepResimCacheImp = static_cast<FEvolutionResimCache*>(InCurrentStepResimCache);
+}
+
+void FPBDRigidsEvolutionGBF::TransferJointConstraintCollisions()
+{
+	// Disabled for 4.27-Chaos as this is not needed and does not compile without pulling more changes 
+#if 0
+	// Transfer collisions from the child of a joint to the parent.
+	// E.g., if body A and B are connected by a joint, with A the parent and B the child...
+	// then a third body C collides with B...
+	// we create a new collision between A and C at the same world position.
+	// E.g., This can be used to forward collision impulses from a vehicle bumper to its
+	// chassis without having to worry about making the joint connecting them very stiff
+	// which is quite difficult for large mass ratios and would require many iterations.
+	if (DoTransferJointConstraintCollisions)
+	{
+		FCollisionConstraintAllocator& CollisionAllocator = CollisionConstraints.GetConstraintAllocator();
+
+		// @todo(chaos): we should only visit the joints that have ContactTransferScale > 0 
+		for (int32 JointConstraintIndex = 0; JointConstraintIndex < GetJointConstraints().NumConstraints(); ++JointConstraintIndex)
+		{
+			FPBDJointConstraintHandle* JointConstraint = GetJointConstraints().GetConstraintHandle(JointConstraintIndex);
+			const FPBDJointSettings& JointSettings = JointConstraint->GetSettings();
+			if (JointSettings.ContactTransferScale > FReal(0))
+			{
+				FGenericParticleHandle ParentParticle = JointConstraint->GetConstrainedParticles()[1];
+				FGenericParticleHandle ChildParticle = JointConstraint->GetConstrainedParticles()[0];
+
+				const FRigidTransform3 ParentTransform = FParticleUtilities::GetActorWorldTransform(ParentParticle);
+				const FRigidTransform3 ChildTransform = FParticleUtilities::GetActorWorldTransform(ChildParticle);
+				const FRigidTransform3 ChildToParentTransform = ChildTransform.GetRelativeTransform(ParentTransform);
+
+				ChildParticle->Handle()->ParticleCollisions().VisitCollisions(
+					[&](const FPBDCollisionConstraint* ChildCollisionConstraint)
+					{
+						if (ChildCollisionConstraint->GetCCDType() != ECollisionCCDType::Disabled)
+						{
+							return;
+						}
+
+						// @todo(chaos): implemeent this
+						// Note: the defined out version has a couple issues we will need to address in the new version
+						//	-	it passes Implicit pointers from one body to a constraint whose lifetime is not controlled by that body
+						//		which could cause problems if the first body is destroyed.
+						//	-	we need to properly support collisions constraints without one (or both) Implicit Objects. Collisions are 
+						//		managed per shape pair, and found by a key that depends on them, so we'd need to rethink that a bit. 
+						//		Here it's useful to be able to use the child implicit to generate the unique key, but we don't want the 
+						//		constraint to hold the pointer (see previous issue).
+						//	-	we should check to see if there is already an active constraint between the bodies because we don't want
+						//		to replace a legit collision with our fake one...probably
+						ensure(false);
+
+						const FGeometryParticleHandle* NewParentParticleConst = (ChildCollisionConstraint->GetParticle0() == ChildParticle->Handle()) ? ChildCollisionConstraint->GetParticle1() : ChildCollisionConstraint->GetParticle0();
+						
+						FGeometryParticleHandle* NewParticleA = const_cast<FGeometryParticleHandle*>(NewParentParticleConst);
+						FGeometryParticleHandle* NewParticleB = ParentParticle->Handle();
+
+						// Set up NewCollision - this should duplicate what happens in collision detection, except the
+						// contact points are just read from the source constraint rather than via the narrow phase
+						//FPBDCollisionConstraint NewCollision = FPBDCollisionConstraint(...);
+						// NewCollision.AddOneshotManifoldContact(...);
+						// ...
+						// NewCollision.SetStiffness(JointSettings.ContactTransferScale);
+
+						// Add collision to the system
+						//FParticlePairMidPhase* MidPhase = CollisionAllocator.GetParticlePairMidPhase(NewParticleA, NewParticleB);
+						//MidPhase->InjectCollision(NewCollision);
+					});
+			}
+		}
+
+		CollisionAllocator.ProcessInjectedConstraints();
+	}
+#endif
+	
+#if 0
+	//
+	// Append transfer constraints. 
+	//
+	// @todo(chaos): this should be implementable with a collision modifier system
+	using FRigidHandle = TPBDRigidParticleHandleImp<FReal, 3, true>;
+	if (DoTransferJointConstraintCollisions)
+	{
+		FCollisionConstraintAllocator& CollisionAllocator = CollisionConstraints.GetConstraintAllocator();
+
+		TMap<TGeometryParticleHandle<FReal, 3>*, TArray<FPBDCollisionConstraintHandle*> >& CollisionMap = CollisionConstraints.GetParticleCollisionsMap();
+		for (auto& CollisionPair : CollisionMap)
+		{
+			if (FRigidHandle* ChildParticle = CollisionPair.Key->CastToRigidParticle())
+			{
+				const FRigidTransform3 ChildTransform = FParticleUtilities::GetActorWorldTransform(FConstGenericParticleHandle(ChildParticle));
+
+				for (FConstraintHandle* Constraint : ChildParticle->ParticleConstraints())
+				{
+					if (FPBDJointConstraintHandle* JointConstraint = Constraint->As<FPBDJointConstraintHandle>())
+					{
+						if (!FMath::IsNearlyZero(JointConstraint->GetSettings().ContactTransferScale))
+						{
+							if (FRigidHandle* ParentParticle = JointConstraint->GetConstrainedParticles()[1]->CastToRigidParticle()) // Parent
+							{
+								const FRigidTransform3 ParentTransform = FParticleUtilities::GetActorWorldTransform(FConstGenericParticleHandle(ParentParticle));
+								const FTransform ChildToParentTransform = ChildTransform.GetRelativeTransform(ParentTransform);
+
+								for (FPBDCollisionConstraintHandle* ContactHandle : CollisionPair.Value)
+								{
+									if (ContactHandle->GetCCDType() == ECollisionCCDType::Disabled)
+									{
+										const FPBDCollisionConstraint& CurrConstraint = ContactHandle->GetContact();
+
+										FPBDCollisionConstraint* TransferedConstraint;
+										if (ContactHandle->GetConstrainedParticles()[0] == ChildParticle)
+										{
+											TransferedConstraint = FPBDCollisionConstraint::Make(
+												ParentParticle,
+												CurrConstraint.GetManifold().Implicit[0],
+												CurrConstraint.GetManifold().Simplicial[0],
+												ChildTransform,
+												ChildToParentTransform.GetRelativeTransform(CurrConstraint.ImplicitTransform[0]),
+												CurrConstraint.Particle[1],
+												CurrConstraint.GetManifold().Implicit[1],
+												CurrConstraint.GetManifold().Simplicial[1],
+												ParentTransform,
+												CurrConstraint.ImplicitTransform[1],
+												CurrConstraint.GetCullDistance(),
+												CurrConstraint.GetManifold().ShapesType,
+												CurrConstraint.GetUseManifold(),
+												CollisionAllocator
+											);
+										}
+										else
+										{
+											TransferedConstraint = FPBDCollisionConstraint::Make(
+												CurrConstraint.Particle[0],
+												CurrConstraint.GetManifold().Implicit[0],
+												CurrConstraint.GetManifold().Simplicial[0],
+												ParentTransform,
+												CurrConstraint.ImplicitTransform[0],
+												ParentParticle,
+												CurrConstraint.GetManifold().Implicit[1],
+												CurrConstraint.GetManifold().Simplicial[1],
+												ChildTransform,
+												ChildToParentTransform.GetRelativeTransform(CurrConstraint.ImplicitTransform[1]),
+												CurrConstraint.GetCullDistance(),
+												CurrConstraint.GetManifold().ShapesType,
+												CurrConstraint.GetUseManifold(),
+												CollisionAllocator
+											);
+										}
+										TArray<FManifoldPoint> TransferManifolds;
+										for (const FManifoldPoint& Manifold : CurrConstraint.GetManifoldPoints())
+										{
+											TransferManifolds.Add(Manifold);
+										}
+										TransferedConstraint->SetManifoldPoints(TransferManifolds);
+										for (FManifoldPoint& Manifold : TransferedConstraint->GetManifoldPoints())
+										{
+											TransferedConstraint->UpdateManifoldPointFromContact(Manifold);
+										}
+										TransferedConstraint->SetStiffness(JointConstraint->GetSettings().ContactTransferScale);
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		CollisionAllocator.ProcessInjectedConstraints();
+	}
+#endif
+}
+
+void FPBDRigidsEvolutionGBF::DestroyParticleCollisionsInAllocator(FGeometryParticleHandle* Particle)
+{
+	if (Particle != nullptr)
+	{
+		CollisionConstraints.GetConstraintAllocator().RemoveParticle(Particle);
+	}
 }
 
 }

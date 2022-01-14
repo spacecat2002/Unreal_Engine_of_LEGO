@@ -416,6 +416,7 @@ namespace Chaos
 		, bHasFloor(true)
 		, bIsFloorAnalytic(false)
 		, FloorHeight(0.f)
+		, Particles(UniqueIndices)
 		, MEvolution(new FPBDRigidsEvolution(Particles, SimMaterials, &ContactModifiers, BufferingModeIn == Chaos::EMultiBufferMode::Single))
 		, MEventManager(new FEventManager(BufferingModeIn))
 		, MSolverEventFilters(new FSolverEventFilters())
@@ -431,7 +432,8 @@ namespace Chaos
 			[this](const Chaos::FGeometryParticleHandle* OldParticle, Chaos::FGeometryParticleHandle* NewParticle) {
 				if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(OldParticle))
 				{
-					for (IPhysicsProxyBase* Proxy : *Proxies)
+					TArray<IPhysicsProxyBase*> ProxyArray{ (*Proxies).Array() };
+					for (IPhysicsProxyBase* Proxy : ProxyArray)
 					{
 						this->AddParticleToProxy(NewParticle, Proxy);
 						NewParticle->SetPhysicsProxy(Proxy);
@@ -551,30 +553,15 @@ namespace Chaos
 			FGeometryParticleHandle* Handle = Proxy->GetHandle_LowLevel();
 			Proxy->SetHandle(nullptr);
 			const int32 OffsetForRewind = MRewindData ? MRewindData->Capacity() : 0;
-			PendingDestroyPhysicsProxy.Add(  FPendingDestroyInfo{Proxy, GetCurrentFrame() + OffsetForRewind});
+			PendingDestroyPhysicsProxy.Add(  FPendingDestroyInfo{Proxy, GetCurrentFrame() + OffsetForRewind, Handle, UniqueIdx });
 			
 			//If particle was created and destroyed before commands were enqueued just skip. I suspect we can skip entire lambda, but too much code to verify right now
 
 			if(Handle)
 			{
-				// Remove from rewind data
-				if(FRewindData* RewindData = GetRewindData())
-				{
-					RewindData->RemoveParticle(Handle->UniqueIdx());
-				}
-  
-				if(LogCorruptMap)
-				{
-					UE_LOG(LogChaos, Warning, TEXT("UnregisterObject this:%llx, Handle:%llx &MParticleToProxy:%llx, MParticleToProxy.Num():%d"), this, Handle, &MParticleToProxy, MParticleToProxy.Num());
-				}
-				MParticleToProxy.Remove(Handle);
-  
-				// Use the handle to destroy the particle data
-				GetEvolution()->DestroyParticle(Handle);
+				//Disable until particle is finally destroyed
+				GetEvolution()->DisableParticle(Handle);
 			}
-
-			// finally let's release the unique index
-			GetEvolution()->ReleaseUniqueIdx(UniqueIdx);
 		});
 
 	}
@@ -745,6 +732,23 @@ namespace Chaos
 			FPendingDestroyInfo& Info = PendingDestroyPhysicsProxy[Idx];
 			if(Info.DestroyOnStep <= GetCurrentFrame())
 			{
+				// finally let's release the unique index
+				GetEvolution()->ReleaseUniqueIdx(Info.UniqueIdx);
+
+				if (Info.Handle)
+				{
+					// Remove from rewind data
+					if (FRewindData* RewindData = GetRewindData())
+					{
+						RewindData->RemoveParticle(Info.UniqueIdx);
+					}
+
+					MParticleToProxy.Remove(Info.Handle);
+
+					// Use the handle to destroy the particle data
+					GetEvolution()->DestroyParticle(Info.Handle);
+				}
+
 				ensure(Info.Proxy->GetHandle_LowLevel() == nullptr);	//should have already cleared this out
 				delete Info.Proxy;
 				PendingDestroyPhysicsProxy.RemoveAtSwap(Idx);
@@ -1348,11 +1352,13 @@ CSV_CUSTOM_STAT(PhysicsCounters, Name, Value, ECsvCustomStatOp::Set);
 		}
 		if (ChaosSolverDebugDrawCollisions == 1) 
 		{
-			DebugDraw::DrawCollisions(FRigidTransform3(), GetEvolution()->GetConstraintGraph(), 1.f, &ChaosSolverDebugDebugDrawSettings);
+			DebugDraw::DrawCollisions(FRigidTransform3(), GetEvolution()->GetCollisionConstraints().GetConstraintAllocator(), 1.f, &ChaosSolverDebugDebugDrawSettings);
 		}
 		if (ChaosSolverDebugDrawBounds == 1)
 		{
-			DebugDraw::DrawParticleBounds(FRigidTransform3(), Particles.GetAllParticlesView(), Dt, GetEvolution()->GetBroadPhase().GetBoundsThickness(), GetEvolution()->GetBroadPhase().GetBoundsVelocityInflation(), &ChaosSolverDebugDebugDrawSettings);
+			DebugDraw::DrawParticleBounds(FRigidTransform3(), Particles.GetActiveStaticParticlesView(), Dt, &ChaosSolverDebugDebugDrawSettings);
+			DebugDraw::DrawParticleBounds(FRigidTransform3(), Particles.GetActiveKinematicParticlesView(), Dt, &ChaosSolverDebugDebugDrawSettings);
+			DebugDraw::DrawParticleBounds(FRigidTransform3(), Particles.GetNonDisabledDynamicView(), Dt, &ChaosSolverDebugDebugDrawSettings);
 		}
 		if (ChaosSolverDrawTransforms == 1)
 		{

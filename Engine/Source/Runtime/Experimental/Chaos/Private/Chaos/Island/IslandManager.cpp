@@ -4,6 +4,7 @@
 #include "Chaos/Island/IslandGraph.h"
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/ConstraintHandle.h"
+#include "Chaos/PBDConstraintContainer.h"
 #include "Chaos/PBDRigidParticles.h"
 #include "Chaos/PBDRigidsSOAs.h"
 #include "ChaosLog.h"
@@ -166,7 +167,7 @@ inline void PopulateIslands(FPBDIslandManager::GraphType* IslandGraph)
 		if(IslandGraph->GraphIslands.IsValidIndex(IslandIndex))
 		{
 			FPBDIslandSolver* IslandSolver = IslandGraph->GraphIslands[IslandIndex].IslandItem;
-			if(!IslandSolver->IsPersistent() || !IslandSolver->IsSleeping())
+			if(!IslandSolver->IsSleeping())
 			{
 				IslandSolver->AddParticle(GraphNode.NodeItem);
 			}
@@ -175,14 +176,14 @@ inline void PopulateIslands(FPBDIslandManager::GraphType* IslandGraph)
 	TSet<int32> NodeIslands;
 	for(auto& GraphNode : IslandGraph->GraphNodes)
 	{
-		// If the node has one edge or if the node is not valid : only one island
+		// If the node has one edge or if the node is valid : only one island
 		if((GraphNode.NodeEdges.Num() == 0) || GraphNode.bValidNode)
 		{
 			AddNodeToIsland(GraphNode.IslandIndex, GraphNode);
 		}
 		else
 		{
-			// A particle could belong to several islands when static/kinematic
+			// A particle could belong to several islands when static/kinematic (not valid)
 			// First we compute the unique particle set of islands
 			NodeIslands.Reset();
 			for( auto& NodeEdge : GraphNode.NodeEdges)
@@ -203,7 +204,7 @@ inline void PopulateIslands(FPBDIslandManager::GraphType* IslandGraph)
 		if(IslandGraph->GraphIslands.IsValidIndex(GraphEdge.IslandIndex))
 		{
 			FPBDIslandSolver* IslandSolver = IslandGraph->GraphIslands[GraphEdge.IslandIndex].IslandItem;
-			if(!IslandSolver->IsPersistent() || !IslandSolver->IsSleeping())
+			if(!IslandSolver->IsSleeping())
 			{
 				IslandSolver->AddConstraint(GraphEdge.EdgeItem);
 			}
@@ -227,7 +228,9 @@ inline int32 ComputeSleepingThresholds(FPBDIslandSolver* IslandSolver,
 		{
 			if (FPBDRigidParticleHandle* PBDRigid = ParticleHandle->CastToRigidParticle())
 			{
-				if (IsDynamicParticle(ParticleHandle) && !PBDRigid->Sleeping())
+				// Should we change this condition to be if (!IsStationaryParticle(ParticleHandle))
+				// to be in sync with what is done for the graph island sleeping flag?
+				if	(IsDynamicParticle(ParticleHandle) && !PBDRigid->Sleeping())
 				{
 					NumDynamicParticles++;
 
@@ -263,6 +266,10 @@ FPBDIslandManager::FPBDIslandManager(const TParticleView<FPBDRigidParticles>& PB
 
 FPBDIslandManager::~FPBDIslandManager()
 {
+}
+
+void FPBDIslandManager::ResetIndices()
+{
 	// Reset of all the particles / constraint graph index to INDEX_NONE
 	for(auto& ItemNode : IslandGraph->ItemNodes)
 	{
@@ -275,6 +282,33 @@ FPBDIslandManager::~FPBDIslandManager()
 	{
 		ItemEdge.Key->SetConstraintGraphIndex(INDEX_NONE);
 	}
+}
+
+void FPBDIslandManager::RemoveConstraints()
+{
+	for (auto& ItemEdge : IslandGraph->ItemEdges)
+	{
+		ItemEdge.Key->SetConstraintGraphIndex(INDEX_NONE);
+	}
+	IslandGraph->ItemEdges.Reset();
+	IslandGraph->GraphEdges.Reset();
+
+	for (auto& GraphIsland : IslandGraph->GraphIslands)
+	{
+		GraphIsland.NumEdges = 0;
+	}
+	for (auto& GraphNode : IslandGraph->GraphNodes)
+	{
+		GraphNode.NodeEdges.Reset();
+	}
+	for (auto& IslandSolver : IslandSolvers)
+	{
+		IslandSolver->ClearConstraints();
+	}
+	//for (auto& IslandGroup : IslandGroups)
+	//{
+	//	IslandGroup->NumConstraints() = 0;
+	//}
 }
 
 void FPBDIslandManager::InitializeGraph(const TParticleView<FPBDRigidParticles>& PBDRigids)
@@ -306,6 +340,7 @@ void FPBDIslandManager::InitializeGraph(const TParticleView<FPBDRigidParticles>&
 	{
 		if(!IslandSolver->IsSleeping())
 		{
+			///IslandSolver->ResetIndices();
 			IslandSolver->ClearConstraints();
 		}
 	}
@@ -399,9 +434,41 @@ void FPBDIslandManager::RemoveParticle(FGeometryParticleHandle* ParticleHandle)
 		// @todo(chaos) : this is sub-optimal fix for a crash where trying to remove a particle from the data in the graph is not enough 
 		// edgelist is empty and particle is in multiple island solver 
 		// could possibly be because of the order we delete constraint before removing the particle
-		for (auto& IslandSolver : IslandSolvers)
+		/*for (auto& IslandSolver : IslandSolvers)
 		{
 			IslandSolver->RemoveParticle(ParticleHandle);
+		}*/
+
+		// @todo(chaos) : test that new version to see if we still need the version above 
+		if (const int32* NodeIndex = IslandGraph->ItemNodes.Find(ParticleHandle))
+		{
+			if (IslandGraph->GraphNodes.IsValidIndex(*NodeIndex))
+			{
+				const FGraphNode& GraphNode = IslandGraph->GraphNodes[*NodeIndex];
+				// the list of edges could be empty or the node is valid : we need to also remove it from its own island 
+				if(GraphNode.NodeEdges.Num() == 0 && IslandSolvers.IsValidIndex(GraphNode.IslandIndex))
+				{
+					IslandSolvers[GraphNode.IslandIndex]->RemoveParticle(ParticleHandle);
+				}
+				else
+				{
+					// We loop over all the connected edges to find all the islands in which the particle
+					// is (static/kinematic particles could belong to several islands)
+					// And remove the particle from the solver island. It will allow the solver
+					// islands to be updated directly and not at the next sync.
+					for (const int32& EdgeIndex : GraphNode.NodeEdges)
+					{
+						const int32 IslandIndex = IslandGraph->GraphEdges[EdgeIndex].IslandIndex;
+						if (IslandSolvers.IsValidIndex(IslandIndex))
+						{
+							IslandSolvers[IslandIndex]->RemoveParticle(ParticleHandle);
+
+							//We need to remove as well the constraint from the island solver since the edges are removed from the graph
+							IslandSolvers[IslandIndex]->RemoveConstraint(IslandGraph->GraphEdges[EdgeIndex].EdgeItem);
+						}
+					}
+				}
+			}
 		}
 
 		IslandGraph->RemoveNode(ParticleHandle);
@@ -420,13 +487,12 @@ void FPBDIslandManager::RemoveConstraint(const uint32 ContainerId, FConstraintHa
 		if (IslandGraph->GraphEdges.IsValidIndex(EdgeIndex))
 		{
 			const int32 IslandIndex = IslandGraph->GraphEdges[EdgeIndex].IslandIndex;
-			if (IslandGraph->GraphIslands.IsValidIndex(IslandIndex))
+			if (IslandSolvers.IsValidIndex(IslandIndex))
 			{
 				IslandSolvers[IslandIndex]->RemoveConstraint(ConstraintHandle);
 			}
 
 			IslandGraph->RemoveEdge(EdgeIndex);
-
 			ConstraintHandle->SetConstraintGraphIndex(INDEX_NONE);
 		}
 	}
@@ -465,24 +531,6 @@ void FPBDIslandManager::DisableParticle(FGeometryParticleHandle* ParticleHandle)
 {
 	if (ParticleHandle)
 	{
-		if (const int32* NodeIndex = IslandGraph->ItemNodes.Find(ParticleHandle))
-		{
-			if (IslandGraph->GraphNodes.IsValidIndex(*NodeIndex))
-			{
-				// We loop over all the connected edges to find all the islands in which the particle
-				// is (static/kinematic particles could belong to several islands)
-				// And remove the particle from the solver island. It will allow the solver
-				// islands to be updated directly and not at the next sync.
-				for (const int32& EdgeIndex : IslandGraph->GraphNodes[*NodeIndex].NodeEdges)
-				{
-					const int32 IslandIndex = IslandGraph->GraphEdges[EdgeIndex].IslandIndex;
-					if (IslandSolvers.IsValidIndex(IslandIndex))
-					{
-						IslandSolvers[IslandIndex]->RemoveParticle(ParticleHandle);
-					}
-				}
-			}
-		}
 		// We remove the particle handle from the graph
 		RemoveParticle(ParticleHandle);
 	}
@@ -523,13 +571,17 @@ void FPBDIslandManager::SyncIslands(FPBDRigidsSOAs& Particles)
 
 			// We finally update the solver islands based on the new particles and constraints if
 			// the island is not persistent or not sleeping. 
-			if(!IslandSolver->IsPersistent() || !IslandSolver->IsSleeping())
+			if(!IslandSolver->IsSleeping())
 			{
 				IslandSolver->ReserveParticles(IslandGraph->GraphIslands[IslandIndex].NumNodes);
 				IslandSolver->ReserveConstraints(IslandGraph->GraphIslands[IslandIndex].NumEdges);
 			}
-			if (!IslandSolver->IsPersistent())
-			{
+			// Reset of the sleep counter if the island is :
+			// - Non persistent since we are starting incrementing 
+			// the counter once the island is persistent and if values below the threshold
+			// - Sleeping since as soon as it wakes up we could start incrementing the counter as well
+			if (!IslandSolver->IsPersistent() || IslandSolver->IsSleeping())
+			{ 
 				IslandSolver->SetSleepCounter(0);
 			}
 			// We reset the persistent flag to be true on the island graph. 
