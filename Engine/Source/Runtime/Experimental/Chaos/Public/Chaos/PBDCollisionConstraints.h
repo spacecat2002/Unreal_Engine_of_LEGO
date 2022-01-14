@@ -33,12 +33,6 @@ namespace Collisions
 	struct FContactIterationParameters;
 }
 
-DECLARE_CYCLE_STAT_EXTERN(TEXT("Collisions::Gather"), STAT_Collisions_Gather, STATGROUP_ChaosCollision, CHAOS_API);
-DECLARE_CYCLE_STAT_EXTERN(TEXT("Collisions::Scatter"), STAT_Collisions_Scatter, STATGROUP_ChaosCollision, CHAOS_API);
-DECLARE_CYCLE_STAT_EXTERN(TEXT("Collisions::Apply"), STAT_Collisions_Apply, STATGROUP_ChaosCollision, CHAOS_API);
-DECLARE_CYCLE_STAT_EXTERN(TEXT("Collisions::ApplyPushOut"), STAT_Collisions_ApplyPushOut, STATGROUP_ChaosCollision, CHAOS_API);
-
-
 /**
  * A container and solver for collision constraints.
  * 
@@ -122,24 +116,17 @@ public:
 	/**
 	* Remove the constraints associated with the ParticleHandle.
 	*/
-	void RemoveConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>&  ParticleHandle);
+	void RemoveConstraints(const TSet<FGeometryParticleHandle*>&  ParticleHandle);
 
+	/**
+	 * @brief Remove all constraints associated with the particles - called when particles are destroyed
+	*/
+	virtual void DisconnectConstraints(const TSet<FGeometryParticleHandle*>& ParticleHandles) override;
 
 	/**
 	* Disable the constraints associated with the ParticleHandle.
 	*/
-	void DisableConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>& ParticleHandle) {}
-
-
-	/**
-	* Remove the constraint, update the handle, and any maps. 
-	*/
-	void RemoveConstraint(FPBDCollisionConstraintHandle* ConstraintHandle);
-
-	/**
-	 * Set the sleeping state of the constraint. When awaking, reactivates the constraint.
-	*/
-	void SetConstraintIsSleeping(FPBDCollisionConstraint& Constraint, bool bInIsSleeping);
+	void DisableConstraints(const TSet<FGeometryParticleHandle*>& ParticleHandle) {}
 
 	//
 	// General Rule API

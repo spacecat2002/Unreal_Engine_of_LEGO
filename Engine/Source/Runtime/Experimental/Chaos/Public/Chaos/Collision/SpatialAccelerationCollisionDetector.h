@@ -6,6 +6,8 @@
 #include "Chaos/Collision/NarrowPhase.h"
 #include "Chaos/Collision/SpatialAccelerationBroadPhase.h"
 #include "Chaos/EvolutionResimCache.h"
+#include "Chaos/PBDCollisionConstraints.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 
 namespace Chaos
 {
@@ -13,12 +15,14 @@ namespace Chaos
 	{
 	public:
 		FSpatialAccelerationCollisionDetector(FSpatialAccelerationBroadPhase& InBroadPhase, FNarrowPhase& InNarrowPhase, FPBDCollisionConstraints& InCollisionContainer)
-			: FCollisionDetector(InNarrowPhase, InCollisionContainer)
+			: FCollisionDetector(InCollisionContainer)
 			, BroadPhase(InBroadPhase)
+			, NarrowPhase(InNarrowPhase)
 		{
 		}
 
 		FSpatialAccelerationBroadPhase& GetBroadPhase() { return BroadPhase; }
+		FNarrowPhase& GetNarrowPhase() { return NarrowPhase; }
 
 		virtual void DetectCollisions(const FReal Dt, FEvolutionResimCache* ResimCache) override
 		{
@@ -32,7 +36,7 @@ namespace Chaos
 
 			CollisionContainer.BeginDetectCollisions();
 
-			// Collision detection pipeline: BroadPhase -[parallel]-> NarrowPhase -[parallel]-> Receiver -[serial]-> Container
+			// Collision detection pipeline: BroadPhase -[parallel]-> NarrowPhase -[parallel]-> CollisionAllocator -[serial]-> Container
 			BroadPhase.ProduceOverlaps(Dt, NarrowPhase, ResimCache);
 
 			CollisionContainer.EndDetectCollisions();
@@ -48,5 +52,6 @@ namespace Chaos
 
 	private:
 		FSpatialAccelerationBroadPhase& BroadPhase;
+		FNarrowPhase& NarrowPhase;
 	};
 }
