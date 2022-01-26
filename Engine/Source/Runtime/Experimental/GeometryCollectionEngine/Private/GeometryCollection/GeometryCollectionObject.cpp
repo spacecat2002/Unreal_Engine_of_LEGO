@@ -9,9 +9,13 @@
 #include "UObject/DestructionObjectVersion.h"
 #include "Serialization/ArchiveCountMem.h"
 #include "HAL/IConsoleManager.h"
+#include "Interfaces/ITargetPlatform.h"
 #include "UObject/Package.h"
 #include "Materials/MaterialInstance.h"
 #include "ProfilingDebugging/CookStats.h"
+#include "EngineUtils.h"
+#include "Engine/StaticMesh.h"
+#include "PhysicsEngine/PhysicsSettings.h"
 
 
 #if WITH_EDITOR
@@ -19,6 +23,8 @@
 #include "GeometryCollection/GeometryCollectionComponent.h"
 #include "DerivedDataCacheInterface.h"
 #include "Serialization/MemoryReader.h"
+// TODO: Temp until new asset-agnostic builder API
+#include "StaticMeshResources.h"
 #endif
 
 #include "GeometryCollection/GeometryCollectionSimulationCoreTypes.h"
@@ -48,6 +54,7 @@ UGeometryCollection::UGeometryCollection(const FObjectInitializer& ObjectInitial
 	, MaxClusterLevel(100)
 	, DamageThreshold({ 250.0 })
 	, ClusterConnectionType(EClusterConnectionTypeEnum::Chaos_PointImplicit)
+	, bUseFullPrecisionUVs(false)
 #if WITH_EDITORONLY_DATA
 	, CollisionType_DEPRECATED(ECollisionTypeEnum::Chaos_Volumetric)
 	, ImplicitType_DEPRECATED(EImplicitTypeEnum::Chaos_Implicit_Box)
@@ -95,6 +102,7 @@ FGeometryCollectionCollisionTypeData::FGeometryCollectionCollisionTypeData()
 	, LevelSet()
 	, CollisionParticles()
 	, CollisionObjectReductionPercentage(0.0f)
+	, CollisionMarginFraction(0.1)
 {
 }
 
@@ -128,6 +136,8 @@ void FGeometryCollectionSizeSpecificData::PostSerialize(const FArchive& Ar)
 {
 	const int32 PhysicsObjectVersion = Ar.CustomVer(FPhysicsObjectVersion::GUID);
 	// make sure to load back the deprecated values in the new structure if necessary
+	// IMPORTANT : this was merge backed in UE4 and PhysicsObjectVersion had to be used,
+	//		that's why we need to test both version to make sure backward asset compatibility is maintained
 	if (Ar.IsLoading() && PhysicsObjectVersion < FPhysicsObjectVersion::GeometryCollectionUserDefinedCollisionShapes)
 	{
 		if (CollisionShapes.Num())
@@ -136,6 +146,7 @@ void FGeometryCollectionSizeSpecificData::PostSerialize(const FArchive& Ar)
 			CollisionShapes[0].CollisionType = CollisionType_DEPRECATED;
 			CollisionShapes[0].ImplicitType = ImplicitType_DEPRECATED;
 			CollisionShapes[0].CollisionObjectReductionPercentage = CollisionObjectReductionPercentage_DEPRECATED;
+			CollisionShapes[0].CollisionMarginFraction = UPhysicsSettings::Get()->SolverOptions.CollisionMarginFraction;
 			CollisionShapes[0].CollisionParticles.CollisionParticlesFraction = CollisionParticlesFraction_DEPRECATED;
 			CollisionShapes[0].CollisionParticles.MaximumCollisionParticles = MaximumCollisionParticles_DEPRECATED;
 			CollisionShapes[0].LevelSet.MinLevelSetResolution = MinLevelSetResolution_DEPRECATED;
@@ -166,6 +177,7 @@ void FillSharedSimulationSizeSpecificData(FSharedSimulationSizeSpecificData& ToD
 			ToData.CollisionShapesData[i].LevelSetData.MinClusterLevelSetResolution = FromData.CollisionShapes[i].LevelSet.MinClusterLevelSetResolution;
 			ToData.CollisionShapesData[i].LevelSetData.MaxClusterLevelSetResolution = FromData.CollisionShapes[i].LevelSet.MaxClusterLevelSetResolution;
 			ToData.CollisionShapesData[i].CollisionObjectReductionPercentage = FromData.CollisionShapes[i].CollisionObjectReductionPercentage;
+			ToData.CollisionShapesData[i].CollisionMarginFraction = FromData.CollisionShapes[i].CollisionMarginFraction;
 			ToData.CollisionShapesData[i].CollisionParticleData.CollisionParticlesFraction = FromData.CollisionShapes[i].CollisionParticles.CollisionParticlesFraction;
 			ToData.CollisionShapesData[i].CollisionParticleData.MaximumCollisionParticles = FromData.CollisionShapes[i].CollisionParticles.MaximumCollisionParticles;
 		}
@@ -187,6 +199,7 @@ FGeometryCollectionSizeSpecificData UGeometryCollection::GeometryCollectionSizeS
 		Data.CollisionShapes[0].LevelSet.MinClusterLevelSetResolution = 25;
 		Data.CollisionShapes[0].LevelSet.MaxClusterLevelSetResolution = 50;
 		Data.CollisionShapes[0].CollisionObjectReductionPercentage = 1.0;
+		Data.CollisionShapes[0].CollisionMarginFraction = UPhysicsSettings::Get()->SolverOptions.CollisionMarginFraction;
 		Data.CollisionShapes[0].CollisionParticles.CollisionParticlesFraction = 1.0;
 		Data.CollisionShapes[0].CollisionParticles.MaximumCollisionParticles = 60;
 	}
@@ -222,6 +235,7 @@ void UGeometryCollection::ValidateSizeSpecificDataDefaults()
 			Data.CollisionShapes[0].LevelSet.MinClusterLevelSetResolution = MinClusterLevelSetResolution_DEPRECATED;
 			Data.CollisionShapes[0].LevelSet.MaxClusterLevelSetResolution = MaxClusterLevelSetResolution_DEPRECATED;
 			Data.CollisionShapes[0].CollisionObjectReductionPercentage = CollisionObjectReductionPercentage_DEPRECATED;
+			Data.CollisionShapes[0].CollisionMarginFraction = UPhysicsSettings::Get()->SolverOptions.CollisionMarginFraction;
 #endif
 			if (Data.CollisionShapes[0].ImplicitType == EImplicitTypeEnum::Chaos_Implicit_LevelSet)
 			{
@@ -273,6 +287,7 @@ void UGeometryCollection::GetSharedSimulationParams(FSharedSimulationParameters&
 		InfSize.CollisionShapes[0].LevelSet.MinClusterLevelSetResolution = SizeSpecificDefault.CollisionShapes[0].LevelSet.MinClusterLevelSetResolution;
 		InfSize.CollisionShapes[0].LevelSet.MaxClusterLevelSetResolution = SizeSpecificDefault.CollisionShapes[0].LevelSet.MaxClusterLevelSetResolution;
 		InfSize.CollisionShapes[0].CollisionObjectReductionPercentage = SizeSpecificDefault.CollisionShapes[0].CollisionObjectReductionPercentage;
+		InfSize.CollisionShapes[0].CollisionMarginFraction = SizeSpecificDefault.CollisionShapes[0].CollisionMarginFraction;
 		InfSize.CollisionShapes[0].CollisionParticles.CollisionParticlesFraction = SizeSpecificDefault.CollisionShapes[0].CollisionParticles.CollisionParticlesFraction;
 		InfSize.CollisionShapes[0].CollisionParticles.MaximumCollisionParticles = SizeSpecificDefault.CollisionShapes[0].CollisionParticles.MaximumCollisionParticles;
 	}
@@ -409,8 +424,19 @@ void UGeometryCollection::InitializeMaterials()
 	// Last Material is the selection one
 	UMaterialInterface* BoneSelectedMaterial = LoadObject<UMaterialInterface>(nullptr, GetSelectedMaterialPath(), nullptr, LOAD_None, nullptr);
 
-	// Skip selection materials
-	Materials.Remove(BoneSelectedMaterial);
+	TManagedArray<int32>& MaterialID = GeometryCollection->MaterialID;
+
+	// normally we filter out instances of the selection material ID, but if it's actually used on any face we have to keep it
+	bool bBoneSelectedMaterialIsUsed = false;
+	for (int32 FaceIdx = 0; FaceIdx < MaterialID.Num(); ++FaceIdx)
+	{
+		int32 FaceMaterialID = MaterialID[FaceIdx];
+		if (FaceMaterialID < Materials.Num() && Materials[FaceMaterialID] == BoneSelectedMaterial)
+		{
+			bBoneSelectedMaterialIsUsed = true;
+			break;
+		}
+	}
 	
 	// We're assuming that all materials are arranged in pairs, so first we collect these.
 	using FMaterialPair = TPair<UMaterialInterface*, UMaterialInterface*>;
@@ -418,12 +444,21 @@ void UGeometryCollection::InitializeMaterials()
 	for (int32 MaterialIndex = 0; MaterialIndex < Materials.Num(); ++MaterialIndex)
 	{
 		UMaterialInterface* ExteriorMaterial = Materials[MaterialIndex];
+		if (ExteriorMaterial == BoneSelectedMaterial && !bBoneSelectedMaterialIsUsed) // skip unused bone selected material
+		{
+			continue;
+		}
 		
 		// If we have an odd number of materials, the last material duplicates itself.
 		UMaterialInterface* InteriorMaterial = Materials[MaterialIndex];
-		if (++MaterialIndex < Materials.Num())
+		while (++MaterialIndex < Materials.Num())
 		{
+			if (Materials[MaterialIndex] == BoneSelectedMaterial && !bBoneSelectedMaterialIsUsed) // skip bone selected material
+			{
+				continue;
+			}
 			InteriorMaterial = Materials[MaterialIndex];
+			break;
 		}
 
 		MaterialSet.Add(FMaterialPair(ExteriorMaterial, InteriorMaterial));
@@ -444,8 +479,6 @@ void UGeometryCollection::InitializeMaterials()
 		TTuple< UMaterialInterface*, int32> InteriorTuple(Curr.Value, FinalMaterials.Add(Curr.Value));
 		InteriorMaterialPtrToArrayIndex.Add(InteriorTuple);
 	}
-
-	TManagedArray<int32>& MaterialID = GeometryCollection->MaterialID;
 
 	// Reassign material ID for each face given the new consolidated array of materials
 	for (int32 Material = 0; Material < MaterialID.Num(); ++Material)
@@ -487,6 +520,51 @@ bool UGeometryCollection::HasVisibleGeometry() const
 	return false;
 }
 
+struct FPackedHierarchyNode_Old
+{
+	FSphere		LODBounds[64];
+	FSphere		Bounds[64];
+	struct
+	{
+		uint32	MinLODError_MaxParentLODError;
+		uint32	ChildStartReference;
+		uint32	ResourcePageIndex_NumPages_GroupPartSize;
+	} Misc[64];
+};
+
+FArchive& operator<<(FArchive& Ar, FPackedHierarchyNode_Old& Node)
+{
+	for (uint32 i = 0; i < 64; i++)
+	{
+		Ar << Node.LODBounds[i];
+		Ar << Node.Bounds[i];
+		Ar << Node.Misc[i].MinLODError_MaxParentLODError;
+		Ar << Node.Misc[i].ChildStartReference;
+		Ar << Node.Misc[i].ResourcePageIndex_NumPages_GroupPartSize;
+	}
+
+	return Ar;
+}
+
+
+struct FPageStreamingState_Old
+{
+	uint32			BulkOffset;
+	uint32			BulkSize;
+	uint32			PageUncompressedSize;
+	uint32			DependenciesStart;
+	uint32			DependenciesNum;
+};
+
+FArchive& operator<<(FArchive& Ar, FPageStreamingState_Old& PageStreamingState)
+{
+	Ar << PageStreamingState.BulkOffset;
+	Ar << PageStreamingState.BulkSize;
+	Ar << PageStreamingState.PageUncompressedSize;
+	Ar << PageStreamingState.DependenciesStart;
+	Ar << PageStreamingState.DependenciesNum;
+	return Ar;
+}
 
 /** Serialize */
 void UGeometryCollection::Serialize(FArchive& Ar)
@@ -495,11 +573,23 @@ void UGeometryCollection::Serialize(FArchive& Ar)
 	Ar.UsingCustomVersion(FDestructionObjectVersion::GUID);
 	Chaos::FChaosArchive ChaosAr(Ar);
 
+	// The Geometry Collection we will be archiving. This may be replaced with a transient, stripped back Geometry Collection if we are cooking.
+	TSharedPtr<FGeometryCollection, ESPMode::ThreadSafe> ArchiveGeometryCollection = GeometryCollection;
+
+	bool bIsCookedOrCooking = Ar.IsCooking();
+
 #if WITH_EDITOR
 	//Early versions did not have tagged properties serialize first
 	if (Ar.CustomVer(FDestructionObjectVersion::GUID) < FDestructionObjectVersion::GeometryCollectionInDDC)
 	{
-		GeometryCollection->Serialize(ChaosAr);
+		if (Ar.IsLoading())
+		{
+			GeometryCollection->Serialize(ChaosAr);
+		}
+		else
+		{
+			ArchiveGeometryCollection->Serialize(ChaosAr);
+		}
 	}
 
 	if (Ar.CustomVer(FDestructionObjectVersion::GUID) < FDestructionObjectVersion::AddedTimestampedGeometryComponentCache)
@@ -541,12 +631,10 @@ void UGeometryCollection::Serialize(FArchive& Ar)
 		}
 	}
 
-	bool bIsCookedOrCooking = Ar.IsCooking();
 	if (Ar.CustomVer(FDestructionObjectVersion::GUID) >= FDestructionObjectVersion::GeometryCollectionInDDC)
 	{
 		Ar << bIsCookedOrCooking;
 	}
-
 #if WITH_EDITOR
 	if (Ar.CustomVer(FDestructionObjectVersion::GUID) == FDestructionObjectVersion::GeometryCollectionInDDC)
 	{
@@ -564,16 +652,23 @@ void UGeometryCollection::Serialize(FArchive& Ar)
 			CreateSimulationDataImp(/*bCopyFromDDC=*/false);	//make sure content is built before saving
 		}
 #endif
-		GeometryCollection->Serialize(ChaosAr);
+		if (Ar.IsLoading())
+		{
+			GeometryCollection->Serialize(ChaosAr);
+		}
+		else
+		{
+			ArchiveGeometryCollection->Serialize(ChaosAr);
+		}
 
 		// Fix up the type change for implicits here, previously they were unique ptrs, now they're shared
-		TManagedArray<TUniquePtr<Chaos::FImplicitObject>>* OldAttr = GeometryCollection->FindAttributeTyped<TUniquePtr<Chaos::FImplicitObject>>(FGeometryDynamicCollection::ImplicitsAttribute, FTransformCollection::TransformGroup);
-		TManagedArray<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>* NewAttr = GeometryCollection->FindAttributeTyped<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>(FGeometryDynamicCollection::SharedImplicitsAttribute, FTransformCollection::TransformGroup);
+		TManagedArray<TUniquePtr<Chaos::FImplicitObject>>* OldAttr = ArchiveGeometryCollection->FindAttributeTyped<TUniquePtr<Chaos::FImplicitObject>>(FGeometryDynamicCollection::ImplicitsAttribute, FTransformCollection::TransformGroup);
+		TManagedArray<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>* NewAttr = ArchiveGeometryCollection->FindAttributeTyped<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>(FGeometryDynamicCollection::SharedImplicitsAttribute, FTransformCollection::TransformGroup);
 		if (OldAttr)
 		{
 			if (!NewAttr)
 			{
-				NewAttr = &GeometryCollection->AddAttribute<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>(FGeometryDynamicCollection::SharedImplicitsAttribute, FTransformCollection::TransformGroup);
+				NewAttr = &ArchiveGeometryCollection->AddAttribute<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>(FGeometryDynamicCollection::SharedImplicitsAttribute, FTransformCollection::TransformGroup);
 
 				const int32 NumElems = GeometryCollection->NumElements(FTransformCollection::TransformGroup);
 				for (int32 Index = 0; Index < NumElems; ++Index)
@@ -582,13 +677,13 @@ void UGeometryCollection::Serialize(FArchive& Ar)
 				}
 			}
 
-			GeometryCollection->RemoveAttribute(FGeometryDynamicCollection::ImplicitsAttribute, FTransformCollection::TransformGroup);
+			ArchiveGeometryCollection->RemoveAttribute(FGeometryDynamicCollection::ImplicitsAttribute, FTransformCollection::TransformGroup);
 		}
 	}
 
 	if (Ar.CustomVer(FDestructionObjectVersion::GUID) < FDestructionObjectVersion::GroupAndAttributeNameRemapping)
 	{
-		GeometryCollection->UpdateOldAttributeNames();
+		ArchiveGeometryCollection->UpdateOldAttributeNames();
 		InvalidateCollection();
 		bCreateSimulationData = true;
 	}
@@ -602,7 +697,7 @@ void UGeometryCollection::Serialize(FArchive& Ar)
 	//for all versions loaded, make sure sim data is up to date
  	if (Ar.IsLoading())
 	{
-		CreateSimulationDataImp(/*bCopyFromDDC=*/ true);	//make sure loaded content is built
+		EnsureDataIsCooked();	//make sure loaded content is built
 	}
 #endif
 }
@@ -613,6 +708,7 @@ const TCHAR* UGeometryCollection::GetSelectedMaterialPath()
 }
 
 #if WITH_EDITOR
+
 void UGeometryCollection::CreateSimulationDataImp(bool bCopyFromDDC, const TCHAR* OverrideVersion)
 {
 	COOK_STAT(auto Timer = GeometryCollectionCookStats::UsageStats.TimeSyncWork());
@@ -627,7 +723,7 @@ void UGeometryCollection::CreateSimulationDataImp(bool bCopyFromDDC, const TCHAR
 
 	if (GeometryCollectionCooker->CanBuild())
 	{
-		if (bSkipDDC)
+		if (bSkipDDC) 
 		{
 			GeometryCollectionCooker->Build(DDCData);
 			COOK_STAT(Timer.AddMiss(DDCData.Num()));
@@ -641,7 +737,7 @@ void UGeometryCollection::CreateSimulationDataImp(bool bCopyFromDDC, const TCHAR
 
 		if (bCopyFromDDC)
 		{
-			FMemoryReader Ar(DDCData);
+			FMemoryReader Ar(DDCData, true);	// Must be persistent for BulkData to serialize
 			Chaos::FChaosArchive ChaosAr(Ar);
 			GeometryCollection->Serialize(ChaosAr);
 		}
@@ -653,26 +749,50 @@ void UGeometryCollection::CreateSimulationData()
 	CreateSimulationDataImp(/*bCopyFromDDC=*/false);
 	SimulationDataGuid = StateGuid;
 }
+
+TSharedPtr<FGeometryCollection, ESPMode::ThreadSafe> UGeometryCollection::GenerateMinimalGeometryCollection() const
+{
+	TMap<FName, TSet<FName>> SkipList;
+	static TSet<FName> GeometryGroups{ FGeometryCollection::GeometryGroup, FGeometryCollection::VerticesGroup, FGeometryCollection::FacesGroup };
+
+	TSharedPtr<FGeometryCollection, ESPMode::ThreadSafe> DuplicateGeometryCollection(new FGeometryCollection());
+	DuplicateGeometryCollection->AddAttribute<bool>(FGeometryCollection::SimulatableParticlesAttribute, FTransformCollection::TransformGroup);
+	DuplicateGeometryCollection->AddAttribute<FVector>("InertiaTensor", FGeometryCollection::TransformGroup);
+	DuplicateGeometryCollection->AddAttribute<float>("Mass", FGeometryCollection::TransformGroup);
+	DuplicateGeometryCollection->AddAttribute<FTransform>("MassToLocal", FGeometryCollection::TransformGroup);
+	DuplicateGeometryCollection->AddAttribute<FGeometryDynamicCollection::FSharedImplicit>(
+		FGeometryDynamicCollection::ImplicitsAttribute, FTransformCollection::TransformGroup);
+	DuplicateGeometryCollection->CopyMatchingAttributesFrom(*GeometryCollection, &SkipList);
+
+	return DuplicateGeometryCollection;
+}
+
 #endif
+
+void UGeometryCollection::InitResources()
+{
+}
+
+void UGeometryCollection::ReleaseResources()
+{
+}
 
 void UGeometryCollection::InvalidateCollection()
 {
 	StateGuid = FGuid::NewGuid();
 }
 
+#if WITH_EDITOR
 bool UGeometryCollection::IsSimulationDataDirty() const
 {
-#if WITH_EDITOR
 	return StateGuid != SimulationDataGuid;
-#else
-	return false;
-#endif
 }
+#endif
 
 int32 UGeometryCollection::AttachEmbeddedGeometryExemplar(const UStaticMesh* Exemplar)
 {
 	FSoftObjectPath NewExemplarPath(Exemplar);
-
+	
 	// Check first if the exemplar is already attached
 	for (int32 ExemplarIndex = 0; ExemplarIndex < EmbeddedGeometryExemplar.Num(); ++ExemplarIndex)
 	{
@@ -682,7 +802,7 @@ int32 UGeometryCollection::AttachEmbeddedGeometryExemplar(const UStaticMesh* Exe
 		}
 	}
 
-	return EmbeddedGeometryExemplar.Emplace(NewExemplarPath);
+	return EmbeddedGeometryExemplar.Emplace( NewExemplarPath );
 }
 
 void UGeometryCollection::RemoveExemplars(const TArray<int32>& SortedRemovalIndices)
@@ -707,13 +827,18 @@ FGuid UGeometryCollection::GetStateGuid() const
 }
 
 #if WITH_EDITOR
+
 void UGeometryCollection::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {
-	if (PropertyChangedEvent.Property && PropertyChangedEvent.Property->GetFName() != GET_MEMBER_NAME_CHECKED(UGeometryCollection, Materials))
+	if (PropertyChangedEvent.Property)
 	{
 		bool bRebuildSimulationData = false;
 
-		if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UGeometryCollection, SizeSpecificData))
+		if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UGeometryCollection, bUseFullPrecisionUVs))
+		{
+			InvalidateCollection();
+		}
+		else if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UGeometryCollection, SizeSpecificData))
 		{
 			ValidateSizeSpecificDataDefaults();
 			InvalidateCollection();
@@ -750,7 +875,7 @@ bool UGeometryCollection::Modify(bool bAlwaysMarkDirty /*= true*/)
 	return bSuperResult;
 }
 
-void UGeometryCollection::EnsureDataIsCooked()
+void UGeometryCollection::EnsureDataIsCooked(bool bInitResources)
 {
 	if (StateGuid != LastBuiltGuid)
 	{
@@ -759,3 +884,20 @@ void UGeometryCollection::EnsureDataIsCooked()
 	}
 }
 #endif
+
+void UGeometryCollection::PostLoad()
+{
+	Super::PostLoad();
+
+	// Initialize rendering resources.
+	if (FApp::CanEverRender())
+	{
+		InitResources();
+	}
+}
+
+void UGeometryCollection::BeginDestroy()
+{
+	Super::BeginDestroy();
+	ReleaseResources();
+}

@@ -178,6 +178,35 @@ class TRigidTransform<FReal, 3> : public FTransform
 			return RotatedNormal;
 		}
 	}
+
+	/**
+	* @brief Equivalent to (A * B) but assuming both have unit scale
+	*/
+	static TRigidTransform<FReal, 3> MultiplyNoScale(const TRigidTransform<FReal, 3>& A, const TRigidTransform<FReal, 3>& B)
+	{
+		TRigidTransform<FReal, 3> Result;
+
+#if ENABLE_VECTORIZED_TRANSFORM
+		const VectorRegister QuatA = A.Rotation;
+		const VectorRegister QuatB = B.Rotation;
+		const VectorRegister TranslateA = A.Translation;
+		const VectorRegister TranslateB = B.Translation;
+
+		const VectorRegister Rotation = VectorQuaternionMultiply2(QuatB, QuatA);
+		const VectorRegister RotatedTranslate = VectorQuaternionRotateVector(QuatB, TranslateA);
+		const VectorRegister Translation = VectorAdd(RotatedTranslate, TranslateB);
+
+		Result.Rotation = Rotation;
+		Result.Translation = Translation;
+		Result.Scale3D = VectorOne();
+#else
+		Result.Rotation = B.Rotation * A.Rotation;
+		Result.Translation = B.Rotation * A.Translation + B.Translation;
+		Result.Scale3D = FVector::OneVector;
+#endif
+
+		return Result;
+	}
 };
 }
 

@@ -190,7 +190,8 @@ void FConstraintProfileProperties::UpdatePlasticity_AssumesLocked(const FPhysics
 	const float AngularPlasticityLimit = bAngularPlasticity ? FMath::DegreesToRadians(AngularPlasticityThreshold) : MAX_FLT;
 
 #if WITH_CHAOS
-	FPhysicsInterface::SetPlasticityLimits_AssumesLocked(InConstraintRef, LinearPlasticityLimit, AngularPlasticityLimit);
+	// todo(chaos) : passing Free type to minimize changes, further version should allow it to be parameterized 
+	FPhysicsInterface::SetPlasticityLimits_AssumesLocked(InConstraintRef, LinearPlasticityLimit, AngularPlasticityLimit, EConstraintPlasticityType::CCPT_Free);
 #endif
 }
 

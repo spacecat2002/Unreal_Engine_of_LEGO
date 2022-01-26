@@ -92,7 +92,7 @@ void FGeometryCollectionClusteringUtility::ClusterAllBonesUnderNewRoot(FGeometry
 	check(GeometryCollection->IsTransform(RootNoneIndex));
 
 	if (GeometryCollection->HasAttribute("ExplodedVector", FGeometryCollection::TransformGroup) &&
-		GeometryCollection->HasAttribute("ExplodedTransform", FGeometryCollection::TransformGroup))
+		GeometryCollection->HasAttribute("ExplodedTransform", FGeometryCollection::TransformGroup) )
 	{
 
 		TManagedArray<FVector>& ExplodedVectors = GeometryCollection->GetAttribute<FVector>("ExplodedVector", FGeometryCollection::TransformGroup);
@@ -557,7 +557,7 @@ void FGeometryCollectionClusteringUtility::RecursivelyUpdateChildBoneNames(int32
 		{
 			FString NewName;
 			int32 FoundIndex = 0;
-			FString ChunkNumberStr(FString::FromInt(DisplayIndex++));
+			FString ChunkNumberStr( FString::FromInt(DisplayIndex++) );
 
 			// enable this if we don't want to override the child names with parent names
 			bool HasExistingName = BoneNames[ChildIndex].FindChar('_', FoundIndex);
@@ -592,7 +592,7 @@ void FGeometryCollectionClusteringUtility::UpdateHierarchyLevelOfChildren(FGeome
 {
 	if (!GeometryCollection->HasAttribute("Level", FGeometryCollection::TransformGroup))
 	{
-		GeometryCollection->AddAttribute<int32>("Level", FGeometryCollection::TransformGroup, FManagedArrayCollection::FConstructionParameters(FName(), false));
+		GeometryCollection->AddAttribute<int32>("Level", FGeometryCollection::TransformGroup, FManagedArrayCollection::FConstructionParameters(FName(),  false));
 	}
 	TManagedArray<int32>& Levels = GeometryCollection->GetAttribute<int32>("Level", FGeometryCollection::TransformGroup);
 	const TManagedArray<TSet<int32>>& Children = GeometryCollection->Children;
@@ -813,7 +813,7 @@ void FGeometryCollectionClusteringUtility::MoveUpOneHierarchyLevel(FGeometryColl
 			}
 		}
 	}
-
+	
 	ValidateResults(GeometryCollection);
 }
 
@@ -876,7 +876,7 @@ void FGeometryCollectionClusteringUtility::RemoveDanglingClusters(FGeometryColle
 	TArray<int32> DeletionList;
 	for (int32 Idx = 0; Idx < TransformCount; ++Idx)
 	{
-		if (GeometryCollection->IsClustered(Idx))
+		if(GeometryCollection->IsClustered(Idx))
 		{
 			TArray<int32> LeafBones;
 			GetLeafBones(GeometryCollection, Idx, true, LeafBones);

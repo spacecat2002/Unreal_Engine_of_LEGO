@@ -42,6 +42,7 @@ namespace Chaos
 		ConstrainedParticles.Add(Particle);
 		SuspensionLocalOffset.Add(InSuspensionLocalOffset);
 		ConstraintSettings.Add(InConstraintSettings);
+		ConstraintResults.AddDefaulted();
 		ConstraintEnabledStates.Add(true); // Note: assumes always enabled on creation
 		ConstraintSolverBodies.Add(nullptr);
 		Handles.Add(HandleAllocator.AllocHandle(this, NewIndex));
@@ -54,7 +55,7 @@ namespace Chaos
 		FConstraintContainerHandle* ConstraintHandle = Handles[ConstraintIndex];
 		if (ConstraintHandle != nullptr)
 		{
-			if (ConstraintEnabledStates[ConstraintIndex] && ConstrainedParticles[ConstraintIndex])
+			if (ConstrainedParticles[ConstraintIndex])
 			{
 				ConstrainedParticles[ConstraintIndex]->RemoveConstraintHandle(ConstraintHandle);
 			}
@@ -68,6 +69,7 @@ namespace Chaos
 		ConstrainedParticles.RemoveAtSwap(ConstraintIndex);
 		SuspensionLocalOffset.RemoveAtSwap(ConstraintIndex);
 		ConstraintSettings.RemoveAtSwap(ConstraintIndex);
+		ConstraintResults.RemoveAtSwap(ConstraintIndex);
 		ConstraintEnabledStates.RemoveAtSwap(ConstraintIndex);
 		ConstraintSolverBodies.RemoveAtSwap(ConstraintIndex);
 		Handles.RemoveAtSwap(ConstraintIndex);
@@ -89,6 +91,8 @@ namespace Chaos
 		SolverData.GetConstraintIndices(ContainerId).Add(ConstraintIndex);
 
 		ConstraintSolverBodies[ConstraintIndex] = SolverData.GetBodyContainer().FindOrAdd(ConstrainedParticles[ConstraintIndex]);
+
+		ConstraintResults[ConstraintIndex].Reset();
 	}
 
 	void FPBDSuspensionConstraints::ScatterOutput(FReal Dt, FPBDIslandSolverData& SolverData)
@@ -110,11 +114,12 @@ namespace Chaos
 		return true;
 	}
 
-	void FPBDSuspensionConstraints::ApplySingle(const FReal Dt, int32 ConstraintIndex) const
+	void FPBDSuspensionConstraints::ApplySingle(const FReal Dt, int32 ConstraintIndex)
 	{
 		check(ConstraintSolverBodies[ConstraintIndex] != nullptr);
 		FSolverBody& Body = *ConstraintSolverBodies[ConstraintIndex];
 		const FPBDSuspensionSettings& Setting = ConstraintSettings[ConstraintIndex];
+		FPBDSuspensionResults& Results = ConstraintResults[ConstraintIndex];
 
 		if (Body.IsDynamic() && Setting.Enabled)
 		{
@@ -127,20 +132,44 @@ namespace Chaos
 			const FVec3 SuspensionCoMOffset = Particle->RotationOfMass().UnrotateVector(SuspensionActorOffset - Particle->CenterOfMass());
 			const FVec3 SuspensionCoMAxis = Particle->RotationOfMass().UnrotateVector(Setting.Axis);
 
-			const FVec3 WorldSpaceX = Body.Q().RotateVector(SuspensionCoMOffset) + Body.P();
+			const FRotation3 BodyQ = Body.CorrectedQ();
+			const FVec3 BodyP = Body.CorrectedP();
+			const FVec3 WorldSpaceX = BodyQ.RotateVector(SuspensionCoMOffset) + BodyP;
 
-			FVec3 AxisWorld = Body.Q().RotateVector(SuspensionCoMAxis);
+			FVec3 AxisWorld = BodyQ.RotateVector(SuspensionCoMAxis);
+
+			const float MPHToCmS = 100000.f / 2236.94185f;
+			const float SpeedThreshold = 10.0f * MPHToCmS;
+			const float FortyFiveDegreesThreshold = 0.707f;
+
+			if (AxisWorld.Z > FortyFiveDegreesThreshold)
+			{
+				if (Body.V().SquaredLength() < 1.0f)
+				{
+					AxisWorld = FVec3(0.f, 0.f, 1.f);
+				}
+				else
+				{
+					const FReal Speed = FMath::Abs(Body.V().Length());
+					if (Speed < SpeedThreshold)
+					{
+						AxisWorld = FMath::Lerp(FVec3(0.f, 0.f, 1.f), AxisWorld, Speed / SpeedThreshold);
+					}
+				}
+			}
+
 			FReal Distance = FVec3::DotProduct(WorldSpaceX - T, AxisWorld);
 			if (Distance >= Setting.MaxLength)
 			{
 				// do nothing since the target point is further than the longest extension of the suspension spring
+				Results.Length = Setting.MaxLength;
 				return;
 			}
 
 			FVec3 DX = FVec3::ZeroVector;
 
 			// Require the velocity at the WorldSpaceX position - not the velocity of the particle origin
-			const FVec3 Diff = WorldSpaceX - Body.P();
+			const FVec3 Diff = WorldSpaceX - BodyP;
 			FVec3 ArmVelocity = Body.V() - FVec3::CrossProduct(Diff, Body.W());
 
 			// This constraint is causing considerable harm to the steering effect from the tires, using only the z component for damping
@@ -183,12 +212,15 @@ namespace Chaos
 				}
 			}
 
-			const FVec3 Arm = WorldSpaceX - Body.P();
+			const FVec3 Arm = WorldSpaceX - BodyP;
 
 			const FVec3 DP = Body.InvM() * DX;
 			const FVec3 DR = Body.InvI() * FVec3::CrossProduct(Arm, DX);
 			Body.ApplyTransformDelta(DP, DR);
 			Body.UpdateRotationDependentState();
+
+			Results.NetPushOut += DX;
+			Results.Length = Distance;
 		}
 	}
 	

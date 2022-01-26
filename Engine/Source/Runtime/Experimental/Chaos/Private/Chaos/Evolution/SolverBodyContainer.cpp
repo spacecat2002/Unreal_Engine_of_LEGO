@@ -4,37 +4,6 @@
 
 namespace Chaos
 {
-	void FSolverBodyAdapter::GatherInput()
-	{
-		if (Particle.IsValid())
-		{
-			FRigidTransform3 CoMTransform = FParticleUtilitiesPQ::GetCoMWorldTransform(Particle);
-			SolverBody.SetP(CoMTransform.GetLocation());
-			SolverBody.SetQ(CoMTransform.GetRotation());
-			SolverBody.SetV(Particle->V());
-			SolverBody.SetW(Particle->W());
-			SolverBody.SetCoM(Particle->CenterOfMass());
-			SolverBody.SetRoM(Particle->RotationOfMass());
-
-			if (Particle->IsDynamic())
-			{
-				FRigidTransform3 PrevCoMTransform = FParticleUtilitiesXR::GetCoMWorldTransform(Particle);
-				SolverBody.SetX(PrevCoMTransform.GetLocation());
-				SolverBody.SetR(PrevCoMTransform.GetRotation());
-
-				SolverBody.SetInvM(Particle->InvM());
-				SolverBody.SetInvILocal(Particle->InvI().GetDiagonal());
-			}
-			else
-			{
-				SolverBody.SetX(SolverBody.P());
-				SolverBody.SetR(SolverBody.Q());
-			}
-
-			SolverBody.UpdateRotationDependentState();
-		}
-	}
-
 	void FSolverBodyAdapter::ScatterOutput()
 	{
 		if (Particle.IsValid())
@@ -42,14 +11,9 @@ namespace Chaos
 			if (SolverBody.IsDynamic())
 			{
 				// Set the particle state
-				FParticleUtilities::SetCoMWorldTransform(Particle, SolverBody.P(), SolverBody.Q());
+				FParticleUtilities::SetCoMWorldTransform(Particle, SolverBody.CorrectedP(), SolverBody.CorrectedQ());
 				Particle->SetV(SolverBody.V());
 				Particle->SetW(SolverBody.W());
-
-				if (SolverBody.HasActiveCollision())
-				{
-					//Particle->AuxilaryValue(*ParticleParameters.Collided) = true;
-				}
 			}
 
 			// Reset SolverBodyIndex cookie every step - it will be reassigned next step
@@ -70,7 +34,7 @@ namespace Chaos
 		// For kinematics we cannot do this because the kinematic may be in multiple islands and 
 		// would require a different index for each island, so we use a local map instead. 
 		int32 ItemIndex = InParticle->SolverBodyIndex();
-
+	
 		if (ItemIndex == INDEX_NONE)
 		{
 			if (InParticle->IsDynamic())
@@ -94,7 +58,7 @@ namespace Chaos
 				}
 			}			
 		}
-
+	
 		check(ItemIndex != INDEX_NONE);
 		return &SolverBodies[ItemIndex].GetSolverBody();
 	}

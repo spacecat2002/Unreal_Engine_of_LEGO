@@ -4,6 +4,7 @@
 
 #include "ChaosModule.h"
 #include "CoreMinimal.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 
 DEFINE_LOG_CATEGORY(LogChaosGeneral);
 DEFINE_LOG_CATEGORY(LogChaosThread);

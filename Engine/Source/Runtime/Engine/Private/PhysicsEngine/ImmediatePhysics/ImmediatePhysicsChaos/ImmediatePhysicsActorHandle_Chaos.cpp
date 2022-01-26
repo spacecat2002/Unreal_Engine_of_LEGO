@@ -188,6 +188,7 @@ namespace ImmediatePhysics_Chaos
 			// as well as the dimension change even though we don't actually change the mass.
 			const bool bInertaScaleIncludeMass = true;
 			FMassProperties MassProperties = BodyUtils::ComputeMassProperties(BodyInstance, Shapes, bContributesToMass, FTransform::Identity, bInertaScaleIncludeMass);
+			MassProperties.RotationOfMass = Chaos::TransformToLocalSpace(MassProperties.InertiaTensor);
 			OutMass = MassProperties.Mass;
 			OutInertia = MassProperties.InertiaTensor.GetDiagonal();
 			OutCoMTransform = FTransform(MassProperties.RotationOfMass, MassProperties.CenterOfMass);
@@ -233,6 +234,7 @@ namespace ImmediatePhysics_Chaos
 		, ParticlePrevRs(InParticlePrevRs)
 	{
 		using namespace Chaos;
+		using FVector3f = FVector;
 
 		const FTransform Transform = FTransform(InTransform.GetRotation(), InTransform.GetTranslation());
 		const FVector Scale = InTransform.GetScale3D();
@@ -282,15 +284,15 @@ namespace ImmediatePhysics_Chaos
 
 				if (auto* Kinematic = ParticleHandle->CastToKinematicParticle())
 				{
-					Kinematic->SetV(FVector::ZeroVector);
-					Kinematic->SetW(FVector::ZeroVector);
+					Kinematic->SetV(FVector3f::ZeroVector);
+					Kinematic->SetW(FVector3f::ZeroVector);
 				}
 
 				auto* Dynamic = ParticleHandle->CastToRigidParticle();
 				if (Dynamic && Dynamic->ObjectState() == EObjectStateType::Dynamic)
 				{
 					FReal MassInv = (Mass > 0.0f) ? 1.0f / Mass : 0.0f;
-					FVector InertiaInv = (Mass > 0.0f) ? Inertia.Reciprocal() : FVector::ZeroVector;
+					FVec3 InertiaInv = (Mass > 0.0f) ? Inertia.Reciprocal() : FVec3::ZeroVector;
 					Dynamic->SetM(Mass);
 					Dynamic->SetInvM(MassInv);
 					Dynamic->SetCenterOfMass(CoMTransform.GetTranslation());
@@ -405,10 +407,9 @@ namespace ImmediatePhysics_Chaos
 		if (ensure(GetIsKinematic()))
 		{
 			FGenericParticleHandle GenericHandle(ParticleHandle);
-			FTransform PreviousTransform(GenericHandle->R(), GenericHandle->X());
 			FTransform ParticleTransform = FParticleUtilities::ActorWorldToParticleWorld(GenericHandle, WorldTM);
 
-			GetKinematicTarget().SetTargetMode(ParticleTransform, PreviousTransform);
+			GetKinematicTarget().SetTargetMode(ParticleTransform);
 		}
 
 	}
@@ -470,7 +471,7 @@ namespace ImmediatePhysics_Chaos
 
 		if (FPBDRigidParticleHandle* Rigid = Handle()->CastToRigidParticle())
 		{
-			Rigid->F() += Force;
+			Rigid->AddForce(Force);
 		}
 	}
 
@@ -480,7 +481,7 @@ namespace ImmediatePhysics_Chaos
 
 		if (FPBDRigidParticleHandle * Rigid = Handle()->CastToRigidParticle())
 		{
-			Rigid->Torque() += Torque;
+			Rigid->AddTorque(Torque);
 		}
 	}
 
@@ -515,7 +516,7 @@ namespace ImmediatePhysics_Chaos
 			}
 			else
 			{
-				Rigid->F() += ApplyDelta;
+				Rigid->Acceleration() += ApplyDelta * Rigid->InvM();
 			}
 		}
 	}
@@ -527,8 +528,9 @@ namespace ImmediatePhysics_Chaos
 		if (FPBDRigidParticleHandle* Rigid = Handle()->CastToRigidParticle())
 		{
 			FVector CoM = FParticleUtilities::GetCoMWorldPosition(Rigid);
-			Rigid->LinearImpulse() += Impulse;
-			Rigid->AngularImpulse() += FVector::CrossProduct(Location - CoM, Impulse);
+			Chaos::FMatrix33 InvInertia = FParticleUtilities::GetWorldInvInertia(Rigid);
+			Rigid->LinearImpulseVelocity() += Impulse * Rigid->InvM();
+			Rigid->AngularImpulseVelocity() += InvInertia * FVector::CrossProduct(Location - CoM, Impulse);
 		}
 	}
 
@@ -627,16 +629,18 @@ namespace ImmediatePhysics_Chaos
 	{
 		using namespace Chaos;
 
+		using FVector3f = FVector;
+
 		FPBDRigidParticleHandle* Dynamic = ParticleHandle->CastToRigidParticle();
 		if(Dynamic && Dynamic->ObjectState() == EObjectStateType::Dynamic)
 		{
-			Chaos::FVec3 NewInertia = FVector::ZeroVector;
+			Chaos::FVec3 NewInertia = FVector3f::ZeroVector;
 			if ((NewInverseInertia.X > SMALL_NUMBER) && (NewInverseInertia.Y > SMALL_NUMBER) && (NewInverseInertia.Z > SMALL_NUMBER))
 			{
-				NewInertia = { 1.0f / NewInverseInertia.X , 1.0f / NewInverseInertia.Y, 1.0f / NewInverseInertia.Z };
+				NewInertia = FVector3f( 1.0f / NewInverseInertia.X , 1.0f / NewInverseInertia.Y, 1.0f / NewInverseInertia.Z );
 			}
 			Dynamic->SetI({ NewInertia.X, NewInertia.Y, NewInertia.Z });
-			Dynamic->SetInvI({ NewInverseInertia.X, NewInverseInertia.Y, NewInverseInertia.Z });
+			Dynamic->SetInvI({ (float)NewInverseInertia.X, (float)NewInverseInertia.Y, (float)NewInverseInertia.Z });
 		}
 	}
 

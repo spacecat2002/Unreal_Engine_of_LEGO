@@ -7,6 +7,7 @@
 #include "Chaos/ConstraintHandle.h"
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/Defines.h"
+#include "Chaos/PBDRigidClusteringAlgo.h"
 #include "Chaos/Particles.h"
 
 namespace Chaos
@@ -176,27 +177,25 @@ namespace Chaos
 	 * @param    Rigidsolver Rigid solver owning the particle handle
 	 * @param    bHasStateChanged Boolean to check before updating the handle state
 	 */
-	FORCEINLINE void UpdateSolverParticlesState(Chaos::FPBDRigidsSolver* RigidSolver, const bool bHasStateChanged)
+	static void UpdateSolverParticlesState(Chaos::FPBDRigidsSolver* RigidSolver, const bool bHasStateChanged)
 	{
 		if (bHasStateChanged)
 		{
 			RigidSolver->GetParticles().UpdateGeometryCollectionViews(true);
 
-			const Chaos::FPBDRigidsSOAs& SolverParticles = RigidSolver->GetParticles();
+			Chaos::FPBDRigidsSOAs& SolverParticles = RigidSolver->GetParticles();
 			auto& Clustering = RigidSolver->GetEvolution()->GetRigidClustering();
 
-			const Chaos::TParticleView<Chaos::FGeometryParticles>& ParticleView =
-				SolverParticles.GetNonDisabledView();
+			FPBDRigidClusteredParticles& ClusteredParticles = SolverParticles.GetClusteredParticles();
 
-			for (Chaos::TParticleIterator<Chaos::FGeometryParticles> It = ParticleView.Begin(), ItEnd = ParticleView.End();
-				It != ItEnd; ++It)
+			for (uint32 ParticleIndex = 0, NumParticles = ClusteredParticles.Size(); ParticleIndex < NumParticles; ++ParticleIndex)
 			{
-				const auto* Clustered = It->Handle()->CastToClustered();
-				if (Clustered && Clustered->ClusterIds().NumChildren)
+				FPBDRigidClusteredParticleHandle* ClusteredHandle = ClusteredParticles.Handle(ParticleIndex);
+				if (ClusteredHandle && ClusteredHandle->ClusterIds().NumChildren && !ClusteredHandle->Disabled())
 				{
-					Chaos::FPBDRigidParticleHandle* RigidHandle = It->Handle()->CastToRigidParticle();
+					Chaos::FPBDRigidParticleHandle* RigidHandle = ClusteredHandle->CastToRigidParticle();
 					check(RigidHandle);
-					Clustering.UpdateKinematicProperties(RigidHandle);
+					UpdateKinematicProperties(RigidHandle, Clustering.GetChildrenMap(), *RigidSolver->GetEvolution());
 				}
 			}
 		}
@@ -221,15 +220,8 @@ namespace Chaos
 
 			for (Chaos::FPBDRigidParticleHandle* Handle : Activated)
 			{
-				if (!RigidSolver->GetProxies(Handle))
-				{
-					const TSet<IPhysicsProxyBase*>* ParentProxies = RigidSolver->GetProxies(Iter.Key);
-					if (ensure(ParentProxies))
-					{
-						for (IPhysicsProxyBase* ParentProxy : *ParentProxies)
-							RigidSolver->AddParticleToProxy(Handle, ParentProxy);
-					}
-				}
+				IPhysicsProxyBase* ParentProxy = Iter.Key->PhysicsProxy();
+				Handle->SetPhysicsProxy(ParentProxy);
 			}
 		}
 	}
@@ -625,7 +617,7 @@ namespace Chaos
 						{
 							RigidHandle->SetObjectStateLowLevel(Chaos::EObjectStateType::Dynamic);
 						}
-						RigidHandle->F() += ResultsView[Index.Result];
+						RigidHandle->AddForce(ResultsView[Index.Result]);
 					}
 				}
 			}
@@ -644,7 +636,7 @@ namespace Chaos
 						{
 							RigidHandle->SetObjectStateLowLevel(Chaos::EObjectStateType::Dynamic);
 						}
-						RigidHandle->Torque() += ResultsView[Index.Result];
+						RigidHandle->AddTorque(ResultsView[Index.Result]);
 					}
 				}
 			}

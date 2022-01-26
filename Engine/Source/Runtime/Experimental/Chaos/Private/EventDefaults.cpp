@@ -13,9 +13,49 @@
 #include "PhysicsProxy/GeometryCollectionPhysicsProxy.h"
 #include "PhysicsProxy/PerSolverFieldSystem.h"
 #include "ChaosSolversModule.h"
+#include "Chaos/CollisionFilterData.h"
 
 namespace Chaos
 {
+	/**
+	 * Resolves a material from a shape and a collision.
+	 * Either both shapes are simple primitives, or one is simple and the other is a heightfield or trimesh.
+	 * In the case of the trimesh/heightfield the contact points should have the face index of the hit face
+	 * which the geometry can translate into a material index.
+	 * @param InShape - The shape to resolve a material for
+	 * @param InConstraint - The collision that the shape is a part of
+	 * @see FTriangleMeshImplicitObject::ContactManifoldImp
+	 * @see FHeightField::ContactManifoldImp
+	 */
+	FMaterialHandle ResolveMaterial(const FPerShapeData* InShape, const FPBDCollisionConstraint& InConstraint)
+	{
+		if(InShape)
+		{
+			const TArray<FMaterialHandle>& MaterialArray = InShape->GetMaterials();
+
+			// Simple case, one material. All primitives (Box, convex, sphere etc.) should only have one material.
+			// Heightfield and Trimesh can have one or more and will require data from the contacts to resolve.
+			if(MaterialArray.Num() == 1)
+			{
+				return MaterialArray[0];
+			}
+			else
+			{
+				// Check the manifold points, return the first valid material based on the face that the contact hit.
+				for(const FManifoldPoint& Point : InConstraint.GetManifoldPoints())
+				{
+					const int32 PotentialMaterialIndex = InShape->GetGeometry()->GetMaterialIndex(Point.ContactPoint.FaceIndex);
+					if(MaterialArray.IsValidIndex(PotentialMaterialIndex))
+					{
+						return MaterialArray[PotentialMaterialIndex];
+					}
+				}
+			}
+		}
+
+		// No valid material
+		return {};
+	}
 
 	void FEventDefaults::RegisterSystemEvents(FEventManager& EventManager)
 	{
@@ -29,9 +69,12 @@ namespace Chaos
 	void FEventDefaults::RegisterCollisionEvent(FEventManager& EventManager)
 	{
 		EventManager.template RegisterEvent<FCollisionEventData>(EEventType::Collision, []
-		(const Chaos::FPBDRigidsSolver* Solver, FCollisionEventData& CollisionEventData)
+		(const Chaos::FPBDRigidsSolver* Solver, FCollisionEventData& CollisionEventData, bool bResetData)
 		{
 			check(Solver);
+
+			EnsureIsInPhysicsThreadContext();
+
 			SCOPE_CYCLE_COUNTER(STAT_GatherCollisionEvent);
 
 			// #todo: This isn't working - SolverActor parameters are set on a solver but it is currently a different solver that is simulating!!
@@ -41,12 +84,14 @@ namespace Chaos
 			FCollisionDataArray& AllCollisionsDataArray = CollisionEventData.CollisionData.AllCollisionsArray;
 			TMap<IPhysicsProxyBase*, TArray<int32>>& AllCollisionsIndicesByPhysicsProxy = CollisionEventData.PhysicsProxyToCollisionIndices.PhysicsProxyToIndicesMap;
 
-			AllCollisionsDataArray.Reset();
-			AllCollisionsIndicesByPhysicsProxy.Reset();
-
+			if (bResetData)
+			{
+				AllCollisionsDataArray.Reset();
+				AllCollisionsIndicesByPhysicsProxy.Reset();
+			}
 			CollisionEventData.CollisionData.TimeCreated = Solver->MTime;
 			CollisionEventData.PhysicsProxyToCollisionIndices.TimeCreated = Solver->MTime;
-
+			
 			const auto* Evolution = Solver->GetEvolution();
 
 			const FPBDCollisionConstraints& CollisionRule = Evolution->GetCollisionConstraints();
@@ -57,7 +102,7 @@ namespace Chaos
 #if TODO_REIMPLEMENT_RIGID_CLUSTERING
 			const Chaos::FPBDRigidsSolver::FClusteringType::FClusterMap& ParentToChildrenMap = Evolution->GetRigidClustering().GetChildrenMap();
 #endif
-			const typename Chaos::TPBDRigidClustering<typename FPBDRigidsSolver::FPBDRigidsEvolution, FPBDCollisionConstraints>::FClusterMap& ParentToChildrenMap = Evolution->GetRigidClustering().GetChildrenMap();
+			const typename Chaos::FRigidClustering::FClusterMap& ParentToChildrenMap = Evolution->GetRigidClustering().GetChildrenMap();
 
 			if(CollisionRule.NumConstraints() > 0)
 			{
@@ -68,43 +113,51 @@ namespace Chaos
 				const FReal MinDeltaVelocityForHitEvents = FChaosSolversModule::GetModule()->GetSettingsProvider().GetMinDeltaVelocityForHitEvents();
 				for (const Chaos::FPBDCollisionConstraintHandle * ContactHandle : CollisionRule.GetConstConstraintHandles())
 				{
-					const FPBDCollisionConstraint& Constraint = ContactHandle->GetContact();
-					
-					// Since Clustered GCs can be unioned the particleIndex representing the union 
-					// is not associated with a PhysicsProxy
-					if (const TSet<IPhysicsProxyBase*>* Proxies = Solver->GetProxies(Constraint.Particle[0]->Handle()))
+					if (NumValidCollisions >= CollisionRule.NumConstraints())
 					{
-						for (IPhysicsProxyBase* Proxy : *Proxies)
+						break;
+					}
+
+					const FPBDCollisionConstraint& Constraint = ContactHandle->GetContact();
+
+					if (ensure(!Constraint.AccumulatedImpulse.ContainsNaN() && FMath::IsFinite(Constraint.GetPhi())))
+					{
+						FGeometryParticleHandle* Particle0 = Constraint.Particle[0];
+						FGeometryParticleHandle* Particle1 = Constraint.Particle[1];
+						FKinematicGeometryParticleHandle* Body0 = Particle0->CastToKinematicParticle();
+
+						// presently when a rigidbody or kinematic hits static geometry then Body1 is null
+						FKinematicGeometryParticleHandle* Body1 = Particle1->CastToKinematicParticle();
+
+						const FImplicitObject* Implicit0 = Constraint.Manifold.Implicit[0];
+						const FImplicitObject* Implicit1 = Constraint.Manifold.Implicit[1];
+
+						const FPerShapeData* Shape0 = Particle0->GetImplicitShape(Implicit0);
+						const FPerShapeData* Shape1 = Particle1->GetImplicitShape(Implicit1);
+
+						// If we don't have a filter - allow the notify, otherwise obey the filter flag
+						const bool bFilter0Notify = Shape0 ? Shape0->GetSimData().HasFlag(EFilterFlags::ContactNotify) : true;
+						const bool bFilter1Notify = Shape1 ? Shape1->GetSimData().HasFlag(EFilterFlags::ContactNotify) : true;
+
+						if(!bFilter0Notify && !bFilter1Notify)
 						{
-							if (NumValidCollisions >= CollisionRule.NumConstraints())
+							// No need to notify - engine didn't request notifications for either shape.
+							continue;
+						}
+
+						FKinematicGeometryParticleHandle* Primary = Body0 ? Body0 : Body1;
+						FKinematicGeometryParticleHandle* Secondary = Body0 ? Body1 : Body0;
+
+						if (!Constraint.AccumulatedImpulse.IsZero() && Primary)
+						{
+							if (ensure(!Constraint.GetLocation().ContainsNaN() &&
+								!Constraint.GetNormal().ContainsNaN()) &&
+								!Primary->V().ContainsNaN() &&
+								!Primary->W().ContainsNaN() &&
+								(Secondary == nullptr || ((!Secondary->V().ContainsNaN()) && !Secondary->W().ContainsNaN())))
 							{
-								break;
-							}
-
-							if (Proxy != nullptr)
-							{
-								if (ensure(!Constraint.AccumulatedImpulse.ContainsNaN() && FMath::IsFinite(Constraint.GetPhi())))
-								{
-									FGeometryParticleHandle* Particle0 = Constraint.Particle[0];
-									FGeometryParticleHandle* Particle1 = Constraint.Particle[1];
-									FKinematicGeometryParticleHandle* Body0 = Particle0->CastToKinematicParticle();
-
-									// presently when a rigidbody or kinematic hits static geometry then Body1 is null
-									FKinematicGeometryParticleHandle* Body1 = Particle1->CastToKinematicParticle();
-
-									if (!Constraint.AccumulatedImpulse.IsZero() && Body0)
-									{
-										if (ensure(!Constraint.GetLocation().ContainsNaN() &&
-											!Constraint.GetNormal().ContainsNaN()) &&
-											!Body0->V().ContainsNaN() &&
-											!Body0->W().ContainsNaN() &&
-											(Body1 == nullptr || ((!Body1->V().ContainsNaN()) && !Body1->W().ContainsNaN())))
-										{
-											ValidCollisionHandles[NumValidCollisions] = ContactHandle;
-											NumValidCollisions++;
-										}
-									}
-								}
+								ValidCollisionHandles[NumValidCollisions] = ContactHandle;
+								NumValidCollisions++;
 							}
 						}
 					}
@@ -121,19 +174,26 @@ namespace Chaos
 						FGeometryParticleHandle* Particle0 = Constraint.Particle[0];
 						FGeometryParticleHandle* Particle1 = Constraint.Particle[1];
 
-						const TSet<IPhysicsProxyBase*>* ParticleProxySet0 = Solver->GetProxies(Particle0->Handle());
-						const TSet<IPhysicsProxyBase*>* ParticleProxySet1 = Solver->GetProxies(Particle1->Handle());
-
-						IPhysicsProxyBase* ParticleFirstProxy0 = (ParticleProxySet0 && ParticleProxySet0->Num()) ? *ParticleProxySet0->begin() : nullptr; // @todo(chaos) : Iterate all proxies ?
-						IPhysicsProxyBase* ParticleFirstProxy1 = (ParticleProxySet1 && ParticleProxySet1->Num()) ? *ParticleProxySet1->begin() : nullptr; // @todo(chaos) : Iterate all proxies ?					
-				
 						FCollidingData Data;
 						Data.Location = Constraint.GetLocation();
 						Data.AccumulatedImpulse = Constraint.AccumulatedImpulse;
 						Data.Normal = Constraint.GetNormal();
 						Data.PenetrationDepth = Constraint.GetPhi();
-						Data.ParticleProxy = ParticleFirstProxy0;
-						Data.LevelsetProxy = ParticleFirstProxy1;
+							
+						Data.Proxy1 = Particle0 ? Particle0->PhysicsProxy() : nullptr;
+						Data.Proxy2 = Particle1 ? Particle1->PhysicsProxy() : nullptr;
+
+						const FPerShapeData* Shape0 = Particle0 ? Particle0->GetImplicitShape(Constraint.GetImplicit0()) : nullptr;
+						const FPerShapeData* Shape1 = Particle1 ? Particle1->GetImplicitShape(Constraint.GetImplicit1()) : nullptr;
+
+						Data.Mat1 = ResolveMaterial(Shape0, Constraint);
+						Data.Mat2 = ResolveMaterial(Shape1, Constraint);
+
+						// Collision constraints require both proxies are valid. If either is not, we needn't record the collision event.
+						if (Data.Proxy1 == nullptr || Data.Proxy2 == nullptr)
+						{
+							continue;
+						}
 
 						if (FPBDRigidParticleHandle * Rigid0 = Particle0->CastToRigidParticle())
 						{
@@ -162,11 +222,9 @@ namespace Chaos
 							Data.Mass2 = PBDRigid1->M();
 						}
 
-						IPhysicsProxyBase* const PhysicsProxy = Data.ParticleProxy;
-						IPhysicsProxyBase* const OtherPhysicsProxy = Data.LevelsetProxy;
-						//Data.Material1 = nullptr; // #todo: provide UPhysicalMaterial for Particle
-						//Data.Material2 = nullptr; // #todo: provide UPhysicalMaterial for Levelset
-
+						IPhysicsProxyBase* const PhysicsProxy = Particle0->PhysicsProxy();
+						IPhysicsProxyBase* const OtherPhysicsProxy = Particle1->PhysicsProxy();
+							
 						const FSolverCollisionEventFilter* SolverCollisionEventFilter = Solver->GetEventFilters()->GetCollisionFilter();
 						if (!SolverCollisionEventFilter->Enabled() || SolverCollisionEventFilter->Pass(Data))
 
@@ -210,158 +268,180 @@ namespace Chaos
 	void FEventDefaults::RegisterBreakingEvent(FEventManager& EventManager)
 	{
 		EventManager.template RegisterEvent<FBreakingEventData>(EEventType::Breaking, []
-		(const Chaos::FPBDRigidsSolver* Solver, FBreakingEventData& BreakingEventData)
+		(const Chaos::FPBDRigidsSolver* Solver, FBreakingEventData& BreakingEventData, bool bResetData)
+		{
+			check(Solver);
+
+			EnsureIsInPhysicsThreadContext();
+
+			SCOPE_CYCLE_COUNTER(STAT_GatherBreakingEvent);
+
+			// #todo: This isn't working - SolverActor parameters are set on a solver but it is currently a different solver that is simulating!!
+			if (!Solver->GetEventFilters()->IsBreakingEventEnabled())
+				return;
+
+			FBreakingDataArray& AllBreakingDataArray = BreakingEventData.BreakingData.AllBreakingsArray;
+			TMap<IPhysicsProxyBase*, TArray<int32>>& AllBreakingIndicesByPhysicsProxy = BreakingEventData.PhysicsProxyToBreakingIndices.PhysicsProxyToIndicesMap;
+
+			if (bResetData)
 			{
-				check(Solver);
-				ensure(IsInPhysicsThreadContext());
+				AllBreakingDataArray.Reset();
+				AllBreakingIndicesByPhysicsProxy.Reset();
+			}
+			BreakingEventData.BreakingData.TimeCreated = Solver->MTime;
 
-				SCOPE_CYCLE_COUNTER(STAT_GatherBreakingEvent);
-
-				// #todo: This isn't working - SolverActor parameters are set on a solver but it is currently a different solver that is simulating!!
-				if (!Solver->GetEventFilters()->IsBreakingEventEnabled())
-					return;
-
-				FBreakingDataArray& AllBreakingDataArray = BreakingEventData.BreakingData.AllBreakingsArray;
-				TMap<IPhysicsProxyBase*, TArray<int32>>& AllBreakingIndicesByPhysicsProxy = BreakingEventData.PhysicsProxyToBreakingIndices.PhysicsProxyToIndicesMap;
-
-				if (BreakingEventData.BreakingData.TimeCreated != Solver->MTime)
-				{
-					AllBreakingDataArray.Reset();
-					AllBreakingIndicesByPhysicsProxy.Reset();
-					BreakingEventData.BreakingData.TimeCreated = Solver->MTime;
-				}
-
-				const auto* Evolution = Solver->GetEvolution();
-				const FPBDRigidParticles& Particles = Evolution->GetParticles().GetDynamicParticles();
-				const TArray<FBreakingData>& AllBreakingsArray = Evolution->GetRigidClustering().GetAllClusterBreakings();
-				const TArrayCollectionArray<ClusterId>& ClusterIdsArray = Evolution->GetRigidClustering().GetClusterIdsArray();
+			const auto* Evolution = Solver->GetEvolution();
+			const FPBDRigidParticles& Particles = Evolution->GetParticles().GetDynamicParticles();
+			const TArray<FBreakingData>& AllBreakingsArray = Evolution->GetRigidClustering().GetAllClusterBreakings();
+			const TArrayCollectionArray<ClusterId>& ClusterIdsArray = Evolution->GetRigidClustering().GetClusterIdsArray();
 
 #if TODO_REIMPLEMENT_RIGID_CLUSTERING
-				const Chaos::FPBDRigidsSolver::FClusteringType::FClusterMap& ParentToChildrenMap = Evolution->GetRigidClustering().GetChildrenMap();
+			const Chaos::FPBDRigidsSolver::FClusteringType::FClusterMap& ParentToChildrenMap = Evolution->GetRigidClustering().GetChildrenMap();
 #endif
+			
+			if (AllBreakingsArray.Num() > 0)
+			{
+				for (int32 Idx = 0; Idx < AllBreakingsArray.Num(); ++Idx)
+				{					
+					FBreakingData BreakingData;
+					BreakingData.Location = AllBreakingsArray[Idx].Location;
+					BreakingData.Velocity = AllBreakingsArray[Idx].Velocity;
+					BreakingData.AngularVelocity = AllBreakingsArray[Idx].AngularVelocity;
+					BreakingData.Mass = AllBreakingsArray[Idx].Mass;
+					BreakingData.Proxy = AllBreakingsArray[Idx].Proxy;
+					BreakingData.BoundingBox = AllBreakingsArray[Idx].BoundingBox;
+					BreakingData.TransformGroupIndex = AllBreakingsArray[Idx].TransformGroupIndex;
 
-				if (AllBreakingsArray.Num() > 0)
-				{
-					for (int32 Idx = 0; Idx < AllBreakingsArray.Num(); ++Idx)
+					const FSolverBreakingEventFilter* SolverBreakingEventFilter = Solver->GetEventFilters()->GetBreakingFilter();
+					if (!SolverBreakingEventFilter->Enabled() || SolverBreakingEventFilter->Pass(BreakingData))
 					{
-						FBreakingData BreakingData;
-						BreakingData.Location = AllBreakingsArray[Idx].Location;
-						BreakingData.Velocity = AllBreakingsArray[Idx].Velocity;
-						BreakingData.AngularVelocity = AllBreakingsArray[Idx].AngularVelocity;
-						BreakingData.Mass = AllBreakingsArray[Idx].Mass;
-						BreakingData.Proxy = AllBreakingsArray[Idx].Proxy;
-						BreakingData.BoundingBox = AllBreakingsArray[Idx].BoundingBox;
-						BreakingData.TransformGroupIndex = AllBreakingsArray[Idx].TransformGroupIndex;
+						int32 NewIdx = AllBreakingDataArray.Add(FBreakingData());
+						FBreakingData& BreakingDataArrayItem = AllBreakingDataArray[NewIdx];
+						BreakingDataArrayItem = BreakingData;
 
-						const FSolverBreakingEventFilter* SolverBreakingEventFilter = Solver->GetEventFilters()->GetBreakingFilter();
-						if (!SolverBreakingEventFilter->Enabled() || SolverBreakingEventFilter->Pass(BreakingData))
+						// Add to AllBreakingIndicesByPhysicsProxy
+						AllBreakingIndicesByPhysicsProxy.FindOrAdd(BreakingData.Proxy).Add(FEventManager::EncodeCollisionIndex(NewIdx, false));
+
+#if 0 // #todo
+						// If AllBreakingsArray[Idx].ParticleIndex is a cluster store an index for a mesh in this cluster
+						if (ClusterIdsArray[AllBreakingsArray[Idx].ParticleIndex].NumChildren > 0)
 						{
-							int32 NewIdx = AllBreakingDataArray.Add(FBreakingData());
-							FBreakingData& BreakingDataArrayItem = AllBreakingDataArray[NewIdx];
-							BreakingDataArrayItem = BreakingData;
-
-							// Add to AllBreakingIndicesByPhysicsProxy
-							AllBreakingIndicesByPhysicsProxy.FindOrAdd(BreakingData.Proxy).Add(FEventManager::EncodeCollisionIndex(NewIdx, false));
+							int32 ParticleIndexMesh = GetParticleIndexMesh(ParentToChildrenMap, AllBreakingsArray[Idx].ParticleIndex);
+							ensure(ParticleIndexMesh != INDEX_NONE);
+							BreakingDataArrayItem.ParticleIndexMesh = ParticleIndexMesh;
 						}
-					}
+#endif
+					}					
 				}
-
-			});
+			}
+		
+		});
 	}
 
-	
 	void FEventDefaults::RegisterTrailingEvent(FEventManager& EventManager)
 	{
 		EventManager.template RegisterEvent<FTrailingEventData>(EEventType::Trailing, []
-		(const Chaos::FPBDRigidsSolver* Solver, FTrailingEventData& TrailingEventData)
-			{
-				check(Solver);
-				ensure(IsInPhysicsThreadContext());
+		(const Chaos::FPBDRigidsSolver* Solver, FTrailingEventData& TrailingEventData, bool bResetData)
+		{
+			check(Solver);
 
-				// #todo: This isn't working - SolverActor parameters are set on a solver but it is currently a different solver that is simulating!!
-				if (!Solver->GetEventFilters()->IsTrailingEventEnabled())
-					return;
+			EnsureIsInPhysicsThreadContext();
 
-				const auto* Evolution = Solver->GetEvolution();
+			// #todo: This isn't working - SolverActor parameters are set on a solver but it is currently a different solver that is simulating!!
+			if (!Solver->GetEventFilters()->IsTrailingEventEnabled())
+				return;
 
-				const TArrayCollectionArray<ClusterId>& ClusterIdsArray = Evolution->GetRigidClustering().GetClusterIdsArray();
+			const auto* Evolution = Solver->GetEvolution();
+
+			const TArrayCollectionArray<ClusterId>& ClusterIdsArray = Evolution->GetRigidClustering().GetClusterIdsArray();
 #if TODO_REIMPLEMENT_RIGID_CLUSTERING
-				const TMap<uint32, TUniquePtr<TArray<uint32>>>& ParentToChildrenMap = Evolution->GetRigidClustering().GetChildrenMap();
+			const TMap<uint32, TUniquePtr<TArray<uint32>>>& ParentToChildrenMap = Evolution->GetRigidClustering().GetChildrenMap();
 #endif
-				FTrailingDataArray& AllTrailingsDataArray = TrailingEventData.TrailingData.AllTrailingsArray;
-				TMap<IPhysicsProxyBase*, TArray<int32>>& AllTrailingIndicesByPhysicsProxy = TrailingEventData.PhysicsProxyToTrailingIndices.PhysicsProxyToIndicesMap;
+			FTrailingDataArray& AllTrailingsDataArray = TrailingEventData.TrailingData.AllTrailingsArray;
+			TMap<IPhysicsProxyBase*, TArray<int32>>& AllTrailingIndicesByPhysicsProxy = TrailingEventData.PhysicsProxyToTrailingIndices.PhysicsProxyToIndicesMap;
 
-				if (TrailingEventData.TrailingData.TimeCreated != Solver->MTime)
+			if (bResetData)
+			{
+				AllTrailingsDataArray.Reset();
+				AllTrailingIndicesByPhysicsProxy.Reset();
+			}
+			TrailingEventData.TrailingData.TimeCreated = Solver->MTime;
+			TrailingEventData.PhysicsProxyToTrailingIndices.TimeCreated = Solver->MTime;
+
+			const TArray<TPBDRigidParticleHandle<Chaos::FReal, 3>*>& ActiveParticlesArray = Evolution->GetParticles().GetActiveParticlesArray();
+
+			for (TPBDRigidParticleHandle<Chaos::FReal, 3>* ActiveParticle : ActiveParticlesArray)
+			{
+
+				if (ensure(FMath::IsFinite(ActiveParticle->InvM())))
 				{
-					AllTrailingsDataArray.Reset();
-					AllTrailingIndicesByPhysicsProxy.Reset();
-
-					TrailingEventData.TrailingData.TimeCreated = Solver->MTime;
-					TrailingEventData.PhysicsProxyToTrailingIndices.TimeCreated = Solver->MTime;
-				}
-
-				const TArray<TPBDRigidParticleHandle<Chaos::FReal, 3>*>& ActiveParticlesArray = Evolution->GetParticles().GetActiveParticlesArray();
-
-				for (TPBDRigidParticleHandle<Chaos::FReal, 3>*ActiveParticle : ActiveParticlesArray)
-				{
-
-					if (ensure(FMath::IsFinite(ActiveParticle->InvM())))
+					if (ActiveParticle->InvM() != 0.f &&
+						ActiveParticle->Geometry() &&
+						ActiveParticle->Geometry()->HasBoundingBox())
 					{
-						if (ActiveParticle->InvM() != 0.f &&
-							ActiveParticle->Geometry() &&
-							ActiveParticle->Geometry()->HasBoundingBox())
+						if (ensure(!ActiveParticle->X().ContainsNaN() &&
+							!ActiveParticle->V().ContainsNaN() &&
+							!ActiveParticle->W().ContainsNaN() &&
+							FMath::IsFinite(ActiveParticle->M())))
 						{
-							if (ensure(!ActiveParticle->X().ContainsNaN() &&
-								!ActiveParticle->V().ContainsNaN() &&
-								!ActiveParticle->W().ContainsNaN() &&
-								FMath::IsFinite(ActiveParticle->M())))
+							FTrailingData TrailingData;
+							TrailingData.Location = ActiveParticle->X();
+							TrailingData.Velocity = ActiveParticle->V();
+							TrailingData.AngularVelocity = ActiveParticle->W();
+							TrailingData.Mass = ActiveParticle->M();
+							TrailingData.Proxy = ActiveParticle->PhysicsProxy();
+							
+							if (ActiveParticle->Geometry()->HasBoundingBox())
 							{
-								FTrailingData TrailingData;
-								TrailingData.Location = ActiveParticle->X();
-								TrailingData.Velocity = ActiveParticle->V();
-								TrailingData.AngularVelocity = ActiveParticle->W();
-								TrailingData.Mass = ActiveParticle->M();
-								TrailingData.Proxy = ActiveParticle->PhysicsProxy();
+								TrailingData.BoundingBox = ActiveParticle->Geometry()->BoundingBox();
+							}
 
-								if (ActiveParticle->Geometry()->HasBoundingBox())
+							if (TrailingData.Proxy->GetType() == EPhysicsProxyType::GeometryCollectionType)
+							{
+								FGeometryCollectionPhysicsProxy* ConcreteProxy = static_cast<FGeometryCollectionPhysicsProxy*>(TrailingData.Proxy);
+								TrailingData.TransformGroupIndex = ConcreteProxy->GetTransformGroupIndexFromHandle(ActiveParticle);
+							}
+							else
+							{
+								TrailingData.TransformGroupIndex = INDEX_NONE;
+							}
+
+							const FSolverTrailingEventFilter* SolverTrailingEventFilter = Solver->GetEventFilters()->GetTrailingFilter();
+							if (!SolverTrailingEventFilter->Enabled() || SolverTrailingEventFilter->Pass(TrailingData))
+							{
+								int32 NewIdx = AllTrailingsDataArray.Add(FTrailingData());
+								FTrailingData& TrailingDataArrayItem = AllTrailingsDataArray[NewIdx];
+								TrailingDataArrayItem = TrailingData;
+
+								// Add to AllTrailingIndicesByPhysicsProxy
+								AllTrailingIndicesByPhysicsProxy.FindOrAdd(TrailingData.Proxy).Add(FEventManager::EncodeCollisionIndex(NewIdx, false));
+
+								// If IdxParticle is a cluster store an index for a mesh in this cluster
+#if 0
+								if (ClusterIdsArray[IdxParticle].NumChildren > 0)
 								{
-									TrailingData.BoundingBox = ActiveParticle->Geometry()->BoundingBox();
+									int32 ParticleIndexMesh = GetParticleIndexMesh(ParentToChildrenMap, IdxParticle);
+									ensure(ParticleIndexMesh != INDEX_NONE);
+									TrailingDataArrayItem.ParticleIndexMesh = ParticleIndexMesh;
 								}
-
-								if (TrailingData.Proxy->GetType() == EPhysicsProxyType::GeometryCollectionType)
-								{
-									FGeometryCollectionPhysicsProxy* ConcreteProxy = static_cast<FGeometryCollectionPhysicsProxy*>(TrailingData.Proxy);
-									TrailingData.TransformGroupIndex = ConcreteProxy->GetTransformGroupIndexFromHandle(ActiveParticle);
-								}
-								else
-								{
-									TrailingData.TransformGroupIndex = INDEX_NONE;
-								}
-
-								const FSolverTrailingEventFilter* SolverTrailingEventFilter = Solver->GetEventFilters()->GetTrailingFilter();
-								if (!SolverTrailingEventFilter->Enabled() || SolverTrailingEventFilter->Pass(TrailingData))
-								{
-									int32 NewIdx = AllTrailingsDataArray.Add(FTrailingData());
-									FTrailingData& TrailingDataArrayItem = AllTrailingsDataArray[NewIdx];
-									TrailingDataArrayItem = TrailingData;
-
-									// Add to AllTrailingIndicesByPhysicsProxy
-									AllTrailingIndicesByPhysicsProxy.FindOrAdd(TrailingData.Proxy).Add(FEventManager::EncodeCollisionIndex(NewIdx, false));
-
-								}
+#endif
 							}
 						}
 					}
 				}
-			});
+			}
+		});
 	}
 
 	void FEventDefaults::RegisterSleepingEvent(FEventManager& EventManager)
 	{
 		EventManager.template RegisterEvent<FSleepingEventData>(EEventType::Sleeping, []
-		(const Chaos::FPBDRigidsSolver* Solver, FSleepingEventData& SleepingEventData)
+		(const Chaos::FPBDRigidsSolver* Solver, FSleepingEventData& SleepingEventData, bool bResetData)
 		{
 			check(Solver);
+
+			EnsureIsInPhysicsThreadContext();
+
 			SCOPE_CYCLE_COUNTER(STAT_GatherSleepingEvent);
 
 			const auto* Evolution = Solver->GetEvolution();
@@ -377,19 +457,13 @@ namespace Chaos
 			{
 				if(SleepData.Particle)
 				{
-					if (const TSet<IPhysicsProxyBase*>* Proxies = Solver->GetProxies(SleepData.Particle))
+					FGeometryParticle* Particle = SleepData.Particle->GTGeometryParticle();
+					if (Particle && SleepData.Particle->PhysicsProxy())
 					{
-						for (IPhysicsProxyBase* Proxy : *Proxies)
-						{
-							FGeometryParticle* Particle = SleepData.Particle->GTGeometryParticle();
-							if (Particle != nullptr && Proxy != nullptr)
-							{
-								int32 NewIdx = EventSleepDataArray.Add(FSleepingData());
-								FSleepingData& SleepingDataArrayItem = EventSleepDataArray[NewIdx];
-								SleepingDataArrayItem.Particle = Particle;
-								SleepingDataArrayItem.Sleeping = SleepData.Sleeping;
-							}
-						}
+						int32 NewIdx = EventSleepDataArray.Add(FSleepingData());
+						FSleepingData& SleepingDataArrayItem = EventSleepDataArray[NewIdx];
+						SleepingDataArrayItem.Proxy = SleepData.Particle->PhysicsProxy();
+						SleepingDataArrayItem.Sleeping = SleepData.Sleeping;
 					}
 				}
 			}
@@ -404,24 +478,23 @@ namespace Chaos
 	void FEventDefaults::RegisterRemovalEvent(FEventManager& EventManager)
 	{
 		EventManager.template RegisterEvent<FRemovalEventData>(EEventType::Removal, []
-		(const Chaos::FPBDRigidsSolver* Solver, FRemovalEventData& RemovalEventData)
+		(const Chaos::FPBDRigidsSolver* Solver, FRemovalEventData& RemovalEventData, bool bResetData)
 			{
 				check(Solver);
-				ensure(IsInPhysicsThreadContext());
-
-
+				EnsureIsInPhysicsThreadContext();
+				
 				FRemovalDataArray& AllRemovalDataArray = RemovalEventData.RemovalData.AllRemovalArray;
 				TMap<IPhysicsProxyBase*, TArray<int32>>& AllRemovalIndicesByPhysicsProxy = RemovalEventData.PhysicsProxyToRemovalIndices.PhysicsProxyToIndicesMap;
 
-				if (RemovalEventData.RemovalData.TimeCreated != Solver->MTime)
+				if (bResetData)
 				{
 					AllRemovalDataArray.Reset();
 					AllRemovalIndicesByPhysicsProxy.Reset();
-					RemovalEventData.RemovalData.TimeCreated = Solver->MTime;
 				}
+				RemovalEventData.RemovalData.TimeCreated = Solver->MTime;
 
 				const TArray<FRemovalData>& AllRemovalsArray = Solver->GetEvolution()->GetAllRemovals();
-
+				
 				for (int32 Idx = 0; Idx < AllRemovalsArray.Num(); ++Idx)
 				{
 					FRemovalData RemovalData;
@@ -436,7 +509,7 @@ namespace Chaos
 
 					AllRemovalIndicesByPhysicsProxy.FindOrAdd(RemovalData.Proxy).Add(FEventManager::EncodeCollisionIndex(NewIdx, false));
 				}
-
+			
 			});
 	}
 }

@@ -4,7 +4,7 @@
 #include "Chaos/Box.h"
 #include "GeometryParticlesfwd.h"
 #include "ChaosCheck.h"
-
+#include "ChaosDebugDrawDeclares.h"
 
 namespace Chaos
 {
@@ -16,7 +16,7 @@ struct CHAOS_API FQueryFastData
 		, InvDir( (InDir[0] == 0) ? 0 : 1 / Dir[0], (InDir[1] == 0) ? 0 : 1 / Dir[1], (InDir[2] == 0) ? 0 : 1 / Dir[2])
 		, bParallel{ InDir[0] == 0, InDir[1] == 0, InDir[2] == 0 }
 	{
-		CHAOS_ENSURE(InLength);
+		CHAOS_ENSURE(InLength != 0.0f);
 		SetLength(InLength);
 	}
 
@@ -39,7 +39,7 @@ struct CHAOS_API FQueryFastData
 	{
 		CurrentLength = InLength;
 
-		if(InLength)
+		if(InLength != 0.0f)
 		{
 			InvCurrentLength = 1 / InLength;
 		}
@@ -99,7 +99,7 @@ struct CHAOS_API TSpatialVisitorData
 	TPayloadType Payload;
 	TSpatialVisitorData(const TPayloadType& InPayload, const bool bInHasBounds = false, const FAABB3& InBounds = FAABB3::ZeroAABB())
 		: Payload(InPayload)
-#if !(UE_BUILD_TEST || UE_BUILD_SHIPPING)
+#if CHAOS_DEBUG_DRAW
 		, bHasBounds(bInHasBounds)
 		, Bounds(InBounds)
 	{ }
@@ -145,6 +145,9 @@ public:
 	virtual const void* GetSimData() const { return nullptr; }
 
 	virtual bool ShouldIgnore(const TSpatialVisitorData<TPayloadType>& Instance) const { return false; }
+
+	/** Return a pointer to the payload on which we are querying the acceleration structure */
+	virtual const void* GetQueryPayload() const { return nullptr; }
 };
 
 /**
@@ -161,8 +164,8 @@ public:
 	
 	virtual ~ISpacialDebugDrawInterface() = default;
 
-	virtual void Box(const TAABB<T, 3>& InBox, const TVector<T, 3>& InLinearColor, Chaos::FReal InThickness) = 0;
-	virtual void Line(const TVector<T, 3>& InBegin, const TVector<T, 3>& InEnd, const TVector<T, 3>& InLinearColor, Chaos::FReal InThickness)  = 0;
+	virtual void Box(const TAABB<T, 3>& InBox, const TVector<T, 3>& InLinearColor, float InThickness) = 0;
+	virtual void Line(const TVector<T, 3>& InBegin, const TVector<T, 3>& InEnd, const TVector<T, 3>& InLinearColor, float InThickness)  = 0;
 
 };
 
@@ -264,14 +267,19 @@ public:
 	virtual bool IsAsyncTimeSlicingComplete() { return AsyncTimeSlicingComplete; }
 	virtual void ProgressAsyncTimeSlicing(bool ForceBuildCompletion = false) {}
 	virtual bool ShouldRebuild() { return true; }  // Used to find out if something changed since last reset for optimizations
+	virtual bool IsTreeDynamic() const { return false; }  // Dynamic trees rebuild on the fly without adding dirty elements
 	virtual void ClearShouldRebuild() {}
-	virtual void PrepareCopyTimeSliced(const  ISpatialAcceleration<TPayloadType, FReal, 3>& InFrom) { check(false); }
-	virtual void ProgressCopyTimeSliced(const  ISpatialAcceleration<TPayloadType, FReal, 3>& InFrom, int MaximumBytesToCopy) { check(false); }
-	virtual TArray<TPayloadType> FindAllIntersections(const TAABB<T, d>& Box) const { check(false); return TArray<TPayloadType>(); }
+	virtual void PrepareCopyTimeSliced(const  ISpatialAcceleration<TPayloadType, T, 3>& InFrom) { check(false); }
+	virtual void ProgressCopyTimeSliced(const  ISpatialAcceleration<TPayloadType, T, 3>& InFrom, int MaximumBytesToCopy) { check(false); }
 
-	virtual void Raycast(const TVector<T, d>& Start, const TVector<T, d>& Dir, const T Length, ISpatialVisitor<TPayloadType, T>& Visitor) const { check(false); }
-	virtual void Sweep(const TVector<T, d>& Start, const TVector<T, d>& Dir, const T Length, const TVector<T, d> QueryHalfExtents, ISpatialVisitor<TPayloadType, T>& Visitor) const { check(false);}
-	virtual void Overlap(const TAABB<T, d>& QueryBounds, ISpatialVisitor<TPayloadType, T>& Visitor) const { check(false); }
+	/** Cache for each leaves all the overlapping leaves */
+	virtual void CacheOverlappingLeaves() {}
+
+	// IMPORTANT : (LWC) this API should be typed on Freal not T, as we want the query API to be using the highest precision while maintaining arbitrary internal precision for the acceleration structure ( based on T )
+	virtual TArray<TPayloadType> FindAllIntersections(const FAABB3& Box) const { check(false); return TArray<TPayloadType>(); }
+	virtual void Raycast(const FVec3& Start, const FVec3& Dir, const FReal Length, ISpatialVisitor<TPayloadType, FReal>& Visitor) const { check(false); }
+	virtual void Sweep(const FVec3& Start, const FVec3& Dir, const FReal Length, const FVec3 QueryHalfExtents, ISpatialVisitor<TPayloadType, FReal>& Visitor) const { check(false);}
+	virtual void Overlap(const FAABB3& QueryBounds, ISpatialVisitor<TPayloadType, FReal>& Visitor) const { check(false); }
 
 	virtual void Reset()
 	{
@@ -429,6 +437,12 @@ public:
 		return Visitor.ShouldIgnore(Instance);
 	}
 
+	/** Return a pointer to the payload on which we are querying the acceleration structure */
+	FORCEINLINE const void* GetQueryPayload() const
+	{
+		return Visitor.GetQueryPayload();
+	}
+
 private:
 	ISpatialVisitor<TPayloadType, T>& Visitor;
 };
@@ -442,8 +456,10 @@ template <typename TKey, typename TValue>
 class TArrayAsMap
 {
 public:
+	// @todo(chaos): rename with "F"
 	using ElementType = TValue;
 
+	// @todo(chaos): rename with "F"
 	struct Element
 	{
 #if CHAOS_SERIALIZE_OUT
@@ -599,7 +615,7 @@ public:
 	}
 
 private:
-
+	
 	struct FEntry
 	{
 		TValue Value;
@@ -611,7 +627,7 @@ private:
 
 		}
 	};
-
+	
 	TArray<FEntry> Entries;
 
 #if CHAOS_SERIALIZE_OUT

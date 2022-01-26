@@ -173,6 +173,15 @@ namespace Chaos
 			ConstraintSettings[ConstraintIndex] = Settings;
 		}
 
+		void SetTarget(int32 ConstraintIndex, const FVector& TargetPos)
+		{
+			ConstraintSettings[ConstraintIndex].Target = TargetPos;
+		}
+
+		const FPBDSuspensionResults& GetResults(int32 ConstraintIndex) const
+		{
+			return ConstraintResults[ConstraintIndex];
+		}
 
 		FHandles& GetConstraintHandles()
 		{
@@ -235,14 +244,15 @@ namespace Chaos
 
 	private:
 
-		void ApplySingle(const FReal Dt, int32 ConstraintIndex) const;
+		void ApplySingle(const FReal Dt, int32 ConstraintIndex);
 		
-		void ApplyPositionConstraintSoft(const int ConstraintIndex, const FReal Dt, const bool bAccelerationMode) const;
+		void ApplyPositionConstraintSoft(const int ConstraintIndex, const FReal Dt, const bool bAccelerationMode);
 		FPBDSuspensionSolverSettings SolverSettings;
 
 		TArray<FGeometryParticleHandle*> ConstrainedParticles;
 		TArray<FVec3> SuspensionLocalOffset;
 		TArray<FPBDSuspensionSettings> ConstraintSettings;
+		TArray<FPBDSuspensionResults> ConstraintResults;
 		TArray<bool> ConstraintEnabledStates;
 
 		TArray<FSolverBody*> ConstraintSolverBodies;

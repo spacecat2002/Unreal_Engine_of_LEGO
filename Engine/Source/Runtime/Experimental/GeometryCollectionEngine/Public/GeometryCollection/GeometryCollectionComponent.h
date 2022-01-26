@@ -22,6 +22,7 @@
 #include "Chaos/ChaosNotifyHandlerInterface.h"
 #include "Chaos/ChaosSolverComponentTypes.h"
 #include "Chaos/PBDRigidsEvolutionFwd.h"
+#include "EngineDefines.h"
 
 #include "GeometryCollectionComponent.generated.h"
 
@@ -345,6 +346,10 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type ReasonEnd) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void InitializeComponent() override;
+
+#if WITH_EDITOR
+	virtual void PostEditChangeChainProperty(FPropertyChangedChainEvent& PropertyChangedEvent) override;
+#endif
 	//~ Begin UActorComponent Interface. 
 
 
@@ -360,7 +365,7 @@ public:
 	//~ Begin UPrimitiveComponent Interface.
 	virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
 	virtual void OnRegister() override;
-	virtual FBodyInstance* GetBodyInstance(FName BoneName = NAME_None, bool bGetWelded = true) const override;
+	virtual FBodyInstance* GetBodyInstance(FName BoneName = NAME_None, bool bGetWelded = true) const;
 	virtual void SetNotifyRigidBodyCollision(bool bNewNotifyRigidBodyCollision) override;
 	virtual bool CanEditSimulatePhysics() override;
 	virtual void SetSimulatePhysics(bool bEnabled) override;
@@ -440,17 +445,18 @@ public:
 	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category = "ChaosPhysics")
 	TArray<const AFieldSystemActor*> InitializationFields;
 
-	/**
-	* When Simulating is enabled the Component will initialize its rigid bodies within the solver.
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|General")
-	bool Simulating;
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "GeometryCollection now abides the bSimulatePhysics flag from the base class."))
+	bool Simulating_DEPRECATED;
+
 	ESimulationInitializationState InitializationState;
 
 	/** ObjectType defines how to initialize the rigid objects state, Kinematic, Sleeping, Dynamic. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|General")
 	EObjectStateTypeEnum ObjectType;
 
+	/** If ForceMotionBlur is on, motion blur will always be active, even if the GeometryCollection is at rest. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|General")
+	bool bForceMotionBlur;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering")
 	bool EnableClustering;
@@ -478,7 +484,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Collisions")
 	int32 CollisionGroup;
 
-	/** Uniform Friction */
+	/** Fraction of collision sample particles to keep */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Collisions")
 	float CollisionSampleFraction;
 
@@ -557,7 +563,7 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Game|Damage")
 	FNotifyGeometryCollectionPhysicsStateChange NotifyGeometryCollectionPhysicsStateChange;
 
-	bool GetIsObjectDynamic() { return IsObjectDynamic; }
+	bool GetIsObjectDynamic() const;
 
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FNotifyGeometryCollectionPhysicsLoadingStateChange, UGeometryCollectionComponent*, FracturedComponent);
 	UPROPERTY(BlueprintAssignable, Category = "Game|Loading")
@@ -570,9 +576,11 @@ public:
 	*/
 	/* ---------------------------------------------------------------------------------------- */
 	
-	void SetShowBoneColors(bool ShowBoneColorsIn);
+	void SetShowBoneColors(bool ShowBoneColorsIn) { bShowBoneColors = ShowBoneColorsIn; }
 	bool GetShowBoneColors() const { return bShowBoneColors; }
 	bool GetEnableBoneSelection() const { return bEnableBoneSelection; }
+	
+	bool GetSuppressSelectionMaterial() const { return RestCollection->GetGeometryCollection()->HasAttribute("Hide", FGeometryCollection::TransformGroup); }
 	
 	FORCEINLINE const int GetBoneSelectedMaterialID() const { return RestCollection->GetBoneSelectedMaterialIndex(); }
 	
@@ -601,8 +609,6 @@ public:
 #endif  // #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
 	/**/
-	//const TManagedArray<int32>& GetRigidBodyIdArray() const { return RigidBodyIds; }
-	const TManagedArray<FGuid>& GetRigidBodyGuidArray() const { return RestCollection->GetGeometryCollection()->GetAttribute<FGuid>(FName("GUID"), FGeometryCollection::TransformGroup); }
 	const TArray<bool>& GetDisabledFlags() const { return DisabledFlags; }
 
 	virtual void OnCreatePhysicsState() override;
@@ -610,6 +616,8 @@ public:
 	virtual void OnDestroyPhysicsState() override;
 	virtual bool ShouldCreatePhysicsState() const override;
 	virtual bool HasValidPhysicsState() const override;
+
+	virtual void OnUpdateTransform(EUpdateTransformFlags UpdateTransformFlags, ETeleportType Teleport = ETeleportType::None) override;
 
 	// Mirrored from the proxy on a sync
 	//TManagedArray<int32> RigidBodyIds;
@@ -654,7 +662,7 @@ public:
 
 	/** Update component structure to reflect any changes to the embedded geometry */
 	void InitializeEmbeddedGeometry();
-
+	
 	/** Update instanced static mesh components to reflect internal embedded geometry state. */
 	void RefreshEmbeddedGeometry();
 
@@ -663,6 +671,7 @@ public:
 	int32 EmbeddedIndexToTransformIndex(const UInstancedStaticMeshComponent* ISMComponent, int32 InstanceIndex) const;
 #endif
 
+	
 	// #todo should this only be available in editor?
 	void SetRestState(TArray<FTransform>&& InRestTransforms);
 
@@ -675,6 +684,8 @@ public:
 	/** Modify DynamicCollection transform hierarchy to effect cluster breaks releasing the specified indices. */
 	void SetInitialClusterBreaks(const TArray<int32>& ReleaseIndices);
 
+	/** Used by Niagara DI to query global matrices rather than recalculating them again */
+	const TArray<FMatrix>& GetGlobalMatrices() { return GlobalMatrices; }
 
 public:
 	UPROPERTY(BlueprintAssignable, Category = "Collision")
@@ -685,25 +696,33 @@ public:
 
 	// IChaosNotifyHandlerInterface
 	virtual void DispatchChaosPhysicsCollisionBlueprintEvents(const FChaosPhysicsCollisionInfo& CollisionInfo) override;
-
-protected:
-	/** Call SetNotifyBreaks to set this at runtime. */
+	
+	/** If true, this component will generate breaking events that other systems may subscribe to. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ChaosPhysics|General")
 	bool bNotifyBreaks;
 
-	/** If true, this component will get Chaos-specific collision notification events (@see IChaosNotifyHandlerInterface) */
+	/** If true, this component will generate collision events that other systems may subscribe to. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ChaosPhysics|General")
 	bool bNotifyCollisions;
+
+	/** If true, this component will generate trailing events that other systems may subscribe to. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ChaosPhysics|General")
+	bool bNotifyTrailing;
 
 	/** If true, this component will generate removal events that other systems may subscribe to. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ChaosPhysics|General")
 	bool bNotifyRemovals;
 
+protected:
+	/** Display Bone Colors instead of assigned materials */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|General")
+	bool bShowBoneColors;
+
 	/** Populate the static geometry structures for the render thread. */
 	void InitConstantData(FGeometryCollectionConstantData* ConstantData) const;
 
 	/** Populate the dynamic particle data for the render thread. */
-	void InitDynamicData(FGeometryCollectionDynamicData* ConstantData);
+	FGeometryCollectionDynamicData* InitDynamicData(bool bInitialization);
 
 	/** Reset the dynamic collection from the current rest state. */
 	void ResetDynamicCollection();
@@ -721,6 +740,8 @@ protected:
 	void UpdateRBCollisionEventRegistration();
 	void UpdateBreakEventRegistration();
 	void UpdateRemovalEventRegistration();
+
+
 
 	/* Per-instance override to enable/disable replication for the geometry collection */
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category=Network)
@@ -762,7 +783,6 @@ private:
 	void NetAbandonCluster(int32 TransformIndex);
 
 	bool bRenderStateDirty;
-	bool bShowBoneColors;
 	bool bEnableBoneSelection;
 	int ViewLevel;
 
@@ -785,7 +805,7 @@ private:
 	TArray<FMatrix> GlobalMatrices;
 	FBox LocalBounds;
 	
-	FBoxSphereBounds WorldBounds;		
+	FBoxSphereBounds WorldBounds;
 
 	float CurrentCacheTime;
 	TArray<bool> EventsPlayed;
@@ -812,10 +832,6 @@ private:
 #endif
 	void SwitchRenderModels(const AActor* Actor);
 
-	bool IsEqual(const TArray<FMatrix> &A, const TArray<FMatrix> &B, const float Tolerance = 1e-6);
-	TArray<bool> TransformsAreEqual;	
-	int32 TransformsAreEqualIndex;
-
 	UChaosGameplayEventDispatcher* EventDispatcher;
 
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
@@ -836,4 +852,8 @@ private:
 
 	void IncrementSleepTimer(float DeltaTime);
 	bool CalculateInnerSphere(int32 TransformIndex, FSphere& SphereOut) const;
+
+	/** True if GeometryCollection transforms have changed from previous tick. */
+	bool bIsMoving;
+
 };

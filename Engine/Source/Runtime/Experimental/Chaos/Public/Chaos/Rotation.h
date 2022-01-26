@@ -47,6 +47,8 @@ namespace Chaos
 	class TRotation<FReal, 3> : public FQuat
 	{
 	public:
+		using QuatVectorRegister = VectorRegister;
+		
 		TRotation()
 		    : FQuat() {}
 		TRotation(const FQuat& Quat)
@@ -113,6 +115,14 @@ namespace Chaos
 			OutSwing = *this * OutTwist.Inverse();
 		}
 
+		/**
+		* @brief Return the large absolute element value
+		*/
+		FORCEINLINE FReal GetAbsMax() const
+		{
+			return FMath::Max(FMath::Max(FMath::Abs(X), FMath::Abs(Y)), FMath::Max(FMath::Abs(Z), FMath::Abs(W)));
+		}
+		
 		/**
 		 * @brief Return the dot product of two quaternions
 		*/
@@ -218,9 +228,9 @@ namespace Chaos
 
 			const T SSquared = .5 * (1.0 + CosTheta); // Uses the half angle formula
 			const T VMagnitudeDesired = sqrt(1.0 - SSquared);
-			V *= (VMagnitudeDesired / VMagnitude);
+			V *= (FReal)(VMagnitudeDesired / VMagnitude);
 
-			return TRotation<FReal, 3>::FromElements(V, sqrt(SSquared));
+			return TRotation<FReal, 3>::FromElements(V, (FReal)sqrt(SSquared));
 		}
 
 		/**
@@ -230,7 +240,10 @@ namespace Chaos
 		 */
 		static TVector<FReal, 3> CalculateAngularVelocity1(const TRotation<FReal, 3>& InR0, const TRotation<FReal, 3>& InR1, const FReal InDt)
 		{
-			check(InDt > SMALL_NUMBER);
+			if (!ensure(InDt > SMALL_NUMBER))
+			{
+				return TVector<FReal, 3>(0);
+			}
 
 			const TRotation<FReal, 3>& R0 = InR0;
 			TRotation<FReal, 3> R1 = InR1;
@@ -253,7 +266,10 @@ namespace Chaos
 		{
 			// @todo(ccaulfield): ToAxisAndAngle starts to return increasingly random, non-normalized axes for very small angles. This 
 			// underestimates the angular velocity magnitude and randomizes direction.
-			check(InDt > SMALL_NUMBER);
+			if (!ensure(InDt > SMALL_NUMBER))
+			{
+				return TVector<FReal, 3>(0);
+			}
 
 			const TRotation<FReal, 3>& R0 = InR0;
 			TRotation<FReal, 3> R1 = InR1;

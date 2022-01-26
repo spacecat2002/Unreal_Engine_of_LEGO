@@ -86,13 +86,14 @@ namespace Chaos
 		CHAOS_API TAABB<T, d> TransformedAABB(const FMatrix&) const;
 		CHAOS_API TAABB<T, d> TransformedAABB(const Chaos::PMatrix<FReal, 4, 4>&) const;
 
-		CHAOS_API TAABB<T, d> InverseTransformedAABB(const Chaos::TRigidTransform<T, 3>&) const;
+		CHAOS_API TAABB<T, d> InverseTransformedAABB(const Chaos::FRigidTransform3&) const;
 
-		FORCEINLINE bool Intersects(const TAABB<T, d>& Other) const
+		template <typename TReal>
+		FORCEINLINE bool Intersects(const TAABB<TReal, d>& Other) const
 		{
 			for (int32 i = 0; i < d; ++i)
 			{
-				if (Other.MMax[i] < MMin[i] || Other.MMin[i] > MMax[i])
+				if (Other.Max()[i] < MMin[i] || Other.Min()[i] > MMax[i])
 					return false;
 			}
 			return true;
@@ -132,21 +133,22 @@ namespace Chaos
 
 		FORCEINLINE uint16 GetMaterialIndex(uint32 HintIndex) const { return 0; }
 
-		FORCEINLINE T SignedDistance(const TVector<T, d>& x) const
+		FORCEINLINE FReal SignedDistance(const TVector<FReal, d>& x) const
 		{
-			TVector<T, d> Normal;
+			TVector<FReal, d> Normal;
 			return PhiWithNormal(x, Normal);
 		}
 
-
-		FORCEINLINE T PhiWithNormal(const TVector<T, d>& X, TVector<T, d>& Normal) const 
+		FORCEINLINE FReal PhiWithNormal(const TVector<FReal, d>& X, TVector<FReal, d>& Normal) const
 		{
-			const TVector<T, d> MaxDists = X - MMax;
-			const TVector<T, d> MinDists = MMin - X;
-			if (X <= MMax && X >= MMin)
+			const TVector<FReal, d> MaxDists = X - MMax;
+			const TVector<FReal, d> MinDists = MMin - X;
+			const TVector<FReal, d> MinAsTVecReal(MMin);
+			const TVector<FReal, d> MaxAsTVecReal(MMax);
+			if (X <= MaxAsTVecReal && X >= MinAsTVecReal)
 			{
-				const Pair<T, int32> MaxAndAxis = TVector<T, d>::MaxAndAxis(MinDists, MaxDists);
-				Normal = MaxDists[MaxAndAxis.Second] > MinDists[MaxAndAxis.Second] ? TVector<T, d>::AxisVector(MaxAndAxis.Second) : -TVector<T, d>::AxisVector(MaxAndAxis.Second);
+				const Pair<FReal, int32> MaxAndAxis = TVector<FReal, d>::MaxAndAxis(MinDists, MaxDists);
+				Normal = MaxDists[MaxAndAxis.Second] > MinDists[MaxAndAxis.Second] ? TVector<FReal, d>::AxisVector(MaxAndAxis.Second) : -TVector<FReal, d>::AxisVector(MaxAndAxis.Second);
 				return MaxAndAxis.First;
 			}
 			else
@@ -166,7 +168,7 @@ namespace Chaos
 						Normal[i] = 0;
 					}
 				}
-				T Phi = Normal.SafeNormalize();
+				FReal Phi = Normal.SafeNormalize();
 				if (Phi < KINDA_SMALL_NUMBER)
 				{
 					for (int i = 0; i < d; ++i)
@@ -186,21 +188,20 @@ namespace Chaos
 			}
 		}
 
-		bool CHAOS_API Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, d>& OutPosition, TVector<T, d>& OutNormal, int32& OutFaceIndex) const;
+		bool CHAOS_API Raycast(const TVector<FReal, d>& StartPoint, const TVector<FReal, d>& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, TVector<FReal, d>& OutPosition, TVector<FReal, d>& OutNormal, int32& OutFaceIndex) const;
 
-
-		FORCEINLINE bool RaycastFast(const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const TVector<T, d>& InvDir, const bool* bParallel, const T Length, const T InvLength, T& OutTime, TVector<T, d>& OutPosition) const
+		FORCEINLINE bool RaycastFast(const TVector<FReal, d>& StartPoint, const TVector<FReal, d>& Dir, const TVector<FReal, d>& InvDir, const bool* bParallel, const FReal Length, const FReal InvLength, FReal& OutEntryTime, FReal& OutExitTime) const
 		{
-			const TVector<T, d> StartToMin = MMin - StartPoint;
-			const TVector<T, d> StartToMax = MMax - StartPoint;
+			const TVector<FReal, d> StartToMin = TVector<FReal, d>(MMin) - StartPoint;
+			const TVector<FReal, d> StartToMax = TVector<FReal, d>(MMax) - StartPoint;
 
 			//For each axis record the start and end time when ray is in the box. If the intervals overlap the ray is inside the box
-			T LatestStartTime = 0;
-			T EarliestEndTime = FLT_MAX;
+			FReal LatestStartTime = 0;
+			FReal EarliestEndTime = TNumericLimits<FReal>::Max();
 
 			for (int Axis = 0; Axis < d; ++Axis)
 			{
-				T Time1, Time2;
+				FReal Time1, Time2;
 				if (bParallel[Axis])
 				{
 					if (StartToMin[Axis] > 0 || StartToMax[Axis] < 0)
@@ -210,7 +211,7 @@ namespace Chaos
 					else
 					{
 						Time1 = 0;
-						Time2 = FLT_MAX;
+						Time2 = TNumericLimits<FReal>::Max();
 					}
 				}
 				else
@@ -241,9 +242,22 @@ namespace Chaos
 				return false;
 			}
 
-			OutTime = LatestStartTime;
-			OutPosition = StartPoint + LatestStartTime * Dir;
+			OutEntryTime = LatestStartTime;
+			OutExitTime = EarliestEndTime;
 			return true;
+		}
+
+		FORCEINLINE bool RaycastFast(const TVector<FReal, d>& StartPoint, const TVector<FReal, d>& Dir, const TVector<FReal, d>& InvDir, const bool* bParallel, const FReal Length, const FReal InvLength, FReal& OutTime, TVector<FReal, d>& OutPosition) const
+		{
+			FReal RayEntryTime;
+			FReal RayExitTime;
+			if (RaycastFast(StartPoint, Dir, InvDir, bParallel, Length, InvLength, RayEntryTime, RayExitTime))
+			{
+				OutTime = RayEntryTime;
+				OutPosition = StartPoint + RayEntryTime * Dir;
+				return true;
+			}
+			return false;
 		}
 
 		CHAOS_API TVector<T, d> FindClosestPoint(const TVector<T, d>& StartPoint, const T Thickness = (T)0) const;
@@ -283,16 +297,27 @@ namespace Chaos
 
 			return BestNormal;
 		}
-
-		FORCEINLINE_DEBUGGABLE TVector<T, d> Support(const TVector<T, d>& Direction, const T Thickness) const
+		
+		FORCEINLINE_DEBUGGABLE TVector<T, d> Support(const TVector<T, d>& Direction, const T Thickness, int32& VertexIndex) const
 		{
 			TVector<T, d> ChosenPt;
+			FIntVector ChosenAxis;
 			for (int Axis = 0; Axis < d; ++Axis)
 			{
-				ChosenPt[Axis] = Direction[Axis] < 0 ? MMin[Axis] : MMax[Axis];
+				if(Direction[Axis] < 0)
+				{
+					ChosenPt[Axis] = MMin[Axis];
+					ChosenAxis[Axis] = 0;
+				}
+				else
+				{
+					ChosenPt[Axis] = MMax[Axis];
+					ChosenAxis[Axis] = 1;
+				}
 			}
+			VertexIndex =  ChosenAxis[0] * 4 + ChosenAxis[1] * 2 + ChosenAxis[2];
 
-			if (Thickness)
+			if (Thickness != (T)0)
 			{
 				//We want N / ||N|| and to avoid inf
 				//So we want N / ||N|| < 1 / eps => N eps < ||N||, but this is clearly true for all eps < 1 and N > 0
@@ -311,16 +336,64 @@ namespace Chaos
 		}
 
 		// Support vertex in the specified direction, assuming each face has been moved inwards by InMargin
-		FORCEINLINE_DEBUGGABLE TVector<T, d> SupportCore(const TVector<T, d>& Direction, FReal InMargin) const
+		FORCEINLINE_DEBUGGABLE FVec3 SupportCore(const FVec3& Direction, const FReal InMargin, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
-			TVector<T, d> ChosenPt;
+			FVec3 ChosenPt;
+			FIntVector ChosenAxis;
 			for (int Axis = 0; Axis < d; ++Axis)
 			{
-				ChosenPt[Axis] = Direction[Axis] < 0 ? MMin[Axis] + InMargin : MMax[Axis] - InMargin;
+				if(Direction[Axis] < 0)
+				{
+					ChosenPt[Axis] = MMin[Axis] + InMargin;
+					ChosenAxis[Axis] = 0;
+				}
+				else
+				{
+					ChosenPt[Axis] = MMax[Axis] - InMargin;
+					ChosenAxis[Axis] = 1;
+				}
+			}
+			VertexIndex = ChosenAxis[0] * 4 + ChosenAxis[1] * 2 + ChosenAxis[2];
+			// Maximum distance between the Core+Margin position and the original outer vertex
+			constexpr FReal RootThreeMinusOne = FReal(1.7320508075688772935274463415059 - 1.0);
+			if (OutSupportDelta != nullptr)
+			{
+				*OutSupportDelta = RootThreeMinusOne * InMargin;
 			}
 
 			return ChosenPt;
 		}
+
+		FORCEINLINE_DEBUGGABLE TVector<T, d> SupportCoreScaled(const TVector<T, d>& Direction, const T InMargin, const TVector<T, d>& Scale, T* OutSupportDelta, int32& VertexIndex) const
+		{
+			const TVector<T, d> ScaledDirection = Direction * Scale;
+
+			TVector<T, d> ChosenPt;
+			FIntVector ChosenAxis;
+			for (int Axis = 0; Axis < d; ++Axis)
+			{
+				if(ScaledDirection[Axis] < 0)
+				{
+					ChosenPt[Axis] = Scale[Axis] * MMin[Axis] + InMargin;
+					ChosenAxis[Axis] = 0;
+				}
+				else
+				{
+					ChosenPt[Axis] = Scale[Axis] *  MMax[Axis] - InMargin;
+					ChosenAxis[Axis] = 1;
+				}
+			}
+			VertexIndex = ChosenAxis[0] * 4 + ChosenAxis[1] * 2 + ChosenAxis[2];
+			
+			constexpr T RootThreeMinusOne = T(1.7320508075688772935274463415059 - 1.0);
+			if (OutSupportDelta != nullptr)
+			{
+				*OutSupportDelta = RootThreeMinusOne * InMargin;
+			}
+
+			return ChosenPt;
+		}
+
 
 		FORCEINLINE void GrowToInclude(const TVector<T, d>& V)
 		{
@@ -426,7 +499,7 @@ namespace Chaos
 		}
 
 		FORCEINLINE T GetArea() const { return GetArea(Extents()); }
-		FORCEINLINE static T GetArea(const TVector<T, d>& Dim) { return d == 2 ? Dim.Product() : 2. * (Dim[0] * Dim[1] + Dim[0] * Dim[2] + Dim[1] * Dim[2]); }
+		FORCEINLINE static T GetArea(const TVector<T, d>& Dim) { return d == 2 ? Dim.Product() : (T)2. * (Dim[0] * Dim[1] + Dim[0] * Dim[2] + Dim[1] * Dim[2]); }
 
 		FORCEINLINE T GetVolume() const { return GetVolume(Extents()); }
 		FORCEINLINE static T GetVolume(const TVector<T, 3>& Dim) { return Dim.Product(); }
@@ -438,6 +511,12 @@ namespace Chaos
 		FORCEINLINE static TAABB<T, d> ZeroAABB() { return TAABB<T, d>(TVector<T, d>((T)0), TVector<T, d>((T)0)); }
 		FORCEINLINE static TAABB<T, d> FullAABB() { return TAABB<T, d>(TVector<T, d>(-TNumericLimits<T>::Max()), TVector<T, d>(TNumericLimits<T>::Max())); }
 
+		FORCEINLINE void Serialize(FChaosArchive& Ar)
+		{
+			// LWC : this method exists in order to properly call the << operator using FChaosArchive on Chaos::TVector 
+			Ar << MMin << MMax;
+		}
+
 		FORCEINLINE void Serialize(FArchive &Ar) 
 		{
 			Ar << MMin << MMax;
@@ -448,20 +527,20 @@ namespace Chaos
 			return HashCombine(::GetTypeHash(MMin), ::GetTypeHash(MMax));
 		}
 
-		FORCEINLINE PMatrix<T, d, d> GetInertiaTensor(const T Mass) const { return GetInertiaTensor(Mass, Extents()); }
-		FORCEINLINE static PMatrix<T, 3, 3> GetInertiaTensor(const T Mass, const TVector<T, 3>& Dim)
+		FORCEINLINE PMatrix<FReal, d, d> GetInertiaTensor(const FReal Mass) const { return GetInertiaTensor(Mass, Extents()); }
+		FORCEINLINE static PMatrix<FReal, 3, 3> GetInertiaTensor(const FReal Mass, const TVector<FReal, 3>& Dim)
 		{
 			// https://www.wolframalpha.com/input/?i=cuboid
-			const T M = Mass / 12;
-			const T WW = Dim[0] * Dim[0];
-			const T HH = Dim[1] * Dim[1];
-			const T DD = Dim[2] * Dim[2];
-			return PMatrix<T, 3, 3>(M * (HH + DD), M * (WW + DD), M * (WW + HH));
+			const FReal M = Mass / 12;
+			const FReal WW = Dim[0] * Dim[0];
+			const FReal HH = Dim[1] * Dim[1];
+			const FReal DD = Dim[2] * Dim[2];
+			return PMatrix<FReal, 3, 3>(M * (HH + DD), M * (WW + DD), M * (WW + HH));
 		}
 
-		FORCEINLINE static TRotation<T, d> GetRotationOfMass()
+		FORCEINLINE static TRotation<FReal, d> GetRotationOfMass()
 		{
-			return TRotation<T, d>::FromIdentity();
+			return TRotation<FReal, d>::FromIdentity();
 		}
 
 		FORCEINLINE constexpr bool IsConvex() const { return true; }

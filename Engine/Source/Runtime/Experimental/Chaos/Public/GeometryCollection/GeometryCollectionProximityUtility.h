@@ -11,6 +11,9 @@ class FGeometryCollection;
 
 class CHAOS_API FGeometryCollectionProximityUtility
 {
+	using FVector3f = FVector;
+	using FVector2f = FVector2D;
+	
 public:
 	FGeometryCollectionProximityUtility(FGeometryCollection* InCollection);
 
@@ -25,26 +28,27 @@ private:
 	void TransformVertices();
 	void GenerateSurfaceNormals();
 	void GenerateFaceToGeometry();
-	int32 FindBestBin(const FVector& SurfaceNormal) const;
+	int32 FindBestBin(const FVector3f& SurfaceNormal) const;
 	void FindContactPairs(int32 Zenith, int32 Nadir);
-	bool AreNormalsOpposite(const FVector& Normal0, const FVector& Normal1) const;
+	bool AreNormalsOpposite(const FVector3f& Normal0, const FVector3f& Normal1) const;
 	bool AreFacesCoPlanar(int32 Idx0, int32 Idx1) const;
 	bool DoFacesOverlap(int32 Idx0, int32 Idx1) const;
-	static bool IdenticalTriangles(const TStaticArray<FVector2D, 3>& T0, const TStaticArray<FVector2D, 3>& T1);
-	static bool TrianglesIntersect(const TStaticArray<FVector2D, 3>& T0, const TStaticArray<FVector2D, 3>& T1);
-	static bool Cross(const TStaticArray<FVector2D, 3>& Points, const FVector2D& B, const FVector2D& C, float Normal);
+	static bool IdenticalTriangles(const TStaticArray<FVector2f, 3>& T0, const TStaticArray<FVector2f, 3>& T1);
+	static bool TrianglesIntersect(const TStaticArray<FVector2f,3>& T0, const TStaticArray<FVector2f,3>& T1);
+	static bool Cross(const TStaticArray<FVector2f,3>& Points, const FVector2f& B, const FVector2f& C, float Normal);
 
 private:
 	FGeometryCollection* Collection;
 
 	int32 NumFaces;
-	TArray<FVector> SurfaceNormals;
+	TArray<FVector3f> SurfaceNormals;
 	TArray<int32> FaceToGeometry;
-	TArray<FVector> TransformedVertices;
+	TArray<FVector3f> TransformedVertices;
 
 	constexpr static int32 NumBins = 20;
 	TArray<TArray<int32>> Bins;
-	TArray<FVector> BinNormals;
+	TArray<FVector3f> BinNormals;
 
 	TArray<TArray<int32>> FaceContacts;
 };
+

@@ -106,6 +106,13 @@ public:
 		return ImplicitObjectType::Transformed;
 	}
 
+	virtual TUniquePtr<FImplicitObject> Copy() const
+	{
+		TUniquePtr<FImplicitObject> ImplicitCopy = MObject->Copy();
+		return TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<T, d>(MoveTemp(ImplicitCopy), MTransform));
+	}
+
+
 	const FImplicitObject* GetTransformedObject() const
 	{
 		return MObject.Get();
@@ -189,7 +196,7 @@ public:
 		return ClosestIntersection;
 	}
 
-	virtual int32 FindClosestFaceAndVertices(const FVec3& Position, TArray<FVec3>& FaceVertices, FReal SearchDist = 0.01) const override
+	virtual int32 FindClosestFaceAndVertices(const FVec3& Position, TArray<FVec3>& FaceVertices, FReal SearchDist = 0.01f) const override
 	{
 		const FVec3 LocalPoint = MTransform.InverseTransformPosition(Position);
 		int32 FaceIndex = MObject->FindClosestFaceAndVertices(LocalPoint, FaceVertices, SearchDist);
@@ -210,20 +217,20 @@ public:
 		MTransform = InTransform;
 	}
 
-	virtual void AccumulateAllImplicitObjects(TArray<Pair<const FImplicitObject*, TRigidTransform<T, d>>>& Out, const TRigidTransform<T, d>& ParentTM) const
+	virtual void AccumulateAllImplicitObjects(TArray<Pair<const FImplicitObject*, TRigidTransform<T, d>>>& Out, const TRigidTransform<T, d>& ParentTM) const override
 	{
 		const TRigidTransform<T, d> NewTM = MTransform * ParentTM;
 		MObject->AccumulateAllImplicitObjects(Out, NewTM);
 	}
 
-	virtual void AccumulateAllSerializableImplicitObjects(TArray<Pair<TSerializablePtr<FImplicitObject>, TRigidTransform<T, d>>>& Out, const TRigidTransform<T, d>& ParentTM, TSerializablePtr<FImplicitObject> This) const
+	virtual void AccumulateAllSerializableImplicitObjects(TArray<Pair<TSerializablePtr<FImplicitObject>, TRigidTransform<T, d>>>& Out, const TRigidTransform<T, d>& ParentTM, TSerializablePtr<FImplicitObject> This) const override
 	{
 		check(bSerializable);
 		const TRigidTransform<T, d> NewTM = MTransform * ParentTM;
 		TImplicitObjectTransformAccumulateSerializableHelper(Out, MObject, NewTM);
 	}
 
-	virtual void FindAllIntersectingObjects(TArray < Pair<const FImplicitObject*, TRigidTransform<T, d>>>& Out, const TAABB<T, d>& LocalBounds) const
+	virtual void FindAllIntersectingObjects(TArray < Pair<const FImplicitObject*, TRigidTransform<T, d>>>& Out, const TAABB<T, d>& LocalBounds) const override
 	{
 		const TAABB<T, d> SubobjectBounds = LocalBounds.TransformedAABB(MTransform.Inverse());
 		int32 NumOut = Out.Num();
@@ -235,6 +242,12 @@ public:
 	}
 
 	virtual const TAABB<T, d> BoundingBox() const override { return MLocalBoundingBox; }
+
+	// Calculate the tight-fitting world-space bounding box
+	virtual FAABB3 CalculateTransformedBounds(const FRigidTransform3& InTransform) const
+	{
+		return MObject->CalculateTransformedBounds(FRigidTransform3::MultiplyNoScale(MTransform ,InTransform));
+	}
 
 	const FReal GetVolume() const
 	{

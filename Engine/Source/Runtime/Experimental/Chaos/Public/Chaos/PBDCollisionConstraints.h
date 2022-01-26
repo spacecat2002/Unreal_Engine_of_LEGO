@@ -50,10 +50,9 @@ public:
 	using FConstHandles = TArrayView<const FPBDCollisionConstraint* const>;
 
 	// For use by dependent types
-	using FPointContactConstraint = FPBDCollisionConstraint;				// Used by clustering (remove this?)
 	using FConstraintContainerHandle = FPBDCollisionConstraintHandle;		// Used by constraint rules
 	using FConstraintSolverContainerType = FPBDCollisionSolverContainer;	// Used by constraint rules
-
+	using FParticleHandle = TGeometryParticleHandle<FReal, 3>;
 
 	FPBDCollisionConstraints(const FPBDRigidsSOAs& InParticles, 
 		TArrayCollectionArray<bool>& Collided, 
@@ -84,13 +83,22 @@ public:
 	}
 
 	/**
+	 * @brief Enable or disable determinism.
+	 * Support for determinism requires that we sort active constraints each tick, so there is additional cost.
+	*/
+	void SetIsDeterministic(const bool bInIsDeterministic)
+	{
+		bIsDeterministic = bInIsDeterministic;
+	}
+
+	/**
 	 *  Clears the list of active constraints.
 	 * @todo(chaos): This is only required because of the way events work (see AdvanceOneTimeStepTask::DoWork)
 	*/
 	void BeginFrame();
 
 	/**
-	*  Reset the constraint frame. 
+	*  Destroy all constraints 
 	*/
 	void Reset();
 
@@ -110,7 +118,7 @@ public:
 	 * You would probably call this in the PostComputeCallback. Prefer this to calling RemoveConstraints in a loop,
 	 * so you don't have to worry about constraint iterator/indices changing.
 	 */
-	void ApplyCollisionModifier(const TArray<ISimCallbackObject*>& CollisionModifiers);
+	void ApplyCollisionModifier(const TArray<ISimCallbackObject*>& CollisionModifiers, FReal Dt);
 
 
 	/**
@@ -309,6 +317,7 @@ private:
 	bool bEnableCollisions;
 	bool bEnableRestitution;
 	bool bHandlesEnabled;
+	bool bIsDeterministic;
 
 	// This is passed to IterationParameters. If true, then an iteration can cull a contact
 	// permanently (ie, for the remaining iterations) if it is ignored due to culldistance.

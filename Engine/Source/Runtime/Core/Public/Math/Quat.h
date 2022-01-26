@@ -883,6 +883,11 @@ FORCEINLINE FQuat FQuat::operator*=(const FQuat& Q)
 	return *this; 
 }
 
+// Global operator for (float * Quat)
+FORCEINLINE FQuat operator*(const float Scale, const FQuat& Q)
+{
+	return Q.operator*(Scale);
+}
 
 FORCEINLINE FQuat FQuat::operator*=(const float Scale)
 {

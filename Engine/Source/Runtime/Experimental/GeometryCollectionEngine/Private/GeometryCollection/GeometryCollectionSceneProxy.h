@@ -71,6 +71,12 @@ public:
 	FShaderResourceViewRHIRef VertexBufferSRV;
 };
 
+
+inline void CopyTransformsWithConversionWhenNeeded(TArray<FMatrix>& DstTransforms, const TArray<FMatrix>& SrcTransforms)
+{
+	DstTransforms = SrcTransforms; // add move option?
+}
+
 /** Immutable rendering data (kind of) */
 struct FGeometryCollectionConstantData
 {
@@ -93,6 +99,12 @@ struct FGeometryCollectionConstantData
 	TArray<FGeometryCollectionSection> OriginalMeshSections;
 
 	TArray<FMatrix> RestTransforms;
+	
+	void SetRestTransforms(const TArray<FMatrix>& InTransforms)
+	{
+		// use for LWC as FMatrix and FMatrix44f are different when LWC is on 
+		CopyTransformsWithConversionWhenNeeded(RestTransforms, InTransforms);
+	}
 };
 
 /** Mutable rendering data */
@@ -100,10 +112,80 @@ struct FGeometryCollectionDynamicData
 {
 	TArray<FMatrix> Transforms;
 	TArray<FMatrix> PrevTransforms;
-	bool IsDynamic;
-	bool IsLoading;
+	uint32 ChangedCount;
+	uint8 IsDynamic : 1;
+	uint8 IsLoading : 1;
 
-	FGeometryCollectionDynamicData() : IsDynamic(false) {}
+	FGeometryCollectionDynamicData()
+	{
+		Reset();
+	}
+
+	void Reset()
+	{
+		Transforms.Reset();
+		PrevTransforms.Reset();
+		IsDynamic = false;
+		IsLoading = false;
+	}
+
+	void SetTransforms(const TArray<FMatrix>& InTransforms)
+	{
+		// use for LWC as FMatrix and FMatrix44f are different when LWC is on 
+		CopyTransformsWithConversionWhenNeeded(Transforms, InTransforms);
+	}
+
+	void SetPrevTransforms(const TArray<FMatrix>& InTransforms)
+	{
+		// use for LWC as FMatrix and FMatrix44f are different when LWC is on 
+		CopyTransformsWithConversionWhenNeeded(PrevTransforms, InTransforms);
+	}
+
+	void SetAllTransforms(const TArray<FMatrix>& InTransforms)
+	{
+		SetTransforms(InTransforms);
+		PrevTransforms = Transforms;
+		ChangedCount = Transforms.Num();
+	}
+
+	void DetermineChanges()
+	{
+		// Check if previous transforms are the same as current
+		const float EqualTolerance = 1e-6;
+
+		check(Transforms.Num() == PrevTransforms.Num());
+		if (Transforms.Num() != PrevTransforms.Num())
+		{
+			ChangedCount = Transforms.Num();
+		}
+		else
+		{
+			ChangedCount = 0;
+			for (int32 TransformIndex = 0; TransformIndex < Transforms.Num(); ++TransformIndex)
+			{
+				if (!PrevTransforms[TransformIndex].Equals(Transforms[TransformIndex], EqualTolerance))
+				{
+					++ChangedCount;
+				}
+			}
+		}
+	}
+};
+
+class FGeometryCollectionDynamicDataPool
+{
+public:
+	FGeometryCollectionDynamicDataPool();
+	~FGeometryCollectionDynamicDataPool();
+
+	FGeometryCollectionDynamicData* Allocate();
+	void Release(FGeometryCollectionDynamicData* DynamicData);
+
+private:
+	TArray<FGeometryCollectionDynamicData*> UsedList;
+	TArray<FGeometryCollectionDynamicData*> FreeList;
+
+	FCriticalSection ListLock;
 };
 
 /***

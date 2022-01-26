@@ -7,6 +7,7 @@
 #include "Chaos/Collision/SpatialAccelerationCollisionDetector.h"
 #include "Chaos/Evolution/SolverBodyContainer.h"
 #include "Chaos/PBDCollisionConstraints.h"
+#include "Chaos/PBDRigidClustering.h"
 #include "Chaos/PBDRigidsEvolution.h"
 #include "Chaos/PerParticleAddImpulses.h"
 #include "Chaos/PerParticleEtherDrag.h"
@@ -66,9 +67,8 @@ namespace Chaos
 		using Base::CreateClusteredParticles;
 		using Base::EnableParticle;
 		using Base::DisableParticles;
-		using Base::GetActiveClusteredArray;
 		using Base::NumIslands;
-		using Base::GetNonDisabledClusteredArray;
+		using Base::GetNonDisabledClusteredView;
 		using Base::DisableParticle;
 		using Base::GetConstraintGraph;
 		using Base::PhysicsMaterials;
@@ -88,7 +88,6 @@ namespace Chaos
 		using FCollisionConstraintRule = TPBDConstraintColorRule<FCollisionConstraints>;
 		using FCollisionDetector = FSpatialAccelerationCollisionDetector;
 		using FExternalForces = FPerParticleExternalForces;
-		using FRigidClustering = TPBDRigidClustering<FPBDRigidsEvolutionGBF, FPBDCollisionConstraints>;
 		using FJointConstraintsRule = TPBDConstraintIslandRule<FPBDJointConstraints>;
 		using FSuspensionConstraintsRule = TPBDConstraintIslandRule<FPBDSuspensionConstraints>;
 		using FJointConstraints = FPBDJointConstraints;
@@ -148,6 +147,8 @@ namespace Chaos
 			}
 		}
 
+		void SetIsDeterministic(const bool bInIsDeterministic);
+
 		CHAOS_API void Advance(const FReal Dt, const FReal MaxStepDt, const int32 MaxSteps);
 		CHAOS_API void AdvanceOneTimeStep(const FReal dt, const FSubStepInfo& SubStepInfo = FSubStepInfo());
 
@@ -163,10 +164,8 @@ namespace Chaos
 		FORCEINLINE FGravityForces& GetGravityForces() { return GravityForces; }
 		FORCEINLINE const FGravityForces& GetGravityForces() const { return GravityForces; }
 
-		FORCEINLINE const TPBDRigidClustering<FPBDRigidsEvolutionGBF, FPBDCollisionConstraints>& GetRigidClustering() const { return Clustering; }
-		FORCEINLINE TPBDRigidClustering<FPBDRigidsEvolutionGBF, FPBDCollisionConstraints>& GetRigidClustering() { return Clustering; }
-
-		void DestroyConstraint(FConstraintHandle* Constraint);
+		FORCEINLINE const FRigidClustering& GetRigidClustering() const { return Clustering; }
+		FORCEINLINE FRigidClustering& GetRigidClustering() { return Clustering; }
 
 		FORCEINLINE FJointConstraints& GetJointConstraints() { return JointConstraints; }
 		FORCEINLINE const FJointConstraints& GetJointConstraints() const { return JointConstraints; }
@@ -174,13 +173,29 @@ namespace Chaos
 		FORCEINLINE FPBDSuspensionConstraints& GetSuspensionConstraints() { return SuspensionConstraints; }
 		FORCEINLINE const FPBDSuspensionConstraints& GetSuspensionConstraints() const { return SuspensionConstraints; }
 
+		/**
+		 * Reload the particles cache within an island
+		 * @param Island Index of the island in which the cache will be used
+		 */
+		void ReloadParticlesCache(const int32 Island);
+
+		/**
+		 * Build the list of disables particles and update the sleeping flag on the island
+		 * @param Island Index of the island in which the cache will be used
+		 * @param DisabledParticles List of islands disabled particles
+		 * @param SleepedIslands List of islands sleeping state 
+		 */
+		void BuildDisabledParticles(const int32 Island, TArray<TArray<FPBDRigidParticleHandle*>>& DisabledParticles, TArray<bool>& SleepedIslands);
+
+		void DestroyConstraint(FConstraintHandle* Constraint);
+
 		void DestroyParticleCollisionsInAllocator(FGeometryParticleHandle* Particle);
 
 		CHAOS_API inline void EndFrame(FReal Dt)
 		{
 			Particles.GetNonDisabledDynamicView().ParallelFor([&](auto& Particle, int32 Index) {
-				Particle.F() = FVec3(0);
-				Particle.Torque() = FVec3(0);
+				Particle.Acceleration() = FVec3(0);
+				Particle.AngularAcceleration() = FVec3(0);
 			});
 		}
 
@@ -189,15 +204,12 @@ namespace Chaos
 		{
 			//SCOPE_CYCLE_COUNTER(STAT_Integrate);
 			CHAOS_SCOPED_TIMER(Integrate);
-			FPerParticleEulerStepVelocity EulerStepVelocityRule;
-			FPerParticleAddImpulses AddImpulsesRule;
-			FPerParticleEtherDrag EtherDragRule;
-			FPerParticlePBDEulerStep EulerStepRule;
 
 			const FReal BoundsThickness = GetNarrowPhase().GetBoundsExpansion();
 			const FReal MaxAngularSpeedSq = CVars::HackMaxAngularVelocity * CVars::HackMaxAngularVelocity;
 			const FReal MaxSpeedSq = CVars::HackMaxVelocity * CVars::HackMaxVelocity;
 			InParticles.ParallelFor([&](auto& GeomParticle, int32 Index) {
+	
 				//question: can we enforce this at the API layer? Right now islands contain non dynamic which makes this hard
 				auto PBDParticle = GeomParticle.CastToRigidParticle();
 				if (PBDParticle && PBDParticle->ObjectState() == EObjectStateType::Dynamic)
@@ -212,9 +224,45 @@ namespace Chaos
 					{
 						ForceRule(Particle, Dt);
 					}
-					EulerStepVelocityRule.Apply(Particle, Dt);
-					AddImpulsesRule.Apply(Particle, Dt);
-					EtherDragRule.Apply(Particle, Dt);
+
+					//EulerStepVelocityRule.Apply(Particle, Dt);
+					Particle.V() += Particle.Acceleration() * Dt;
+					Particle.W() += Particle.AngularAcceleration() * Dt;
+
+
+					//AddImpulsesRule.Apply(Particle, Dt);
+					Particle.V() += Particle.LinearImpulseVelocity();
+					Particle.W() += Particle.AngularImpulseVelocity();
+					Particle.LinearImpulseVelocity() = FVec3(0);
+					Particle.AngularImpulseVelocity() = FVec3(0);
+					
+
+					//EtherDragRule.Apply(Particle, Dt);
+					{
+						FVec3& V = Particle.V();
+						FVec3& W = Particle.W();
+
+						const FReal LinearDrag = LinearEtherDragOverride >= 0 ? LinearEtherDragOverride : Particle.LinearEtherDrag() * Dt;
+						const FReal LinearMultiplier = FMath::Max(FReal(0), FReal(1) - LinearDrag);
+						V *= LinearMultiplier;
+
+						const FReal AngularDrag = AngularEtherDragOverride >= 0 ? AngularEtherDragOverride : Particle.AngularEtherDrag() * Dt;
+						const FReal AngularMultiplier = FMath::Max(FReal(0), FReal(1) - AngularDrag);
+						W *= AngularMultiplier;
+
+						const FReal LinearSpeedSq = V.SizeSquared();
+						const FReal AngularSpeedSq = W.SizeSquared();
+
+						if (LinearSpeedSq > Particle.MaxLinearSpeedSq())
+						{
+							V *= FMath::Sqrt(Particle.MaxLinearSpeedSq() / LinearSpeedSq);
+						}
+
+						if (AngularSpeedSq > Particle.MaxAngularSpeedSq())
+						{
+							W *= FMath::Sqrt(Particle.MaxAngularSpeedSq() / AngularSpeedSq);
+						}
+					}
 
 					if (CVars::HackMaxAngularVelocity >= 0.f)
 					{
@@ -234,7 +282,14 @@ namespace Chaos
 						}
 					}
 
-					EulerStepRule.Apply(Particle, Dt);
+					//EulerStepRule.Apply(Particle, Dt);
+					FVec3 PCoM = FParticleUtilitiesXR::GetCoMWorldPosition(&Particle);
+					FRotation3 QCoM = FParticleUtilitiesXR::GetCoMWorldRotation(&Particle);
+
+					PCoM = PCoM + Particle.V() * Dt;
+					QCoM = FRotation3::IntegrateRotationWithAngularVelocity(QCoM, Particle.W(), Dt);
+
+					FParticleUtilitiesPQ::SetCoMWorldTransform(&Particle, PCoM, QCoM);
 
 					if (!Particle.CCDEnabled())
 					{
@@ -273,15 +328,15 @@ namespace Chaos
 		// First phase of constraint solver
 		// For GBF this is the velocity solve phase
 		// For PBD/QuasiPBD this is the position solve phase
-		void ApplyConstraintsPhase1(const FReal Dt, int32 Island);
+		void ApplyConstraintsPhase1(const FReal Dt, int32 GroupIndex);
 
 		// Calculate the implicit velocites based on the change in position from ApplyConstraintsPhase1
-		void SetImplicitVelocities(const FReal Dt, int32 Island);
+		void SetImplicitVelocities(const FReal Dt, int32 GroupIndex);
 		
 		// Second phase of constraint solver (after implicit velocity calculation following results of phase 1)
 		// For GBF this is the pushout phase
 		// For QuasiPBD this is the velocity solve phase
-		void ApplyConstraintsPhase2(const FReal Dt, int32 Island);
+		void ApplyConstraintsPhase2(const FReal Dt, int32 GroupIndex);
 
 
 		CHAOS_API void Serialize(FChaosArchive& Ar);
@@ -298,15 +353,15 @@ namespace Chaos
 
 		CHAOS_API void AdvanceOneTimeStepImpl(const FReal dt, const FSubStepInfo& SubStepInfo);
 
-		void GatherSolverInput(FReal Dt, int32 Island);
-		void ScatterSolverOutput(FReal Dt, int32 Island);
+		void GatherSolverInput(FReal Dt, int32 GroupIndex);
+		void ScatterSolverOutput(FReal Dt, int32 GroupIndex);
 
 		FEvolutionResimCache* GetCurrentStepResimCache()
 		{
 			return CurrentStepResimCacheImp;
 		}
 
-		TPBDRigidClustering<FPBDRigidsEvolutionGBF, FPBDCollisionConstraints> Clustering;
+		FRigidClustering Clustering;
 
 		FPBDJointConstraints JointConstraints;
 		TPBDConstraintIslandRule<FPBDJointConstraints> JointConstraintRule;
@@ -330,6 +385,8 @@ namespace Chaos
 		const TArray<ISimCallbackObject*>* CollisionModifiers;
 
 		FCCDManager CCDManager;
+
+		bool bIsDeterministic;
 	};
 
 }

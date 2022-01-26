@@ -148,7 +148,7 @@ namespace Chaos
 			// to support loading. Cast const away here to get bytes written
 			const_cast<FHeightField*>(this)->Serialize(ChaosAr);
 
-			return FCrc::MemCrc32(Bytes.GetData(), Bytes.GetAllocatedSize());
+			return FCrc::MemCrc32(Bytes.GetData(), (int32)Bytes.GetAllocatedSize());
 		}
 
 		static constexpr EImplicitObjectType StaticType()
@@ -280,8 +280,7 @@ namespace Chaos
 				OutPts[2] = { (FReal)X, (FReal)Y + 1, H2 };
 				OutPts[3] = { (FReal)X + 1, (FReal)Y + 1, H3 };
 
-				// use MinHeight this assume the heightfield is a halfspace
-				const FReal MinZ = GetMinHeight();
+				const FReal MinZ = FMath::Min<FReal>(H0, FMath::Min<FReal>(H1, FMath::Min<FReal>(H2, H3)));
 				const FReal MaxZ = FMath::Max<FReal>(H0, FMath::Max<FReal>(H1, FMath::Max<FReal>(H2, H3)));
 
 				OutBounds = FAABB3(FVec3((FReal)X, (FReal)Y, MinZ), FVec3((FReal)X + 1, (FReal)Y + 1, MaxZ));
@@ -321,27 +320,28 @@ namespace Chaos
 
 			void SafeSerializeReal(FChaosArchive& Ar, FReal& RealValue, int32 RuntimeRealSize, int32 SerializedRealSize)
 			{
-				if (RuntimeRealSize == SerializedRealSize)
+				// LWC_TODO: Serializer - SafeSerializeReal fix up required. Fall back to FChaosArchive FReal serialization behavior (forced to float) in the short term.
+				//if (RuntimeRealSize == SerializedRealSize)
 				{
 					// same sizes all FReal
 					Ar << RealValue;
 				}
-				else 
-				{
-					// size don't match need to do some conversion
-					if (SerializedRealSize == sizeof(float))
-					{
-						float Value = (float)RealValue;
-						Ar << Value;
-						RealValue = (FReal)Value;
-					}
-					else if (SerializedRealSize == sizeof(double))
-					{
-						double Value = (double)RealValue;
-						Ar << Value;
-						RealValue = (FReal)Value;
-					}
-				}
+				//else 
+				//{
+				//	// size don't match need to do some conversion
+				//	if (SerializedRealSize == sizeof(float))
+				//	{
+				//		float Value = (float)RealValue;
+				//		Ar << Value;
+				//		RealValue = (FReal)Value;
+				//	}
+				//	else if (SerializedRealSize == sizeof(double))
+				//	{
+				//		double Value = (double)RealValue;
+				//		Ar << Value;
+				//		RealValue = (FReal)Value;
+				//	}
+				//}
 			}
 
 			void Serialize(FChaosArchive& Ar)
@@ -381,7 +381,7 @@ namespace Chaos
 					{
 						// todo(chaos) this may not matter if the Vector types are handling serialization properly 
 						// legacy, need to keep the inner box type as float ( not FReal ) 
-						TArray<TBox<float, 3>> CellBounds;
+						TArray<FBoxFloat3> CellBounds;
 						Ar << CellBounds;
 					}
 					else if(Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::HeightfieldUsesHeightsDirectly)

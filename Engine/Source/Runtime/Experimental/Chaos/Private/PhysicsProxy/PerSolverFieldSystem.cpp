@@ -430,10 +430,10 @@ void FPerSolverFieldSystem::GetRelevantParticleHandles(
 			const auto* Clustered = Handle->CastToClustered();
 			if (Clustered && Clustered->ClusterIds().NumChildren)
 			{
-				Chaos::FPBDRigidParticleHandle* RigidHandle = (*It).Handle()->CastToRigidParticle();
-				if (ClusterMap.Contains(RigidHandle))
+				const Chaos::FPBDRigidClusteredParticleHandle* ClusteredParticleHandle  = (*It).Handle()->CastToClustered();
+				if (ClusterMap.Contains(ClusteredParticleHandle))
 				{
-					for (Chaos::FPBDRigidParticleHandle * Child : ClusterMap[RigidHandle])
+					for (Chaos::FPBDRigidParticleHandle * Child : ClusterMap[ClusteredParticleHandle])
 					{
 						Handles.Add(Child);
 					}

@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Chaos/Transform.h"
+#include "Chaos/Real.h"
 
 using namespace Chaos;
 

@@ -17,13 +17,16 @@
 #include "Chaos/PBDRigidsEvolutionFwd.h"
 #include "Chaos/Defines.h"
 #include "Chaos/PendingSpatialData.h"
-
+#include "ProfilingDebugging/CsvProfiler.h"
+#include "RewindData.h"
 
 extern int32 ChaosRigidsEvolutionApplyAllowEarlyOutCVar;
 extern int32 ChaosRigidsEvolutionApplyPushoutAllowEarlyOutCVar;
 extern int32 ChaosNumPushOutIterationsOverride;
 extern int32 ChaosNumContactIterationsOverride;
 extern int32 ChaosNonMovingKinematicUpdateOptimization;
+
+extern CHAOS_API int32 ForceNoCollisionIntoSQ;
 
 namespace Chaos
 {
@@ -193,6 +196,8 @@ struct FSpatialAccelerationCacheHandle
 		return Cache->Bounds(EntryIdx);
 	}
 
+	bool LightWeightDisabled() const { return false; }
+
 	union
 	{
 		FSpatialAccelerationCache* GeometryParticles;	//using same name as particles SOA for template reuse, should probably rethink this
@@ -215,7 +220,7 @@ struct CHAOS_API ISpatialAccelerationCollectionFactory
 	virtual bool IsBucketTimeSliced(uint16 BucketIdx) const = 0;
 
 	//Chaos creates new acceleration structures per bucket. Factory can change underlying type at runtime as well as number of buckets to AB test
-	virtual TUniquePtr<ISpatialAcceleration<FAccelerationStructureHandle, FReal, 3>> CreateAccelerationPerBucket_Threaded(const TConstParticleView<FSpatialAccelerationCache>& Particles, uint16 BucketIdx, bool ForceFullBuild) = 0;
+	virtual TUniquePtr<ISpatialAcceleration<FAccelerationStructureHandle, FReal, 3>> CreateAccelerationPerBucket_Threaded(const TConstParticleView<FSpatialAccelerationCache>& Particles, uint16 BucketIdx, bool ForceFullBuild, bool bDynamicTree) = 0;
 
 	//Mask indicating which bucket is active. Spatial indices in inactive buckets fallback to bucket 0. Bit 0 indicates bucket 0 is active, Bit 1 indicates bucket 1 is active, etc...
 	virtual uint8 GetActiveBucketsMask() const = 0;
@@ -410,7 +415,7 @@ public:
 		}
 
 		//only add to acceleration structure if it has collision
-		if (Particle.HasCollision())
+		if (Particle.HasCollision() || ForceNoCollisionIntoSQ)
 		{
 			//TODO: distinguish between new particles and dirty particles
 			const FUniqueIdx UniqueIdx = Particle.UniqueIdx();
@@ -427,6 +432,11 @@ public:
 
 	CHAOS_API void DestroyParticle(FGeometryParticleHandle* Particle)
 	{
+		if (MRewindData)
+		{
+			MRewindData->RemoveObject(Particle);
+		}
+
 		RemoveParticleFromAccelerationStructure(*Particle);
 		DisconnectConstraints(TSet<FGeometryParticleHandle*>({ Particle }));
 		ConstraintGraph.RemoveParticle(Particle);
@@ -451,38 +461,11 @@ public:
 		DirtyParticle(*ParticleAdded);
 	}
 
-	CHAOS_API void SetParticleObjectState(FPBDRigidParticleHandle* Particle, EObjectStateType ObjectState)
-	{
-		EObjectStateType InitialState = Particle->ObjectState();
+	CHAOS_API void SetParticleObjectState(FPBDRigidParticleHandle* Particle, EObjectStateType ObjectState);
 
-		Particle->SetObjectStateLowLevel(ObjectState);
+	CHAOS_API void SetParticleSleepType(FPBDRigidParticleHandle* Particle, ESleepType InSleepType);
 
-		if(auto* AsCluster = Particle->CastToClustered())
-		{
-			Particles.SetClusterParticleSOA(AsCluster);
-		}
-		else
-		{
-			Particles.SetDynamicParticleSOA(Particle);
-		}
-
-		if(InitialState != ObjectState)
-		{
-			if (InitialState == EObjectStateType::Sleeping)
-			{
-				if (Particle->IslandIndex() != INDEX_NONE)
-				{
-					// GT has forced a wake so have to wake everything in the island
-					IslandsToWake.Enqueue(Particle->IslandIndex());
-				}
-			}
-			else if(ObjectState != EObjectStateType::Dynamic)
-			{
-				// even though we went to sleep, we should still report info back to GT
-				Particles.MarkTransientDirtyParticle(Particle);
-			}
-		}
-	}
+	CHAOS_API void DisableParticles(const TSet<FGeometryParticleHandle*>& InParticles);
 
 	CHAOS_API void WakeIslands()
 	{
@@ -594,9 +577,6 @@ public:
 
 	CHAOS_API void ResetConstraints()
 	{
-		// Remove all the constraints from the graph
-		GetConstraintGraph().RemoveConstraints();
-
 		// Clear all particle lists of collisions and constraints
 		// (this could be performed by the constraint containers
 		// but it would be unnecessarily expensive to remove them
@@ -614,9 +594,7 @@ public:
 		}
 	}
 
-	//TEMP: this is only needed while clustering continues to use indices directly
-	const auto& GetActiveClusteredArray() const { return Particles.GetActiveClusteredArray(); }
-	const auto& GetNonDisabledClusteredArray() const { return Particles.GetNonDisabledClusteredArray(); }
+	const TParticleView<FPBDRigidClusteredParticles>& GetNonDisabledClusteredView() const { return Particles.GetNonDisabledClusteredView(); }
 
 	CHAOS_API TSerializablePtr<FChaosPhysicsMaterial> GetPhysicsMaterial(const FGeometryParticleHandle* Particle) const { return Particle->AuxilaryValue(PhysicsMaterials); }
 	
@@ -673,6 +651,8 @@ public:
 
 	void UpdateAccelerationStructures(const FReal Dt, const int32 Island)
 	{
+		CSV_SCOPED_TIMING_STAT(Chaos, UpdateAccelerationStructures);
+
 		for (FPBDConstraintGraphRule* ConstraintRule : ConstraintRules)
 		{
 			ConstraintRule->UpdateAccelerationStructures(Dt, Island);
@@ -684,7 +664,7 @@ public:
 		check(StepFraction > (FReal)0);
 		check(StepFraction <= (FReal)1);
 
-		const bool IsLastStep = (FMath::IsNearlyEqual(StepFraction, (FReal)1, KINDA_SMALL_NUMBER));
+		const bool IsLastStep = (FMath::IsNearlyEqual(StepFraction, (FReal)1, (FReal)KINDA_SMALL_NUMBER));
 
 		const FReal MinDt = 1e-6f;
 		auto GetKinematicView = [this]()
@@ -699,9 +679,8 @@ public:
 		for (auto& Particle : GetKinematicView())
 		{
 			TKinematicTarget<FReal, 3>& KinematicTarget = Particle.KinematicTarget();
-			const TRigidTransform<FReal, 3>& Previous = KinematicTarget.GetPrevious();
-			const FVec3 PrevX = Previous.GetTranslation();
-			const FRotation3 PrevR = Previous.GetRotation();
+			const FVec3 CurrentX = Particle.X();
+			const FRotation3 CurrentR = Particle.R();
 
 			switch (KinematicTarget.GetMode())
 			{
@@ -723,29 +702,31 @@ public:
 			{
 				// Move to kinematic target and update velocities to match
 				// Target positions only need to be processed once, and we reset the velocity next frame (if no new target is set)
-				FVec3 TargetPos;
-				FRotation3 TargetRot;
+				FVec3 NewX;
+				FRotation3 NewR;
 				if (IsLastStep)
 				{
-					TargetPos = KinematicTarget.GetTarget().GetLocation();
-					TargetRot = KinematicTarget.GetTarget().GetRotation();
+					NewX = KinematicTarget.GetTarget().GetLocation();
+					NewR = KinematicTarget.GetTarget().GetRotation();
 					KinematicTarget.SetMode(EKinematicTargetMode::Reset);
 				}
 				else
 				{
-					TargetPos = FVec3::Lerp(PrevX, KinematicTarget.GetTarget().GetLocation(), StepFraction);
-					TargetRot = FRotation3::Slerp(PrevR, KinematicTarget.GetTarget().GetRotation(), StepFraction);
+					// as a reminder, stepfraction is the remaing fraction of the step from the remaining steps
+					// for total of 4 steps and current step of 2, this will be 1/3 ( 1 step passed, 3 steps remains )
+					NewX = FVec3::Lerp(CurrentX, KinematicTarget.GetTarget().GetLocation(), StepFraction);
+					NewR = FRotation3::Slerp(CurrentR, KinematicTarget.GetTarget().GetRotation(), decltype(FQuat::X)(StepFraction));
 				}
 				if (Dt > MinDt)
 				{
-					FVec3 V = FVec3::CalculateVelocity(PrevX, TargetPos, Dt);
+					FVec3 V = FVec3::CalculateVelocity(CurrentX, NewX, Dt);
 					Particle.V() = V;
 
-					FVec3 W = FRotation3::CalculateAngularVelocity(PrevR, TargetRot, Dt);
+					FVec3 W = FRotation3::CalculateAngularVelocity(CurrentR, NewR, Dt);
 					Particle.W() = W;
 				}
-				Particle.X() = TargetPos;
-				Particle.R() = TargetRot;
+				Particle.X() = NewX;
+				Particle.R() = NewR;
 				Particles.MarkTransientDirtyParticle(Particle.Handle());
 				break;
 			}
@@ -805,6 +786,9 @@ public:
 	CHAOS_API const FPBDConstraintGraph& GetConstraintGraph() const { return ConstraintGraph; }
 	CHAOS_API FPBDConstraintGraph& GetConstraintGraph() { return ConstraintGraph; }
 
+	void SetResim(bool bInResim) { bIsResim = bInResim; }
+	const bool IsResimming() const { return bIsResim; }
+
 	void Serialize(FChaosArchive& Ar);
 
 	FUniqueIdx GenerateUniqueIdx()
@@ -831,6 +815,11 @@ public:
 	void SetCanStartAsyncTasks(bool bInCanStartAsyncTasks)
 	{
 		bCanStartAsyncTasks = bInCanStartAsyncTasks;
+	}
+
+	void SetRewindData(FRewindData* RewindData)
+	{
+		MRewindData = RewindData;
 	}
 
 	CHAOS_API void DisableParticleWithRemovalEvent(FGeometryParticleHandle* Particle);
@@ -896,7 +885,7 @@ protected:
 
 	void CreateIslands()
 	{
-		ConstraintGraph.UpdateIslands(Particles.GetNonDisabledDynamicView(), Particles);
+		ConstraintGraph.UpdateIslands(Particles.GetNonDisabledDynamicView(), Particles, ConstraintRules.Num());
 
 		for (FPBDConstraintGraphRule* ConstraintRule : ConstraintRules)
 		{
@@ -904,9 +893,28 @@ protected:
 		}
 	}
 	
+	/** Sort constraints if necessary */
+	void SortConstraints()
+	{
+		bool bNeedsSorting = false;
+		for (FPBDConstraintGraphRule* ConstraintRule : ConstraintRules)
+		{
+			bNeedsSorting |= ConstraintRule->IsSortingEnabled();
+		}
+		if(bNeedsSorting)
+		{
+			ConstraintGraph.GetIslandGraph()->InitSorting();
+			for (FPBDConstraintGraphRule* ConstraintRule : ConstraintRules)
+			{
+				ConstraintRule->SortConstraints();
+			}
+		}
+	}
+	
 	void FlushInternalAccelerationQueue();
 	void FlushAsyncAccelerationQueue();
 	void WaitOnAccelerationStructure();
+	static void CopyUnBuiltDynamicAccelerationStructures(const TMap<FSpatialAccelerationIdx, TUniquePtr<FSpatialAccelerationCache>>& SpatialAccelerationCache, FAccelerationStructure* InternalAcceleration, FAccelerationStructure* AsyncInternalAcceleration, FAccelerationStructure* AsyncExternalAcceleration);
 	static void CopyPristineAccelerationStructures(const TMap<FSpatialAccelerationIdx, TUniquePtr<FSpatialAccelerationCache>>& SpatialAccelerationCache, FAccelerationStructure* FromStructure, FAccelerationStructure* ToStructure, bool CheckPristine);
 
 	TArray<FForceRule> ForceRules;
@@ -927,6 +935,7 @@ protected:
 	FAccelerationStructure* InternalAcceleration;
 	FAccelerationStructure* AsyncInternalAcceleration;
 	FAccelerationStructure* AsyncExternalAcceleration;
+	FRewindData* MRewindData = nullptr;
 
 	//internal thread will push into this and external thread will consume
 	TQueue<FAccelerationStructure*,EQueueMode::Spsc> ExternalStructuresQueue;
@@ -979,7 +988,7 @@ protected:
 
 	TMap<FSpatialAccelerationIdx, TUniquePtr<FSpatialAccelerationCache>> SpatialAccelerationCache;
 
-	FORCEINLINE_DEBUGGABLE void ApplyParticlePendingData(const FPendingSpatialData& PendingData, FAccelerationStructure& SpatialAcceleration, bool bUpdateCache);
+	FORCEINLINE_DEBUGGABLE void ApplyParticlePendingData(const FPendingSpatialData& PendingData, FAccelerationStructure& SpatialAcceleration, bool bUpdateCache, bool bUpdateDynamicTrees);
 
 	class FChaosAccelerationStructureTask
 	{
@@ -1020,6 +1029,7 @@ protected:
 	void ReleasePendingIndices();
 
 	TArray<FUniqueIdx> PendingReleaseIndices;	//for now just assume a one frame delay, but may need something more general
+	bool bIsResim = false; 
 };
 
 

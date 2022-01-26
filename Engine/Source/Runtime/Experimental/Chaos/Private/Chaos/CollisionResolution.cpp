@@ -90,8 +90,14 @@ FAutoConsoleVariableRef CVarAlwaysAddSweptConstraints(TEXT("p.Chaos.Constraints.
 int32 CCDAllowForceDisable = 1;
 FAutoConsoleVariableRef CVarCCDAllowForceDisable(TEXT("p.Chaos.CCD.AllowForceDisable"), CCDAllowForceDisable, TEXT("Allow force disable CCD."));
 
+int32 CCDManualForceDisable = 0;
+FAutoConsoleVariableRef CVarCCDManualForceDisable(TEXT("p.Chaos.CCD.ManualForceDisable"), CCDManualForceDisable, TEXT("For debugging, manually disable CCD always."));
+
 bool bChaos_Collision_AllowLevelsetManifolds = true;
 FAutoConsoleVariableRef CVarChaosCollisionAllowLevelsetManifolds(TEXT("p.Chaos.Collision.AllowLevelsetManifolds"), bChaos_Collision_AllowLevelsetManifolds, TEXT("Use incremental manifolds for levelset-levelset collision. This does not work well atm - too much rotation in the small pieces"));
+
+bool CCDUseInitialRotationForSweptUpdate = false;
+FAutoConsoleVariableRef CVarCCDUseInitialRotationForSweptUpdate(TEXT("p.Chaos.CCD.UseInitialRotationForSweptUpdate"), CCDUseInitialRotationForSweptUpdate, TEXT("Experimental : Use R instead of Q for SweptUpdate. Will lead to incorrect results in some cases."));
 
 bool CCDAlwaysSweepRemainingDT = false;
 FAutoConsoleVariableRef CVarCCDAlwaysSweepRemainingDT(TEXT("p.Chaos.CCD.AlwaysSweepRemainingDT"), CCDAlwaysSweepRemainingDT, TEXT("Even if we are out of iterations, do the sweep for remaining dt instead of adjusting V. Could cause tunnelling in some cases, but prevents loss of momentum."));
@@ -162,6 +168,11 @@ namespace Chaos
 		*/
 		bool ShouldUseCCD(const FGeometryParticleHandle* Particle0, const FVec3& StartX0, const FGeometryParticleHandle* Particle1, const FVec3& StartX1, FVec3& Dir, FReal& Length, const bool bForceDisableCCD)
 		{
+			if (CCDManualForceDisable)
+			{
+				return false;
+			}
+
 			if (CCDAllowForceDisable > 0 && bForceDisableCCD)
 			{
 				return false;
@@ -290,7 +301,7 @@ namespace Chaos
 			// point within reasonable range despite passing the AABB tests
 			if (ContactPoint.IsSet())
 			{
-				Constraint.AddIncrementalManifoldContact(ContactPoint, Dt);
+				Constraint.AddIncrementalManifoldContact(ContactPoint);
 			}
 			else
 			{
@@ -318,7 +329,7 @@ namespace Chaos
 
 			if (ContactPoint.IsSet())
 			{
-				Constraint.AddIncrementalManifoldContact(ContactPoint, Dt);
+				Constraint.AddIncrementalManifoldContact(ContactPoint);
 			}
 		}
 
@@ -444,16 +455,7 @@ namespace Chaos
 			{
 				if (Constraint.GetUseManifold())
 				{
-					// We only build one shot manifolds once
-					if (Constraint.GetManifoldPoints().Num() == 0)
-					{
-						ConstructConvexConvexOneShotManifold(A, ATM, B, BTM, Dt, Constraint);
-					}
-					else
-					{
-						// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-						Constraint.UpdateManifoldContacts();
-					}
+					ConstructConvexConvexOneShotManifold(A, ATM, B, BTM, Dt, Constraint);
 				}
 				else
 				{
@@ -515,15 +517,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructBoxBoxOneShotManifold(Box1, Box1Transform, Box2, Box2Transform, Dt, Constraint);
-				}
-				else
-				{
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructBoxBoxOneShotManifold(Box1, Box1Transform, Box2, Box2Transform, Dt, Constraint);
 			}
 			else
 			{
@@ -556,8 +550,15 @@ namespace Chaos
 
 		void UpdateBoxHeightFieldConstraint(const FImplicitBox3& A, const FRigidTransform3& ATransform, const FHeightField& B, const FRigidTransform3& BTransform, const FReal Dt, FPBDCollisionConstraint& Constraint)
 		{
-			// @todo(chaos): restitutionpadding
-			UpdateContactPoint(Constraint, BoxHeightFieldContactPoint(A, ATransform, B, BTransform, Constraint.GetCullDistance(), 0.0f), Dt);
+			if(Constraint.GetUseManifold())
+			{
+				ConstructConvexHeightFieldOneShotManifold<FImplicitBox3>(A, ATransform, B, BTransform, Dt, Constraint);
+			}
+			else
+			{
+				// @todo(chaos): restitutionpadding
+				UpdateContactPoint(Constraint, BoxHeightFieldContactPoint(A, ATransform, B, BTransform, Constraint.GetCullDistance(), 0.0f), Dt);
+			}
 		}
 
 		template<typename T_TRAITS>
@@ -638,11 +639,9 @@ namespace Chaos
 				{
 					AverageLocation += PotentialConstraints[ConstraintIdx];
 				}
-				Contact.Location = AverageLocation / NumConstraints;
+				Contact.Location = AverageLocation / static_cast<FReal>(NumConstraints);
 			}
 
-			Contact.ShapeMargins[0] = 0.0f;
-			Contact.ShapeMargins[1] = 0.0f;
 			Contact.ShapeContactPoints[0] = BoxTransform.InverseTransformPosition(Contact.Location);
 			Contact.ShapeContactPoints[1] = PlaneTransform.InverseTransformPosition(Contact.Location - Contact.Phi * Contact.Normal);
 			Contact.ShapeContactNormal = PlaneTransform.InverseTransformVector(Contact.Normal);
@@ -682,8 +681,15 @@ namespace Chaos
 		template <typename TriMeshType>
 		void UpdateBoxTriangleMeshConstraint(const FImplicitBox3& Box0, const FRigidTransform3& WorldTransform0, const TriMeshType& TriangleMesh1, const FRigidTransform3& WorldTransform1, const FReal Dt, FPBDCollisionConstraint& Constraint)
 		{
-			// @toto(chaos): restitutionpadding
-			UpdateContactPoint(Constraint, BoxTriangleMeshContactPoint(Box0, WorldTransform0, TriangleMesh1, WorldTransform1, Constraint.GetCullDistance(), 0.0f), Dt);
+			if(Constraint.GetUseManifold())
+			{
+				ConstructConvexTriMeshOneShotManifold<FImplicitBox3, TriMeshType>(Box0, WorldTransform0, TriangleMesh1, WorldTransform1, Dt, Constraint);
+			}
+			else
+			{
+				// @toto(chaos): restitutionpadding
+				UpdateContactPoint(Constraint, BoxTriangleMeshContactPoint(Box0, WorldTransform0, TriangleMesh1, WorldTransform1, Constraint.GetCullDistance(), 0.0f), Dt);
+			}
 		}
 
 		template<typename T_TRAITS>
@@ -729,20 +735,11 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructSphereSphereOneShotManifold(Sphere1, Sphere1Transform, Sphere2, Sphere2Transform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructSphereSphereOneShotManifold(Sphere1, Sphere1Transform, Sphere2, Sphere2Transform, Dt, Constraint);
 			}
 			else
 			{
-				UpdateContactPoint(Constraint, SphereSphereContactPoint(Sphere1, Sphere1Transform, Sphere2, Sphere2Transform, Constraint.Manifold.RestitutionPadding), Dt);
+				UpdateContactPoint(Constraint, SphereSphereContactPoint(Sphere1, Sphere1Transform, Sphere2, Sphere2Transform, Constraint.GetCullDistance(), Constraint.Manifold.RestitutionPadding), Dt);
 			}
 		}
 
@@ -771,16 +768,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructSphereHeightFieldOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructSphereHeightFieldOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -835,16 +823,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructSpherePlaneOneShotManifold(Sphere, SphereTransform, Plane, PlaneTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructSpherePlaneOneShotManifold(Sphere, SphereTransform, Plane, PlaneTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -879,16 +858,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructSphereBoxOneShotManifold(Sphere, SphereTransform, Box, BoxTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructSphereBoxOneShotManifold(Sphere, SphereTransform, Box, BoxTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -924,16 +894,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructSphereCapsuleOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructSphereCapsuleOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -966,16 +927,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructSphereConvexManifold(A, ATransform, B, BTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructSphereConvexManifold(A, ATransform, B, BTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -1009,16 +961,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructSphereTriangleMeshOneShotManifold(Sphere0, WorldTransform0, TriangleMesh1, WorldTransform1, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructSphereTriangleMeshOneShotManifold(Sphere0, WorldTransform0, TriangleMesh1, WorldTransform1, Dt, Constraint);
 			}
 			else
 			{
@@ -1106,16 +1049,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructCapsuleCapsuleOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructCapsuleCapsuleOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -1148,16 +1082,7 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructConvexConvexOneShotManifold<FCapsule, FImplicitBox3>(A, ATransform, B, BTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructConvexConvexOneShotManifold<FCapsule, FImplicitBox3>(A, ATransform, B, BTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -1210,16 +1135,7 @@ namespace Chaos
 			{
 				if (Constraint.GetUseManifold())
 				{
-					// We only build one shot manifolds once
-					if (Constraint.GetManifoldPoints().Num() == 0)
-					{
-						ConstructConvexConvexOneShotManifold<FCapsule, ConvexType>(A, ATransform, B, BTransform, Dt, Constraint);
-					}
-					else
-					{
-						// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-						Constraint.UpdateManifoldContacts();
-					}
+					ConstructConvexConvexOneShotManifold<FCapsule, ConvexType>(A, ATransform, B, BTransform, Dt, Constraint);
 				}
 				else
 				{
@@ -1278,16 +1194,7 @@ namespace Chaos
 			CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_UpdateCapsuleHeightFieldConstraint, ConstraintsDetailedStats);
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructCapsuleHeightFieldOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructCapsuleHeightFieldOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -1350,16 +1257,7 @@ namespace Chaos
 			CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_UpdateCapsuleTriangleMeshConstraint, ConstraintsDetailedStats);
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructCapsuleTriMeshOneShotManifold(Capsule0, WorldTransform0, TriangleMesh1, WorldTransform1, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructCapsuleTriMeshOneShotManifold(Capsule0, WorldTransform0, TriangleMesh1, WorldTransform1, Dt, Constraint);
 			}
 			else
 			{
@@ -1506,16 +1404,7 @@ namespace Chaos
 			CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_UpdateConvexHeightFieldConstraint, ConstraintsDetailedStats);
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructConvexHeightFieldOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructConvexHeightFieldOneShotManifold(A, ATransform, B, BTransform, Dt, Constraint);
 			}
 			else
 			{
@@ -1573,16 +1462,7 @@ namespace Chaos
 			CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_UpdateConvexTriangleMeshConstraint, ConstraintsDetailedStats);
 			if (Constraint.GetUseManifold())
 			{
-				// We only build one shot manifolds once
-				if (Constraint.GetManifoldPoints().Num() == 0)
-				{
-					ConstructConvexTriMeshOneShotManifold(Convex0, WorldTransform0, TriangleMesh1, WorldTransform1, Dt, Constraint);
-				}
-				else
-				{
-					// @todo(chaos): this is only used for the MinEvolution path - see if it can be removed/moved
-					Constraint.UpdateManifoldContacts();
-				}
+				ConstructConvexTriMeshOneShotManifold(Convex0, WorldTransform0, TriangleMesh1, WorldTransform1, Dt, Constraint);
 			}
 			else
 			{
@@ -1696,7 +1576,7 @@ namespace Chaos
 				if (Constraint.GetSolverBody0() != nullptr)
 				{
 					const FRigidTransform3 CoMToParticleTransform = FParticleUtilities::ParticleLocalToCoMLocal(Particle0, FRigidTransform3::Identity);
-					ParticlesTM = CoMToParticleTransform * FRigidTransform3(Constraint.GetSolverBody0()->P(), Constraint.GetSolverBody0()->Q());
+					ParticlesTM = CoMToParticleTransform * FRigidTransform3(Constraint.GetSolverBody0()->CorrectedP(), Constraint.GetSolverBody0()->CorrectedQ());
 				}
 				else
 				{
@@ -1711,11 +1591,9 @@ namespace Chaos
 
 				if (ContactPoint.IsSet())
 				{
-					// @todo(chaos): margin
-					ContactPoint.ShapeMargins[0] = 0.0f;
-					ContactPoint.ShapeMargins[1] = 0.0f;
-					ContactPoint.ShapeContactPoints[0] = WorldTransform0.InverseTransformPosition(ContactPoint.Location);
-					ContactPoint.ShapeContactPoints[1] = WorldTransform1.InverseTransformPosition(ContactPoint.Location - ContactPoint.Phi * ContactPoint.Normal);
+					// @todo(chaos): this work is partially duplicated from SampleObject - fix this
+					ContactPoint.ShapeContactPoints[0] = WorldTransform0.InverseTransformPosition(ContactPoint.Location + FReal(0.5) * ContactPoint.Phi * ContactPoint.Normal);
+					ContactPoint.ShapeContactPoints[1] = WorldTransform1.InverseTransformPosition(ContactPoint.Location - FReal(0.5) * ContactPoint.Phi * ContactPoint.Normal);
 					ContactPoint.ShapeContactNormal = WorldTransform1.InverseTransformVector(ContactPoint.Normal);
 				}
 
@@ -1737,7 +1615,7 @@ namespace Chaos
 			FPBDCollisionConstraint* Constraint = Context.CollisionAllocator->FindOrCreateConstraint(Particle0, Implicit0, Simplicial0, LocalTransform0, Particle1, Implicit1, Simplicial1, LocalTransform1, CullDistance, EContactShapesType::LevelSetLevelSet, bAllowManifolds);
 
 			// @todo(chaos): support manifold restoration for Levelsets and remove this
-			Constraint->ResetManifold();
+			Constraint->ResetActiveManifoldContacts();
 
 			// @todo(chaos): the order test should be done befor we create the constraint so we can do it right first time, rather than patching it after
 			bool bIsParticleDynamic0 = Particle0->CastToRigidParticle() && Particle0->ObjectState() == EObjectStateType::Dynamic;
@@ -1759,7 +1637,7 @@ namespace Chaos
 				Constraint->SetManifold(Implicit0, Simplicial0, Implicit1, Simplicial1);
 			}
 
-			if (T_TRAITS::bImmediateUpdate && (Constraint != nullptr) && !Constraint->WasManifoldRestored())
+			if (T_TRAITS::bImmediateUpdate && !Constraint->WasManifoldRestored())
 			{
 				FRigidTransform3 WorldTransform0 = Constraint->ImplicitTransform[0] * ParticleWorldTransform0;
 				FRigidTransform3 WorldTransform1 = Constraint->ImplicitTransform[1] * ParticleWorldTransform1;
@@ -1784,12 +1662,16 @@ namespace Chaos
 			CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_UpdateConstraintFromGeometryInternal, ConstraintsDetailedStats);
 			INC_DWORD_STAT(STAT_ChaosCollisionCounter_NumContactUpdates);
 
-			const FImplicitObject& Implicit0 = *Constraint.Manifold.Implicit[0];
-			const FImplicitObject& Implicit1 = *Constraint.Manifold.Implicit[1];
-
 			// @todo(chaos): remove
 			//const FVec3 OriginalContactPositionLocal0 = WorldTransform0.InverseTransformPosition(Constraint.Manifold.Location);
 			//const FVec3 OriginalContactPositionLocal1 = WorldTransform1.InverseTransformPosition(Constraint.Manifold.Location);
+			if (!Constraint.Manifold.Implicit[0] || !Constraint.Manifold.Implicit[1])
+			{
+				return;
+			}
+
+			const FImplicitObject& Implicit0 = *Constraint.Manifold.Implicit[0];
+			const FImplicitObject& Implicit1 = *Constraint.Manifold.Implicit[1];
 
 
 			switch (Constraint.Manifold.ShapesType)
@@ -1902,10 +1784,6 @@ namespace Chaos
 				ensure(false);
 				break;
 			}
-
-			//const FVec3 NewContactPositionLocal0 = WorldTransform0.InverseTransformPosition(Constraint.Manifold.Location);
-			//const FVec3 NewContactPositionLocal1 = WorldTransform1.InverseTransformPosition(Constraint.Manifold.Location);
-			//Constraint.Manifold.ContactMoveSQRDistance = FMath::Max((NewContactPositionLocal0 - OriginalContactPositionLocal0).SizeSquared(), (NewContactPositionLocal1 - OriginalContactPositionLocal1).SizeSquared());
 		}
 
 		// Run collision detection for the swept constraints
@@ -2537,13 +2415,8 @@ namespace Chaos
 			ConstructConstraintsImpl<T_TRAITS>(Particle0, Particle1, Implicit0, Simplicial0, Implicit1, Simplicial1, ParticleWorldTransform0, LocalTransform0, ParticleWorldTransform1, LocalTransform1, CullDistance, Dt, Context);
 		}
 
-		EContactShapesType CalculateShapePairType(const FImplicitObject* Implicit0, const FBVHParticles* BVHParticles0, const FImplicitObject* Implicit1, const FBVHParticles* BVHParticles1, bool& bOutSwap)
+		EContactShapesType CalculateShapePairType(const EImplicitObjectType Implicit0Type, const EImplicitObjectType Implicit1Type, const bool bIsConvex0, const bool bIsConvex1, const bool bIsBVH0, const bool bIsBVH1,  bool &bOutSwap)
 		{
-			const EImplicitObjectType Implicit0Type = (Implicit0 != nullptr) ? GetInnerType(Implicit0->GetCollisionType()) : ImplicitObjectType::Unknown;
-			const EImplicitObjectType Implicit1Type = (Implicit1 != nullptr) ? GetInnerType(Implicit1->GetCollisionType()) : ImplicitObjectType::Unknown;
-			const bool bIsConvex0 = (Implicit0 != nullptr) && Implicit0->IsConvex() && (Implicit0Type != ImplicitObjectType::LevelSet);
-			const bool bIsConvex1 = (Implicit1 != nullptr) && Implicit1->IsConvex() && (Implicit1Type != ImplicitObjectType::LevelSet);
-
 			bOutSwap = false;
 			if (Implicit0Type == TBox<FReal, 3>::StaticType() && Implicit1Type == TBox<FReal, 3>::StaticType())
 			{
@@ -2698,7 +2571,7 @@ namespace Chaos
 			}
 			else if ((Implicit0Type == FLevelSet::StaticType()) || (Implicit1Type == FLevelSet::StaticType()))
 			{
-				bOutSwap = (BVHParticles0 == nullptr) && (BVHParticles1 != nullptr);
+				bOutSwap = !bIsBVH0 && bIsBVH1;
 				return EContactShapesType::LevelSetLevelSet;
 			}
 
@@ -2707,6 +2580,16 @@ namespace Chaos
 			return EContactShapesType::Unknown;
 		}
 
+		EContactShapesType CalculateShapePairType(const FImplicitObject* Implicit0, const FBVHParticles* BVHParticles0, const FImplicitObject* Implicit1, const FBVHParticles* BVHParticles1, bool& bOutSwap)
+		{
+			const EImplicitObjectType Implicit0Type = (Implicit0 != nullptr) ? GetInnerType(Implicit0->GetCollisionType()) : ImplicitObjectType::Unknown;
+			const EImplicitObjectType Implicit1Type = (Implicit1 != nullptr) ? GetInnerType(Implicit1->GetCollisionType()) : ImplicitObjectType::Unknown;
+			const bool bIsConvex0 = (Implicit0 != nullptr) && Implicit0->IsConvex() && (Implicit0Type != ImplicitObjectType::LevelSet);
+			const bool bIsConvex1 = (Implicit1 != nullptr) && Implicit1->IsConvex() && (Implicit1Type != ImplicitObjectType::LevelSet);
+			const bool bIsBVH0 = (BVHParticles0 != nullptr);
+			const bool bIsBVH1 = (BVHParticles1 != nullptr);
+			return CalculateShapePairType(Implicit0Type, Implicit1Type, bIsConvex0, bIsConvex1, bIsBVH0, bIsBVH1, bOutSwap);
+		}
 
 		void ConstructConstraints(TGeometryParticleHandle<FReal, 3>* Particle0, TGeometryParticleHandle<FReal, 3>* Particle1, const FImplicitObject* Implicit0, const FBVHParticles* Simplicial0, const FImplicitObject* Implicit1, const FBVHParticles* Simplicial1, const FRigidTransform3& ParticleWorldTransform0, const FRigidTransform3& LocalTransform0, const FRigidTransform3& ParticleWorldTransform1, const FRigidTransform3& LocalTransform1, const FReal CullDistance, const FReal dT, const FCollisionContext& Context)
 		{

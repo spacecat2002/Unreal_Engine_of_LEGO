@@ -445,7 +445,7 @@ void UGeometryCollectionDebugDrawComponent::UpdateSelectedTransformIndex()
 		SelectedChaosSolver = GeometryCollectionDebugDrawActor->SelectedRigidBody.Solver;
 		return;
 	}
-
+	/*
 	// Check rigid body id sync
 	// Note that this test alone isn't enough to ensure that the rigid body ids are valid.
 	//const TManagedArray<int32>& RigidBodyIds = GeometryCollectionComponent->RigidBodyIds;
@@ -505,6 +505,7 @@ void UGeometryCollectionDebugDrawComponent::UpdateSelectedTransformIndex()
 	// Update selected rigid body index and solver
 	SelectedRigidBodyId = GeometryCollectionDebugDrawActor->SelectedRigidBody.Id;
 	SelectedChaosSolver = GeometryCollectionDebugDrawActor->SelectedRigidBody.Solver;
+	*/
 }
 
 int32 UGeometryCollectionDebugDrawComponent::CountFaces(int32 TransformIndex, bool bDebugDrawClustering) const
@@ -724,6 +725,7 @@ void UGeometryCollectionDebugDrawComponent::UpdateTickStatus()
 
 void UGeometryCollectionDebugDrawComponent::DebugDrawChaosTick()
 {
+	/*
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionDebugDrawActor);
 	check(GeometryCollectionRenderLevelSetActor);
@@ -879,6 +881,7 @@ void UGeometryCollectionDebugDrawComponent::DebugDrawChaosTick()
 			GeometryCollectionDebugDrawActor->DrawRigidBodiesId(GeometryCollectionComponent, ParticlesData, RigidBodyIds, GeometryCollectionDebugDrawActor->RigidBodyIdColor);
 		}
 	}
+	*/
 }
 
 void UGeometryCollectionDebugDrawComponent::UpdateLevelSetVisibility()

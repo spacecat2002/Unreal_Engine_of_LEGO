@@ -12,20 +12,20 @@ FGeometryCollectionProximityUtility::FGeometryCollectionProximityUtility(FGeomet
 	: Collection(InCollection)
 {
 	check(Collection);
-
+	
 	// We quantize surface normals into 20 uniform bins on a unit sphere surface, ie an icosahedron
 	BinNormals.SetNum(NumBins);
-
-	BinNormals[0] = FVector(0.171535f, -0.793715f, 0.583717f);
-	BinNormals[1] = FVector(0.627078f, -0.778267f, 0.034524f);
-	BinNormals[2] = FVector(-0.491358f, -0.810104f, 0.319894f);
-	BinNormals[3] = FVector(-0.445554f, -0.804788f, -0.392214f);
-	BinNormals[4] = FVector(0.245658f, -0.785111f, -0.568669f);
-	BinNormals[5] = FVector(0.984880f, -0.161432f, 0.062144f);
-	BinNormals[6] = FVector(0.247864f, -0.186425f, 0.950708f);
-	BinNormals[7] = FVector(-0.824669f, -0.212942f, 0.523975f);
-	BinNormals[8] = FVector(-0.750546f, -0.204339f, -0.628411f);
-	BinNormals[9] = FVector(0.367791f, -0.172505f, -0.913787f);
+	
+	BinNormals[0] = FVector3f(0.171535f, -0.793715f, 0.583717f);
+	BinNormals[1] = FVector3f(0.627078f, -0.778267f, 0.034524f);
+	BinNormals[2] = FVector3f(-0.491358f, -0.810104f, 0.319894f);
+	BinNormals[3] = FVector3f(-0.445554f, -0.804788f, -0.392214f);
+	BinNormals[4] = FVector3f(0.245658f, -0.785111f, -0.568669f);
+	BinNormals[5] = FVector3f(0.984880f, -0.161432f, 0.062144f);
+	BinNormals[6] = FVector3f(0.247864f, -0.186425f, 0.950708f);
+	BinNormals[7] = FVector3f(-0.824669f, -0.212942f, 0.523975f);
+	BinNormals[8] = FVector3f(-0.750546f, -0.204339f, -0.628411f);
+	BinNormals[9] = FVector3f(0.367791f, -0.172505f, -0.913787f);
 	BinNormals[10] = -BinNormals[0];
 	BinNormals[11] = -BinNormals[1];
 	BinNormals[12] = -BinNormals[2];
@@ -36,7 +36,7 @@ FGeometryCollectionProximityUtility::FGeometryCollectionProximityUtility(FGeomet
 	BinNormals[17] = -BinNormals[7];
 	BinNormals[18] = -BinNormals[8];
 	BinNormals[19] = -BinNormals[9];
-
+	
 	NumFaces = Collection->NumElements(FGeometryCollection::FacesGroup);
 	PrepFaceData();
 }
@@ -45,7 +45,7 @@ void FGeometryCollectionProximityUtility::UpdateProximity()
 {
 	/*
 	*	For each face, we generate the surface normal and put the normal into a set of bins that discretize the surface
-	*	of the unit sphere. We know that any face can only contact other faces with opposite surface normal, which
+	*	of the unit sphere. We know that any face can only contact other faces with opposite surface normal, which 
 	*	means that we need only compare a face with the bin of faces on the antipode of the sphere. We determine contact first
 	*	by testing if the normal is opposite, then if the faces are coplanar, then if the 2D triangles overlap.
 	*	Once we have face pairs, we can extend this to geometry indices and form the proximity structure
@@ -59,7 +59,7 @@ void FGeometryCollectionProximityUtility::UpdateProximity()
 
 
 void FGeometryCollectionProximityUtility::PrepFaceData()
-{
+{	
 	GenerateFaceToGeometry();
 	TransformVertices();
 	GenerateSurfaceNormals();
@@ -71,20 +71,20 @@ void FGeometryCollectionProximityUtility::BinFaces()
 	Bins.SetNum(NumBins);
 	for (int32 BinIdx = 0; BinIdx < NumBins; ++BinIdx)
 	{
-		Bins[BinIdx].Reserve(2 * (NumFaces / NumBins));
+		Bins[BinIdx].Reserve(2 * (NumFaces/NumBins));
 	}
 
 	for (int32 FaceIdx = 0; FaceIdx < NumFaces; ++FaceIdx)
 	{
 		if (SurfaceNormals[FaceIdx].IsUnit())
-		{
+		{ 
 			int32 BestFitBin = FindBestBin(SurfaceNormals[FaceIdx]);
 			Bins[BestFitBin].Add(FaceIdx);
 		}
 	}
 }
 
-int32 FGeometryCollectionProximityUtility::FindBestBin(const FVector& SurfaceNormal) const
+int32 FGeometryCollectionProximityUtility::FindBestBin(const FVector3f& SurfaceNormal) const
 {
 	// We select the bin with the highest alignment with the surface normal
 	float BestAlignment = -1.0;
@@ -92,7 +92,7 @@ int32 FGeometryCollectionProximityUtility::FindBestBin(const FVector& SurfaceNor
 
 	for (int32 BinIdx = 0; BinIdx < NumBins; ++BinIdx)
 	{
-		float Alignment = FVector::DotProduct(SurfaceNormal, BinNormals[BinIdx]);
+		float Alignment = FVector3f::DotProduct(SurfaceNormal, BinNormals[BinIdx]);
 		if (Alignment > BestAlignment)
 		{
 			BestAlignment = Alignment;
@@ -106,12 +106,12 @@ int32 FGeometryCollectionProximityUtility::FindBestBin(const FVector& SurfaceNor
 void FGeometryCollectionProximityUtility::FindContactingFaces()
 {
 	FaceContacts.SetNum(NumFaces);
-
+	
 	// The bin hemispheres are symmetrical so we only need to iterate half of them.
 	// We are comparing antipodal bins.
 	ParallelFor((NumBins / 2), [this](int32 BinIdx)
-		{
-			FindContactPairs(BinIdx, (NumBins / 2) + BinIdx);
+		{ 
+			FindContactPairs(BinIdx, (NumBins/2) + BinIdx); 
 		});
 }
 
@@ -140,9 +140,9 @@ void FGeometryCollectionProximityUtility::FindContactPairs(int32 Zenith, int32 N
 	}
 }
 
-bool FGeometryCollectionProximityUtility::AreNormalsOpposite(const FVector& Normal0, const FVector& Normal1) const
+bool FGeometryCollectionProximityUtility::AreNormalsOpposite(const FVector3f& Normal0, const FVector3f& Normal1) const
 {
-	return FVector::DotProduct(Normal0, Normal1) < (-1.0f + KINDA_SMALL_NUMBER);
+	return FVector3f::DotProduct(Normal0, Normal1) < (-1.0f + KINDA_SMALL_NUMBER);
 }
 
 bool FGeometryCollectionProximityUtility::AreFacesCoPlanar(int32 Idx0, int32 Idx1) const
@@ -151,11 +151,11 @@ bool FGeometryCollectionProximityUtility::AreFacesCoPlanar(int32 Idx0, int32 Idx
 
 	const TManagedArray<FIntVector>& Indices = Collection->Indices;
 
-	FVector SamplePoint = TransformedVertices[Indices[Idx0].X];
-	FVector PlaneOrigin = TransformedVertices[Indices[Idx1].X];
-	FVector PlaneNormal = SurfaceNormals[Idx1];
+	FVector3f SamplePoint = TransformedVertices[Indices[Idx0].X];
+	FVector3f PlaneOrigin = TransformedVertices[Indices[Idx1].X];
+	FVector3f PlaneNormal = SurfaceNormals[Idx1];
 
-	return FMath::Abs(FVector::DotProduct((SamplePoint - PlaneOrigin), PlaneNormal)) < KINDA_SMALL_NUMBER;
+	return FMath::Abs(FVector3f::DotProduct((SamplePoint - PlaneOrigin), PlaneNormal)) < KINDA_SMALL_NUMBER;
 }
 
 bool FGeometryCollectionProximityUtility::DoFacesOverlap(int32 Idx0, int32 Idx1) const
@@ -163,35 +163,35 @@ bool FGeometryCollectionProximityUtility::DoFacesOverlap(int32 Idx0, int32 Idx1)
 	// Assumes that the faces are coplanar
 
 	const TManagedArray<FIntVector>& Indices = Collection->Indices;
-
+	
 	// Project the first triangle into its normal plane
-	FVector Basis0 = TransformedVertices[Indices[Idx0].Y] - TransformedVertices[Indices[Idx0].X];
+	FVector3f Basis0 = TransformedVertices[Indices[Idx0].Y] - TransformedVertices[Indices[Idx0].X];
 	Basis0.Normalize();
-	FVector Basis1 = FVector::CrossProduct(SurfaceNormals[Idx0], Basis0);
+	FVector3f Basis1 = FVector3f::CrossProduct(SurfaceNormals[Idx0], Basis0);
 	Basis1.Normalize();
 
-	FVector Origin = TransformedVertices[Indices[Idx0].X];
-
-	TStaticArray<FVector2D, 3> T0;
+	FVector3f Origin = TransformedVertices[Indices[Idx0].X];
+	
+	TStaticArray<FVector2f,3> T0; 
 	// T0[0] is the origin of the system
-	T0[0] = FVector2D(0.f, 0.f);
+	T0[0] = FVector2f(0.f, 0.f);
 
-	T0[1] = FVector2D(FVector::DotProduct(TransformedVertices[Indices[Idx0].Y] - Origin, Basis0), FVector::DotProduct(TransformedVertices[Indices[Idx0].Y] - Origin, Basis1));
-	T0[2] = FVector2D(FVector::DotProduct(TransformedVertices[Indices[Idx0].Z] - Origin, Basis0), FVector::DotProduct(TransformedVertices[Indices[Idx0].Z] - Origin, Basis1));
+	T0[1] = FVector2f(FVector3f::DotProduct(TransformedVertices[Indices[Idx0].Y] - Origin, Basis0), FVector3f::DotProduct(TransformedVertices[Indices[Idx0].Y] - Origin, Basis1));
+	T0[2] = FVector2f(FVector3f::DotProduct(TransformedVertices[Indices[Idx0].Z] - Origin, Basis0), FVector3f::DotProduct(TransformedVertices[Indices[Idx0].Z] - Origin, Basis1));
 
 	// Project the second triangle into these coordinates. We reverse the winding order to flip the normal.
-	FVector Point0 = TransformedVertices[Indices[Idx1].Z] - Origin;
-	FVector Point1 = TransformedVertices[Indices[Idx1].Y] - Origin;
-	FVector Point2 = TransformedVertices[Indices[Idx1].X] - Origin;
-	TStaticArray<FVector2D, 3> T1;
-	T1[0] = FVector2D(FVector::DotProduct(Point0, Basis0), FVector::DotProduct(Point0, Basis1));
-	T1[1] = FVector2D(FVector::DotProduct(Point1, Basis0), FVector::DotProduct(Point1, Basis1));
-	T1[2] = FVector2D(FVector::DotProduct(Point2, Basis0), FVector::DotProduct(Point2, Basis1));
+	FVector3f Point0 = TransformedVertices[Indices[Idx1].Z] - Origin;
+	FVector3f Point1 = TransformedVertices[Indices[Idx1].Y] - Origin;
+	FVector3f Point2 = TransformedVertices[Indices[Idx1].X] - Origin;
+	TStaticArray<FVector2f,3> T1;
+	T1[0] = FVector2f(FVector3f::DotProduct(Point0, Basis0), FVector3f::DotProduct(Point0, Basis1));
+	T1[1] = FVector2f(FVector3f::DotProduct(Point1, Basis0), FVector3f::DotProduct(Point1, Basis1));
+	T1[2] = FVector2f(FVector3f::DotProduct(Point2, Basis0), FVector3f::DotProduct(Point2, Basis1));
 
 	return IdenticalTriangles(T0, T1) || TrianglesIntersect(T0, T1);
 }
 
-bool FGeometryCollectionProximityUtility::IdenticalTriangles(const TStaticArray<FVector2D, 3>& T0, const TStaticArray<FVector2D, 3>& T1)
+bool FGeometryCollectionProximityUtility::IdenticalTriangles(const TStaticArray<FVector2f, 3>& T0, const TStaticArray<FVector2f, 3>& T1)
 {
 	int32 FirstMatch = 0;
 	for (; FirstMatch < 3; ++FirstMatch)
@@ -220,7 +220,7 @@ bool FGeometryCollectionProximityUtility::IdenticalTriangles(const TStaticArray<
 	return true;
 }
 
-bool FGeometryCollectionProximityUtility::TrianglesIntersect(const TStaticArray<FVector2D, 3>& T0, const TStaticArray<FVector2D, 3>& T1)
+bool FGeometryCollectionProximityUtility::TrianglesIntersect(const TStaticArray<FVector2f,3>& T0, const TStaticArray<FVector2f,3>& T1)
 {
 	// Test if one of the triangles has a side with all of the other triangle's points on the outside.
 	float Normal0 = (T0[1].X - T0[0].X) * (T0[2].Y - T0[0].Y) - (T0[1].Y - T0[0].Y) * (T0[2].X - T0[0].X);
@@ -234,13 +234,13 @@ bool FGeometryCollectionProximityUtility::TrianglesIntersect(const TStaticArray<
 		Cross(T0, T1[1], T1[0], Normal1));
 }
 
-bool FGeometryCollectionProximityUtility::Cross(const TStaticArray<FVector2D, 3>& Points, const FVector2D& B, const FVector2D& C, float Normal)
+bool FGeometryCollectionProximityUtility::Cross(const TStaticArray<FVector2f,3>& Points, const FVector2f& B, const FVector2f& C, float Normal)
 {
 	float CyBy = C.Y - B.Y;
 	float CxBx = C.X - B.X;
-	const FVector2D& Pa = Points[0];
-	const FVector2D& Pb = Points[1];
-	const FVector2D& Pc = Points[2];
+	const FVector2f& Pa = Points[0];
+	const FVector2f& Pb = Points[1];
+	const FVector2f& Pc = Points[2];
 
 	return !(
 		(((Pa.X - B.X) * CyBy - (Pa.Y - B.Y) * CxBx) * Normal < 0) ||
@@ -256,9 +256,9 @@ void FGeometryCollectionProximityUtility::GenerateSurfaceNormals()
 		{
 			const TManagedArray<FIntVector>& Indices = Collection->Indices;
 
-			FVector Edge0 = (TransformedVertices[Indices[FaceIdx].X] - TransformedVertices[Indices[FaceIdx].Y]);
-			FVector Edge1 = (TransformedVertices[Indices[FaceIdx].Z] - TransformedVertices[Indices[FaceIdx].Y]);
-			SurfaceNormals[FaceIdx] = FVector::CrossProduct(Edge0, Edge1);
+			FVector3f Edge0 = (TransformedVertices[Indices[FaceIdx].X] - TransformedVertices[Indices[FaceIdx].Y]);
+			FVector3f Edge1 = (TransformedVertices[Indices[FaceIdx].Z] - TransformedVertices[Indices[FaceIdx].Y]);
+			SurfaceNormals[FaceIdx] = FVector3f::CrossProduct(Edge0, Edge1);
 			SurfaceNormals[FaceIdx].Normalize();
 		});
 }
@@ -286,11 +286,11 @@ void FGeometryCollectionProximityUtility::TransformVertices()
 
 	TArray<FTransform> GlobalTransformArray;
 	GeometryCollectionAlgo::GlobalMatrices(Collection->Transform, Collection->Parent, GlobalTransformArray);
-
+	
 	ParallelFor(Collection->NumElements(FGeometryCollection::VerticesGroup), [this, &GlobalTransformArray](int32 VertIdx)
 		{
 			const TManagedArray<int32>& BoneMap = Collection->BoneMap;
-			const TManagedArray<FVector>& Vertex = Collection->Vertex;
+			const TManagedArray<FVector3f>& Vertex = Collection->Vertex;
 
 			const FTransform& GlobalTransform = GlobalTransformArray[BoneMap[VertIdx]];
 			TransformedVertices[VertIdx] = GlobalTransform.TransformPosition(Vertex[VertIdx]);

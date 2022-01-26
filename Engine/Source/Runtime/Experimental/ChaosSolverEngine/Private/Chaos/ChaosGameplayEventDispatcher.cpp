@@ -336,7 +336,14 @@ void UChaosGameplayEventDispatcher::HandleCollisionEvents(const Chaos::FCollisio
 								int32 CollisionIdx = Chaos::FEventManager::DecodeCollisionIndex(EncodedCollisionIdx, bSwapOrder);
 
 								Chaos::FCollidingData const& CollisionDataItem = CollisionData[CollisionIdx];
-								IPhysicsProxyBase* const PhysicsProxy1 = bSwapOrder ? CollisionDataItem.ParticleProxy : CollisionDataItem.LevelsetProxy;
+
+								IPhysicsProxyBase* const PhysicsProxy1 = CollisionDataItem.Proxy2 ? PhysicsProxy0 : CollisionDataItem.Proxy2;
+
+								// Are the proxies pending destruction? If they are no longer tracked by the PhysScene, the proxy is deleted or pending deletion.
+								if (Scene.GetOwningComponent<UPrimitiveComponent>(PhysicsProxy0) == nullptr || Scene.GetOwningComponent<UPrimitiveComponent>(PhysicsProxy1) == nullptr)
+								{
+									continue;
+								}
 
 								{
 									bool bNewEntry = false;
@@ -473,13 +480,16 @@ void UChaosGameplayEventDispatcher::HandleBreakingEvents(const Chaos::FBreakingE
 
 void UChaosGameplayEventDispatcher::HandleSleepingEvents(const Chaos::FSleepingEventData& SleepingData)
 {
+#if WITH_CHAOS
+	FPhysScene& Scene = *(GetWorld()->GetPhysicsScene());
+
 	const Chaos::FSleepingDataArray& SleepingArray = SleepingData.SleepingData;
 
 	for (const Chaos::FSleepingData& SleepData : SleepingArray)
 	{
-		if (SleepData.Particle->GetProxy()!= nullptr)
+		if (SleepData.Proxy!= nullptr && Scene.GetOwningComponent<UPrimitiveComponent>(SleepData.Proxy) != nullptr)
 		{
-			if (FBodyInstance* BodyInstance = FPhysicsUserData::Get<FBodyInstance>(SleepData.Particle->UserData()))
+			if (FBodyInstance* BodyInstance = Scene.GetBodyInstanceFromProxy(SleepData.Proxy))
 			{
 				if (BodyInstance->bGenerateWakeEvents)
 				{
@@ -491,6 +501,7 @@ void UChaosGameplayEventDispatcher::HandleSleepingEvents(const Chaos::FSleepingE
 	}
 
 	DispatchPendingWakeNotifies();
+#endif
 }
 
 

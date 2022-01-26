@@ -13,10 +13,12 @@
 #include "Chaos/Evolution/SolverDatas.h"
 #include "Chaos/Joint/JointSolverConstraints.h"
 #include "Chaos/Joint/PBDJointSolverGaussSeidel.h"
+#include "Chaos/Joint/PBDJointCachedSolverGaussSeidel.h"
 #include "Chaos/ParticleHandleFwd.h"
 #include "Chaos/PBDConstraintContainer.h"
 #include "Chaos/PBDJointConstraintTypes.h"
 #include "Chaos/PBDJointConstraintData.h"
+#include "Chaos/GeometryParticles.h"
 
 namespace Chaos
 {
@@ -41,6 +43,10 @@ namespace Chaos
 		int32 GetConstraintColor() const;
 
 		bool IsConstraintEnabled() const;
+		bool IsConstraintBreaking() const;
+		void ClearConstraintBreaking();
+		bool IsDriveTargetChanged() const;
+		void ClearDriveTargetChanged();
 		FVec3 GetLinearImpulse() const;
 		FVec3 GetAngularImpulse() const;
 
@@ -57,6 +63,12 @@ namespace Chaos
 			return STypeID;
 		}
 
+		ESyncState SyncState() const;
+		void SetSyncState(ESyncState SyncState);
+
+		void SetEnabledDuringResim(bool bEnabled);
+		EResimType ResimType() const;
+
 	protected:
 		using Base::ConstraintIndex;
 		using Base::ConcreteContainer;
@@ -72,8 +84,13 @@ namespace Chaos
 		int32 Color;
 		int32 IslandSize;
 		bool bDisabled;
+		bool bBreaking;
+		bool bDriveTargetChanged;
 		FVec3 LinearImpulse;
 		FVec3 AngularImpulse;
+		EResimType ResimType = EResimType::FullResim;
+		ESyncState SyncState = ESyncState::InSync;
+		bool bEnabledDuringResim = true;
 	};
 
 	/**
@@ -141,9 +158,39 @@ namespace Chaos
 		bool IsConstraintEnabled(int32 ConstraintIndex) const;
 
 		/*
+		 * Whether the constraint is breaking this frame
+		 */
+		bool IsConstraintBreaking(int32 ConstraintIndex) const;
+
+		/*
+		 * Clear the constraint braking state
+		 */
+		void ClearConstraintBreaking(int32 ConstraintIndex);
+
+		/*
+		 * Whether the drive target has changed
+		 */
+		bool IsDriveTargetChanged(int32 ConstraintIndex) const;
+
+		/*
+		 * Clear the drive target state
+		 */
+		void ClearDriveTargetChanged(int32 ConstraintIndex);
+
+		/*
 		 * Enable or disable a constraints
 		 */
 		void SetConstraintEnabled(int32 ConstraintIndex, bool bEnabled);
+
+		/*
+		 * Set Breaking State
+		 */
+		void SetConstraintBreaking(int32 ConstraintIndex, bool bBreaking);
+
+		/*
+		* Set Drive Target Changed State
+		*/
+		void SetDriveTargetChanged(int32 ConstraintIndex, bool bTargetChanged);
 
 		/*
 		 * Force a constraints to break
@@ -189,6 +236,13 @@ namespace Chaos
 		FVec3 GetConstraintLinearImpulse(int32 ConstraintIndex) const;
 		FVec3 GetConstraintAngularImpulse(int32 ConstraintIndex) const;
 
+		ESyncState GetConstraintSyncState(int32 ConstraintIndex) const;
+		void SetConstraintSyncState(int32 ConstraintIndex, ESyncState SyncState);
+		
+		void SetConstraintEnabledDuringResim(int32 ConstraintIndex, bool bEnabled);
+		
+		EResimType GetConstraintResimType(int32 ConstraintIndex) const;
+		
 		//
 		// General Rule API
 		//
@@ -241,10 +295,14 @@ namespace Chaos
 		void ColorConstraints();
 		void SortConstraints();
 
+		bool CanEvaluate(const int32 ConstraintIndex) const;
+
 		bool ApplyPhase1Single(const FReal Dt, const int32 ConstraintIndex, const int32 NumPairIts, const int32 It, const int32 NumIts);
 		bool ApplyPhase2Single(const FReal Dt, const int32 ConstraintIndex, const int32 NumPairIts, const int32 It, const int32 NumIts);
 		void ApplyBreakThreshold(const FReal Dt, int32 ConstraintIndex, const FVec3& LinearImpulse, const FVec3& AngularImpulse);
-		void ApplyPlasticityLimits(const FReal Dt, int32 ConstraintIndex, const FVec3& LinearDisplacement, const FRotation3& AngularDisplacement);
+		void ApplyPlasticityLimits(const int32 ConstraintIndex);
+
+		void UpdateConstraintProjection(const int32 It, const int32 NumIts, const FPBDIslandSolverData& SolverData);
 
 		FPBDJointSolverSettings Settings;
 
@@ -260,6 +318,7 @@ namespace Chaos
 
 		// @todo(ccaulfield): optimize storage for joint solver
 		TArray<FPBDJointSolver> ConstraintSolvers;
+		TArray<FPBDJointCachedSolver> CachedConstraintSolvers;
 
 		EConstraintSolverType SolverType;
 	};

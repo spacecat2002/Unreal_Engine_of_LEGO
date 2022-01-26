@@ -86,27 +86,27 @@ Pair<TVector<FReal, d>, bool> TAABB<T, d>::FindClosestIntersectionImp(const TVec
 
 
 template <typename T, int d>
-bool TAABB<T, d>::Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, d>& OutPosition, TVector<T, d>& OutNormal, int32& OutFaceIndex) const
+bool TAABB<T, d>::Raycast(const TVector<FReal, d>& StartPoint, const TVector<FReal, d>& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, TVector<FReal, d>& OutPosition, TVector<FReal, d>& OutNormal, int32& OutFaceIndex) const
 {
 	ensure(Length > 0);
-	ensure(FMath::IsNearlyEqual(Dir.SizeSquared(), 1, KINDA_SMALL_NUMBER));
+	ensure(FMath::IsNearlyEqual(Dir.SizeSquared(), (FReal)1, (FReal)KINDA_SMALL_NUMBER));
 
 	OutFaceIndex = INDEX_NONE;
-	const TVector<T, d> MinInflated = MMin - Thickness;
-	const TVector<T,d> StartToMin = MinInflated - StartPoint;
+	const TVector<FReal, d> MinInflated = TVector<FReal, d>(MMin) - Thickness;
+	const TVector<FReal,d> StartToMin = MinInflated - StartPoint;
 	
-	const TVector<T, d> MaxInflated = MMax + Thickness;
-	const TVector<T, d> StartToMax = MaxInflated - StartPoint;
+	const TVector<FReal, d> MaxInflated = TVector<FReal, d>(MMax) + Thickness;
+	const TVector<FReal, d> StartToMax = MaxInflated - StartPoint;
 
 	//For each axis record the start and end time when ray is in the box. If the intervals overlap the ray is inside the box
-	T LatestStartTime = 0;
-	T EarliestEndTime = FLT_MAX;
-	TVector<T, d> Normal(0);	//not needed but fixes compiler warning
+	FReal LatestStartTime = 0;
+	FReal EarliestEndTime = TNumericLimits<FReal>::Max();
+	TVector<FReal, d> Normal(0);	//not needed but fixes compiler warning
 
 	for (int Axis = 0; Axis < d; ++Axis)
 	{
 		const bool bParallel = FMath::IsNearlyZero(Dir[Axis]);
-		T Time1, Time2;
+		FReal Time1, Time2;
 		if (bParallel)
 		{
 			if (StartToMin[Axis] > 0 || StartToMax[Axis] < 0)
@@ -121,12 +121,12 @@ bool TAABB<T, d>::Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& 
 		}
 		else
 		{
-			const T InvDir = (T)1 / Dir[Axis];
+			const FReal InvDir = (FReal)1 / Dir[Axis];
 			Time1 = StartToMin[Axis] * InvDir;
 			Time2 = StartToMax[Axis] * InvDir;
 		}
 
-		TVector<T, d> CurNormal = TVector<T, d>::AxisVector(Axis);
+		TVector<FReal, d> CurNormal = TVector<FReal, d>::AxisVector(Axis);
 
 		if (Time1 > Time2)
 		{
@@ -160,36 +160,36 @@ bool TAABB<T, d>::Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& 
 		return false;
 	}
 	
-	const TVector<T, d> BoxIntersection = StartPoint + LatestStartTime * Dir;
+	const TVector<FReal, d> BoxIntersection = StartPoint + LatestStartTime * Dir;
 
 	//If the box is rounded we have to consider corners and edges.
 	//Break the box into voronoi regions based on features (corner, edge, face) and see which region the raycast hit
 
-	if (Thickness)
+	if (Thickness != (FReal)0)
 	{
 		check(d == 3);
-		TVector<T, d> GeomStart;
-		TVector<T, d> GeomEnd;
+		TVector<FReal, d> GeomStart;
+		TVector<FReal, d> GeomEnd;
 		int32 NumAxes = 0;
 
 		for (int Axis = 0; Axis < d; ++Axis)
 		{
-			if (BoxIntersection[Axis] < MMin[Axis])
+			if (BoxIntersection[Axis] < (FReal)MMin[Axis])
 			{
-				GeomStart[Axis] = MMin[Axis];
-				GeomEnd[Axis] = MMin[Axis];
+				GeomStart[Axis] = (FReal)MMin[Axis];
+				GeomEnd[Axis] = (FReal)MMin[Axis];
 				++NumAxes;
 			}
-			else if (BoxIntersection[Axis] > MMax[Axis])
+			else if (BoxIntersection[Axis] > (FReal)MMax[Axis])
 			{
-				GeomStart[Axis] = MMax[Axis];
-				GeomEnd[Axis] = MMax[Axis];
+				GeomStart[Axis] = (FReal)MMax[Axis];
+				GeomEnd[Axis] = (FReal)MMax[Axis];
 				++NumAxes;
 			}
 			else
 			{
-				GeomStart[Axis] = MMin[Axis];
-				GeomEnd[Axis] = MMax[Axis];
+				GeomStart[Axis] = (FReal)MMin[Axis];
+				GeomEnd[Axis] = (FReal)MMax[Axis];
 			}
 		}
 
@@ -199,16 +199,16 @@ bool TAABB<T, d>::Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& 
 			if (NumAxes == 3)
 			{
 				//hit a corner. For now just use 3 capsules, there's likely a better way to determine which capsule is needed
-				T CornerTimes[3];
-				TVector<T, d> CornerPositions[3];
-				TVector<T, d> CornerNormals[3];
+				FReal CornerTimes[3];
+				TVector<FReal, d> CornerPositions[3];
+				TVector<FReal, d> CornerNormals[3];
 				int32 HitIdx = INDEX_NONE;
-				T MinTime = 0;	//initialization just here for compiler warning
+				FReal MinTime = 0;	//initialization just here for compiler warning
 				for (int CurIdx = 0; CurIdx < 3; ++CurIdx)
 				{
-					TVector<T, d> End = GeomStart;
+					TVector<FReal, d> End = GeomStart;
 					End[CurIdx] = End[CurIdx] == MMin[CurIdx] ? MMax[CurIdx] : MMin[CurIdx];
-					TCapsule<T> Capsule(GeomStart, End, Thickness);
+					FCapsule Capsule(GeomStart, End, Thickness);
 					if (Capsule.Raycast(StartPoint, Dir, Length, 0, CornerTimes[CurIdx], CornerPositions[CurIdx], CornerNormals[CurIdx], OutFaceIndex))
 					{
 						if (HitIdx == INDEX_NONE || CornerTimes[CurIdx] < MinTime)
@@ -236,7 +236,7 @@ bool TAABB<T, d>::Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& 
 			else
 			{
 				//capsule: todo(use a cylinder which is cheaper. Our current cylinder raycast implementation doesn't quite work for this setup)
-				TCapsule<T> CapsuleBorder(GeomStart, GeomEnd, Thickness);
+				FCapsule CapsuleBorder(GeomStart, GeomEnd, Thickness);
 				bHit = CapsuleBorder.Raycast(StartPoint, Dir, Length, 0, OutTime, OutPosition, OutNormal, OutFaceIndex);
 			}
 
@@ -255,25 +255,39 @@ bool TAABB<T, d>::Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& 
 	return true;
 }
 
-template<typename T, int d, class TTRANSFORM>
-inline TAABB<T, d> TransformedAABBHelper(const TAABB<T, d>& AABB, const TTRANSFORM& SpaceTransform)
+template<typename T>
+inline TAABB<T, 3> TransformedAABBHelper(const TAABB<T, 3>& AABB, const FMatrix44& SpaceTransform)
 {
-	TVector<T, d> CurrentExtents = AABB.Extents();
-	int32 Idx = 0;
-	const TVector<T, d> MinToNewSpace = SpaceTransform.TransformPosition(AABB.Min());
-	TAABB<T, d> NewAABB(MinToNewSpace, MinToNewSpace);
-	NewAABB.GrowToInclude(SpaceTransform.TransformPosition(AABB.Max()));
+	// Initialize to center
+	FVec3 Translation(SpaceTransform.M[3][0], SpaceTransform.M[3][1], SpaceTransform.M[3][2]);
+	FVec3 Min = Translation;
+	FVec3 Max = Translation;
 
-	for (int32 j = 0; j < d; ++j)
+	// Compute extents per axis
+	for (int32 i = 0; i < 3; ++i)
 	{
-		NewAABB.GrowToInclude(SpaceTransform.TransformPosition(AABB.Min() + TVector<T, d>::AxisVector(j) * CurrentExtents));
-		NewAABB.GrowToInclude(SpaceTransform.TransformPosition(AABB.Max() - TVector<T, d>::AxisVector(j) * CurrentExtents));
+		for (int32 j = 0; j < 3; ++j)	
+		{
+			FReal A = SpaceTransform.M[j][i] * AABB.Min()[j];
+			FReal B = SpaceTransform.M[j][i] * AABB.Max()[j];
+			if (A < B)
+			{
+				Min[i] += A;
+				Max[i] += B;
+			}
+			else 
+			{
+				Min[i] += B;
+				Max[i] += A;
+			}
+		}
 	}
 
-	return NewAABB;
+	return TAABB<T, 3>(Min, Max);
 }
 
-inline TAABB<FReal, 3> TransformedAABBHelperISPC(const TAABB<FReal, 3>& AABB, const FTransform& SpaceTransform)
+template<typename T>
+inline TAABB<T, 3> TransformedAABBHelperISPC(const TAABB<T, 3>& AABB, const FTransform& SpaceTransform)
 {
 	check(bRealTypeCompatibleWithISPC);
 #if INTEL_ISPC
@@ -284,7 +298,7 @@ inline TAABB<FReal, 3> TransformedAABBHelperISPC(const TAABB<FReal, 3>& AABB, co
 	return NewAABB;
 #else
 	check(false);
-	return TAABB<FReal, 3>::EmptyAABB();
+	return TAABB<T, 3>::EmptyAABB();
 #endif
 }
 
@@ -297,21 +311,21 @@ TAABB<T, d> TAABB<T, d>::TransformedAABB(const Chaos::TRigidTransform<FReal, 3>&
 	}
 	else
 	{
-		return TransformedAABBHelper<T, d>(*this, SpaceTransform);
+		return TransformedAABBHelper<T>(*this, SpaceTransform.ToMatrixWithScale());
 	}
 }
 
 template<typename T, int d>
 TAABB<T, d> TAABB<T, d>::TransformedAABB(const FMatrix& SpaceTransform) const
 {
-	return TransformedAABBHelper<T, d>(*this, SpaceTransform);
+	return TransformedAABBHelper<T>(*this, SpaceTransform);
 }
 
 
 template<typename T, int d>
 TAABB<T, d> TAABB<T, d>::TransformedAABB(const Chaos::PMatrix<FReal, 4, 4>& SpaceTransform) const
 {
-	return TransformedAABBHelper<T, d>(*this, SpaceTransform);
+	return TransformedAABBHelper<T>(*this, SpaceTransform);
 }
 
 template<typename T, int d>
@@ -323,12 +337,12 @@ TAABB<T, d> TAABB<T, d>::TransformedAABB(const FTransform& SpaceTransform) const
 	}
 	else
 	{
-		return TransformedAABBHelper<T, d>(*this, SpaceTransform);
+		return TransformedAABBHelper<T>(*this, SpaceTransform.ToMatrixWithScale());
 	}
 }
 
 template<typename T, int d>
-inline TAABB<T, d> TAABB<T, d>::InverseTransformedAABB(const TRigidTransform<T, 3>& SpaceTransform) const
+inline TAABB<T, d> TAABB<T, d>::InverseTransformedAABB(const FRigidTransform3& SpaceTransform) const
 {
 	TVector<T, d> CurrentExtents = Extents();
 	int32 Idx = 0;
@@ -346,4 +360,5 @@ inline TAABB<T, d> TAABB<T, d>::InverseTransformedAABB(const TRigidTransform<T, 
 }
 }
 
-template class Chaos::TAABB<Chaos::FReal, 3>;
+template class Chaos::TAABB<Chaos::FRealSingle, 3>;
+

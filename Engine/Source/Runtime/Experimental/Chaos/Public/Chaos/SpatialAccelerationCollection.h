@@ -90,7 +90,7 @@ struct CHAOS_API TSpatialCollectionBucket
 		}
 		else
 		{
-			Idx = Objects.Add(MoveTemp(Obj));
+			Idx = static_cast<uint16>(Objects.Add(MoveTemp(Obj)));
 		}
 
 		return Idx;
@@ -149,12 +149,12 @@ FChaosArchive& operator<<(FChaosArchive& Ar, TSpatialCollectionBucket<TObj>& Buc
 }
 
 template <typename... TRemaining>
-struct CHAOS_API TSpatialTypeTuple
+struct TSpatialTypeTuple
 {
 };
 
 template <typename TAcceleration, typename... TRemaining>
-struct CHAOS_API TSpatialTypeTuple<TAcceleration, TRemaining...>
+struct TSpatialTypeTuple<TAcceleration, TRemaining...>
 {
 	using FirstType = TAcceleration;
 	TSpatialCollectionBucket<TAcceleration*> First;
@@ -166,20 +166,20 @@ struct CHAOS_API TSpatialTypeTuple<TAcceleration, TRemaining...>
 };
 
 template<int Idx, typename ... Rest>
-struct CHAOS_API TSpatialTypeTupleGetter
+struct TSpatialTypeTupleGetter
 {
 
 };
 
 template<int Idx, typename First, typename... Rest>
-struct CHAOS_API TSpatialTypeTupleGetter<Idx, First, Rest...>
+struct TSpatialTypeTupleGetter<Idx, First, Rest...>
 {
 	static auto& Get(TSpatialTypeTuple<First, Rest...>& Types) { return TSpatialTypeTupleGetter<Idx - 1, Rest...>::Get(Types.Remaining); }
 	static const auto& Get(const TSpatialTypeTuple<First, Rest...>& Types) { return TSpatialTypeTupleGetter<Idx - 1, Rest...>::Get(Types.Remaining); }
 };
 
 template<typename First, typename... Rest>
-struct CHAOS_API TSpatialTypeTupleGetter<0, First, Rest...>
+struct TSpatialTypeTupleGetter<0, First, Rest...>
 {
 	static auto& Get(TSpatialTypeTuple<First, Rest...>& Types) { return Types.First; }
 	static const auto& Get(const TSpatialTypeTuple<First, Rest...>& Types) { return Types.First; }
@@ -203,12 +203,12 @@ template <int TypeIdx, int NumTypes, typename Tuple, typename TPayloadType, type
 struct TSpatialAccelerationCollectionHelper
 {
 	template <typename SQVisitor>
-	static bool RaycastFast(const Tuple& Types, const TVector<T, d>& Start, FQueryFastData& CurData, SQVisitor& Visitor)
+	static bool RaycastFast(const Tuple& Types, const TVector<T, d>& Start, FQueryFastData& CurData, SQVisitor& Visitor, const FVec3& Dir, const FVec3 InvDir, const bool bParallel[3])
 	{
 		const auto& Accelerations = GetAccelerationsPerType<TypeIdx>(Types).Objects;
 		for (const auto& Accelerator : Accelerations)
 		{
-			if (Accelerator && !Accelerator->RaycastFast(Start, CurData, Visitor))
+			if (Accelerator && !Accelerator->RaycastFast(Start, CurData, Visitor, Dir, InvDir, bParallel))
 			{
 				return false;
 			}
@@ -217,19 +217,19 @@ struct TSpatialAccelerationCollectionHelper
 		constexpr int NextType = TypeIdx + 1;
 		if (NextType < NumTypes)
 		{
-			return TSpatialAccelerationCollectionHelper<NextType < NumTypes ? NextType : 0, NumTypes, Tuple, TPayloadType, T, d>::RaycastFast(Types, Start, CurData, Visitor);
+			return TSpatialAccelerationCollectionHelper<NextType < NumTypes ? NextType : 0, NumTypes, Tuple, TPayloadType, T, d>::RaycastFast(Types, Start, CurData, Visitor, Dir, InvDir, bParallel);
 		}
 
 		return true;
 	}
 
 	template <typename SQVisitor>
-	static bool SweepFast(const Tuple& Types, const TVector<T, d>& Start, FQueryFastData& CurData, const TVector<T, d> QueryHalfExtents, SQVisitor& Visitor)
+	static bool SweepFast(const Tuple& Types, const TVector<T, d>& Start, FQueryFastData& CurData, const TVector<T, d> QueryHalfExtents, SQVisitor& Visitor, const FVec3& Dir, const FVec3 InvDir, const bool bParallel[3])
 	{
 		const auto& Accelerations = GetAccelerationsPerType<TypeIdx>(Types).Objects;
 		for (const auto& Accelerator : Accelerations)
 		{
-			if (Accelerator && !Accelerator->SweepFast(Start, CurData, QueryHalfExtents, Visitor))
+			if (Accelerator && !Accelerator->SweepFast(Start, CurData, QueryHalfExtents, Visitor, Dir, InvDir, bParallel))
 			{
 				return false;
 			}
@@ -238,7 +238,7 @@ struct TSpatialAccelerationCollectionHelper
 		constexpr int NextType = TypeIdx + 1;
 		if (NextType < NumTypes)
 		{
-			return TSpatialAccelerationCollectionHelper < NextType < NumTypes ? NextType : 0, NumTypes, Tuple, TPayloadType, T, d>::SweepFast(Types, Start, CurData, QueryHalfExtents, Visitor);
+			return TSpatialAccelerationCollectionHelper < NextType < NumTypes ? NextType : 0, NumTypes, Tuple, TPayloadType, T, d>::SweepFast(Types, Start, CurData, QueryHalfExtents, Visitor, Dir, InvDir, bParallel);
 		}
 
 		return true;
@@ -315,6 +315,24 @@ struct TSpatialAccelerationCollectionHelper
 		}
 	}
 
+	/** Compute the overlapping leaves for each leaf */
+	static void CacheOverlappingLeaves(const Tuple& Types)
+	{
+		auto& Accelerations = GetAccelerationsPerType<TypeIdx>(Types).Objects;
+		for (auto& Accelerator : Accelerations)
+		{
+			if (Accelerator)
+			{
+				Accelerator->CacheOverlappingLeaves();
+			}
+		}
+		constexpr int NextType = TypeIdx + 1;
+		if (NextType < NumTypes)
+		{
+			TSpatialAccelerationCollectionHelper < NextType < NumTypes ? NextType : 0, NumTypes, Tuple, TPayloadType, T, d>::CacheOverlappingLeaves(Types);
+		}
+	}
+	
 	static uint16 FindTypeIdx(const Tuple& Types, SpatialAccelerationType Type)
 	{
 		using AccelType = typename std::remove_pointer<typename decltype(GetAccelerationsPerType<TypeIdx>(Types).Objects)::ElementType>::type;
@@ -377,14 +395,14 @@ public:
 		const int32 TypeIdx = GetTypeIdx(AccelPtr);
 		switch (TypeIdx)
 		{
-		case 0: BucketEntry.TypeInnerIdx = GetAccelerationsPerType<0>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<0, std::tuple<TSpatialAccelerationTypes...>>::type>()); break;
-		case 1: BucketEntry.TypeInnerIdx = GetAccelerationsPerType<ClampedIdx(1)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(1), std::tuple<TSpatialAccelerationTypes...>>::type>()); break;
-		case 2: BucketEntry.TypeInnerIdx = GetAccelerationsPerType<ClampedIdx(2)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(2), std::tuple<TSpatialAccelerationTypes...>>::type>()); break;
-		case 3: BucketEntry.TypeInnerIdx = GetAccelerationsPerType<ClampedIdx(3)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(3), std::tuple<TSpatialAccelerationTypes...>>::type>()); break;
-		case 4: BucketEntry.TypeInnerIdx = GetAccelerationsPerType<ClampedIdx(4)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(4), std::tuple<TSpatialAccelerationTypes...>>::type>()); break;
-		case 5: BucketEntry.TypeInnerIdx = GetAccelerationsPerType<ClampedIdx(5)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(5), std::tuple<TSpatialAccelerationTypes...>>::type>()); break;
-		case 6: BucketEntry.TypeInnerIdx = GetAccelerationsPerType<ClampedIdx(6)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(6), std::tuple<TSpatialAccelerationTypes...>>::type>()); break;
-		case 7: BucketEntry.TypeInnerIdx = GetAccelerationsPerType<ClampedIdx(7)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(7), std::tuple<TSpatialAccelerationTypes...>>::type>()); break;
+		case 0: BucketEntry.TypeInnerIdx = static_cast<uint16>(GetAccelerationsPerType<0>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<0, std::tuple<TSpatialAccelerationTypes...>>::type>())); break;
+		case 1: BucketEntry.TypeInnerIdx = static_cast<uint16>(GetAccelerationsPerType<ClampedIdx(1)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(1), std::tuple<TSpatialAccelerationTypes...>>::type>())); break;
+		case 2: BucketEntry.TypeInnerIdx = static_cast<uint16>(GetAccelerationsPerType<ClampedIdx(2)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(2), std::tuple<TSpatialAccelerationTypes...>>::type>())); break;
+		case 3: BucketEntry.TypeInnerIdx = static_cast<uint16>(GetAccelerationsPerType<ClampedIdx(3)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(3), std::tuple<TSpatialAccelerationTypes...>>::type>())); break;
+		case 4: BucketEntry.TypeInnerIdx = static_cast<uint16>(GetAccelerationsPerType<ClampedIdx(4)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(4), std::tuple<TSpatialAccelerationTypes...>>::type>())); break;
+		case 5: BucketEntry.TypeInnerIdx = static_cast<uint16>(GetAccelerationsPerType<ClampedIdx(5)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(5), std::tuple<TSpatialAccelerationTypes...>>::type>())); break;
+		case 6: BucketEntry.TypeInnerIdx = static_cast<uint16>(GetAccelerationsPerType<ClampedIdx(6)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(6), std::tuple<TSpatialAccelerationTypes...>>::type>())); break;
+		case 7: BucketEntry.TypeInnerIdx = static_cast<uint16>(GetAccelerationsPerType<ClampedIdx(7)>(Types).Add(&AccelPtr->template AsChecked<typename std::tuple_element<ClampedIdx(7), std::tuple<TSpatialAccelerationTypes...>>::type>())); break;
 		}
 
 		this->ActiveBucketsMask |= (1 << BucketIdx);
@@ -393,6 +411,12 @@ public:
 		Buckets[BucketIdx].UpdateOrAddAt(BucketInnerIdx, MoveTemp(BucketEntry));
 		
 		return Result;
+	}
+
+	/** Dispatch the compute the overlapping leaves for each collection helper */
+	virtual void CacheOverlappingLeaves() override
+	{
+		TSpatialAccelerationCollectionHelper<0, NumTypes, decltype(Types), TPayloadType, T, d>::CacheOverlappingLeaves(Types);
 	}
 
 	virtual TUniquePtr <ISpatialAcceleration<TPayloadType, T, d>> RemoveSubstructure(FSpatialAccelerationIdx Idx) override
@@ -432,6 +456,23 @@ public:
 
 		return nullptr;
 	}
+
+	virtual void SwapSubstructure(ISpatialAccelerationCollection<TPayloadType, T, d>& InOther, FSpatialAccelerationIdx Idx) override
+	{
+		using ThisType = decltype(this);
+		ThisType Other = static_cast<ThisType>(&InOther);
+
+		check(Idx.Bucket < MaxBuckets);
+		check(Idx.Bucket < Other->MaxBuckets);
+		check(Buckets[Idx.Bucket].Objects.Num() > Idx.InnerIdx);
+		check(Other->Buckets[Idx.Bucket].Objects.Num() > Idx.InnerIdx);
+
+		TUniquePtr<ISpatialAcceleration<TPayloadType, T, d>> OtherSubStructure = Other->RemoveSubstructure(Idx);
+		TUniquePtr<ISpatialAcceleration<TPayloadType, T, d>> ThisSubStructure = RemoveSubstructure(Idx);
+
+		Other->AddSubstructure(MoveTemp(ThisSubStructure), Idx.Bucket, Idx.InnerIdx);
+		AddSubstructure(MoveTemp(OtherSubStructure), Idx.Bucket, Idx.InnerIdx);
+	}
 	
 	virtual void Reset() override
 	{
@@ -449,7 +490,7 @@ public:
 	void Raycast(const TVector<T, d>& Start, const TVector<T, d>& Dir, const T Length, SQVisitor& Visitor) const
 	{
 		FQueryFastData QueryFastData(Dir, Length);
-		TSpatialAccelerationCollectionHelper<0, NumTypes, decltype(Types), TPayloadType, T, d>::RaycastFast(Types, Start, QueryFastData, Visitor);
+		TSpatialAccelerationCollectionHelper<0, NumTypes, decltype(Types), TPayloadType, T, d>::RaycastFast(Types, Start, QueryFastData, Visitor, QueryFastData.Dir, QueryFastData.InvDir, QueryFastData.bParallel);
 	}
 
 	void Sweep(const TVector<T, d>& Start, const TVector<T, d>& Dir, const T Length, const TVector<T, d> QueryHalfExtents, ISpatialVisitor<TPayloadType, T>& Visitor) const override
@@ -462,7 +503,7 @@ public:
 	void Sweep(const TVector<T, d>& Start, const TVector<T, d>& Dir, const T Length, const TVector<T, d> QueryHalfExtents, SQVisitor& Visitor) const
 	{
 		FQueryFastData QueryFastData(Dir, Length);
-		TSpatialAccelerationCollectionHelper<0, NumTypes, decltype(Types), TPayloadType, T, d>::SweepFast(Types, Start, QueryFastData, QueryHalfExtents, Visitor);
+		TSpatialAccelerationCollectionHelper<0, NumTypes, decltype(Types), TPayloadType, T, d>::SweepFast(Types, Start, QueryFastData, QueryHalfExtents, Visitor, QueryFastData.Dir, QueryFastData.InvDir, QueryFastData.bParallel);
 	}
 
 	virtual void Overlap(const TAABB<T, d>& QueryBounds, ISpatialVisitor<TPayloadType, T>& Visitor) const override

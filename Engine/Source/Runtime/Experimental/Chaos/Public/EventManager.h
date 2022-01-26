@@ -6,6 +6,7 @@
 #include "Chaos/Framework/MultiBufferResource.h"
 #include "Chaos/Framework/PhysicsProxyBase.h"
 #include "Chaos/PBDRigidsEvolutionFwd.h"
+#include "Misc/ScopeLock.h"
 #include "Chaos/Defines.h"
 
 namespace Chaos
@@ -104,7 +105,7 @@ namespace Chaos
 		/*
 		 * Inject data from the physics solver into the producer side of the buffer
 		 */
-		virtual void InjectProducerData(const FPBDRigidsSolver* Solver) = 0;
+		virtual void InjectProducerData(const FPBDRigidsSolver* Solver, bool bResetData) = 0;
 
 		/**
 		 * Flips the buffer if the buffer type is double or triple
@@ -127,7 +128,7 @@ namespace Chaos
 		/**
 		 * Regular constructor
 		 */
-		TEventContainer(const Chaos::EMultiBufferMode& BufferMode, TFunction<void(const FPBDRigidsSolver* Solver, PayloadType& EventDataInOut)> InFunction)
+		TEventContainer(const Chaos::EMultiBufferMode& BufferMode, TFunction<void(const FPBDRigidsSolver* Solver, PayloadType& EventDataInOut, bool bResetData)> InFunction)
 			: InjectedFunction(InFunction)
 			, EventBuffer(Chaos::FMultiBufferFactory<PayloadType>::CreateBuffer(BufferMode))
 		{
@@ -181,11 +182,12 @@ namespace Chaos
 		/*
 		 * Inject data from the physics solver into the producer side of the buffer
 		 */
-		virtual void InjectProducerData(const FPBDRigidsSolver* Solver)
+		virtual void InjectProducerData(const FPBDRigidsSolver* Solver, bool bResetData)
 		{
-			InjectedFunction(Solver, *EventBuffer->AccessProducerBuffer());
+			InjectedFunction(Solver, *EventBuffer->AccessProducerBuffer(), bResetData);
 		}
 
+		
 		virtual void DestroyStaleEvents(TFunction<void(PayloadType & EventDataInOut)> InFunction)
 		{
 			InFunction(*EventBuffer->AccessProducerBuffer());
@@ -226,7 +228,7 @@ namespace Chaos
 		/**
 		 * The function that handles filling the event data buffer
 		 */
-		TFunction<void(const FPBDRigidsSolver* Solver, PayloadType& EventData)> InjectedFunction;
+		TFunction<void(const FPBDRigidsSolver* Solver, PayloadType& EventData, bool bResetData)> InjectedFunction;
 
 		/**
 		 * The data buffer that is filled by the producer and read by the consumer
@@ -250,7 +252,10 @@ namespace Chaos
 
 	public:
 
-		FEventManager(const Chaos::EMultiBufferMode& BufferModeIn) : BufferMode(BufferModeIn) {}
+		FEventManager(const Chaos::EMultiBufferMode& BufferModeIn) 
+			: BufferMode(BufferModeIn)
+			, bCurrentlyDispatchingEvents(false)
+			{}
 
 		~FEventManager()
 		{
@@ -274,7 +279,7 @@ namespace Chaos
 		 * Register a new event into the system, providing the function that will fill the producer side of the event buffer
 		 */
 		template<typename PayloadType>
-		void RegisterEvent(const EEventType& EventType, TFunction<void(const Chaos::FPBDRigidsSolver* Solver, PayloadType& EventData)> InFunction)
+		void RegisterEvent(const EEventType& EventType, TFunction<void(const Chaos::FPBDRigidsSolver* Solver, PayloadType& EventData, bool bResetData)> InFunction)
 		{
 			ContainerLock.WriteLock();
 			InternalRegisterInjector(FEventID(EventType), new TEventContainer<PayloadType>(BufferMode, InFunction));
@@ -289,7 +294,10 @@ namespace Chaos
 		{
 			ContainerLock.ReadLock();
 
-			((TEventContainer<PayloadType>*)(EventContainers[FEventID(EventType)]))->DestroyStaleEvents(InFunction);
+			if (TEventContainer<PayloadType>* EventContainer = StaticCast<TEventContainer<PayloadType>*>(EventContainers[FEventID(EventType)]))
+			{
+				EventContainer->DestroyStaleEvents(InFunction);
+			}
 			ContainerLock.ReadUnlock();
 		}
 
@@ -304,11 +312,22 @@ namespace Chaos
 		template<typename PayloadType, typename HandlerType>
 		void RegisterHandler(const EEventType& EventType, HandlerType* Handler, typename TRawEventHandler<PayloadType, HandlerType>::FHandlerFunction HandlerFunction)
 		{
+			FScopeLock ScopeLock(&AccessDeferredHandlersLock);
+
 			const FEventID EventID = FEventID(EventType);
-			ContainerLock.WriteLock();
-			checkf(EventID < EventContainers.Num(), TEXT("Registering event Handler for an event ID that does not exist"));
-			EventContainers[EventID]->RegisterHandler(new TRawEventHandler<PayloadType, HandlerType>(Handler, HandlerFunction));
-			ContainerLock.WriteUnlock();
+			
+			// If we are currently dispatching events, defer handler registration until completion of dispatch to avoid deadlock
+			if (bCurrentlyDispatchingEvents)
+			{
+				DeferredHandlers.Add(TPair<FEventID, IEventHandler*>(EventID, new TRawEventHandler<PayloadType, HandlerType>(Handler, HandlerFunction)));
+			}
+			else
+			{
+				ContainerLock.WriteLock();
+				checkf(EventID < EventContainers.Num(), TEXT("Registering event Handler for an event ID that does not exist"));
+				EventContainers[EventID]->RegisterHandler(new TRawEventHandler<PayloadType, HandlerType>(Handler, HandlerFunction));
+				ContainerLock.WriteUnlock();
+			}	
 		}
 
 		/**
@@ -319,7 +338,7 @@ namespace Chaos
 		/**
 		 * Called by the solver to invoke the functions that fill the producer side of all the event data buffers
 		 */
-		void FillProducerData(const Chaos::FPBDRigidsSolver* Solver);
+		void FillProducerData(const Chaos::FPBDRigidsSolver* Solver, bool bResetData = true);
 
 		/**
 		 * Flips the event data buffer if it is of double or triple buffer type
@@ -335,6 +354,7 @@ namespace Chaos
 		static int32 EncodeCollisionIndex(int32 ActualCollisionIndex, bool bSwapOrder);
 		/** Returns decoded collision index. */
 		static int32 DecodeCollisionIndex(int32 EncodedCollisionIdx, bool& bSwapOrder);
+
 
 		template<typename PayloadType>
 		void AddEvent(const EEventType& EventType, TFunction<void(PayloadType& EventData)> InFunction)
@@ -355,7 +375,11 @@ namespace Chaos
 		TArray<FEventContainerBasePtr> EventContainers;	// Array of event types
 		FRWLock ResourceLock;
 		FRWLock ContainerLock;
+		FCriticalSection AccessDeferredHandlersLock;
 
+		/** Defer handler registration if we are currently dispatching events. */
+		bool bCurrentlyDispatchingEvents;
+		TArray<TPair<FEventID, IEventHandler*>> DeferredHandlers;
 	};
 
 }

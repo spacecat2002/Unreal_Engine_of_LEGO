@@ -444,6 +444,19 @@ namespace Chaos
 				}
 			}
 		}
+
+		// We need to update the world-space contact points at the final locations
+		for (int32 i = ConstraintStart; i < ConstraintEnd; i++)
+		{
+			FPBDCollisionConstraint* Constraint = SortedCCDConstraints[i]->SweptConstraint;
+			FRigidTransform3 ShapeWorldTransform0 = Constraint->GetShapeWorldTransform0();
+			FRigidTransform3 ShapeWorldTransform1 = Constraint->GetShapeWorldTransform1();
+			ShapeWorldTransform0.SetTranslation(FConstGenericParticleHandle(Constraint->GetParticle0())->P());
+			ShapeWorldTransform1.SetTranslation(FConstGenericParticleHandle(Constraint->GetParticle1())->P());
+
+			Constraint->SetShapeWorldTransforms(ShapeWorldTransform0, ShapeWorldTransform1);
+			Constraint->UpdateManifoldContacts();
+		}
 	}
 
 
@@ -508,7 +521,7 @@ namespace Chaos
 		const FReal Restitution = Constraint->Manifold.Restitution;
 		for(const FManifoldPoint &ManifoldPoint : Constraint->GetManifoldPoints())
 		{
-			const FVec3 Normal = ManifoldPoint.ManifoldContactNormal;
+			const FVec3 Normal = ManifoldPoint.ContactPoint.Normal;
 			const FVec3 V0 = Rigid0 != nullptr ? Rigid0->V() : FVec3(0.f);
 			const FVec3 V1 = Rigid1 != nullptr ? Rigid1->V() : FVec3(0.f);
 			const FReal NormalV = FVec3::DotProduct(V0 - V1, Normal);

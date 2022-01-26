@@ -14,6 +14,7 @@
 
 FDerivedDataGeometryCollectionCooker::FDerivedDataGeometryCollectionCooker(UGeometryCollection& InGeometryCollection)
 	: GeometryCollection(InGeometryCollection)
+	, OverrideVersion(nullptr)
 {
 }
 

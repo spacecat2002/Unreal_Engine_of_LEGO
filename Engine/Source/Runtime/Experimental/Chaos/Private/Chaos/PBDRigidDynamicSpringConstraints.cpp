@@ -38,8 +38,8 @@ void FPBDRigidDynamicSpringConstraints::UpdatePositionBasedState(const FReal Dt)
 			continue;
 		}
 
-		const FRotation3& Q0 = bIsRigidDynamic0 ? PBDRigid0->Q() : Static0->R();
-		const FRotation3& Q1 = bIsRigidDynamic1 ? PBDRigid1->Q() : Static1->R();
+		const FRotation3 Q0 = bIsRigidDynamic0 ? PBDRigid0->Q() : Static0->R();
+		const FRotation3 Q1 = bIsRigidDynamic1 ? PBDRigid1->Q() : Static1->R();
 		const FVec3& P0 = bIsRigidDynamic0 ? PBDRigid0->P() : Static0->X();
 		const FVec3& P1 = bIsRigidDynamic1 ? PBDRigid1->P() : Static1->X();
 
@@ -169,8 +169,8 @@ void FPBDRigidDynamicSpringConstraints::ApplySingle(const FReal Dt, int32 Constr
 	{
 		const FVec3& Distance0 = Distances[ConstraintIndex][SpringIndex][0];
 		const FVec3& Distance1 = Distances[ConstraintIndex][SpringIndex][1];
-		const FVec3 WorldSpaceX1 = Body0.Q().RotateVector(Distance0) + Body0.P();
-		const FVec3 WorldSpaceX2 = Body1.Q().RotateVector(Distance1) + Body1.P();
+		const FVec3 WorldSpaceX1 = Body0.CorrectedQ().RotateVector(Distance0) + Body0.CorrectedP();
+		const FVec3 WorldSpaceX2 = Body1.CorrectedQ().RotateVector(Distance1) + Body1.CorrectedP();
 		const FVec3 Delta = GetDelta(WorldSpaceX1, WorldSpaceX2, ConstraintIndex, SpringIndex);
 
 		if (Body0.IsDynamic())

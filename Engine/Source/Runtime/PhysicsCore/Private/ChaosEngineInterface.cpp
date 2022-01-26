@@ -148,7 +148,6 @@ const FQuat& FPhysicsShapeAdapter_Chaos::GetGeomOrientation() const
 
 void FChaosEngineInterface::AddActorToSolver(FPhysicsActorHandle& Handle,Chaos::FPhysicsSolver* Solver)
 {
-	LLM_SCOPE(ELLMTag::Chaos);
 	Solver->RegisterObject(Handle);
 }
 
@@ -335,13 +334,20 @@ void FChaosEngineInterface::RemoveDisabledCollisionsFor_AssumesLocked(TArray< FP
 			Chaos::FIgnoreCollisionManager& CollisionManager = Solver->GetEvolution()->GetBroadPhase().GetIgnoreCollisionManager();
 			int32 ExternalTimestamp = Solver->GetMarshallingManager().GetExternalTimestamp_External();
 
-			Chaos::FIgnoreCollisionManager::FDeactivationArray& PendingMap = CollisionManager.GetPendingDeactivationsForGameThread(ExternalTimestamp);
-			if (!PendingMap.Contains(ActorReference->GetGameThreadAPI().UniqueIdx()))
-			{
-				PendingMap.Add(ActorReference->GetGameThreadAPI().UniqueIdx());
-			}
+			Chaos::FIgnoreCollisionManager::FDeactivationSet& DeactivationMap = CollisionManager.GetPendingDeactivationsForGameThread(ExternalTimestamp);
+			DeactivationMap.Add(ActorReference->GetGameThreadAPI().UniqueIdx());
 		}
 	}
+}
+
+void FChaosEngineInterface::SetDisabled(const FPhysicsActorHandle& InPhysicsActor, bool bSetDisabled)
+{
+	InPhysicsActor->GetGameThreadAPI().SetDisabled(bSetDisabled);
+}
+
+bool FChaosEngineInterface::IsDisabled(const FPhysicsActorHandle& InPhysicsActor)
+{
+	return InPhysicsActor->GetGameThreadAPI().Disabled();
 }
 
 void FChaosEngineInterface::SetActorUserData_AssumesLocked(FPhysicsActorHandle& InActorReference,FPhysicsUserData* InUserData)
@@ -579,13 +585,44 @@ void FChaosEngineInterface::SetAngularVelocity_AssumesLocked(const FPhysicsActor
 
 float FChaosEngineInterface::GetMaxAngularVelocity_AssumesLocked(const FPhysicsActorHandle& InActorReference)
 {
-	CHAOS_ENSURE(false);
-	return FLT_MAX;
+	if(ensure(FChaosEngineInterface::IsValid(InActorReference)))
+	{
+		return FMath::Sqrt(InActorReference->GetGameThreadAPI().GetMaxAngularSpeedSq());
+	}
+
+	return TNumericLimits<float>::Max();
 }
 
-void FChaosEngineInterface::SetMaxAngularVelocity_AssumesLocked(const FPhysicsActorHandle& InActorReference,float InMaxAngularVelocity)
+float FChaosEngineInterface::GetMaxLinearVelocity_AssumesLocked(const FPhysicsActorHandle& InActorReference)
 {
-	CHAOS_ENSURE(false);
+	if(ensure(FChaosEngineInterface::IsValid(InActorReference)))
+	{
+		return FMath::Sqrt(InActorReference->GetGameThreadAPI().GetMaxLinearSpeedSq());
+	}
+
+	return TNumericLimits<float>::Max();
+}
+
+void FChaosEngineInterface::SetMaxAngularVelocity_AssumesLocked(const FPhysicsActorHandle& InActorReference,float InMaxAngularVelocityRadians)
+{
+	// We're about to square the input so we clamp to this maximum
+	static const float MaxInput = FMath::Sqrt(TNumericLimits<float>::Max());
+
+	if(ensure(FChaosEngineInterface::IsValid(InActorReference)))
+	{
+		InActorReference->GetGameThreadAPI().SetMaxAngularSpeedSq(InMaxAngularVelocityRadians > MaxInput ? TNumericLimits<float>::Max() : InMaxAngularVelocityRadians * InMaxAngularVelocityRadians);
+	}
+}
+
+void FChaosEngineInterface::SetMaxLinearVelocity_AssumesLocked(const FPhysicsActorHandle& InActorReference, float InMaxLinearVelocity)
+{
+	// We're about to square the input so we clamp to this maximum
+	static const float MaxInput = FMath::Sqrt(TNumericLimits<float>::Max());
+
+	if(ensure(FChaosEngineInterface::IsValid(InActorReference)))
+	{
+		InActorReference->GetGameThreadAPI().SetMaxLinearSpeedSq(InMaxLinearVelocity > MaxInput ? TNumericLimits<float>::Max() : InMaxLinearVelocity * InMaxLinearVelocity);
+	}
 }
 
 float FChaosEngineInterface::GetMaxDepenetrationVelocity_AssumesLocked(const FPhysicsActorHandle& InActorReference)
@@ -607,7 +644,7 @@ FVector FChaosEngineInterface::GetWorldVelocityAtPoint_AssumesLocked(const FPhys
 		if(ensure(Body_External.CanTreatAsKinematic()))
 		{
 			const bool bIsRigid = Body_External.CanTreatAsRigid();
-			const Chaos::FVec3 COM = bIsRigid ? Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(&Body_External) : Chaos::FParticleUtilitiesGT::GetActorWorldTransform(&Body_External).GetTranslation();
+			const Chaos::FVec3 COM = bIsRigid ? Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(&Body_External) : (Chaos::FVec3)Chaos::FParticleUtilitiesGT::GetActorWorldTransform(&Body_External).GetTranslation();
 			const Chaos::FVec3 Diff = InPoint - COM;
 			return Body_External.V() - Chaos::FVec3::CrossProduct(Diff, Body_External.W());
 		}
@@ -618,7 +655,7 @@ FVector FChaosEngineInterface::GetWorldVelocityAtPoint_AssumesLocked(const FPhys
 #if WITH_CHAOS
 FVector FChaosEngineInterface::GetWorldVelocityAtPoint_AssumesLocked(const Chaos::FRigidBodyHandle_Internal* Body_Internal, const FVector& InPoint)
 {
-	const Chaos::FVec3 COM = Body_Internal->CanTreatAsRigid() ? Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(Body_Internal) : Chaos::FParticleUtilitiesGT::GetActorWorldTransform(Body_Internal).GetTranslation();
+	const Chaos::FVec3 COM = Body_Internal->CanTreatAsRigid() ? Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(Body_Internal) : (Chaos::FVec3)Chaos::FParticleUtilitiesGT::GetActorWorldTransform(Body_Internal).GetTranslation();
 	const Chaos::FVec3 Diff = InPoint - COM;
 	return Body_Internal->V() - Chaos::FVec3::CrossProduct(Diff, Body_Internal->W());
 }
@@ -652,14 +689,23 @@ FBox FChaosEngineInterface::GetBounds_AssumesLocked(const FPhysicsActorHandle& I
 {
 	using namespace Chaos;
 	const Chaos::FRigidBodyHandle_External& Body_External = InActorReference->GetGameThreadAPI();
-	if(const FImplicitObject* Geometry = Body_External.Geometry().Get())
+
+	const FTransform WorldTM(Body_External.R(), Body_External.X());
+	return GetBounds_AssumesLocked(InActorReference, WorldTM);
+}
+
+FBox FChaosEngineInterface::GetBounds_AssumesLocked(const FPhysicsActorHandle& InActorReference, const FTransform& InTransform)
+{
+	using namespace Chaos;
+	const Chaos::FRigidBodyHandle_External& Body_External = InActorReference->GetGameThreadAPI();
+	if (const FImplicitObject* Geometry = Body_External.Geometry().Get())
 	{
-		if(Geometry->HasBoundingBox())
+		if (Geometry->HasBoundingBox())
 		{
 			const FAABB3 LocalBounds = Geometry->BoundingBox();
-			const FRigidTransform3 WorldTM(Body_External.X(), Body_External.R());
+			const FRigidTransform3 WorldTM(InTransform);
 			const FAABB3 WorldBounds = LocalBounds.TransformedAABB(WorldTM);
-			return FBox(WorldBounds.Min(),WorldBounds.Max());
+			return FBox(WorldBounds.Min(), WorldBounds.Max());
 		}
 	}
 
@@ -687,7 +733,7 @@ void FChaosEngineInterface::AddImpulse_AssumesLocked(const FPhysicsActorHandle& 
 	if(ensure(FChaosEngineInterface::IsValid(InActorReference)))
 	{
 		Chaos::FRigidBodyHandle_External& Body_External = InActorReference->GetGameThreadAPI();
-		Body_External.SetLinearImpulse(Body_External.LinearImpulse() + InForce);
+		Body_External.SetLinearImpulse(Body_External.LinearImpulse() + InForce, /*bIsVelocity=*/false);
 	}
 }
 
@@ -696,7 +742,7 @@ void FChaosEngineInterface::AddAngularImpulseInRadians_AssumesLocked(const FPhys
 	if(ensure(FChaosEngineInterface::IsValid(InActorReference)))
 	{
 		Chaos::FRigidBodyHandle_External& Body_External = InActorReference->GetGameThreadAPI();
-		Body_External.SetAngularImpulse(Body_External.AngularImpulse() + InTorque);
+		Body_External.SetAngularImpulse(Body_External.AngularImpulse() + InTorque, /*bIsVelocity=*/false);
 	}
 }
 
@@ -728,6 +774,14 @@ void FChaosEngineInterface::AddImpulseAtLocation_AssumesLocked(const FPhysicsAct
 	}
 }
 
+void FChaosEngineInterface::AddVelocityChangeImpulseAtLocation_AssumesLocked(const FPhysicsActorHandle& InActorReference, const FVector& InVelocityDelta, const FVector& InLocation)
+{
+	if (ensure(FChaosEngineInterface::IsValid(InActorReference)))
+	{
+		AddImpulseAtLocation_AssumesLocked(InActorReference, InActorReference->GetGameThreadAPI().M() * InVelocityDelta, InLocation);
+	}
+}
+
 void FChaosEngineInterface::AddRadialImpulse_AssumesLocked(const FPhysicsActorHandle& InActorReference,const FVector& InOrigin,float InRadius,float InStrength,ERadialImpulseFalloff InFalloff,bool bInVelChange)
 {
 	using namespace Chaos;
@@ -740,30 +794,30 @@ void FChaosEngineInterface::AddRadialImpulse_AssumesLocked(const FPhysicsActorHa
 		{
 			FVec3 FinalImpulse = FVector::ZeroVector;
 			if(OriginToActorDistance > 0)
-			{
-				const FVec3 OriginToActorNorm = OriginToActor / OriginToActorDistance;
+		{
+			const FVec3 OriginToActorNorm = OriginToActor / OriginToActorDistance;
 
 				if(InFalloff == ERadialImpulseFalloff::RIF_Constant)
-				{
+			{
 					FinalImpulse = OriginToActorNorm * InStrength;
-				}
+			}
 				else if(InFalloff == ERadialImpulseFalloff::RIF_Linear)
-				{
-					const FReal DistanceOverlapping = InRadius - OriginToActorDistance;
+			{
+				const FReal DistanceOverlapping = InRadius - OriginToActorDistance;
 					if(DistanceOverlapping > 0)
-					{
-						FinalImpulse = OriginToActorNorm * FMath::Lerp(0.0f, InStrength, DistanceOverlapping / InRadius);
-					}
-				}
-				else
 				{
-					// Unimplemented falloff type
-					ensure(false);
+						FinalImpulse = OriginToActorNorm * FMath::Lerp(0.0f, InStrength, DistanceOverlapping / InRadius);
 				}
 			}
 			else
 			{
-				// Sphere and actor center are coincident, just pick a direction and apply maximum strength impulse.
+				// Unimplemented falloff type
+				ensure(false);
+			}
+		}
+		else
+		{
+			// Sphere and actor center are coincident, just pick a direction and apply maximum strength impulse.
 				FinalImpulse = FVector::ForwardVector * InStrength;
 			}
 
@@ -912,7 +966,7 @@ FPhysicsConstraintHandle FChaosEngineInterface::CreateConstraint(const FPhysicsA
 		{
 			if(InActorRef1->GetSolverBase() && InActorRef2->GetSolverBase())
 			{
-				LLM_SCOPE(ELLMTag::Chaos);
+				LLM_SCOPE(ELLMTag::ChaosConstraint);
 
 				auto* JointConstraint = new Chaos::FJointConstraint();
 				ConstraintRef.Constraint = JointConstraint;
@@ -927,7 +981,7 @@ FPhysicsConstraintHandle FChaosEngineInterface::CreateConstraint(const FPhysicsA
 		}
 		else if (InActorRef1 != nullptr || InActorRef2 != nullptr)
 		{
-			LLM_SCOPE(ELLMTag::Chaos);
+			LLM_SCOPE(ELLMTag::ChaosConstraint);
 
 			FPhysicsActorHandle ValidParticle = InActorRef1;
 			bool bSwapped = false;
@@ -971,7 +1025,7 @@ FPhysicsConstraintHandle FChaosEngineInterface::CreateConstraint(const FPhysicsA
 
 				JointConstraint->SetParticleProxies({ ValidParticle, KinematicEndPoint });
 
-				Chaos::FJointConstraint::FTransformPair TransformPair = { InLocalFrame1, InLocalFrame2 };
+				Chaos::FTransformPair TransformPair = { InLocalFrame1, InLocalFrame2 };
 				if (bSwapped)
 				{
 					Swap(TransformPair[0], TransformPair[1]);
@@ -998,13 +1052,13 @@ FPhysicsConstraintHandle FChaosEngineInterface::CreateSuspension(const FPhysicsA
 		{
 			if (InActorRef->GetSolverBase())
 			{
-				LLM_SCOPE(ELLMTag::Chaos);
+				LLM_SCOPE(ELLMTag::ChaosConstraint);
 
 				auto* SuspensionConstraint = new Chaos::FSuspensionConstraint();
 				ConstraintRef.Constraint = SuspensionConstraint;
 
 				SuspensionConstraint->SetParticleProxies({ InActorRef,nullptr });
-				SuspensionConstraint->SetLocation( InLocalFrame );
+				SuspensionConstraint->SetLocation(InLocalFrame);
 
 				Chaos::FPhysicsSolver* Solver = InActorRef->GetSolver<Chaos::FPhysicsSolver>();
 				Solver->RegisterObject(SuspensionConstraint);
@@ -1028,32 +1082,37 @@ void FChaosEngineInterface::SetConstraintUserData(const FPhysicsConstraintHandle
 
 void FChaosEngineInterface::ReleaseConstraint(FPhysicsConstraintHandle& InConstraintRef)
 {
+	using namespace Chaos;
 	if (bEnableChaosJointConstraints)
 	{
-		LLM_SCOPE(ELLMTag::Chaos);
 		if (InConstraintRef.IsValid() && InConstraintRef.Constraint->IsType(Chaos::EConstraintType::JointConstraintType))
 		{
-			if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(InConstraintRef.Constraint))
+			if (FJointConstraint* Constraint = static_cast<FJointConstraint*>(InConstraintRef.Constraint))
 			{
 				if (FJointConstraintPhysicsProxy* Proxy = Constraint->GetProxy<FJointConstraintPhysicsProxy>())
 				{
-					check(Proxy->GetSolver<Chaos::FPhysicsSolver>());
-					Chaos::FPhysicsSolver* Solver = Proxy->GetSolver<Chaos::FPhysicsSolver>();
-
+					check(Proxy->GetSolver<FPhysicsSolver>());
+					FPhysicsSolver* Solver = Proxy->GetSolver<FPhysicsSolver>();
+					// TODO: we should probably figure out a way to call this from within UnregisterObject, to match
+					// what RegisterObject does
+					if (FChaosScene* Scene = FChaosEngineInterface::GetCurrentScene(Constraint->GetKinematicEndPoint()))
+					{
+						Scene->RemoveActorFromAccelerationStructure(Constraint->GetKinematicEndPoint());
+					}
 					Solver->UnregisterObject(Constraint);
 
 					InConstraintRef.Constraint = nullptr; // freed by the joint constraint physics proxy
 				}
 			}
 		}
-		else if (InConstraintRef.IsValid() && InConstraintRef.Constraint->IsType(Chaos::EConstraintType::SuspensionConstraintType))
+		else if (InConstraintRef.IsValid() && InConstraintRef.Constraint->IsType(EConstraintType::SuspensionConstraintType))
 		{
-			if (Chaos::FSuspensionConstraint* Constraint = static_cast<Chaos::FSuspensionConstraint*>(InConstraintRef.Constraint))
+			if (Chaos::FSuspensionConstraint* Constraint = static_cast<FSuspensionConstraint*>(InConstraintRef.Constraint))
 			{
 				if (FSuspensionConstraintPhysicsProxy* Proxy = Constraint->GetProxy<FSuspensionConstraintPhysicsProxy>())
 				{
-					check(Proxy->GetSolver<Chaos::FPhysicsSolver>());
-					Chaos::FPhysicsSolver* Solver = Proxy->GetSolver<Chaos::FPhysicsSolver>();
+					check(Proxy->GetSolver<FPhysicsSolver>());
+					FPhysicsSolver* Solver = Proxy->GetSolver<FPhysicsSolver>();
 
 					Solver->UnregisterObject(Constraint);
 
@@ -1071,7 +1130,7 @@ FTransform FChaosEngineInterface::GetLocalPose(const FPhysicsConstraintHandle& I
 	{
 		if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(InConstraintRef.Constraint))
 		{
-			const Chaos::FJointConstraint::FTransformPair& M = Constraint->GetJointTransforms();
+			const Chaos::FTransformPair& M = Constraint->GetJointTransforms();
 			if (InFrame == EConstraintFrame::Frame1)
 			{
 				return M[0];
@@ -1105,8 +1164,8 @@ FTransform FChaosEngineInterface::GetGlobalPose(const FPhysicsConstraintHandle& 
 	{
 		if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(InConstraintRef.Constraint))
 		{
-			Chaos::FConstraintBase::FProxyBasePair BasePairs = Constraint->GetParticleProxies();
-			const Chaos::FJointConstraint::FTransformPair& M = Constraint->GetJointTransforms();
+			Chaos::FProxyBasePair BasePairs = Constraint->GetParticleProxies();
+			const Chaos::FTransformPair& M = Constraint->GetJointTransforms();
 
 			if (InFrame == EConstraintFrame::Frame1)
 			{
@@ -1254,14 +1313,26 @@ void FChaosEngineInterface::SetBreakForces_AssumesLocked(const FPhysicsConstrain
 	}
 }
 
-void FChaosEngineInterface::SetPlasticityLimits_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, float InLinearPlasticityLimit, float InAngularPlasticityLimit)
+void FChaosEngineInterface::SetPlasticityLimits_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, float InLinearPlasticityLimit, float InAngularPlasticityLimit, EConstraintPlasticityType InLinearPlasticityType)
 {
 	if (InConstraintRef.IsValid() && InConstraintRef.Constraint->IsType(Chaos::EConstraintType::JointConstraintType))
 	{
 		if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(InConstraintRef.Constraint))
 		{
+			Constraint->SetLinearPlasticityType((Chaos::EPlasticityType)InLinearPlasticityType);
 			Constraint->SetLinearPlasticityLimit(InLinearPlasticityLimit);
 			Constraint->SetAngularPlasticityLimit(InAngularPlasticityLimit);
+		}
+	}
+}
+
+void FChaosEngineInterface::SetContactTransferScale_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, float InContactTransferScale)
+{
+	if (InConstraintRef.IsValid() && InConstraintRef.Constraint->IsType(Chaos::EConstraintType::JointConstraintType))
+	{
+		if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(InConstraintRef.Constraint))
+		{
+			Constraint->SetContactTransferScale(InContactTransferScale);
 		}
 	}
 }
@@ -1272,7 +1343,7 @@ void FChaosEngineInterface::SetLocalPose(const FPhysicsConstraintHandle& InConst
 	{
 		if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(InConstraintRef.Constraint))
 		{
-			Chaos::FJointConstraint::FTransformPair JointTransforms = Constraint->GetJointTransforms();
+			Chaos::FTransformPair JointTransforms = Constraint->GetJointTransforms();
 			if (InFrame == EConstraintFrame::Frame1)
 			{
 				JointTransforms[0] = InPose;
@@ -1489,7 +1560,7 @@ FTransform FChaosEngineInterface::GetLocalTransform(const FPhysicsShapeReference
 	// Transforms are baked into the object so there is never a local transform
 	if(InShapeRef.Shape->GetGeometry()->GetType() == Chaos::ImplicitObjectType::Transformed && FChaosEngineInterface::IsValid(InShapeRef.ActorRef))
 	{
-		return InShapeRef.Shape->GetGeometry()->GetObject<Chaos::TImplicitObjectTransformed<float,3>>()->GetTransform();
+		return InShapeRef.Shape->GetGeometry()->GetObject<Chaos::TImplicitObjectTransformed<Chaos::FReal,3>>()->GetTransform();
 	} else
 	{
 		return FTransform();
@@ -1506,19 +1577,19 @@ void FChaosEngineInterface::SetLocalTransform(const FPhysicsShapeHandle& InShape
 		if(InShape.Object->GetType() == Chaos::ImplicitObjectType::Transformed)
 		{
 			// @todo(mlentine): We can avoid creating a new object here by adding delayed update support for the object transforms
-			LocalParticles.SetDynamicGeometry(Index,MakeUnique<Chaos::TImplicitObjectTransformed<float,3>>(InShape.Object->GetObject<Chaos::TImplicitObjectTransformed<float,3>>()->Object(),NewLocalTransform));
+			LocalParticles.SetDynamicGeometry(Index,MakeUnique<Chaos::TImplicitObjectTransformed<Chaos::FReal,3>>(InShape.Object->GetObject<Chaos::TImplicitObjectTransformed<Chaos::FReal,3>>()->Object(),NewLocalTransform));
 		} else
 		{
-			LocalParticles.SetDynamicGeometry(Index,MakeUnique<Chaos::TImplicitObjectTransformed<float,3>>(InShape.Object,NewLocalTransform));
+			LocalParticles.SetDynamicGeometry(Index,MakeUnique<Chaos::TImplicitObjectTransformed<Chaos::FReal,3>>(InShape.Object,NewLocalTransform));
 		}
 	}
 	{
 		if(InShape.Object->GetType() == Chaos::ImplicitObjectType::Transformed)
 		{
-			InShape.Object->GetObject<Chaos::TImplicitObjectTransformed<float,3>>()->SetTransform(NewLocalTransform);
+			InShape.Object->GetObject<Chaos::TImplicitObjectTransformed<Chaos::FReal,3>>()->SetTransform(NewLocalTransform);
 		} else
 		{
-			const_cast<FPhysicsShapeHandle&>(InShape).Object = new Chaos::TImplicitObjectTransformed<float,3>(InShape.Object,NewLocalTransform);
+			const_cast<FPhysicsShapeHandle&>(InShape).Object = new Chaos::TImplicitObjectTransformed<Chaos::FReal,3>(InShape.Object,NewLocalTransform);
 		}
 	}
 #endif
@@ -1549,7 +1620,7 @@ int32 FChaosEngineInterface::GetAllShapes_AssumedLocked(const FPhysicsActorHandl
 
 void FChaosEngineInterface::CreateActor(const FActorCreationParams& InParams,FPhysicsActorHandle& Handle)
 {
-	LLM_SCOPE(ELLMTag::Chaos);
+	LLM_SCOPE(ELLMTag::ChaosActor);
 	using namespace Chaos;
 
 	TUniquePtr<FGeometryParticle> Particle;
@@ -1557,6 +1628,7 @@ void FChaosEngineInterface::CreateActor(const FActorCreationParams& InParams,FPh
 	if(InParams.bStatic)
 	{
 		Particle = FGeometryParticle::CreateParticle();
+		Particle->SetResimType(EResimType::ResimAsSlave);
 	}
 	else
 	{
@@ -1589,14 +1661,13 @@ void FChaosEngineInterface::CreateActor(const FActorCreationParams& InParams,FPh
 	// the particle is added to the scene later.
 	Body_External.SetX(InParams.InitialTM.GetLocation(), /*bInvalidate=*/false);	//do not generate wake event since this is part of initialization
 	Body_External.SetR(InParams.InitialTM.GetRotation(), /*bInvalidate=*/false);
-#if CHAOS_CHECKED
-	Body_External.SetDebugName(InParams.DebugName);
+#if CHAOS_DEBUG_NAME
+	Body_External.SetDebugName(MakeShareable(new FString(InParams.DebugName)));
 #endif
 }
 
 void FChaosEngineInterface::ReleaseActor(FPhysicsActorHandle& Handle,FChaosScene* InScene,bool bNeverDerferRelease)
 {
-	LLM_SCOPE(ELLMTag::Chaos);
 	if(!Handle)
 	{
 		UE_LOG(LogChaos,Warning,TEXT("Attempting to release an actor with a null handle"));
@@ -1634,10 +1705,6 @@ FChaosScene* FChaosEngineInterface::GetCurrentScene(const FPhysicsActorHandle& I
 void FChaosEngineInterface::SetGlobalPose_AssumesLocked(const FPhysicsActorHandle& InActorReference,const FTransform& InNewPose,bool bAutoWake)
 {
 	Chaos::FRigidBodyHandle_External& Body_External = InActorReference->GetGameThreadAPI();
-	if (Body_External.IsKinematicTargetDirty())
-	{
-		Body_External.ClearKinematicTarget();
-	}
 	Body_External.SetX(InNewPose.GetLocation());
 	Body_External.SetR(InNewPose.GetRotation());
 	Body_External.UpdateShapeBounds();
@@ -1648,22 +1715,18 @@ void FChaosEngineInterface::SetGlobalPose_AssumesLocked(const FPhysicsActorHandl
 
 void FChaosEngineInterface::SetKinematicTarget_AssumesLocked(const FPhysicsActorHandle& InActorReference,const FTransform& InNewTarget)
 {
-	{
-		Chaos::TKinematicTarget <Chaos::FReal, 3 > NewKinematicTarget;
-		// SetKinematicTarget_AssumesLocked could be called multiple times in one time step
-		// Don't update Previous here. Previous is updated in FSingleParticlePhysicsProxy::PushToPhysicsState. Previous is not used in game thread and set to identity.
-		// @todo(chaos): create a new KinematicTarget class for game thread that does not have Preivous 
-		Chaos::FRigidTransform3 IdentityTransform;
-		NewKinematicTarget.SetTargetMode(InNewTarget, IdentityTransform);
-		InActorReference->GetGameThreadAPI().SetKinematicTarget(NewKinematicTarget);
+	Chaos::TKinematicTarget<Chaos::FReal, 3> NewKinematicTarget;
+	// SetKinematicTarget_AssumesLocked could be called multiple times in one time step
+	NewKinematicTarget.SetTargetMode(InNewTarget);
+	InActorReference->GetGameThreadAPI().SetKinematicTarget(NewKinematicTarget);
 
-		InActorReference->GetGameThreadAPI().SetX(InNewTarget.GetLocation(), false);
-		InActorReference->GetGameThreadAPI().SetR(InNewTarget.GetRotation(), false);
-		InActorReference->GetGameThreadAPI().UpdateShapeBounds();
+	// IMPORTANT : we do not invalidate X and R as they will be properly computed using the kinematic target information 
+	InActorReference->GetGameThreadAPI().SetX(InNewTarget.GetLocation(), false); 
+	InActorReference->GetGameThreadAPI().SetR(InNewTarget.GetRotation(), false); 
+	InActorReference->GetGameThreadAPI().UpdateShapeBounds();
 
-	    FChaosScene* Scene = GetCurrentScene(InActorReference);
-	    Scene->UpdateActorInAccelerationStructure(InActorReference);
-	}
+	FChaosScene* Scene = GetCurrentScene(InActorReference);
+	Scene->UpdateActorInAccelerationStructure(InActorReference);
 }
 
 #elif WITH_ENGINE //temp physx code to make moving out of engine easier

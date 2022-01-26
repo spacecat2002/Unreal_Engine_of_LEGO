@@ -304,7 +304,7 @@ public:
 	@param FaceIndices - Vertices that lie on the face plane.
 	@param SearchDistance - distance to surface [def:0.01]
 	*/
-	virtual int32 FindClosestFaceAndVertices(const FVec3& Position, TArray<FVec3>& FaceVertices, FReal SearchDist = 0.01) const
+	virtual int32 FindClosestFaceAndVertices(const FVec3& Position, TArray<FVec3>& FaceVertices, FReal SearchDist = 0.01f) const
 	{
 		//Many objects have no concept of a face
 		return INDEX_NONE;
@@ -377,7 +377,7 @@ protected:
 	FVec3 ScaledNormalHelper(const FVec3& Normal, const FVec3& Scale) const
 	{
 		const FVec3 ScaledNormal = Scale * Normal;
-		const float ScaledNormalLen = ScaledNormal.Size();
+		const FReal ScaledNormalLen = ScaledNormal.Size();
 		return ensure(ScaledNormalLen > TNumericLimits<FReal>::Min())
 			? ScaledNormal / ScaledNormalLen
 			: FVec3(0.f, 0.f, 1.f);
