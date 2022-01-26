@@ -43,12 +43,12 @@ public:
 		*
 		*   VerticesGroup ("Vertices")
 		*
-		*			FVectorArray      Vertex         = GetAttribute<FVector>("Vertex", VerticesGroup)
+		*			FVectorArray      Vertex         = GetAttribute<FVector3f>("Vertex", VerticesGroup)
 		*			FInt32Array       BoneMap        = GetAttribute<Int32>("BoneMap", VerticesGroup, {"Transform"})
-		*           FVectorArray      Normal         = GetAttribute<FVector>("Normal", MaterialGroup)
+		*           FVectorArray      Normal         = GetAttribute<FVector3f>("Normal", MaterialGroup)
 		*			FVector2DArray    UVs            = GetAttribute<TArray<FVector2D>>("UVs", MaterialGroup)
-		*           FVectorArray      TangentU       = GetAttribute<FVector>("TangentU", MaterialGroup)
-		*           FVectorArray      TangentV       = GetAttribute<FVector>("TangentV", MaterialGroup)
+		*           FVectorArray      TangentU       = GetAttribute<FVector3f>("TangentU", MaterialGroup)
+		*           FVectorArray      TangentV       = GetAttribute<FVector3f>("TangentV", MaterialGroup)
 		*           FLinearColorArray Color          = GetAttribute<FLinearColor>("Color", MaterialGroup)
 		*
 		*		The VerticesGroup will store per-vertex information about the geometry. For
@@ -230,6 +230,9 @@ public:
 	FORCEINLINE void ClearFlags(int32 Element, int32 InFlags) { TManagedArray<int32>& Status = StatusFlags; Status[Element] = Status[Element] & ~InFlags; }
 	FORCEINLINE bool HasFlags(int32 Element, int32 InFlags) const { const TManagedArray<int32>& Status = StatusFlags; return (Status[Element] & InFlags) != 0; }
 
+	/** Return true if the Element contains any visible faces. */
+	bool IsVisible(int32 Element) const;
+
 	/** Connection of leaf geometry */
 	TArray<TArray<int32>> ConnectionGraph();
 
@@ -261,7 +264,7 @@ public:
 	TManagedArray<int32>		ExemplarIndex;
 
 	// Vertices Group
-	TManagedArray<FVector>		     Vertex;
+	TManagedArray<FVector>		 Vertex;
 	// Outer array is the array of vertices, inner array is the uv channels
 	TManagedArray<TArray<FVector2D>> UVs;
 	TManagedArray<FLinearColor>      Color;

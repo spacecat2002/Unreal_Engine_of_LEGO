@@ -157,7 +157,7 @@ namespace GeometryCollectionAlgo
 		}
 		if (NumIndices > 1)
 		{
-			Translation /= NumIndices;
+			Translation /= static_cast<float>(NumIndices);
 		}
 		return Translation;
 	}
@@ -313,10 +313,10 @@ namespace GeometryCollectionAlgo
 				OutGlobalTransforms[Index] = (*UniformScale)[Index].ToMatrixWithScale() * Result;
 			}
 			else
-			{
+			{ 
 				OutGlobalTransforms[Index] = Result;
 			}
-
+			
 			IsTransformComputed[Index] = true;
 		}
 	}
@@ -332,7 +332,7 @@ namespace GeometryCollectionAlgo
 				GlobalMatricesRecursive(Parents[Index], Parents, Transform, IsTransformComputed, UniformScale, OutGlobalTransforms);
 				Result *= OutGlobalTransforms[Parents[Index]];
 			}
-
+			
 			if (UniformScale)
 			{
 				OutGlobalTransforms[Index] = (*UniformScale)[Index] * Result;
@@ -341,7 +341,7 @@ namespace GeometryCollectionAlgo
 			{
 				OutGlobalTransforms[Index] = Result;
 			}
-
+			
 			IsTransformComputed[Index] = true;
 		}
 	}
@@ -356,7 +356,7 @@ namespace GeometryCollectionAlgo
 				GlobalMatricesRecursive(Parents[Index], Parents, Transform, IsTransformComputed, UniformScale, TransformCache);
 				Result *= TransformCache[Parents[Index]];
 			}
-
+			
 			if (UniformScale)
 			{
 				TransformCache[Index] = (*UniformScale)[Index] * Result;
@@ -371,6 +371,9 @@ namespace GeometryCollectionAlgo
 
 		return TransformCache[Index];
 	}
+
+
+
 
 	FTransform GlobalMatrix(const TManagedArray<FTransform>& RelativeTransforms, const TManagedArray<int32>& Parents, int32 Index)
 	{
@@ -435,7 +438,7 @@ namespace GeometryCollectionAlgo
 	void GlobalMatrices(const TManagedArray<FTransform>& RelativeTransforms, const TManagedArray<int32>& Parents, const TManagedArray<FTransform>& UniformScale, TArray<MatrixType>& OutGlobalTransforms)
 	{
 		int32 NumTransforms = RelativeTransforms.Num();
-
+		
 		TArray<bool> IsTransformComputed;
 		IsTransformComputed.AddDefaulted(NumTransforms);
 
@@ -574,7 +577,7 @@ namespace GeometryCollectionAlgo
 			{
 				if (SurfaceParticlesCount[i])
 				{
-					CenterOfMass[i] /= SurfaceParticlesCount[i];
+					CenterOfMass[i] /= static_cast<float>(SurfaceParticlesCount[i]);
 
 					FTransform Tmp(CenterOfMass[i]);
 
@@ -585,7 +588,7 @@ namespace GeometryCollectionAlgo
 				}
 			}
 
-			CombinedCenterOfMassWorld /= Transform.Num();
+			CombinedCenterOfMassWorld /= static_cast<float>(Transform.Num());
 
 			for (int i = 0; i < Vertex.Num(); i++)
 			{

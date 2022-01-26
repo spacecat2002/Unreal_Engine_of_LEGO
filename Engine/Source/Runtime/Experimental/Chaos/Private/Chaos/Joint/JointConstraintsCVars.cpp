@@ -20,8 +20,14 @@ FAutoConsoleVariableRef CVarChaosJointVelProjectionScale(TEXT("p.Chaos.Joint.Vel
 bool bChaos_Joint_DisableSoftLimits = false;
 FAutoConsoleVariableRef CVarChaosJointDisableSoftLimits(TEXT("p.Chaos.Joint.DisableSoftLimits"), bChaos_Joint_DisableSoftLimits, TEXT("Disable soft limits (for debugging only)"));
 
+bool bChaos_Joint_Plasticity_ClampToLimits = true;
+FAutoConsoleVariableRef CVarChaosJointPlasticityClampToLimits(TEXT("p.Chaos.Joint.Plasticity.ClampToLimits"), bChaos_Joint_Plasticity_ClampToLimits, TEXT("Clamp drive position targets to defined limits after plasticity computation"));
+
 float Chaos_Joint_LinearVelocityThresholdToApplyRestitution = 1e-2f;
 FAutoConsoleVariableRef CVarChaosJointLinearVelocityThresholdToApplyRestitution(TEXT("p.Chaos.Joint.LinearVelocityThresholdToApplyRestitution"), Chaos_Joint_LinearVelocityThresholdToApplyRestitution, TEXT("Apply restitution only if initial velocity is higher than this threshold (used in Quasipbd)"));
 
 float Chaos_Joint_AngularVelocityThresholdToApplyRestitution = 1e-2f;
 FAutoConsoleVariableRef CVarChaosJointAngularVelocityThresholdToApplyRestitution(TEXT("p.Chaos.Joint.AngularVelocityThresholdToApplyRestitution"), Chaos_Joint_AngularVelocityThresholdToApplyRestitution, TEXT("Apply restitution only if initial velocity is higher than this threshold (used in Quasipbd)"));
+
+bool bChaos_Joint_UseCachedSolver = false;
+FAutoConsoleVariableRef CVarChaosJointUseCachedSolver(TEXT("p.Chaos.Joint.UseCachedSolver"), bChaos_Joint_UseCachedSolver, TEXT("Use cached version of joint solver. (default is false"));

@@ -33,8 +33,8 @@ namespace Chaos
 		static void RegisterTrailingEvent(FEventManager& EventManager);
 
 		/**
-		* Register sleeping event gathering function & data type
-		*/
+		 * Register sleeping event gathering function & data type
+		 */
 		static void RegisterSleepingEvent(FEventManager& EventManager);
 
 		/**

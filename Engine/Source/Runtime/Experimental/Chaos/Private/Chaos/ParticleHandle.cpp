@@ -216,14 +216,44 @@ namespace Chaos
 		});
 	}
 
-	template class CHAOS_API TGeometryParticle<FReal, 3>;
+	template <typename T, int d, bool bPersistent>
+	void TPBDRigidParticleHandleImp<T, d, bPersistent>::AddTorque(const TVector<T, d>& InTorque, bool bInvalidate)
+	{
+		const FRotation3 RCoM = FParticleUtilitiesPQ::GetCoMWorldRotation(this);
+		const FMatrix33 WorldInvI = Utilities::ComputeWorldSpaceInertia(RCoM, InvI());
+		SetAngularAcceleration(AngularAcceleration() + WorldInvI * InTorque);
+	}
 
-	template class CHAOS_API TKinematicGeometryParticle<FReal, 3>;
 
-	template class CHAOS_API TPBDRigidParticle<FReal, 3>;
+	template <typename T, int d, bool bPersistent>
+	void TPBDRigidParticleHandleImp<T, d, bPersistent>::SetTorque(const TVector<T, d>& InTorque, bool bInvalidate)
+	{
+		const FRotation3 RCoM = FParticleUtilitiesPQ::GetCoMWorldRotation(this);
+		const FMatrix33 WorldInvI = Utilities::ComputeWorldSpaceInertia(RCoM, InvI());
+		SetAngularAcceleration(WorldInvI * InTorque);
+	}
+
+	template <typename T, int d>
+	void TPBDRigidParticle<T, d>::AddTorque(const TVector<T, d>& InTorque, bool bInvalidate)
+	{
+		const FRotation3 RCoM = FParticleUtilitiesGT::GetCoMWorldRotation(this);
+		const FMatrix33 WorldInvI = Utilities::ComputeWorldSpaceInertia(RCoM, InvI());
+		SetAngularAcceleration(AngularAcceleration() + WorldInvI * InTorque);
+	}
+
+	template class TGeometryParticle<FReal, 3>;
+
+	template class TKinematicGeometryParticle<FReal, 3>;
+
+	template class TPBDRigidParticle<FReal, 3>;
+
+	template class TParticleHandleBase<FReal, 3>;
+	template class TGeometryParticleHandleImp<FReal, 3, true>;
+	template class TKinematicGeometryParticleHandleImp<FReal, 3, true>;
+	template class TPBDRigidParticleHandleImp<FReal, 3, true>;
 
 	template <>
-	void Chaos::TGeometryParticle<FReal, 3>::MarkDirty(const EParticleFlags DirtyBits, bool bInvalidate )
+	void Chaos::TGeometryParticle<FReal, 3>::MarkDirty(const EChaosPropertyFlags DirtyBits, bool bInvalidate )
 	{
 		if (bInvalidate)
 		{
@@ -257,6 +287,37 @@ namespace Chaos
 	int32 TGeometryParticleHandleImp<FReal, 3, false>::GetPayload<int32>(int32 Idx)
 	{
 		return Idx;
+	}
+
+	template <>
+	void TPBDRigidParticleHandleImp<FReal, 3, true>::SetDynamicMisc(const FParticleDynamicMisc& DynamicMisc, FPBDRigidsEvolutionBase& Evolution)
+	{
+	
+		if (Disabled() != DynamicMisc.Disabled())
+		{
+			if (DynamicMisc.Disabled())
+			{
+				Evolution.DisableParticle(this);
+			}
+			else
+			{
+				Evolution.EnableParticle(this, nullptr);
+			}
+		}		
+
+		SetLinearEtherDrag(DynamicMisc.LinearEtherDrag());
+		SetAngularEtherDrag(DynamicMisc.AngularEtherDrag());
+		SetMaxLinearSpeedSq(DynamicMisc.MaxLinearSpeedSq());
+		SetMaxAngularSpeedSq(DynamicMisc.MaxAngularSpeedSq());
+		SetCollisionGroup(DynamicMisc.CollisionGroup());
+		SetGravityEnabled(DynamicMisc.GravityEnabled());
+		SetCCDEnabled(DynamicMisc.CCDEnabled());
+		SetDisabled(DynamicMisc.Disabled());
+		SetOneWayInteraction(DynamicMisc.OneWayInteraction());
+		AddCollisionConstraintFlag((Chaos::ECollisionConstraintFlags)DynamicMisc.CollisionConstraintFlag());
+
+		Evolution.SetParticleObjectState(this, DynamicMisc.ObjectState());
+		Evolution.SetParticleSleepType(this, DynamicMisc.SleepType());
 	}
 
 }

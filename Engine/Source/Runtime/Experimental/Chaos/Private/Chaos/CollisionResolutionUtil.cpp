@@ -16,8 +16,6 @@
 #include "PBDCollisionConstraints.ispc.generated.h"
 #endif
 
-//PRAGMA_DISABLE_OPTIMIZATION
-
 namespace Chaos
 {
 	namespace Collisions
@@ -27,21 +25,6 @@ namespace Chaos
 		{
 			FGenericParticleHandle Generic = const_cast<FGeometryParticleHandle*>(Particle);
 			return FRigidTransform3(Generic->P(), Generic->Q());
-		}
-
-		// @todo(ccaulfield): This is duplicated in JointConstraints - move to a utility file
-		FMatrix33 ComputeFactorMatrix3(const FVec3& V, const FMatrix33& M, const FReal Im)
-		{
-			// Rigid objects rotational contribution to the impulse.
-			// Vx*M*VxT+Im
-			ensure(Im > FLT_MIN);
-				return FMatrix33(
-					-V[2] * (-V[2] * M.M[1][1] + V[1] * M.M[2][1]) + V[1] * (-V[2] * M.M[2][1] + V[1] * M.M[2][2]) + Im,
-					V[2] * (-V[2] * M.M[1][0] + V[1] * M.M[2][0]) - V[0] * (-V[2] * M.M[2][1] + V[1] * M.M[2][2]),
-					-V[1] * (-V[2] * M.M[1][0] + V[1] * M.M[2][0]) + V[0] * (-V[2] * M.M[1][1] + V[1] * M.M[2][1]),
-					V[2] * (V[2] * M.M[0][0] - V[0] * M.M[2][0]) - V[0] * (V[2] * M.M[2][0] - V[0] * M.M[2][2]) + Im,
-					-V[1] * (V[2] * M.M[0][0] - V[0] * M.M[2][0]) + V[0] * (V[2] * M.M[1][0] - V[0] * M.M[2][1]),
-					-V[1] * (-V[1] * M.M[0][0] + V[0] * M.M[1][0]) + V[0] * (-V[1] * M.M[1][0] + V[0] * M.M[1][1]) + Im);
 		}
 
 		// Reference: Energy Stability and Fracture for Frame Rate Rigid Body Simulations (Su et al.) (3.2. Clamping Impulses)
@@ -517,7 +500,7 @@ namespace Chaos
 					if (NewPhi < Contact.Phi)
 					{
 						Contact.Phi = NewPhi;
-						Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint);
+						Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint - FReal(0.5) * NewPhi * LocalNormal);
 						Contact.Normal = ObjectTransform.TransformVectorNoScale(LocalNormal);
 					}
 				}
@@ -532,7 +515,7 @@ namespace Chaos
 				FVec3 LocalPoint = SampleToObjectTM.TransformPositionNoScale(SampleParticles.X(DeepestParticle));
 				FVec3 LocalNormal;
 				Contact.Phi = Object.PhiWithNormal(LocalPoint, LocalNormal);
-				Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint);
+				Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint - FReal(0.5) * Contact.Phi * LocalNormal);
 				Contact.Normal = ObjectTransform.TransformVectorNoScale(LocalNormal);
 			}
 
@@ -625,7 +608,7 @@ namespace Chaos
 					if (NewPhi < Contact.Phi)
 					{
 						Contact.Phi = NewPhi;
-						Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint);
+						Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint - FReal(0.5) * NewPhi * LocalNormal);
 						Contact.Normal = ObjectTransform.TransformVectorNoScale(LocalNormal);
 					}
 				}
@@ -640,7 +623,7 @@ namespace Chaos
 				FVec3 LocalPoint = SampleToObjectTM.TransformPositionNoScale(SampleParticles.X(DeepestParticle));
 				FVec3 LocalNormal;
 				Contact.Phi = Object.PhiWithNormal(LocalPoint, LocalNormal);
-				Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint);
+				Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint - FReal(0.5) * Contact.Phi * LocalNormal);
 				Contact.Normal = ObjectTransform.TransformVectorNoScale(LocalNormal);
 
 			}

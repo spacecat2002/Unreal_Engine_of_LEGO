@@ -115,19 +115,19 @@ namespace Chaos
 		virtual void BindToGraph(FPBDConstraintGraph& InContactGraph, uint32 InContainerId) {}
 
 		// Collect all the data required to solve the constraints in the specified island. This also fills the SolverBodies
-		virtual void GatherSolverInput(const FReal Dt, int32 Island) {}
+		virtual void GatherSolverInput(const FReal Dt, int32 GroupIndex) {}
 
 		// Scatter the results of the islands constraint solver(s) out to the appropriate places (e.g., impulses, break flags, etc)
-		virtual void ScatterSolverOutput(const FReal Dt, int32 Island) {}
+		virtual void ScatterSolverOutput(const FReal Dt, int32 GroupIndex) {}
 
 		/** Called once per tick to allow constraint containers to create/alter their constraints based on particle position */
 		virtual void UpdatePositionBasedState(const FReal Dt) {}
 
 		/** Apply all corrections for constraints in the specified island. Return true if more iterations are needed. */
-		virtual bool ApplyConstraints(const FReal Dt, int32 Island, const int32 It, const int32 NumIts) { return false; }
+		virtual bool ApplyConstraints(const FReal Dt, int32 GroupIndex, const int32 It, const int32 NumIts) { return false; }
 
 		/** Apply push out for constraints in the specified island. Return true if more iterations are needed. */
-		virtual bool ApplyPushOut(const FReal Dt, int32 Island, const int32 It, const int32 NumIts) { return false; }
+		virtual bool ApplyPushOut(const FReal Dt, int32 GroupIndex, const int32 It, const int32 NumIts) { return false; }
 
 		/** Add all constraints to the connectivity graph */
 		virtual void AddToGraph() {}
@@ -136,7 +136,13 @@ namespace Chaos
 		virtual void InitializeAccelerationStructures() {}
 
 		/** Set up the perf-acceleration structures for the specified island. May be called in parallel for islands */
-		virtual void UpdateAccelerationStructures(const FReal Dt, const int32 Island) {}
+		virtual void UpdateAccelerationStructures(const FReal Dt, const int32 GroupIndex) {}
+
+		/** Sort constraints if necessary  */
+		virtual void SortConstraints() {}
+
+		/** Boolean to check if we need to sort the constraints */
+		virtual bool IsSortingEnabled() const {return false;}
 
 		virtual void SetUseContactGraph(const bool InUseContactGraph) {}
 
@@ -217,6 +223,7 @@ namespace Chaos
 	template<typename ConstraintType>
 	class CHAOS_API TPBDConstraintIslandRule : public TPBDConstraintGraphRuleImpl<ConstraintType>
 	{
+	protected:
 		typedef TPBDConstraintGraphRuleImpl<ConstraintType> Base;
 
 	public:
@@ -230,19 +237,19 @@ namespace Chaos
 
 		virtual ~TPBDConstraintIslandRule();
 
-		virtual void GatherSolverInput(const FReal Dt, int32 Island) override;
+		virtual void GatherSolverInput(const FReal Dt, int32 GroupIndex) override;
 
-		virtual void ScatterSolverOutput(const FReal Dt, int32 Island) override;
+		virtual void ScatterSolverOutput(const FReal Dt, int32 GroupIndex) override;
 
-		virtual bool ApplyConstraints(const FReal Dt, int32 Island, const int32 It, const int32 NumIts) override;
+		virtual bool ApplyConstraints(const FReal Dt, int32 GroupIndex, const int32 It, const int32 NumIts) override;
 
-		virtual bool ApplyPushOut(const FReal Dt, int32 Island, const int32 It, const int32 NumIts) override;
+		virtual bool ApplyPushOut(const FReal Dt, int32 GroupIndex, const int32 It, const int32 NumIts) override;
 
 		virtual void InitializeAccelerationStructures() override;
 		
-		virtual void UpdateAccelerationStructures(const FReal Dt, const int32 Island) override;
+		virtual void UpdateAccelerationStructures(const FReal Dt, const int32 GroupIndex) override;
 
-	private:
+	protected:
 		using Base::Constraints;
 		using Base::ConstraintGraph;
 	};
@@ -254,9 +261,9 @@ namespace Chaos
 	 * place as far as higher-level constraints are concerned.
 	 */
 	template<typename ConstraintType>
-	class CHAOS_API TPBDConstraintColorRule : public TPBDConstraintGraphRuleImpl<ConstraintType>
+	class CHAOS_API TPBDConstraintColorRule : public TPBDConstraintIslandRule<ConstraintType>
 	{
-		typedef TPBDConstraintGraphRuleImpl<ConstraintType> Base;
+		typedef TPBDConstraintIslandRule<ConstraintType> Base;
 
 	public:
 		using FConstraints = ConstraintType;
@@ -271,11 +278,11 @@ namespace Chaos
 			Constraints.UpdatePositionBasedState(Dt);
 		}
 
-		virtual void GatherSolverInput(const FReal Dt, int32 Island) override;
+		virtual void GatherSolverInput(const FReal Dt, int32 GroupIndex) override;
 
-		virtual void ScatterSolverOutput(const FReal Dt, int32 Island) override;
+		virtual void ScatterSolverOutput(const FReal Dt, int32 GroupIndex) override;
 
-		virtual bool ApplyConstraints(const FReal Dt, int32 Island, const int32 It, const int32 NumIts) override;
+		virtual bool ApplyConstraints(const FReal Dt, int32 GroupIndex, const int32 It, const int32 NumIts) override;
 
 		virtual void RemoveConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>& InConstraints)
 		{
@@ -287,42 +294,57 @@ namespace Chaos
 			Constraints.Reset();
 		}
 
-		virtual bool ApplyPushOut(const FReal Dt, int32 Island, const int32 It, const int32 NumIts) override;
+		virtual bool ApplyPushOut(const FReal Dt, int32 GroupIndex, const int32 It, const int32 NumIts) override;
 
 		virtual void InitializeAccelerationStructures() override;
 
-		virtual void UpdateAccelerationStructures(const FReal Dt, const int32 Island) override;
+		virtual void UpdateAccelerationStructures(const FReal Dt, const int32 GroupIndex) override;
+
+		/** Sort constraints according to island/level/color*/
+		virtual void SortConstraints() override;
+		
+		/** Boolean to check if we need to sort the constraints*/
+		virtual bool IsSortingEnabled() const override;
 
 		virtual void SetUseContactGraph(const bool bInUseContactGraph) override;
 
-		const FPBDConstraintColor GetGraphColor() const
-		{
-			return GraphColor;
-		}
-
 	private:
-		using Base::Constraints;
-		using Base::ConstraintGraph;
+		using Base::Base::Constraints;
+		using Base::Base::ConstraintGraph;
 
-		const TArray<FConstraintContainerHandle*>& GetLevelColorConstraints(const typename FPBDConstraintColor::FLevelToColorToConstraintListMap& LevelToColorToConstraintListMap, int32 Level, int32 Color) const
-		{
-			// FPBDConstraintColor works with any constraint type (in principle - currently only used with Collisions), but the rule is bound to a single type and so this cast is ok
-			return reinterpret_cast<const TArray<FConstraintContainerHandle*>&>(LevelToColorToConstraintListMap[Level][Color]);
-		}
+		/** Check if sorting is using levels*/
+		bool IsSortingUsingColors() const;
 
-		FPBDConstraintColor GraphColor;
+		/** Check if sorting is using colors */
+		bool IsSortingUsingLevels() const;
 
+		/** Compute island levels if necessary */
+		void ComputeLevels();
+
+		/** Compute island colors if necessary */
+		void ComputeColors();
+
+		/** Populate the sorted constraints list based on island/level/color */
+		void PopulateConstraints();
+		
+		/** Loop over all the edges and apply a function */
+		void ForEachEdges(TFunctionRef<void(const int32, const FPBDConstraintGraph::GraphType::FGraphEdge&)> InFunction);
+		
 		// Each array entry contains the [begin, end) index of a set of independent constraints
 		// that can be solved in parallel. The sets are ordered by level and must be solved sequentially.
 		TArray<TArray<TPair<int32, int32>>> ConstraintSets;
 
-		// Whether to enable graph coloring and parallel processing of same-color constraints
-		bool bUseColor;
+		// Sorted constraint handles
+		TArray<FConstraintContainerHandle*> SortedConstraints;
+
+		// Constraint offsets into the sorted handles list for a given tuple island/level/color
+		TArray<int32> ConstraintOffsets;
+
+		// Island offsets into the constraint offsets 
+		TArray<int32> IslandOffsets;
+
+		// Counters to know at which position after the island/level/color constraint offset the handle will be inserted
+		TArray<int32> OffsetCounters;
 	};
 
 }
-
-// Only way to make this compile at the moment due to visibility attribute issues. TODO: Change this once a fix for this problem is applied.
-#if PLATFORM_MAC || PLATFORM_LINUX
-extern template class CHAOS_API Chaos::TPBDConstraintColorRule<Chaos::FPBDCollisionConstraints>;
-#endif

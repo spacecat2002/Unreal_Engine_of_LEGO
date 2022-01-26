@@ -14,6 +14,7 @@
 #include "PhysicsSolver.h"
 #include "Chaos/ChaosMarshallingManager.h"
 #include "Chaos/PullPhysicsDataImp.h"
+#include "RewindData.h"
 
 // This is a temporary workaround to avoid GT copying position from physics results for kinematics, as they are already at target.
 // Velocity and such is still copied. This will be handled better in the future.
@@ -22,10 +23,9 @@ FAutoConsoleVariableRef CVar_SyncKinematicOnGameThread(TEXT("P.Chaos.SyncKinemat
 
 
 FSingleParticlePhysicsProxy::FSingleParticlePhysicsProxy(TUniquePtr<PARTICLE_TYPE>&& InParticle, FParticleHandle* InHandle, UObject* InOwner)
-	: IPhysicsProxyBase(EPhysicsProxyType::SingleParticleProxy)
+	: IPhysicsProxyBase(EPhysicsProxyType::SingleParticleProxy, InOwner)
 	, Particle(MoveTemp(InParticle))
 	, Handle(InHandle)
-	, Owner(InOwner)
 	, PullDataInterpIdx_External(INDEX_NONE)
 {
 	Particle->SetProxy(this);
@@ -36,15 +36,23 @@ FSingleParticlePhysicsProxy::~FSingleParticlePhysicsProxy()
 {
 }
 
+CHAOS_API int32 ForceNoCollisionIntoSQ = 0;
+FAutoConsoleVariableRef CVarForceNoCollisionIntoSQ(TEXT("p.ForceNoCollisionIntoSQ"), ForceNoCollisionIntoSQ, TEXT("When enabled, all particles end up in sq structure, even ones with no collision"));
+
 template <Chaos::EParticleType ParticleType, typename TEvolution>
-void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos::FGeometryParticleHandle* Handle, int32 DataIdx, const Chaos::FDirtyProxy& Dirty, Chaos::FShapeDirtyData* ShapesData, TEvolution& Evolution)
+void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos::FGeometryParticleHandle* Handle, int32 DataIdx, const Chaos::FDirtyProxy& Dirty, Chaos::FShapeDirtyData* ShapesData, TEvolution& Evolution, bool bResimInitialized, Chaos::FReal ExternalDt)
 {
 	using namespace Chaos;
 	constexpr bool bHasKinematicData = ParticleType != EParticleType::Static;
 	constexpr bool bHasDynamicData = ParticleType == EParticleType::Rigid;
 	auto KinematicHandle = bHasKinematicData ? static_cast<Chaos::FKinematicGeometryParticleHandle*>(Handle) : nullptr;
 	auto RigidHandle = bHasDynamicData ? static_cast<Chaos::FPBDRigidParticleHandle*>(Handle) : nullptr;
-	const FParticleDirtyData& ParticleData = Dirty.ParticleData;
+	const FDirtyChaosProperties& ParticleData = Dirty.PropertyData;
+
+	if (bResimInitialized)	//todo: assumes particles are always initialized as enabled. This is not true in future versions of code, so check PushData
+	{
+		Evolution.EnableParticle(Handle, nullptr);
+	}
 	// move the copied game thread data into the handle
 	{
 		auto NewXR = ParticleData.FindXR(Manager, DataIdx);
@@ -74,14 +82,7 @@ void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos:
 		auto NewKinematicTargetGT = bHasKinematicData ? ParticleData.FindKinematicTarget(Manager, DataIdx) : nullptr;
 		if (NewKinematicTargetGT)
 		{
-			FKinematicTarget NewKinematicTargetPT;
-			if (NewKinematicTargetGT->GetMode() != EKinematicTargetMode::None)
-			{
-				const FRigidTransform3 PreviousTransform(KinematicHandle->X(), KinematicHandle->R());
-				const FRigidTransform3& TargetTransform = NewKinematicTargetGT->GetTarget();
-				NewKinematicTargetPT.SetTargetMode(TargetTransform, PreviousTransform);
-			}
-			Evolution.SetParticleKinematicTarget(RigidHandle, NewKinematicTargetPT);
+			Evolution.SetParticleKinematicTarget(KinematicHandle, *NewKinematicTargetGT);
 		}
 
 		if(NewXR || NewNonFrequentData || NewVelocities || NewKinematicTargetGT)
@@ -110,17 +111,7 @@ void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos:
 
 			if(auto NewData = ParticleData.FindDynamicMisc(Manager,DataIdx))
 			{
-				Evolution.SetParticleObjectState(RigidHandle,NewData->ObjectState());
-
-				RigidHandle->SetDynamicMisc(*NewData);
-
-				if(NewData->ObjectState() != EObjectStateType::Dynamic)
-				{
-					//this is needed because changing object state on external thread means we want to snap position to where the particle was at that time (on the external thread)
-					//for that to work we need to ensure the snap results (which we just got) are passed properly into the results manager
-					Evolution.GetParticles().MarkTransientDirtyParticle(RigidHandle);
-				}
-				
+				RigidHandle->SetDynamicMisc(*NewData, Evolution);				
 			}
 		}
 
@@ -148,7 +139,7 @@ void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos:
 		}
 		
 
-		if(bUpdateCollisionData)
+		if(bUpdateCollisionData && !ForceNoCollisionIntoSQ)
 		{
 			//Some shapes were not dirty and may have collision - so have to iterate them all. TODO: find a better way to handle this case
 			if(!bHasCollision && Dirty.ShapeDataIndices.Num() != Handle->ShapesArray().Num())
@@ -181,15 +172,18 @@ void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos:
 // TGeometryParticle<FReal, 3> template specialization 
 //
 
-void FSingleParticlePhysicsProxy::PushToPhysicsState(const Chaos::FDirtyPropertiesManager& Manager, int32 DataIdx, const Chaos::FDirtyProxy& Dirty, Chaos::FShapeDirtyData* ShapesData, Chaos::FPBDRigidsEvolutionGBF& Evolution)
+void FSingleParticlePhysicsProxy::PushToPhysicsState(const Chaos::FDirtyPropertiesManager& Manager, int32 DataIdx, const Chaos::FDirtyProxy& Dirty, Chaos::FShapeDirtyData* ShapesData, Chaos::FPBDRigidsEvolutionGBF& Evolution, Chaos::FReal ExternalDt)
 {
 	using namespace Chaos;
-	switch(Dirty.ParticleData.GetParticleBufferType())
+	const int32 CurFrame = static_cast<FPBDRigidsSolver*>(Solver)->GetCurrentFrame();
+	const FRewindData* RewindData = static_cast<FPBDRigidsSolver*>(Solver)->GetRewindData();
+	const bool bResimInitialized = RewindData && RewindData->IsResim() && CurFrame == InitializedOnStep;
+	switch(Dirty.PropertyData.GetParticleBufferType())
 	{
 		
-	case EParticleType::Static: PushToPhysicsStateImp<EParticleType::Static>(Manager, Handle, DataIdx, Dirty, ShapesData, Evolution); break;
-	case EParticleType::Kinematic: PushToPhysicsStateImp<EParticleType::Kinematic>(Manager, Handle, DataIdx, Dirty, ShapesData, Evolution); break;
-	case EParticleType::Rigid: PushToPhysicsStateImp<EParticleType::Rigid>(Manager, Handle, DataIdx, Dirty, ShapesData, Evolution); break;
+	case EParticleType::Static: PushToPhysicsStateImp<EParticleType::Static>(Manager, Handle, DataIdx, Dirty, ShapesData, Evolution, bResimInitialized, ExternalDt); break;
+	case EParticleType::Kinematic: PushToPhysicsStateImp<EParticleType::Kinematic>(Manager, Handle, DataIdx, Dirty, ShapesData, Evolution, bResimInitialized, ExternalDt); break;
+	case EParticleType::Rigid: PushToPhysicsStateImp<EParticleType::Rigid>(Manager, Handle, DataIdx, Dirty, ShapesData, Evolution, bResimInitialized, ExternalDt); break;
 	default: check(false); //unexpected path
 	}
 }
@@ -200,8 +194,8 @@ void FSingleParticlePhysicsProxy::ClearAccumulatedData()
 	{
 		Rigid->ClearForces(false);
 		Rigid->ClearTorques(false);
-		Rigid->SetLinearImpulse(Chaos::FVec3(0), false);
-		Rigid->SetAngularImpulse(Chaos::FVec3(0), false);
+		Rigid->SetLinearImpulseVelocity(Chaos::FVec3(0), false);
+		Rigid->SetAngularImpulseVelocity(Chaos::FVec3(0), false);
 	}
 	
 	Particle->ClearDirtyFlags();
@@ -238,7 +232,7 @@ void FSingleParticlePhysicsProxy::BufferPhysicsResults_External(Chaos::FDirtyRig
 	}
 }
 
-bool FSingleParticlePhysicsProxy::PullFromPhysicsState(const Chaos::FDirtyRigidParticleData& PullData,int32 SolverSyncTimestamp, const Chaos::FDirtyRigidParticleData* NextPullData, const Chaos::FRealSingle* Alpha)
+bool FSingleParticlePhysicsProxy::PullFromPhysicsState(const Chaos::FDirtyRigidParticleData& PullData,int32 SolverSyncTimestamp, const Chaos::FDirtyRigidParticleData* NextPullData, const Chaos::FRealSingle* Alpha, const Chaos::FRealSingle* LeashAlpha)
 {
 	using namespace Chaos;
 	// Move buffered data into the TPBDRigidParticle without triggering invalidation of the physics state.
@@ -263,25 +257,45 @@ bool FSingleParticlePhysicsProxy::PullFromPhysicsState(const Chaos::FDirtyRigidP
 
 			if (bSyncXR)
 			{
-				if(const FVec3* Prev = LerpHelper(ProxyTimestamp->XTimestamp, PullData.X, ProxyTimestamp->OverWriteX))
+				if (const FVec3* Prev = LerpHelper(ProxyTimestamp->XTimestamp, PullData.X, ProxyTimestamp->OverWriteX))
 				{
-					Rigid->SetX(FMath::Lerp(*Prev, NextPullData->X, *Alpha), false);
+					FVec3 Target = FMath::Lerp(*Prev, NextPullData->X, *Alpha);
+					if (LeashAlpha)
+					{
+						Target = FMath::Lerp(Rigid->X(), Target, *LeashAlpha);
+					}
+					Rigid->SetX(Target, false);
 				}
 
 				if (const FQuat* Prev = LerpHelper(ProxyTimestamp->RTimestamp, PullData.R, ProxyTimestamp->OverWriteR))
 				{
-					Rigid->SetR(FMath::Lerp(*Prev, NextPullData->R, *Alpha), false);
+					FQuat Target = FMath::Lerp(*Prev, NextPullData->R, *Alpha);
+					if (LeashAlpha)
+					{
+						Target = FMath::Lerp<FQuat>(Rigid->R(), Target, *LeashAlpha);
+					}
+					Rigid->SetR(Target, false);
 				}
 			}
 
 			if (const FVec3* Prev = LerpHelper(ProxyTimestamp->VTimestamp, PullData.V, ProxyTimestamp->OverWriteV))
 			{
-				Rigid->SetV(FMath::Lerp(*Prev, NextPullData->V, *Alpha), false);
+				FVec3 Target = FMath::Lerp(*Prev, NextPullData->V, *Alpha);
+				if (LeashAlpha)
+				{
+					Target = FMath::Lerp(Rigid->V(), Target, *LeashAlpha);
+				}
+				Rigid->SetV(Target, false);
 			}
 
 			if (const FVec3* Prev = LerpHelper(ProxyTimestamp->WTimestamp, PullData.W, ProxyTimestamp->OverWriteW))
 			{
-				Rigid->SetW(FMath::Lerp(*Prev, NextPullData->W, *Alpha), false);
+				FVec3 Target = FMath::Lerp(*Prev, NextPullData->W, *Alpha);
+				if (LeashAlpha)
+				{
+					Target = FMath::Lerp(Rigid->W(), Target, *LeashAlpha);
+				}
+				Rigid->SetW(Target, false);
 			}
 
 			//we are interpolating from PullData to Next, but the timestamp is associated with Next

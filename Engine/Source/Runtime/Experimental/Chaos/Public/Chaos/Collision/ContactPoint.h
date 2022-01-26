@@ -10,24 +10,42 @@
 
 namespace Chaos
 {
-	// Data returned by the low-level collision functions
+	// 
+	// In principle, the low-level collision detection functions should not need to calculate the world-space contact data, but some of them
+	// do some of their work in world space and already have the results we need. To avoid duplicate work, all collision detection functions
+	// should also fill in the world-space data
+
+	/**
+	 * @brief Data returned by the low-level collision functions
+	 * 
+	 * @note In principle, the low-level collision detection functions should not need to calculate the world-space contact data, but some of them
+	 * do some of their work in world space and already have the results we need. To avoid duplicate work, all collision detection functions
+	 * should also fill in the world-space data
+	*/
 	class CHAOS_API FContactPoint
 	{
 	public:
-		FVec3 ShapeContactPoints[2];	// Shape-space contact points on the two bodies, without the margin added (i.e., contact point on the core shape)
-		FVec3 ShapeContactNormal;		// Shape-space contact normal relative to the NormalOwner, but with direction that always goes from body 1 to body 0
-		FReal ShapeMargins[2];			// Margins used in collision detection
-		int32 ContactNormalOwnerIndex;	// The shape which owns the contact normal (usually the second body, but not always for manifolds) // Remove this when bChaos_Collision_Manifold_FixNormalsInWorldSpace is set to true permanetly
+		// Shape-space contact points on the two bodies
+		FVec3 ShapeContactPoints[2];
 
-		// @todo(chaos): these do not need to be stored here (they can be derived from above)
-		FVec3 Location;					// World-space contact location
-		FVec3 Normal;					// World-space contact normal
-		FReal Phi;						// Contact separation (negative for overlap)
+		// Shape-space contact normal on the second shape with direction that points away from shape 1
+		FVec3 ShapeContactNormal;
+
+		// World-space contact location
+		FVec3 Location;
+
+		// World-space contact normal with direction that points away from shape 1
+		FVec3 Normal;
+
+		// Contact separation (negative for overlap)
+		FReal Phi;
+
+		// Face index of the shape we hit. Only valid for Heightfield and Trimesh contact points, otherwise INDEX_NONE
+		int32 FaceIndex;
 
 		FContactPoint()
-			: ContactNormalOwnerIndex(1)
-			, Normal(1, 0, 0)
-			, Phi(TNumericLimits<FReal>::Max())
+			: Phi(TNumericLimits<FReal>::Max())
+			, FaceIndex(INDEX_NONE)
 		{
 		}
 
@@ -40,9 +58,7 @@ namespace Chaos
 			if (IsSet())
 			{
 				Swap(ShapeContactPoints[0], ShapeContactPoints[1]);
-				Swap(ShapeMargins[0], ShapeMargins[1]);
 				ShapeContactNormal = -ShapeContactNormal;
-				ContactNormalOwnerIndex = (ContactNormalOwnerIndex == 0) ? 1 : 0; // ContactNormalOwnerIndex is ignored when  bChaos_Collision_Manifold_FixNormalsInWorldSpace is set
 				Normal = -Normal;
 			}
 			return *this;

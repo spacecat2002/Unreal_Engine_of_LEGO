@@ -33,12 +33,14 @@ namespace ImmediatePhysics_Chaos
 		FActorHandle* CreateActor(EActorType ActorType, FBodyInstance* BodyInstance, const FTransform& Transform);
 		void DestroyActor(FActorHandle* ActorHandle);
 
+		void DestroyActorCollisions(FActorHandle* ActorHandle);
+
 		/** Create a physical joint and add it to the simulation */
 		FJointHandle* CreateJoint(FConstraintInstance* ConstraintInstance, FActorHandle* Body1, FActorHandle* Body2);
 		void DestroyJoint(FJointHandle* JointHandle);
 
 		/** Sets the number of active bodies. This number is reset any time a new simulated body is created */
-		void SetNumActiveBodies(int32 NumActiveBodies);
+		void SetNumActiveBodies(int32 NumActiveBodies, TArray<int32> ActiveBodyIndices);
 
 		/** An array of actors to ignore. */
 		struct FIgnorePair
@@ -85,16 +87,19 @@ namespace ImmediatePhysics_Chaos
 			const int32 JointPushOutIts,
 			const int32 CollisionPushOutIts);
 
+		/** Explicit debug draw path if the use case needs it to happen at a point outside of the simulation **/
+		void DebugDraw();
+
 	private:
 		void RemoveFromCollidingPairs(FActorHandle* ActorHandle);
 		void PackCollidingPairs();
 		void UpdateActivePotentiallyCollidingPairs();
 		FReal UpdateStepTime(const FReal DeltaTime, const FReal MaxStepTime);
 
-		void DebugDrawStaticParticles(const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale);
-		void DebugDrawKinematicParticles(const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale);
-		void DebugDrawDynamicParticles(const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale);
-		void DebugDrawConstraints(const int32 MinDebugLevel, const int32 MaxDebugLevel, const FRealSingle ColorScale);
+		void DebugDrawStaticParticles();
+		void DebugDrawKinematicParticles();
+		void DebugDrawDynamicParticles();
+		void DebugDrawConstraints();
 		void DebugDrawSimulationSpace();
 
 		struct FImplementation;

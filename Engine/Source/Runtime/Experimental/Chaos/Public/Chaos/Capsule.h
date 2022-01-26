@@ -125,19 +125,65 @@ namespace Chaos
 			return Box;
 		}
 
+		virtual FAABB3 CalculateTransformedBounds(const FRigidTransform3& Transform) const override
+		{
+			const FVec3 X1 = Transform.TransformPositionNoScale(MSegment.GetX1());
+			const FVec3 X2 = Transform.TransformPositionNoScale(MSegment.GetX2());
+			const FVec3 MinSegment = X1.ComponentwiseMin(X2);
+			const FVec3 MaxSegment = X1.ComponentwiseMax(X2);
+
+			const FVec3 RadiusV = FVec3(GetRadius());
+			return FAABB3(MinSegment - RadiusV, MaxSegment + RadiusV);
+		}
+
 		static bool RaycastFast(FReal MRadius, FReal MHeight, const FVec3& MVector, const FVec3& X1, const FVec3& X2, const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex)
 		{
-			ensure(FMath::IsNearlyEqual(MVector.SizeSquared(), 1, KINDA_SMALL_NUMBER));
-			ensure(FMath::IsNearlyEqual(Dir.SizeSquared(), 1, KINDA_SMALL_NUMBER));
+			ensure(FMath::IsNearlyEqual(MVector.SizeSquared(), (FReal)1, (FReal)KINDA_SMALL_NUMBER));
+			ensure(FMath::IsNearlyEqual(Dir.SizeSquared(), (FReal)1, (FReal)KINDA_SMALL_NUMBER));
 			ensure(Length > 0);
 
 			const FReal R = MRadius + Thickness;
 			const FReal R2 = R * R;
 			OutFaceIndex = INDEX_NONE;
 
+			// Raycast against capsule bounds.
+			// We will use the intersection point as our ray start, this prevents precision issues if start is far away.
+			// All calculations below should use LocalStart/LocalLength, and convert output time using input length if intersecting.
+			FAABB3 CapsuleBounds;
+			{
+				CapsuleBounds.GrowToInclude(X1);
+				CapsuleBounds.GrowToInclude(X2);
+				CapsuleBounds.Thicken(R);
+			}
+
+			FReal InvLength = 1.0f / Length;
+			FVec3 InvDir;
+			bool bParallel[3];
+			for (int32 Axis = 0; Axis < 3; ++Axis)
+			{
+				bParallel[Axis] = Dir[Axis] == 0;
+				InvDir[Axis] = bParallel[Axis] ? 0 : 1 / Dir[Axis];
+			}
+
+			FVec3 LocalStart = StartPoint;
+			FReal LocalLength = Length;
+			FReal RemovedLength = 0;
+			{
+				FReal OutBoundsTime;
+				bool bStartHit = CapsuleBounds.RaycastFast(StartPoint, Dir, InvDir, bParallel, Length, InvLength, OutBoundsTime, OutPosition);
+				if (bStartHit == false)
+				{
+					return false;
+				}
+
+				LocalStart = StartPoint + OutBoundsTime * Dir;
+				RemovedLength = OutBoundsTime;
+				LocalLength = Length - OutBoundsTime; // Note: This could be 0.
+			}
+
 			//First check if we are initially overlapping
 			//Find closest point to cylinder core and check if it's inside the inflated capsule
-			const FVec3 X1ToStart = StartPoint - X1;
+			const FVec3 X1ToStart = LocalStart - X1;
 			const FReal MVectorDotX1ToStart = FVec3::DotProduct(X1ToStart, MVector);
 			if (MVectorDotX1ToStart >= -R && MVectorDotX1ToStart <= MHeight + R)
 			{
@@ -147,9 +193,33 @@ namespace Chaos
 				const FReal Dist2 = (X1ToStart - ClampedProjectionPosition).SizeSquared();
 				if (Dist2 <= R2)
 				{
-					OutTime = 0;
+					// In this case, clamped project position is either inside capsule or on the surface.
+
+					OutTime = RemovedLength; // We may have shortened our ray, not actually 0 time.
+
+					// We clipped ray against bounds, not a true initial overlap, compute normal/position
+					if (RemovedLength > 0.0f)
+					{	
+						// Ray must have started outside capsule bounds, intersected bounds where it is touched capsule surface.
+						OutNormal = (X1ToStart - ClampedProjectionPosition) / R;
+						OutPosition = LocalStart - OutNormal * Thickness;
+					}
+					else
+					{
+						// Input ray started inside capsule, out time is 0, we are just filling out outputs so they aren't uninitialized.
+						OutPosition = LocalStart;
+						OutNormal = -Dir;
+					}
+
 					return true;
 				}
+			}
+
+			if(FMath::IsNearlyEqual(LocalLength, (FReal)0., KINDA_SMALL_NUMBER))
+			{
+				// If LocalLength is 0, this means the ray's endpoint is on the bounding AABB of thickened capsule.
+				// At this point we have determined this point is not on surface of capsule, so the ray has missed.
+				return false;
 			}
 
 			// Raycast against cylinder first
@@ -177,7 +247,8 @@ namespace Chaos
 
 			if (C <= 0.f)
 			{
-				// Inside cylinder so check caps
+				// We already tested initial overlap of start point, so start must be in cylinder
+				// but above/below segment end points.
 				bCheckCaps = true;
 			}
 			else
@@ -207,12 +278,12 @@ namespace Chaos
 						}
 					}
 
-					const FVec3 SpherePosition = StartPoint + Time * Dir;
+					const FVec3 SpherePosition = LocalStart + Time * Dir;
 					const FVec3 CylinderToSpherePosition = SpherePosition - X1;
 					const FReal PositionLengthOnCoreCylinder = FVec3::DotProduct(CylinderToSpherePosition, MVector);
 					if (PositionLengthOnCoreCylinder >= 0 && PositionLengthOnCoreCylinder < MHeight)
 					{
-						OutTime = Time;
+						OutTime = Time + RemovedLength; // Account for ray clipped against bounds
 						OutNormal = (CylinderToSpherePosition - MVector * PositionLengthOnCoreCylinder) / R;
 						OutPosition = SpherePosition - OutNormal * Thickness;
 						return true;
@@ -234,21 +305,21 @@ namespace Chaos
 
 				FReal Time1, Time2;
 				FVec3 Position1, Position2;
-				FVec3 Normal1, Normal2;
-				bool bHitX1 = X1Sphere.Raycast(StartPoint, Dir, Length, Thickness, Time1, Position1, Normal1, OutFaceIndex);
-				bool bHitX2 = X2Sphere.Raycast(StartPoint, Dir, Length, Thickness, Time2, Position2, Normal2, OutFaceIndex);
+				FVec3 Normal1, Normal2;	
+				bool bHitX1 = X1Sphere.Raycast(LocalStart, Dir, LocalLength, Thickness, Time1, Position1, Normal1, OutFaceIndex);
+				bool bHitX2 = X2Sphere.Raycast(LocalStart, Dir, LocalLength, Thickness, Time2, Position2, Normal2, OutFaceIndex);
 
 				if (bHitX1 && bHitX2)
 				{
 					if (Time1 <= Time2)
 					{
-						OutTime = Time1;
+						OutTime = Time1 + RemovedLength;  // Account for ray clipped against bounds
 						OutPosition = Position1;
 						OutNormal = Normal1;
 					}
 					else
 					{
-						OutTime = Time2;
+						OutTime = Time2 + RemovedLength;  // Account for ray clipped against bounds
 						OutPosition = Position2;
 						OutNormal = Normal2;
 					}
@@ -257,14 +328,14 @@ namespace Chaos
 				}
 				else if (bHitX1)
 				{
-					OutTime = Time1;
+					OutTime = Time1 + RemovedLength;  // Account for ray clipped against bounds
 					OutPosition = Position1;
 					OutNormal = Normal1;
 					return true;
 				}
 				else if (bHitX2)
 				{
-					OutTime = Time2;
+					OutTime = Time2 + RemovedLength;  // Account for ray clipped against bounds
 					OutPosition = Position2;
 					OutNormal = Normal2;
 					return true;
@@ -279,21 +350,21 @@ namespace Chaos
 			return RaycastFast(GetRadius(), GetHeight(), GetAxis(), GetX1(), GetX2(), StartPoint, Dir, Length, Thickness, OutTime, OutPosition, OutNormal, OutFaceIndex);
 		}
 
-		FORCEINLINE FVec3 Support(const FVec3& Direction, const FReal Thickness) const
+		FORCEINLINE FVec3 Support(const FVec3& Direction, const FReal Thickness, int32& VertexIndex) const
 		{
-			return MSegment.Support(Direction, GetRadius() + Thickness);
+			return MSegment.Support(Direction, GetRadius() + Thickness, VertexIndex);
 		}
 
-		FORCEINLINE FVec3 SupportCore(const FVec3& Direction, FReal InMargin) const
+		FORCEINLINE FVec3 SupportCore(const FVec3& Direction, const FReal InMargin, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
 			// NOTE: Ignores InMargin, assumes Radius
-			return MSegment.SupportCore(Direction);
+			return MSegment.SupportCore(Direction, VertexIndex);
 		}
 
-		FORCEINLINE FVec3 SupportCoreScaled(const FVec3& Direction, FReal InMargin, const FVec3& Scale) const
+		FORCEINLINE FVec3 SupportCoreScaled(const FVec3& Direction, const FReal InMargin, const FVec3& Scale, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
 			// NOTE: Ignores InMargin, assumes Radius
-			return SupportCore(Scale * Direction, GetMargin()) * Scale;
+			return SupportCore(Scale * Direction, GetMargin(), OutSupportDelta, VertexIndex) * Scale;
 		}
 
 		FORCEINLINE void SerializeImp(FArchive& Ar)
@@ -303,7 +374,7 @@ namespace Chaos
 			MSegment.Serialize(Ar);
 
 			// Radius is now stored in the base class Margin
-			FReal ArRadius = GetRadius();
+			FRealSingle ArRadius = (FRealSingle)GetRadius(); // LWC_TODO : potential precision loss, to be changed when we can serialize FReal as double
 			Ar << ArRadius;
 			SetRadius(ArRadius);
 			
@@ -351,10 +422,14 @@ namespace Chaos
 		TSegment<FReal> GetSegment() const { return TSegment<FReal>(GetX1(), GetX2()); }
 
 		FReal GetArea() const { return GetArea(GetHeight(), GetRadius()); }
-		static FReal GetArea(const FReal Height, const FReal Radius) { static const FReal PI2 = 2. * PI; return PI2 * Radius * (Height + 2.*Radius); }
+		static FReal GetArea(const FReal Height, const FReal Radius)
+		{
+			static const FReal PI2 = 2.f * PI;
+			return PI2 * Radius * (Height + 2.f * Radius); 
+		}
 
 		FReal GetVolume() const { return GetVolume(GetHeight(), GetRadius()); }
-		static FReal GetVolume(const FReal Height, const FReal Radius) { static const FReal FourThirds = 4. / 3; return PI * Radius*Radius * (Height + FourThirds * Radius); }
+		static FReal GetVolume(const FReal Height, const FReal Radius) { static const FReal FourThirds = 4.0f / 3.0f; return PI * Radius * Radius * (Height + FourThirds * Radius); }
 
 		FMatrix33 GetInertiaTensor(const FReal Mass) const { return GetInertiaTensor(Mass, GetHeight(), GetRadius()); }
 		static FMatrix33 GetInertiaTensor(const FReal Mass, const FReal Height, const FReal Radius)
@@ -366,9 +441,9 @@ namespace Chaos
 			const FReal HH = H * H;
 
 			// (5H^3 + 20*H^2R + 45HR^2 + 32R^3) / (60H + 80R)
-			const FReal Diag12 = Mass * (5.*HH*H + 20.*HH*R + 45.*H*RR + 32.*RR*R) / (60.*H + 80.*R);
+			const FReal Diag12 = static_cast<FReal>(Mass * (5.*HH*H + 20.*HH*R + 45.*H*RR + 32.*RR*R) / (60.*H + 80.*R));
 			// (R^2 * (15H + 16R) / (30H +40R))
-			const FReal Diag3 = Mass * (RR * (15.*H + 16.*R)) / (30.*H + 40.*R);
+			const FReal Diag3 = static_cast<FReal>(Mass * (RR * (15.*H + 16.*R)) / (30.*H + 40.*R));
 
 			return FMatrix33(Diag12, Diag12, Diag3);
 		}
@@ -454,6 +529,20 @@ namespace Chaos
 			return TPlaneConcrete<FReal, 3>(FVec3(0), FVec3(0));
 		}
 
+		// Get an array of all the plane indices that belong to a vertex (up to MaxVertexPlanes).
+		// Returns the number of planes found.
+		int32 FindVertexPlanes(int32 VertexIndex, int32* OutVertexPlanes, int32 MaxVertexPlanes) const
+		{
+			return 0; 
+		}
+		
+		// Get up to the 3  plane indices that belong to a vertex
+		// Returns the number of planes found.
+		int32 GetVertexPlanes3(int32 VertexIndex, int32& PlaneIndex0, int32& PlaneIndex1, int32& PlaneIndex2) const
+		{
+			return 0;
+		}
+
 		// Capsules have no planes
 		// Used for manifold generation
 		int32 NumPlanes() const { return 0; }
@@ -506,11 +595,11 @@ namespace Chaos
 			int32 NumPointsEndCap;
 			int32 NumPointsCylinder;
 			const FReal CapArea = 4 * PI * Radius * Radius;
-			const FReal CylArea = 2.0 * PI * Radius * Height;
+			const FReal CylArea = static_cast<FReal>(2.0 * PI * Radius * Height);
 			if (CylArea > KINDA_SMALL_NUMBER)
 			{
 				const FReal AllArea = CylArea + CapArea;
-				NumPointsCylinder = static_cast<int32>(round(CylArea / AllArea * NumPoints));
+				NumPointsCylinder = static_cast<int32>(round(CylArea / AllArea * static_cast<FReal>(NumPoints)));
 				NumPointsCylinder += (NumPoints - NumPointsCylinder) % 2;
 				NumPointsEndCap = (NumPoints - NumPointsCylinder) / 2;
 			}

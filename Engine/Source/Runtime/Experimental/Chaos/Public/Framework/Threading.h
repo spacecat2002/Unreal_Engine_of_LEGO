@@ -232,15 +232,23 @@ FORCEINLINE bool IsInGameThreadContext()
 {
 	return FPhysicsThreadContext::Get().IsInGameThreadContext();
 }
-#else
-FORCEINLINE bool IsInPhysicsThreadContext()
+
+FORCEINLINE void EnsureIsInPhysicsThreadContext()
 {
-	return false;
+	ensure(IsInPhysicsThreadContext());
 }
 
-FORCEINLINE bool IsInGameThreadContext()
+FORCEINLINE void EnsureIsInGameThreadContext()
 {
-	return false;
+	ensure(IsInGameThreadContext());
+}
+#else
+FORCEINLINE void EnsureIsInPhysicsThreadContext()
+{
+}
+
+FORCEINLINE void EnsureIsInGameThreadContext()
+{
 }
 #endif
 

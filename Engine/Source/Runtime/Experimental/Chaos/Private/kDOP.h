@@ -581,7 +581,9 @@ struct TkDOPNode
 
 			// No need to subdivide further so make this a leaf node
 			bIsLeaf = 1;
-			Occupancy = NumTris;
+
+			check(NumTris <= std::numeric_limits<uint8>::max());
+			Occupancy = static_cast<uint8>(NumTris);
 			
 			// Generate bounding volume for leaf which is passed up the call chain.
 			FBox BoundingVolume(ForceInit);

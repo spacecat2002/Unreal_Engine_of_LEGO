@@ -22,10 +22,19 @@ namespace Chaos
 		extern int32 Chaos_PBDCollisionSolver_Position_ShockPropagationIterations;
 
 		extern int32 Chaos_PBDCollisionSolver_Velocity_ShockPropagationIterations;
+
+		extern bool bChaos_PBDCollisionSolver_Position_SolveEnabled;
+		extern bool bChaos_PBDCollisionSolver_Velocity_SolveEnabled;
 	}
 	using namespace CVars;
 
 	extern bool bChaos_Collision_Manifold_FixNormalsInWorldSpace;
+
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 	/**
@@ -36,13 +45,14 @@ namespace Chaos
 	public:
 		FPBDCollisionSolverAdapter()
 			: Constraint(nullptr)
+			, bIsIncremental(false)
 		{
 		}
 
 		FPBDCollisionSolver& GetSolver() { return Solver; }
 		FPBDCollisionConstraint* GetConstraint() { return Constraint; }
 
-		bool IsIncrementalManifold() const { return Constraint->GetUseIncrementalCollisionDetection(); }
+		bool IsIncrementalManifold() const { return bIsIncremental; }
 
 		/**
 		 * @brief Initialize the data required for the solver, and bind to the bodies
@@ -55,6 +65,7 @@ namespace Chaos
 			FSolverBodyContainer& SolverBodyContainer)
 		{
 			Constraint = &InConstraint;
+			bIsIncremental = Constraint->GetUseIncrementalCollisionDetection();
 
 			// Find the solver bodies for the particles we constrain. This will add them to the container
 			// if they aren't there already, and ensure that they are populated with the latest data.
@@ -64,25 +75,36 @@ namespace Chaos
 			Body0->SetLevel(Particle0Level);
 			Body1->SetLevel(Particle1Level);
 
-			Solver.SetFriction(
-				FMath::Max(Constraint->Manifold.AngularFriction, Constraint->Manifold.Friction),
-				Constraint->Manifold.Friction);
+			// Friction values. Static and Dynamic friction are applied in the position solve for most shapes.
+			// For quadratic shapes, we run dynamic friction in the velocity solve for better rolling behaviour.
+			// @todo(chaos): fix static/dynamic friction for quadratic shapes
+			const FReal StaticFriction = FMath::Max(Constraint->Manifold.AngularFriction, Constraint->Manifold.Friction);
+			const FReal DynamicFriction = Constraint->Manifold.Friction;
+			const bool bIsQuadratic = Constraint->HasQuadraticShape();
+			if (!bIsQuadratic)
+			{
+				Solver.SetFriction(StaticFriction, DynamicFriction, FReal(0));
+			}
+			else
+			{
+				Solver.SetFriction(StaticFriction, FReal(0), DynamicFriction);
+			}
+
+			Solver.SetStiffness(Constraint->GetStiffness());
 
 			Solver.SetSolverBodies(Body0, Body1);
 
 			GatherManifoldPoints(Dt);
 
-			// We should try to remove this
+			// We should try to remove this - the Constraint should not need to know about solver objects
 			Constraint->SetSolverBodies(Body0, Body1);
 		}
 
 		void GatherManifoldPoints(const FReal Dt)
 		{
-			// We handle incremental manifolds by just colecting any new contacts
+			// We handle incremental manifolds by just collecting any new contacts
 			const int32 BeginPointIndex = Solver.NumManifoldPoints();
-			const int32 EndPointIndex = FMath::Min(Constraint->GetManifoldPoints().Num(), FPBDCollisionSolver::MaxPointsPerConstraint);
-
-			Solver.SetNumManifoldPoints(EndPointIndex);
+			const int32 EndPointIndex = Solver.SetNumManifoldPoints(Constraint->GetManifoldPoints().Num());
 
 			const FReal RestitutionVelocityThreshold = Constraint->Manifold.RestitutionThreshold * Dt;
 			const FReal Restitution = Constraint->Manifold.Restitution;
@@ -92,82 +114,55 @@ namespace Chaos
 				TArrayView<FManifoldPoint> ManifoldPoints = Constraint->GetManifoldPoints();
 				const FManifoldPoint& ManifoldPoint = ManifoldPoints[ManifoldPointIndex];
 
-				// The world-space contact normal
-				FVec3 WorldContactNormal;
-				if (bChaos_Collision_Manifold_FixNormalsInWorldSpace)
-				{
-					WorldContactNormal = ManifoldPoint.ManifoldContactNormal;
-				}
-				else
-				{
-					const FRotation3& PlaneQ = (ManifoldPoint.ContactPoint.ContactNormalOwnerIndex == 0) ? Solver.SolverBody0().Q() : Solver.SolverBody1().Q();
-					WorldContactNormal = PlaneQ * ManifoldPoint.ManifoldContactNormal;
-				}
+				// If we didn't have friction data restored, we estimate the static friction target by adding velocity to the contact error				
+				const bool bAddVelocityToFriction = !ManifoldPoint.Flags.bWasFrictionRestored;
 
 				// Initialize the structural data in the contact (relative contact points, contact mass etc)
 				Solver.InitContact(
 					ManifoldPointIndex,
-					ManifoldPoint.CoMAnchorPoints[0],
-					ManifoldPoint.CoMAnchorPoints[1],
-					WorldContactNormal);
-
-				// Calculate the target normal velocity based on restitution
-				FReal WorldContactVelocityTargetNormal = FReal(0); // If two particles are already separating, this can zero out their normal velocity and cause loss of momentum. 
-				if (Restitution > FReal(0))
-				{
-					const FVec3 ContactVelocity = Solver.GetManifoldPoint(ManifoldPointIndex).CalculateContactVelocity(Solver.SolverBody0(), Solver.SolverBody1());
-					const FReal ContactVelocityNormal = FVec3::DotProduct(ContactVelocity, WorldContactNormal);
-					if (ContactVelocityNormal < -RestitutionVelocityThreshold)
-					{
-						WorldContactVelocityTargetNormal = -Restitution * ContactVelocityNormal;
-					}
-				}
+					Dt,
+					ManifoldPoint.WorldContactPoints[0],
+					ManifoldPoint.WorldContactPoints[1],
+					ManifoldPoint.ContactPoint.Normal,
+					bAddVelocityToFriction);
 
 				// Initialize the material properties (restitution and friction related)
 				Solver.InitMaterial(
 					ManifoldPointIndex,
-					WorldContactVelocityTargetNormal,
-					ManifoldPoint.bPotentialRestingContact && (Solver.StaticFriction() > 0),
-					ManifoldPoint.StaticFrictionMax);
+					Restitution,
+					RestitutionVelocityThreshold);
 			}
 		}
 
 		/**
 		 * @brief Send all solver results to the constraint
 		*/
-		void ScatterOutput(
-			const FReal Dt)
+		void ScatterOutput(const FReal Dt)
 		{
 			FVec3 AccumulatedImpulse = FVec3(0);
 
+			Constraint->ResetSolverResults();
+
 			for (int32 PointIndex = 0; PointIndex < Solver.NumManifoldPoints(); ++PointIndex)
 			{
-				const FPBDCollisionSolver::FSolverManifoldPoint& SolverManifoldPoint = Solver.GetManifoldPoint(PointIndex);
-				TArrayView<FManifoldPoint> ManifoldPoints = Constraint->GetManifoldPoints();
-				FManifoldPoint& ManifoldPoint = ManifoldPoints[PointIndex];
+				const FPBDCollisionSolverManifoldPoint& SolverManifoldPoint = Solver.GetManifoldPoint(PointIndex);
 
-				ManifoldPoint.NetPushOut = SolverManifoldPoint.NetPushOut;
-				ManifoldPoint.NetPushOutNormal = FVec3::DotProduct(SolverManifoldPoint.NetPushOut, SolverManifoldPoint.WorldContactNormal);
-				ManifoldPoint.NetImpulse = SolverManifoldPoint.NetImpulse;
-				ManifoldPoint.NetImpulseNormal = FVec3::DotProduct(SolverManifoldPoint.NetImpulse, SolverManifoldPoint.WorldContactNormal);
-				ManifoldPoint.bActive = !SolverManifoldPoint.NetPushOut.IsNearlyZero();
-				ManifoldPoint.bInsideStaticFrictionCone = SolverManifoldPoint.bInsideStaticFrictionCone;
-				ManifoldPoint.StaticFrictionMax = SolverManifoldPoint.StaticFrictionMax;
+				const FSolverVec3 NetPushOut = 
+					SolverManifoldPoint.NetPushOutNormal * SolverManifoldPoint.WorldContactNormal +
+					SolverManifoldPoint.NetPushOutTangentU * SolverManifoldPoint.WorldContactTangentU +
+					SolverManifoldPoint.NetPushOutTangentV * SolverManifoldPoint.WorldContactTangentV;
 
-				// If the contact has no static friction, reset the static friction point to the current contact position
-				// @todo(chaos): this should keep the prev contact at the friction cone edge, rather than just resetting 
-				// (this currently causes stick-slide movement just above the friction threshold)
-				if (!ManifoldPoint.bActive || !ManifoldPoint.bInsideStaticFrictionCone)
-				{
-					ManifoldPoint.CoMAnchorPoints[0] = ManifoldPoint.CoMContactPoints[0];
-					ManifoldPoint.CoMAnchorPoints[1] = ManifoldPoint.CoMContactPoints[1];
-				}
+				const FSolverVec3 NetImpulse =
+					SolverManifoldPoint.NetImpulseNormal * SolverManifoldPoint.WorldContactNormal +
+					SolverManifoldPoint.NetImpulseTangentU * SolverManifoldPoint.WorldContactTangentU +
+					SolverManifoldPoint.NetImpulseTangentV * SolverManifoldPoint.WorldContactTangentV;
 
-				AccumulatedImpulse += SolverManifoldPoint.NetImpulse + (SolverManifoldPoint.NetPushOut / Dt);
+				Constraint->SetSolverResults(PointIndex, 
+					NetPushOut, 
+					NetImpulse, 
+					SolverManifoldPoint.StaticFrictionRatio,
+					Dt);
 			}
-
-			Constraint->AccumulatedImpulse = AccumulatedImpulse;
-			Constraint->SetNumActivePositionIterations(Solver.NumPositionSolves());
 
 			Constraint->SetSolverBodies(nullptr, nullptr);
 			Constraint = nullptr;
@@ -178,12 +173,20 @@ namespace Chaos
 	private:
 		FPBDCollisionSolver Solver;
 		FPBDCollisionConstraint* Constraint;
+		bool bIsIncremental;
 	};
+
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 	FPBDCollisionSolverContainer::FPBDCollisionSolverContainer()
 		: FConstraintSolverContainer()
 		, MaxPushOutVelocity(0)
+		, bRequiresIncrementalCollisionDetection(false)
 	{
 	}
 
@@ -194,26 +197,26 @@ namespace Chaos
 	void FPBDCollisionSolverContainer::Reset(const int32 MaxCollisions)
 	{
 		CollisionSolvers.Reset(MaxCollisions);
-		SweptCollisionSolvers.Reset();
+	}
+	
+	void FPBDCollisionSolverContainer::SetNum(const int32 MaxCollisions)
+	{
+		CollisionSolvers.SetNum(MaxCollisions, false);
 	}
 
-	FPBDCollisionSolver* FPBDCollisionSolverContainer::AddConstraintSolver(FReal Dt, FPBDCollisionConstraint& Constraint, const int32 Particle0Level, const int32 Particle1Level, FSolverBodyContainer& SolverBodyContainer)
+	void FPBDCollisionSolverContainer::AddConstraintSolver(FReal Dt, FPBDCollisionConstraint& Constraint, const int32 Particle0Level, const int32 Particle1Level, FSolverBodyContainer& SolverBodyContainer, int32& ConstraintIndex)
 	{
 		// This container is required to allocate pointers that are valid for the whole tick,
 		// so we cannot allow the container to resize during the tick. See Reset()
-		check(CollisionSolvers.Num() < CollisionSolvers.Max());
+		check(ConstraintIndex < CollisionSolvers.Num());
 
-		const int32 SolverCollisionIndex = CollisionSolvers.AddDefaulted();
+		auto& CollisionSolver = CollisionSolvers[ConstraintIndex];
+		CollisionSolver.GetSolver().Reset();
 
-		CollisionSolvers[SolverCollisionIndex].GatherInput(Dt, Constraint, Particle0Level, Particle1Level, SolverBodyContainer);
+		CollisionSolver.GatherInput(Dt, Constraint, Particle0Level, Particle1Level, SolverBodyContainer);
 
-		// Keep a list of CCD contacts - they will get resolved before we move on to the main solver loop
-		if (Constraint.GetCCDType() == ECollisionCCDType::Enabled)
-		{
-			SweptCollisionSolvers.Add(SolverCollisionIndex);
-		}
-
-		return &CollisionSolvers[SolverCollisionIndex].GetSolver();
+		bRequiresIncrementalCollisionDetection |= CollisionSolver.IsIncrementalManifold();
+		++ConstraintIndex;
 	}
 
 	void FPBDCollisionSolverContainer::UpdatePositionShockPropagation(const FReal Dt, const int32 It, const int32 NumIts, const int32 BeginIndex, const int32 EndIndex)
@@ -252,14 +255,6 @@ namespace Chaos
 		}
 	}
 
-	void FPBDCollisionSolverContainer::SolveSwept(const FReal Dt)
-	{
-		for (int32 SweptSolverCollisionIndex : SweptCollisionSolvers)
-		{
-			SolveSwept(Dt, *CollisionSolvers[SweptSolverCollisionIndex].GetConstraint(), CollisionSolvers[SweptSolverCollisionIndex].GetSolver());
-		}
-	}
-
 	bool FPBDCollisionSolverContainer::SolvePositionSerial(const FReal Dt, const int32 It, const int32 NumIts, const int32 BeginIndex, const int32 EndIndex)
 	{
 		return SolvePositionImpl(Dt, It, NumIts, BeginIndex, EndIndex, false);
@@ -280,22 +275,14 @@ namespace Chaos
 		return SolveVelocityImpl(Dt, It, NumIts, BeginIndex, EndIndex, true);
 	}
 
-	void FPBDCollisionSolverContainer::SolveSwept(const FReal Dt, FPBDCollisionConstraint& Constraint, FPBDCollisionSolver& CollisionSolver)
-	{
-		// @todo(chaos): Fix CCD. This "solution" just rewinds the CCD object to the first contact and will result in lost momentum
-		if (Constraint.TimeOfImpact < FReal(1))
-		{
-			Collisions::UpdateSwept(Constraint, Dt);
-
-			// Just rewind the body to the impact. This is not good at all, but it will prevent penetration for now
-			FSolverBody& Body0 = CollisionSolver.SolverBody0().SolverBody();
-			Body0.SetP(FMath::Lerp(Body0.X(), Body0.P(), Constraint.TimeOfImpact));
-		}
-	}
-
+	// @todo(chaos): parallel version of SolvePosition
 	bool FPBDCollisionSolverContainer::SolvePositionImpl(const FReal Dt, const int32 It, const int32 NumIts, const int32 BeginIndex, const int32 EndIndex, const bool bParallel)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Collisions_Apply);
+		if (!bChaos_PBDCollisionSolver_Position_SolveEnabled)
+		{
+			return false;
+		}
 
 		UpdatePositionShockPropagation(Dt, It, NumIts, BeginIndex, EndIndex);
 
@@ -304,28 +291,84 @@ namespace Chaos
 		const FReal MaxPushOut = (MaxPushOutVelocity > 0) ? (MaxPushOutVelocity * Dt) / FReal(NumIts) : 0;
 
 		// Apply the position correction
-		// @todo(chaos): parallel version of SolvePosition
+		if (bRequiresIncrementalCollisionDetection)
+		{
+			return SolvePositionIncrementalImpl(Dt, BeginIndex, EndIndex, MaxPushOut, bApplyStaticFriction);
+		}
+		else if (bApplyStaticFriction)
+		{
+			return SolvePositionWithFrictionImpl(Dt, BeginIndex, EndIndex, MaxPushOut);
+		}
+		else
+		{
+			return SolvePositionNoFrictionImpl(Dt, BeginIndex, EndIndex, MaxPushOut);
+		}
+	}
+
+	// Solve position including support for incremental collision detection
+	bool FPBDCollisionSolverContainer::SolvePositionIncrementalImpl(const FReal InDt, const int32 BeginIndex, const int32 EndIndex, const FReal InMaxPushOut, const bool bApplyStaticFriction)
+	{
+		const FSolverReal Dt = FSolverReal(InDt);
+		const FSolverReal MaxPushOut = FSolverReal(InMaxPushOut);
+
 		bool bNeedsAnotherIteration = false;
 		for (int32 SolverIndex = BeginIndex; SolverIndex < EndIndex; ++SolverIndex)
 		{
 			FPBDCollisionSolverAdapter& CollisionSolver = CollisionSolvers[SolverIndex];
-
-			// @todo(chaos): remove this when we no longer need to support incremental manifolds - this prevents us from fully optimizing the solver loop
 			if (CollisionSolver.IsIncrementalManifold())
 			{
 				Collisions::Update(*CollisionSolver.GetConstraint(), Dt);
 				CollisionSolver.GatherManifoldPoints(Dt);
 			}
+			if (bApplyStaticFriction)
+			{
+				bNeedsAnotherIteration |= CollisionSolver.GetSolver().SolvePositionWithFriction(Dt, MaxPushOut);
+			}
+			else
+			{
+				bNeedsAnotherIteration |= CollisionSolver.GetSolver().SolvePositionNoFriction(Dt, MaxPushOut);
+			}
 
-			bNeedsAnotherIteration |= CollisionSolvers[SolverIndex].GetSolver().SolvePosition(Dt, MaxPushOut, bApplyStaticFriction);
 		}
-
 		return bNeedsAnotherIteration;
 	}
 
-	bool FPBDCollisionSolverContainer::SolveVelocityImpl(const FReal Dt, const int32 It, const int32 NumIts, const int32 BeginIndex, const int32 EndIndex, const bool bParallel)
+	// Solve position with friction (last few iterations each tick)
+	bool FPBDCollisionSolverContainer::SolvePositionWithFrictionImpl(const FReal InDt, const int32 BeginIndex, const int32 EndIndex, const FReal InMaxPushOut)
+	{
+		const FSolverReal Dt = FSolverReal(InDt);
+		const FSolverReal MaxPushOut = FSolverReal(InMaxPushOut);
+
+		bool bNeedsAnotherIteration = false;
+		for (int32 SolverIndex = BeginIndex; SolverIndex < EndIndex; ++SolverIndex)
+		{
+			bNeedsAnotherIteration |= CollisionSolvers[SolverIndex].GetSolver().SolvePositionWithFriction(Dt, MaxPushOut);
+		}
+		return bNeedsAnotherIteration;
+	}
+
+	// Solve position without friction (first few iterations each tick)
+	bool FPBDCollisionSolverContainer::SolvePositionNoFrictionImpl(const FReal InDt, const int32 BeginIndex, const int32 EndIndex, const FReal InMaxPushOut)
+	{
+		const FSolverReal Dt = FSolverReal(InDt);
+		const FSolverReal MaxPushOut = FSolverReal(InMaxPushOut);
+
+		bool bNeedsAnotherIteration = false;
+		for (int32 SolverIndex = BeginIndex; SolverIndex < EndIndex; ++SolverIndex)
+		{
+			bNeedsAnotherIteration |= CollisionSolvers[SolverIndex].GetSolver().SolvePositionNoFriction(Dt, MaxPushOut);
+		}
+		return bNeedsAnotherIteration;
+	}
+
+	bool FPBDCollisionSolverContainer::SolveVelocityImpl(const FReal InDt, const int32 It, const int32 NumIts, const int32 BeginIndex, const int32 EndIndex, const bool bParallel)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Collisions_ApplyPushOut);
+		if (!bChaos_PBDCollisionSolver_Velocity_SolveEnabled)
+		{
+			return false;
+		}
+		const FSolverReal Dt = FSolverReal(InDt);
 
 		UpdateVelocityShockPropagation(Dt, It, NumIts, BeginIndex, EndIndex);
 

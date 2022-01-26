@@ -11,6 +11,8 @@
 #include "Chaos/GeometryQueries.h"
 #include "Chaos/Utilities.h"
 
+//PRAGMA_DISABLE_OPTIMIZATION
+
 namespace Chaos
 {
 
@@ -19,8 +21,8 @@ namespace Chaos
 	FAutoConsoleVariableRef CVarPerPolySupport(TEXT("p.Chaos.TriMeshPerPolySupport"), TriMeshPerPolySupport, TEXT("Disabling removes memory cost of vertex map on triangle mesh. Note: Changing at runtime will not work."));
 
 
-template <typename QueryGeomType, typename T, int d>
-static auto MakeScaledHelper(const QueryGeomType& B, const TVector<T, d>& InvScale)
+template <typename QueryGeomType>
+static auto MakeScaledHelper(const QueryGeomType& B, const FVec3& InvScale)
 {
 	TUniquePtr<QueryGeomType> HackBPtr(const_cast<QueryGeomType*>(&B));	//todo: hack, need scaled object to accept raw ptr similar to transformed implicit
 	TImplicitObjectScaled<QueryGeomType> ScaledB(MakeSerializable(HackBPtr), InvScale);
@@ -28,8 +30,8 @@ static auto MakeScaledHelper(const QueryGeomType& B, const TVector<T, d>& InvSca
 	return ScaledB;
 }
 
-template <typename QueryGeomType, typename T, int d>
-static auto MakeScaledHelper(const TImplicitObjectScaled<QueryGeomType>& B, const TVector<T, d>& InvScale)
+template <typename QueryGeomType>
+static auto MakeScaledHelper(const TImplicitObjectScaled<QueryGeomType>& B, const FVec3& InvScale)
 {
 	//if scaled of scaled just collapse into one scaled
 	TImplicitObjectScaled<QueryGeomType> ScaledB(B.Object(), InvScale * B.GetScale());
@@ -42,7 +44,7 @@ void ScaleTransformHelper(const FVec3& TriMeshScale, const FRigidTransform3& Que
 }
 
 template <typename IdxType>
-void TransformVertsHelper(const FVec3& TriMeshScale, int32 TriIdx, const FParticles& Particles,
+void TransformVertsHelper(const FVec3& TriMeshScale, int32 TriIdx, const FTriangleMeshImplicitObject::ParticlesType& Particles,
 	const TArray<TVector<IdxType, 3>>& Elements, FVec3& OutA, FVec3& OutB, FVec3& OutC)
 {
 	OutA = Particles.X(Elements[TriIdx][0]) * TriMeshScale;
@@ -76,10 +78,29 @@ void TransformSweepOutputsHelper(FVec3 TriMeshScale, const FVec3& HitNormal, con
 	}
 }
 
+template <typename QueryGeomType>
+const auto MakeTriangleHelper(const QueryGeomType& Geom)
+{
+	return FPBDCollisionConstraint::MakeTriangle(&Geom);
+}
+
+// collapse scale object into it's inner shape if scale is 1, because MakeTRionagle need to be able to infer properties on the shape
+template <typename QueryGeomType>
+const auto MakeTriangleHelper(const TImplicitObjectScaled<QueryGeomType>& ScaledGeom)
+{
+	if (FVec3::IsNearlyEqual(ScaledGeom.GetScale(), FVec3(1), SMALL_NUMBER))
+	{
+		return FPBDCollisionConstraint::MakeTriangle(ScaledGeom.GetUnscaledObject());
+	}
+	return FPBDCollisionConstraint::MakeTriangle(&ScaledGeom);
+}
+
 template <typename IdxType>
 struct FTriangleMeshRaycastVisitor
 {
-	FTriangleMeshRaycastVisitor(const FVec3& InStart, const FVec3& InDir, const FReal InThickness, const FParticles& InParticles, const TArray<TVector<IdxType, 3>>& InElements, bool bInCullsBackFaceRaycast)
+	using ParticlesType = FTriangleMeshImplicitObject::ParticlesType;
+
+	FTriangleMeshRaycastVisitor(const FVec3& InStart, const FVec3& InDir, const FReal InThickness, const ParticlesType& InParticles, const TArray<TVector<IdxType, 3>>& InElements, bool bInCullsBackFaceRaycast)
 	: Particles(InParticles)
 	, Elements(InElements)
 	, StartPoint(InStart)
@@ -105,11 +126,17 @@ struct FTriangleMeshRaycastVisitor
 	{
 		return nullptr;
 	}
+	
+	/** Return a pointer to the payload on which we are querying the acceleration structure */
+	const void* GetQueryPayload() const
+	{
+		return nullptr;
+	}
 
 	template <ERaycastType SQType>
 	bool Visit(int32 TriIdx, FQueryFastData& CurData)
 	{
-		constexpr FReal Epsilon = 1e-4;
+		constexpr FReal Epsilon = 1e-4f;
 		constexpr FReal Epsilon2 = Epsilon * Epsilon;
 		const FReal Thickness2 = SQType == ERaycastType::Sweep ? Thickness * Thickness : 0;
 		FReal MinTime = 0;	//no need to initialize, but fixes warning
@@ -159,6 +186,8 @@ struct FTriangleMeshRaycastVisitor
 				{
 					OutTime = 0;
 					OutFaceIndex = TriIdx;
+					//OutPosition = IntersectionPosition;
+					//OutNormal = RaycastNormal;	//We use the plane normal even when hitting triangle edges. This is to deal with triangles that approximate a single flat surface.
 					return false; //no one will beat Time == 0
 				}
 			}
@@ -260,7 +289,7 @@ struct FTriangleMeshRaycastVisitor
 		return true;
 	}
 
-	const FParticles& Particles;
+	const ParticlesType& Particles;
 	const TArray<TVector<IdxType, 3>>& Elements;
 	const FVec3& StartPoint;
 	const FVec3& Dir;
@@ -329,7 +358,7 @@ bool FTriangleMeshImplicitObject::ContactManifoldImp(const GeomType& QueryGeom, 
 	bool bResult = false;
 
 	const auto& WorldScaleGeom = ScaleGeomIntoWorldHelper(QueryGeom, TriMeshScale);
-	const FVec3 InvTriMeshScale = FVec3(FReal(1) / TriMeshScale.X, FReal(1) / TriMeshScale.Y, FReal(1) / TriMeshScale.Z);
+	const FVec3 InvTriMeshScale = FReal(1) / TriMeshScale;
 
 	// IMPORTANT QueryTM comes with a invscaled translation so we need a version of the TM with world space translation to properly compute the bounds
 	FRigidTransform3 TriMeshToGeomNoScale{ QueryTM };
@@ -378,6 +407,10 @@ bool FTriangleMeshImplicitObject::ContactManifoldImp(const GeomType& QueryGeom, 
 		FPBDCollisionConstraint& Constraint)
 	{
 		FTriangle TriangleConvex(A, B, C);
+		// make sure the constraint does not contain any stale data  ( it is shared between trinagles )
+		// @todo(chaos) : we should eventually not use a constraint here and just get a list of contact points
+		Constraint.ResetManifold();
+		Constraint.GetGJKWarmStartData().Reset();
 		Collisions::ConstructConvexConvexOneShotManifold(WorldScaleGeom, WorldScaleQueryTM, TriangleConvex, FRigidTransform3::Identity, 0, Constraint);
 	};
 
@@ -388,21 +421,24 @@ bool FTriangleMeshImplicitObject::ContactManifoldImp(const GeomType& QueryGeom, 
 
 		const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
 
+		// MakeTriangleHelper get rid of the scale wrapper if necessary as MakeTriangle will try to infer properties from it 
+		FPBDCollisionConstraint Constraint = MakeTriangleHelper(WorldScaleGeom);
+
 		for (int32 TriIdx : PotentialIntersections)
 		{
 			FVec3 A, B, C;
 			TransformVertsHelper(TriMeshScale, TriIdx, MParticles, Elements, A, B, C);
-			FPBDCollisionConstraint Constraint;
 			OverlapTriangle(A, B, C, Constraint);
-			for (const FManifoldPoint& ManifoldPoint : Constraint.GetManifoldPoints())
+			for(FManifoldPoint& ManifoldPoint : Constraint.GetManifoldPoints())
 			{
+				ManifoldPoint.ContactPoint.FaceIndex = TriIdx;
 				InsertSorted(ManifoldPoint.ContactPoint);
 			}
 
 		}
 
 		// Remove all points (except for the deepest one, and ones with phis similar to it)
-		const FReal CullMargin = 0.1;
+		const FReal CullMargin = 0.1f;
 		int32 NewContactPointCount = ContactPoints.Num() > 0 ? 1 : 0;
 		for (int32 Index = 1; Index < ContactPoints.Num(); Index++)
 		{
@@ -419,13 +455,6 @@ bool FTriangleMeshImplicitObject::ContactManifoldImp(const GeomType& QueryGeom, 
 
 		// Reduce to only 4 contact points from here
 		Collisions::ReduceManifoldContactPointsTriangeMesh(ContactPoints);
-
-		for (FContactPoint& ContactPoint : ContactPoints)
-		{
-			ContactPoint.ContactNormalOwnerIndex = 1; // To be removed
-			ContactPoint.ShapeMargins[0] = 0.0f;
-			ContactPoint.ShapeMargins[1] = 0.0f;
-		}
 
 		return true;
 	};
@@ -475,7 +504,6 @@ bool FTriangleMeshImplicitObject::GJKContactPointImp(const QueryGeomType& QueryG
 			LocalContactNormal = LambdaNormal;
 			LocalContactPhi = -LambdaPenetration;
 		}
-
 		return GJKValidResult;
 	};
 
@@ -503,7 +531,6 @@ bool FTriangleMeshImplicitObject::GJKContactPointImp(const QueryGeomType& QueryG
 			}
 
 		}
-
 		return OutContactPhi < WorldThickness;
 	};
 
@@ -593,7 +620,7 @@ int32 FTriangleMeshImplicitObject::GetExternalFaceIndexFromInternal(int32 Intern
 {
 	if (InternalFaceIndex > -1 && ExternalFaceIndexMap.Get())
 	{
-		if (ensure(InternalFaceIndex >= 0 && InternalFaceIndex < ExternalFaceIndexMap->Num()))
+		if (CHAOS_ENSURE(InternalFaceIndex >= 0 && InternalFaceIndex < ExternalFaceIndexMap->Num()))
 		{
 			return (*ExternalFaceIndexMap)[InternalFaceIndex];
 		}
@@ -619,7 +646,7 @@ bool FTriangleMeshImplicitObject::OverlapImp(const TArray<TVec3<IdxType>>& Eleme
 	QueryBounds.Thicken(Thickness);
 	const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
 
-	const FReal Epsilon = 1e-4;
+	const FReal Epsilon = 1e-4f;
 	//ensure(Thickness > Epsilon);	//There's no hope for this to work unless thickness is large (really a sphere overlap test)
 	//todo: turn ensure back on, off until some other bug is fixed
 
@@ -844,7 +871,7 @@ template <typename QueryGeomType, typename IdxType>
 struct FTriangleMeshSweepVisitor
 {
 	FTriangleMeshSweepVisitor(const FTriangleMeshImplicitObject& InTriMesh, const TArray<TVec3<IdxType>>& InElements, const QueryGeomType& InQueryGeom, const TRigidTransform<FReal,3>& InStartTM, const FVec3& InDir,
-		const FVec3& InScaledDirNormalized, const FReal InLengthScale, const FRigidTransform3& InScaledStartTM, const FReal InThickness, const bool InComputeMTD, FVec3 InTriMeshScale)
+		const FVec3& InScaledDirNormalized, const FReal InLengthScale, const FRigidTransform3& InScaledStartTM, const FReal InThickness, const bool InComputeMTD, FVec3 InTriMeshScale, bool InCullsBackFaceSweeps)
 	: TriMesh(InTriMesh)
 	, Elements(InElements)
 	, StartTM(InStartTM)
@@ -852,6 +879,7 @@ struct FTriangleMeshSweepVisitor
 	, Dir(InDir)
 	, Thickness(InThickness)
 	, bComputeMTD(InComputeMTD)
+	, bCullsBackFaceSweeps(InCullsBackFaceSweeps)
 	, ScaledDirNormalized(InScaledDirNormalized)
 	, LengthScale(InLengthScale)
 	, ScaledStartTM(InScaledStartTM)
@@ -862,6 +890,12 @@ struct FTriangleMeshSweepVisitor
 
 	const void* GetQueryData() const { return nullptr; }
 	const void* GetSimData() const { return nullptr; }
+
+	/** Return a pointer to the payload on which we are querying the acceleration structure */
+	const void* GetQueryPayload() const
+	{
+		return nullptr;
+	}
 
 	bool VisitOverlap(const TSpatialVisitorData<int32>& VisitData)
 	{
@@ -886,6 +920,16 @@ struct FTriangleMeshSweepVisitor
 		FVec3 A, B, C;
 		TransformVertsHelper(TriMeshScale,TriIdx,TriMesh.MParticles,Elements,A,B,C);
 		FTriangle Tri(A, B, C);
+
+		if(bCullsBackFaceSweeps)
+		{
+			const FVec3 TriNormal = FVec3::CrossProduct(B - A, C - A);
+			if (FVec3::DotProduct(TriNormal, ScaledDirNormalized) > 0)
+			{
+				return true;
+			}
+		}
+		
 
 		const auto& WorldScaleQueryGeom = ScaleGeomIntoWorldHelper(QueryGeom, TriMeshScale);
 
@@ -920,6 +964,7 @@ struct FTriangleMeshSweepVisitor
 	const FVec3& Dir;
 	const FReal Thickness;
 	const bool bComputeMTD;
+	const bool bCullsBackFaceSweeps;
 
 	// Cache these values for Scaled Triangle Mesh, as they are needed for transformation when sweeping against triangles.
 	FVec3 ScaledDirNormalized;
@@ -965,7 +1010,7 @@ bool FTriangleMeshImplicitObject::SweepGeomImp(const QueryGeomType& QueryGeom, c
 	auto LambdaHelper = [&](const auto& Elements)
 	{
 		using VisitorType = FTriangleMeshSweepVisitor<QueryGeomType,decltype(Elements[0][0])>;
-		VisitorType SQVisitor(*this,Elements, QueryGeom,StartTM,Dir,ScaledDirNormalized,LengthScale,ScaledStartTM,Thickness,bComputeMTD, TriMeshScale);
+		VisitorType SQVisitor(*this,Elements, QueryGeom,StartTM,Dir,ScaledDirNormalized,LengthScale,ScaledStartTM,Thickness,bComputeMTD, TriMeshScale, bCullsBackFaceRaycast);
 
 
 		const FAABB3 QueryBounds = QueryGeom.BoundingBox().TransformedAABB(FRigidTransform3(FVec3::ZeroVector,StartTM.GetRotation()));
@@ -1043,7 +1088,7 @@ int32 FTriangleMeshImplicitObject::FindMostOpposingFace(const TArray<TVec3<IdxTy
 	FAABB3 QueryBounds(Position - FVec3(SearchDist), Position + FVec3(SearchDist));
 
 	const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
-	const FReal Epsilon = 1e-4;
+	const FReal Epsilon = 1e-4f;
 
 	FReal MostOpposingDot = TNumericLimits<FReal>::Max();
 	int32 MostOpposingFace = HintFaceIndex;
@@ -1102,9 +1147,9 @@ template <typename IdxType>
 TUniquePtr<FTriangleMeshImplicitObject> FTriangleMeshImplicitObject::CopySlowImpl(const TArray<TVector<IdxType, 3>>& InElements) const
 {
 	using namespace Chaos;
-
-	TArray<Chaos::FVec3> XArray = MParticles.AllX();
-	FParticles ParticlesCopy(MoveTemp(XArray));
+	
+	TArray<ParticleVecType> XArray = MParticles.AllX();
+	ParticlesType ParticlesCopy(MoveTemp(XArray));
 	TArray<TVector<IdxType, 3>> ElementsCopy(InElements);
 	TArray<uint16> MaterialIndicesCopy = MaterialIndices;
 	TUniquePtr<TArray<int32>> ExternalFaceIndexMapCopy = nullptr;
@@ -1119,7 +1164,7 @@ TUniquePtr<FTriangleMeshImplicitObject> FTriangleMeshImplicitObject::CopySlowImp
 		ExternalVertexIndexMapCopy = MakeUnique<TArray<int32>>(*ExternalVertexIndexMap.Get());
 	}
 
-	return MakeUnique<FTriangleMeshImplicitObject>(MoveTemp(ParticlesCopy), MoveTemp(ElementsCopy), MoveTemp(MaterialIndicesCopy), MoveTemp(ExternalFaceIndexMapCopy), MoveTemp(ExternalVertexIndexMapCopy), bCullsBackFaceRaycast);
+	return TUniquePtr<FTriangleMeshImplicitObject>(new FTriangleMeshImplicitObject(MoveTemp(ParticlesCopy), MoveTemp(ElementsCopy), MoveTemp(MaterialIndicesCopy), BVH, MoveTemp(ExternalFaceIndexMapCopy), MoveTemp(ExternalVertexIndexMapCopy), bCullsBackFaceRaycast));
 }
 
 TUniquePtr<FTriangleMeshImplicitObject> FTriangleMeshImplicitObject::CopySlow() const
@@ -1173,24 +1218,22 @@ FVec3 FTriangleMeshImplicitObject::GetFaceNormal(const int32 FaceIdx) const
 	{
 		auto LambdaHelper = [&](const auto& Elements)
 		{
-			const FVec3& A = MParticles.X(Elements[FaceIdx][0]);
-			const FVec3& B = MParticles.X(Elements[FaceIdx][1]);
-			const FVec3& C = MParticles.X(Elements[FaceIdx][2]);
+			const ParticleVecType& A = MParticles.X(Elements[FaceIdx][0]);
+			const ParticleVecType& B = MParticles.X(Elements[FaceIdx][1]);
+			const ParticleVecType& C = MParticles.X(Elements[FaceIdx][2]);
 
-			// Note: The math here needs to match FTriangleMeshRaycastVisitor::Visit
-			constexpr FReal Epsilon = FReal(1e-4);
-			const FVec3 AB = B - A;
-			const FVec3 AC = C - A;
-			FVec3 Normal = FVec3::CrossProduct(AB, AC);
-			const FReal Length = Normal.SafeNormalize();
-			if (Length > Epsilon)
+			const ParticleVecType AB = B - A;
+			const ParticleVecType AC = C - A;
+			ParticleVecType Normal = ParticleVecType::CrossProduct(AB, AC);
+			
+			if(Normal.SafeNormalize() < SMALL_NUMBER)
 			{
-				return Normal;
+				UE_LOG(LogChaos, Warning, TEXT("Degenerate triangle %d: (%f %f %f) (%f %f %f) (%f %f %f)"), FaceIdx, A.X, A.Y, A.Z, B.X, B.Y, B.Z, C.X, C.Y, C.Z);
+				ensure(false);
+				return FVec3(0, 0, 1);
 			}
-	
-			UE_LOG(LogChaos, Warning, TEXT("Degenerate triangle %d: (%f %f %f) (%f %f %f) (%f %f %f)"), FaceIdx, A.X, A.Y, A.Z, B.X, B.Y, B.Z, C.X, C.Y, C.Z);
-			ensure(false);
-			return FVec3(0, 0, 1);
+
+			return FVec3(Normal);
 		};
 		
 		if (MElements.RequiresLargeIndices())
@@ -1217,7 +1260,7 @@ uint16 FTriangleMeshImplicitObject::GetMaterialIndex(uint32 HintIndex) const
 	return 0;
 }
 
-const FParticles& FTriangleMeshImplicitObject::Particles() const
+const FTriangleMeshImplicitObject::ParticlesType& FTriangleMeshImplicitObject::Particles() const
 {
 	return MParticles;
 }

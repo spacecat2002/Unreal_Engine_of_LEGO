@@ -253,10 +253,10 @@ void FTriangleMesh::GetFaceNormals(TArray<FVec3>& Normals, const TConstArrayView
 	{
 		if (bRealTypeCompatibleWithISPC && bChaos_TriangleMesh_ISPC_Enabled)
 		{
-			static_assert(std::is_same<FReal, float>::value == true, "ISPC only supports float template type");
 			Normals.SetNumUninitialized(MElements.Num());
 
 #if INTEL_ISPC
+			static_assert(std::is_same<FReal, float>::value == true, "ISPC only supports float template type");
 			ispc::GetFaceNormals(
 				(ispc::FVector*)Normals.GetData(),
 				(ispc::FVector*)Points.GetData(),
@@ -302,9 +302,8 @@ void FTriangleMesh::GetPointNormals(TArrayView<FVec3> PointNormals, const TConst
 
 	if (bRealTypeCompatibleWithISPC && bChaos_TriangleMesh_ISPC_Enabled)
 	{
-		static_assert(std::is_same<FReal, float>::value == true, "ISPC only supports float template type");
-
 #if INTEL_ISPC
+		static_assert(std::is_same<FReal, float>::value == true, "ISPC only supports float template type");
 		ispc::GetPointNormals(
 			(ispc::FVector*)PointNormals.GetData(),
 			(const ispc::FVector*)FaceNormals.GetData(),
@@ -369,17 +368,17 @@ void AddTrianglesToHull(const TConstArrayView<FVec3>& Points, const int32 I0, co
 		FVec3 Normal1 = FVec3::CrossProduct(V1, V2).GetSafeNormal();
 		if (FVec3::DotProduct(Normal1, X2 - X0) > 0)
 		{
-			Normal1 *= -1;
+			Normal1 *= -1.0f;
 		}
 		FVec3 Normal2 = FVec3::CrossProduct(V1, V3).GetSafeNormal();
 		if (FVec3::DotProduct(Normal2, X1 - X0) > 0)
 		{
-			Normal2 *= -1;
+			Normal2 *= -1.0f;
 		}
 		FVec3 Normal3 = FVec3::CrossProduct(V2, V3).GetSafeNormal();
 		if (FVec3::DotProduct(Normal3, X0 - X1) > 0)
 		{
-			Normal3 *= -1;
+			Normal3 *= -1.0f;
 		}
 		TPlane<FReal, 3> NewPlane1(NewX, Normal1);
 		TPlane<FReal, 3> NewPlane2(NewX, Normal2);
@@ -631,11 +630,12 @@ FSegmentMesh& FTriangleMesh::GetSegmentMesh()
 		return MSegmentMesh;
 	}
 
-	// XXX - Unfortunately, TSet is not a tree, it's a hash set.  This exposes
-	// us to the possibility we'll see hash collisions, and that's not something
-	// we should allow.  So we use a TArray instead.
+	// Array of ordered edges; other mappings will refer to edges via their index in this array
 	TArray<TVec2<int32>> UniqueEdges;
 	UniqueEdges.Reserve(MElements.Num() * 3);
+	// Map to accelerate checking if an edge is already in the UniqueEdges array
+	TMap<TVector<int32, 2>, int32> EdgeToIdx;
+	EdgeToIdx.Reserve(MElements.Num() * 3);
 
 	MEdgeToFaces.Reset();
 	MEdgeToFaces.Reserve(MElements.Num() * 3); // over estimate
@@ -649,7 +649,18 @@ FSegmentMesh& FTriangleMesh::GetSegmentMesh()
 		{
 			TVec2<int32> Edge(Tri[j], Tri[(j + 1) % 3]);
 
-			const int32 EdgeIdx = UniqueEdges.AddUnique(GetOrdered(Edge));
+			int32 EdgeIdx;
+			TVector<int32, 2> OrderedEdge = GetOrdered(Edge);
+			int32* FoundEdgeIdx = EdgeToIdx.Find(OrderedEdge);
+			if (!FoundEdgeIdx)
+			{
+				EdgeIdx = UniqueEdges.Add(OrderedEdge);
+				EdgeToIdx.Add(OrderedEdge, EdgeIdx);
+			}
+			else
+			{
+				EdgeIdx = *FoundEdgeIdx;
+			}
 			EdgeIds[j] = EdgeIdx;
 
 			// Track which faces are shared by edges.
@@ -734,7 +745,7 @@ TMap<int32, int32> FTriangleMesh::FindCoincidentVertexRemappings(
 
 	// Move the points to the origin to avoid floating point aliasing far away
 	// from the origin.
-	FAABB3 Bbox(Points[0], Points[0]);
+	FAABB3 Bbox(Points[TestIndices[0]], Points[TestIndices[0]]);
 	for (int i = 1; i < NumPoints; i++)
 	{
 		Bbox.GrowToInclude(Points[TestIndices[i]]);
@@ -770,7 +781,7 @@ TMap<int32, int32> FTriangleMesh::FindCoincidentVertexRemappings(
 		return Remappings;
 	}
 
-	LocalBBox.Thicken(1.0e-3);
+	LocalBBox.Thicken(1.0e-3f);
 	const FVec3 LocalCenter = LocalBBox.Center();
 	const FVec3& LocalMin = LocalBBox.Min();
 
@@ -782,8 +793,8 @@ TMap<int32, int32> FTriangleMesh::FindCoincidentVertexRemappings(
 	TMap<int64, TSet<int32>> OccupiedCells;
 	OccupiedCells.Reserve(NumPoints);
 
-	const int64 Resolution = static_cast<int64>(floor(MaxBBoxDim / 0.01));
-	const FReal CellSize = MaxBBoxDim / Resolution;
+	const int64 Resolution = static_cast<int64>(floor(MaxBBoxDim / 0.01f));
+	const FReal CellSize = static_cast<FReal>(static_cast<double>(MaxBBoxDim) / static_cast<double>(Resolution));
 	for (int i = 0; i < 2; i++)
 	{
 		OccupiedCells.Reset();
@@ -791,7 +802,7 @@ TMap<int32, int32> FTriangleMesh::FindCoincidentVertexRemappings(
 		// Shift the grid by 1/2 a grid cell the second iteration so that
 		// we don't miss slightly adjacent coincident points across cell
 		// boundaries.
-		const FVec3 GridCenter = LocalCenter - FVec3(i * CellSize / 2);
+		const FVec3 GridCenter = LocalCenter - FVec3(static_cast<FReal>(i) * CellSize / 2.0f);
 		for (int32 LocalIdx = 0; LocalIdx < NumPoints; LocalIdx++)
 		{
 			const int32 Idx = TestIndices[LocalIdx];
@@ -803,9 +814,9 @@ TMap<int32, int32> FTriangleMesh::FindCoincidentVertexRemappings(
 
 			const FVec3& Pos = LocalPoints[LocalIdx];
 			const TVec3<int64> Coord(
-				static_cast<int64>(floor((Pos[0] - GridCenter[0]) / CellSize + Resolution / 2)),
-				static_cast<int64>(floor((Pos[1] - GridCenter[1]) / CellSize + Resolution / 2)),
-				static_cast<int64>(floor((Pos[2] - GridCenter[2]) / CellSize + Resolution / 2)));
+				static_cast<int64>(FMath::Floor((Pos[0] - GridCenter[0]) / CellSize + static_cast<double>(Resolution) / 2.0f)),
+				static_cast<int64>(FMath::Floor((Pos[1] - GridCenter[1]) / CellSize + static_cast<double>(Resolution) / 2.0f)),
+				static_cast<int64>(FMath::Floor((Pos[2] - GridCenter[2]) / CellSize + static_cast<double>(Resolution) / 2.0f)));
 			const int64 FlatIdx =
 				((Coord[0] * Resolution + Coord[1]) * Resolution) + Coord[2];
 
@@ -983,65 +994,9 @@ TArray<int32> FTriangleMesh::GetVertexImportanceOrdering(
 		return PointOrder;
 	}
 
-	// A linear ordering biases towards the order in which the vertices were
-	// authored, which is likely to be topologically adjacent.  Randomize the
-	// initial ordering.
-	FRandomStream Rand(NumPoints);
-	for (int32 i = 0; i < NumPoints; i++)
-	{
-		const int32 j = Rand.RandRange(0, NumPoints - 1);
-		Swap(PointOrder[i], PointOrder[j]);
-	}
-
-	// Find particles with no connectivity and send them to the back of the
-	// list.  We penalize free points, but we don't exclude them.  It's
-	// possible they were added for extra resolution.
-	TArray<uint8> Rank;
-	Rank.AddUninitialized(NumPoints);
-	AscendingPredicate<uint8> AscendingRankPred(Rank, Offset); // low to high
-	bool FoundFreeParticle = false;
-	for (int i = 0; i < NumPoints; i++)
-	{
-		const int32 Idx = PointOrder[i];
-		const TSet<int32>* Neighbors = MPointToNeighborsMap.Find(Idx);
-		const bool IsFree = Neighbors == nullptr || Neighbors->Num() == 0;
-		Rank[Idx - Offset] = IsFree ? 1 : 0;
-		FoundFreeParticle |= IsFree;
-	}
-	if (FoundFreeParticle)
-	{
-		StableSort(&PointOrder[0], NumPoints, AscendingRankPred);
-	}
-
-	// Sort the pointOrder array by pointCurvatures so that points attached
-	// to edges with the highest curvatures come first.
-	if (PointCurvatures.Num() > 0)
-	{
-		// Curvature is measured by the angle between face normals.  0.0 means
-		// coplanar, angles approaching M_PI are more creased.  So, sort from
-		// high to low.
-		check(PointCurvatures.Num() == MNumIndices);
-
-		// PointCurvatures is sized to the index range of the mesh.  That may
-		// not include all free particles.  If the DescendingPredicate gets an
-		// index that is out of bounds of the curvature array, it'll use
-		// -FLT_MAX, which will put free particles at the end.  In order to get
-		// PointCurvatures to line up with PointOrder indices, offset them by
-		// -MStartIdx when not RestrictToLocalIndexRange.
-
-		// PointCurvatures[0] always corresponds to Points[MStartIdx]
-		DescendingPredicate<FReal> curvaturePred(PointCurvatures, MStartIdx); // high to low
-
-		// The indexing scheme used for sorting is a little complicated.  The pointOrder
-		// array contains point indices.  The sorting binary predicate is handed 2 of
-		// those indices, which we use to look up values we want to sort by; curvature
-		// in this case.  So, the sort data array needs to be in the original ordering.
-		StableSort(&PointOrder[0], PointOrder.Num(), curvaturePred);
-	}
-
 	// Move the points to the origin to avoid floating point aliasing far away
 	// from the origin.
-	FAABB3 Bbox(Points[0], Points[0]);
+	FAABB3 Bbox(Points[Offset], Points[Offset]);
 	for (int i = 1; i < NumPoints; i++)
 	{
 		Bbox.GrowToInclude(Points[i + Offset]);
@@ -1057,9 +1012,21 @@ TArray<int32> FTriangleMesh::GetVertexImportanceOrdering(
 		LocalPoints[i] = Points[Offset + i] - Center;
 		LocalBBox.GrowToInclude(LocalPoints[i]);
 	}
-	LocalBBox.Thicken(1.0e-3);
+	LocalBBox.Thicken(1.0e-3f);
+	// Center of the local bounding box (should always be close to zero)
 	const FVec3 LocalCenter = LocalBBox.Center();
 	const FVec3& LocalMin = LocalBBox.Min();
+
+	auto ToFlatIdx = [&LocalPoints, Offset](int32 PointIdx, FVec3 Center, FReal CellSizeIn, int64 Res) -> int64
+	{
+		const FVec3& Pos = LocalPoints[PointIdx - Offset];
+		// grid center co-located at bbox center:
+		const TVec3<int64> Coord(
+			static_cast<int64>(FMath::Floor((Pos[0] - Center[0]) / CellSizeIn)) + Res / 2,
+			static_cast<int64>(FMath::Floor((Pos[1] - Center[1]) / CellSizeIn)) + Res / 2,
+			static_cast<int64>(FMath::Floor((Pos[2] - Center[2]) / CellSizeIn)) + Res / 2);
+		return ((Coord[0] * Res + Coord[1]) * Res) + Coord[2];
+	};
 
 	// Bias towards points further away from the center of the bounding box.
 	// Send points that are the furthest away to the front of the list.
@@ -1069,8 +1036,6 @@ TArray<int32> FTriangleMesh::GetVertexImportanceOrdering(
 	{
 		Dist[i] = (LocalPoints[i] - LocalCenter).SizeSquared();
 	}
-	DescendingPredicate<FReal> DescendingDistPred(Dist); // high to low
-	StableSort(&PointOrder[0], NumPoints, DescendingDistPred);
 
 	// If all points are coincident, return early.
 	const FReal MaxBBoxDim = LocalBBox.Extents().Max();
@@ -1094,9 +1059,11 @@ TArray<int32> FTriangleMesh::GetVertexImportanceOrdering(
 		CoincidentVertices->Reserve(64); // a guess
 	}
 	int32 NumCoincident = 0;
+	TArray<uint8> Rank;
+	AscendingPredicate<uint8> AscendingRankPred(Rank, Offset); // low to high
 	{
 		const int64 Resolution = static_cast<int64>(floor(MaxBBoxDim / 0.01));
-		const FReal CellSize = MaxBBoxDim / Resolution;
+		const FReal CellSize = static_cast<FReal>(static_cast<double>(MaxBBoxDim) / static_cast<double>(Resolution));
 		for (int i = 0; i < 2; i++)
 		{
 			OccupiedCells.Reset();
@@ -1105,22 +1072,18 @@ TArray<int32> FTriangleMesh::GetVertexImportanceOrdering(
 			// Shift the grid by 1/2 a grid cell the second iteration so that
 			// we don't miss slightly adjacent coincident points across cell
 			// boundaries.
-			const FVec3 GridCenter = LocalCenter - FVec3(i * CellSize / 2);
+			// (Note this could still miss some across-cell coincident points, but that's ok because 
+			//  the coincident vert array is just used to reduce the number of points used for collisions)
+			const FVec3 GridCenter = LocalCenter - FVec3(static_cast<FReal>(i) * CellSize / 2);
 			const int NumCoincidentPrev = NumCoincident;
 			for (int j = 0; j < NumPoints - NumCoincidentPrev; j++)
 			{
 				const int32 Idx = PointOrder[j];
-				const FVec3& Pos = LocalPoints[Idx - Offset];
-				const TVec3<int64> Coord(
-				    static_cast<int64>(floor((Pos[0] - GridCenter[0]) / CellSize + Resolution / 2)),
-				    static_cast<int64>(floor((Pos[1] - GridCenter[1]) / CellSize + Resolution / 2)),
-				    static_cast<int64>(floor((Pos[2] - GridCenter[2]) / CellSize + Resolution / 2)));
-				const int64 FlatIdx =
-				    ((Coord[0] * Resolution + Coord[1]) * Resolution) + Coord[2];
+				const int64 FlatIdx = ToFlatIdx(Idx, GridCenter, CellSize, Resolution + i*2);
 
-				bool AlreadyInSet = false;
-				OccupiedCells.Add(FlatIdx, &AlreadyInSet);
-				if (AlreadyInSet)
+				bool bAlreadyInSet = false;
+				OccupiedCells.Add(FlatIdx, &bAlreadyInSet);
+				if (bAlreadyInSet)
 				{
 					Rank[Idx - Offset] = 1;
 					if (CoincidentVertices)
@@ -1132,65 +1095,198 @@ TArray<int32> FTriangleMesh::GetVertexImportanceOrdering(
 			}
 			if (NumCoincident > NumCoincidentPrev)
 			{
-				StableSort(&PointOrder[0], NumPoints - NumCoincidentPrev, AscendingRankPred);
+				Sort(&PointOrder[0], NumPoints - NumCoincidentPrev, AscendingRankPred);
 			}
 		}
 	}
 	check(NumCoincident < NumPoints);
-
-	// Use spatial hashing to a grid of variable resolution to distribute points
-	// evenly across the volume.
-	for (int i = 2; i <= 1024; i += 2) // coarse to fine
+	
+	// track the best points in a region, by multiple metrics (distance from center, and curvature at point)
+	// note the best-curvature and best-distance points are allowed to be the same point
+	struct FBestPtData
 	{
-		OccupiedCells.Reset();
+		int32 FarthestIdx = -1; // Index of point farthest from center
+		FReal FarthestDistSq = 0; // Squared distance of farthest point from center
+		int32 MaxCurveIdx = -1; // Index of point with largest curvature
+		FReal MaxCurve = (FReal)-MAX_FLT; // Largest curvature value
+	};
+	// Update FBestPointData with a new point; return true if it's the first point in the cell, false otherwise
+	auto UpdateBestPtData = [&Dist, &PointCurvatures, &Offset, &PointOrder](FBestPtData& BestData, int32 OrderIdx) -> bool
+	{
+		int32 PtIdx = PointOrder[OrderIdx];
+		int32 OffsetPtIdx = PtIdx - Offset;
+		if (BestData.FarthestIdx == -1)
+		{
+			BestData.FarthestIdx = OrderIdx;
+			BestData.FarthestDistSq = Dist[OffsetPtIdx];
+			BestData.MaxCurveIdx = OrderIdx;
+			BestData.MaxCurve = PointCurvatures[OffsetPtIdx];
+			return true;
+		}
+
+		if (Dist[OffsetPtIdx] > BestData.FarthestDistSq)
+		{
+			BestData.FarthestDistSq = Dist[OffsetPtIdx];
+			BestData.FarthestIdx = OrderIdx;
+		}
+
+		FReal Curvature = PointCurvatures[OffsetPtIdx];
+		if (Curvature > BestData.MaxCurve)
+		{
+			BestData.MaxCurve = Curvature;
+			BestData.MaxCurveIdx = OrderIdx;
+		}
+		return false;
+	};
+
+	// Points before this offset have already been moved forward, and don't need further consideration
+	int32 MovedPtsOffset = 0;
+	// traverse power of 2 cell resolutions (~octree levels), moving forward "best" points from the cells at each level
+	for (int32 Resolution = 2; MovedPtsOffset < NumPoints - NumCoincident && Resolution <= 1024; Resolution *= 2)
+	{
+		TMap<int64, FBestPtData> BestPoints;
+		TSet<int64> CoveredCells, OffsetCoveredCells;
+		const FReal CellSize = MaxBBoxDim / static_cast<FReal>(Resolution);
+
+		// make smaller cells w/ a half-cell-width offset to help detect points that are close, but across cell boundaries
+		int32 OffsetResolution = Resolution * 4;
+		const FReal OffsetCellSize = MaxBBoxDim / static_cast<FReal>(OffsetResolution);
+		OffsetResolution += 2; // allow for offset center
+		FVec3 OffsetCenter = LocalCenter - FVec3(OffsetCellSize / 2);
+		int32 FoundPointsCount = 0;
+
+		// Use the Rank array to mark which points should move to the front of the remaining list in this iteration
 		Rank.Reset();
 		Rank.AddZeroed(NumPoints);
 
-		const int32 Resolution = i;
-		check(Resolution > 0);
-		check(Resolution % 2 == 0);
-		const FReal CellSize = MaxBBoxDim / Resolution;
-
-		// The order in which we process these points matters.  Must do
-		// the current highest rank first.
-		for (int j = 0; j < NumPoints - NumCoincident; j++)
+		auto ToMainFlatIdx = [&ToFlatIdx, &LocalCenter, &CellSize, &Resolution](int32 PointIdx)
 		{
-			const int32 Idx = PointOrder[j];
-			const FVec3& Pos = LocalPoints[Idx - Offset];
-			// grid center co-located at bbox center:
-			const TVec3<int64> Coord(
-			    static_cast<int64>(floor((Pos[0] - LocalCenter[0]) / CellSize)) + Resolution / 2,
-			    static_cast<int64>(floor((Pos[1] - LocalCenter[1]) / CellSize)) + Resolution / 2,
-			    static_cast<int64>(floor((Pos[2] - LocalCenter[2]) / CellSize)) + Resolution / 2);
-			const int64 FlatIdx =
-			    ((Coord[0] * Resolution + Coord[1]) * Resolution) + Coord[2];
+			return ToFlatIdx(PointIdx, LocalCenter, CellSize, Resolution);
+		};
+		auto ToOffsetFlatIdx = [&ToFlatIdx, &OffsetCenter, &OffsetCellSize, &OffsetResolution](int32 PointIdx)
+		{
+			return ToFlatIdx(PointIdx, OffsetCenter, OffsetCellSize, OffsetResolution);
+		};
 
-			bool AlreadyInSet = false;
-			OccupiedCells.Add(FlatIdx, &AlreadyInSet);
-			Rank[Idx - Offset] = AlreadyInSet ? 1 : 0;
+		// Mark cells that are already covered by points in the already-considered front of the list
+		for (int32 OrderIdx = 0; OrderIdx < MovedPtsOffset; OrderIdx++)
+		{
+			int32 PointIdx = PointOrder[OrderIdx];
+			const int64 FlatIdx = ToMainFlatIdx(PointIdx);
+			CoveredCells.Add(FlatIdx);
+			OffsetCoveredCells.Add(ToOffsetFlatIdx(PointIdx));
 		}
 
-		// If every particle mapped to its own cell, we're done.
-		if (OccupiedCells.Num() == NumPoints)
+		// find the best points in cells that aren't already covered
+		bool bAllSeparate = true;
+		for (int32 OrderIdx = MovedPtsOffset; OrderIdx < NumPoints - NumCoincident; OrderIdx++)
 		{
+			int32 PointIdx = PointOrder[OrderIdx];
+			const int64 FlatIdx = ToMainFlatIdx(PointIdx);
+			if (CoveredCells.Contains(FlatIdx) || OffsetCoveredCells.Contains(ToOffsetFlatIdx(PointIdx)))
+			{
+				bAllSeparate = false;
+				continue;
+			}
+			FBestPtData& Best = BestPoints.FindOrAdd(FlatIdx);
+			bAllSeparate = UpdateBestPtData(Best, OrderIdx) & bAllSeparate;
+		}
+
+		if (bAllSeparate)
+		{
+			// all the points were in separate cells, no need to continue promoting the 'best' for each cell beyond here
 			break;
 		}
-		// If every particle mapped to 1 cell, don't bother sorting.
-		if (OccupiedCells.Num() == 1)
+
+		auto ConsiderMovingPt = [&Rank, Offset, MovedPtsOffset, &OffsetCoveredCells, &ToOffsetFlatIdx](int32 PointIdx) -> bool
 		{
-			continue;
+			uint8& R = Rank[PointIdx - Offset];
+			if (!R)
+			{
+				// try to avoid clumping by skipping points whose offset cells were already covered
+				int64 OffsetFlatIdx = ToOffsetFlatIdx(PointIdx);
+				bool bAlreadyInSet = false;
+				OffsetCoveredCells.Add(OffsetFlatIdx, &bAlreadyInSet);
+				if (bAlreadyInSet)
+				{
+					return false;
+				}
+
+				R = 1;
+				return true;
+			}
+			else
+			{
+				return false;
+			}
+		};
+
+		// Decide which points to move into the 'front' section
+		int32 NumToMoveToFront = 0;
+		TArray<int32> MoveToFront;
+		// Add points favored by the (more reliable) distance-from-center metric first
+		for (const TPair<int64, FBestPtData>& BestDataPair : BestPoints)
+		{
+			int PtIdx = PointOrder[BestDataPair.Value.FarthestIdx];
+			if (ConsiderMovingPt(PtIdx))
+			{
+				NumToMoveToFront++;
+				MoveToFront.Add(BestDataPair.Value.FarthestIdx);
+			}
+		}
+		// Add points favored by the curvature metric second
+		//  (so they may be skipped if distance-prioritized ones already covered the region)
+		for (const TPair<int64, FBestPtData>& BestDataPair : BestPoints)
+		{
+			int PtIdx = PointOrder[BestDataPair.Value.MaxCurveIdx];
+			if (ConsiderMovingPt(PtIdx))
+			{
+				NumToMoveToFront++;
+				MoveToFront.Add(BestDataPair.Value.MaxCurveIdx);
+			}
 		}
 
-		// Stable sort by rank.  When the resolution is high, stable sort will
-		// do nothing as we'll have nothing but rank 0's.  But then as the grid
-		// gets coarser, stable sort will get more and more selective about
-		// which particles get promoted.
-		//
-		// Since the initial ordering was biased by curvature and distance from
-		// the center, each rank is similarly ordered. That is, the first vertex
-		// to land in a cell will be the most distant, and the highest curvature.
-		StableSort(&PointOrder[0], NumPoints - NumCoincident, AscendingRankPred);
-	} // end for
+		// Do the move-to-front operations by swapping
+		int MoveFrontIdx = 0;
+		for (int MoveBackIdx = 0; MoveBackIdx < NumToMoveToFront; MoveBackIdx++)
+		{
+			if (Rank[PointOrder[MovedPtsOffset + MoveBackIdx] - Offset])
+			{
+				// Point was marked for moving to front, and is already in front; skip it
+				continue;
+			}
+			// Swap point with one that was marked for the front section
+			bool bDidSwap = false;
+			for (; MoveFrontIdx < MoveToFront.Num(); MoveFrontIdx++)
+			{
+				if (MoveToFront[MoveFrontIdx] < MovedPtsOffset + NumToMoveToFront)
+				{
+					// Don't swap this one back because it's already in the 'front' zone
+					continue;
+				}
+				int32 PtIdx = PointOrder[MoveToFront[MoveFrontIdx]];
+				checkSlow(Rank[PtIdx - Offset]);
+				Swap(PointOrder[MovedPtsOffset + MoveBackIdx], PointOrder[MoveToFront[MoveFrontIdx]]);
+				bDidSwap = true;
+				MoveFrontIdx++;
+				break;
+			}
+			// The above for loop should always find a point to swap back
+			checkSlow(bDidSwap);
+		}
+
+		// Note the above swapping method could have been done via a Sort() using the Rank array, but swapping is more direct / faster
+
+		// Sort the just-added points by curvature (they were in arbitrary order before)
+		DescendingPredicate<FReal> DescendingCurvaturePred(PointCurvatures);
+		Sort(&PointOrder[MovedPtsOffset], NumToMoveToFront, DescendingCurvaturePred);
+
+		MovedPtsOffset += NumToMoveToFront;
+	}
+
+	// Sort remaining non-coincident points by curvature
+	DescendingPredicate<FReal> DescendingCurvaturePred(PointCurvatures);
+	Sort(&PointOrder[MovedPtsOffset], NumPoints - MovedPtsOffset - NumCoincident, DescendingCurvaturePred);
 
 	return PointOrder;
 }

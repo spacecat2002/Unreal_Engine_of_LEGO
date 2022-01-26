@@ -78,11 +78,11 @@ namespace Chaos
 
 		void UpdateWorldSpaceState(const FRigidTransform3& WorldTransform, const FVec3& BoundsExpansion)
 		{
-			if (GetGeometry()->HasBoundingBox())
+			LeafWorldTransform = FRigidTransform3::MultiplyNoScale(LeafRelativeTransform, WorldTransform);
+			if ((LeafGeometry != nullptr) && LeafGeometry->HasBoundingBox())
 			{
-				UpdateShapeBounds(WorldTransform, BoundsExpansion);
+				WorldSpaceInflatedShapeBounds = LeafGeometry->CalculateTransformedBounds(LeafWorldTransform).ThickenSymmetrically(BoundsExpansion);;
 			}
-			LeafWorldTransform = LeafRelativeTransform * WorldTransform;
 		}
 
 		// The leaf shape (with transformed and implicit wrapper removed)
@@ -205,6 +205,8 @@ namespace Chaos
 		{
 			CollisionData.Write(Data,true,DirtyFlags,Proxy, ShapeIdx);
 		}
+
+		const FMaterialData& GetMaterialData() const { return Materials.Read(); }
 
 		void SetMaterialData(const FMaterialData& Data)
 		{
@@ -354,6 +356,14 @@ namespace Chaos
 		};
 		TSharedPtr<FData,ESPMode::ThreadSafe> SharedData;
 	};
+
+	enum class EResimType : uint8
+	{
+		FullResim,	//fully re-run simulation and keep results (any forces must be applied again)
+		//ResimWithPrevForces, //use previous forces and keep results (UNIMPLEMENTED)
+		ResimAsSlave //use previous forces and snap to previous results regardless of variation - used to push other objects away
+		//ResimAsKinematic //treat as kinematic (UNIMPLEMENTED)
+	};
 	
 	template<class T, int d, EGeometryParticlesSimType SimType>
 	class TGeometryParticlesImp : public TParticles<T, d>
@@ -387,8 +397,12 @@ namespace Chaos
 			TArrayCollection::AddArray(&MWeakParticleHandle);
 			TArrayCollection::AddArray(&MParticleConstraints);
 			TArrayCollection::AddArray(&MParticleCollisions);
+			TArrayCollection::AddArray(&MResimType);
+			TArrayCollection::AddArray(&MEnabledDuringResim);
+			TArrayCollection::AddArray(&MLightWeightDisabled);
 
-#if CHAOS_CHECKED
+
+#if CHAOS_DEBUG_NAME
 			TArrayCollection::AddArray(&MDebugName);
 #endif
 
@@ -423,6 +437,9 @@ namespace Chaos
 			, MWeakParticleHandle(MoveTemp(Other.MWeakParticleHandle))
 			, MParticleConstraints(MoveTemp(Other.MParticleConstraints))
 			, MParticleCollisions(MoveTemp(Other.MParticleCollisions))
+			, MResimType(MoveTemp(Other.MResimType))
+			, MEnabledDuringResim(MoveTemp(Other.MEnabledDuringResim))
+			, MLightWeightDisabled(MoveTemp(Other.MLightWeightDisabled))
 
 
 #if CHAOS_DETERMINISTIC
@@ -451,7 +468,7 @@ namespace Chaos
 #if CHAOS_DETERMINISTIC
 			TArrayCollection::AddArray(&MParticleIDs);
 #endif
-#if CHAOS_CHECKED
+#if CHAOS_DEBUG_NAME
 			TArrayCollection::AddArray(&MDebugName);
 #endif
 
@@ -461,6 +478,10 @@ namespace Chaos
 				TArrayCollection::AddArray(&MGeometryParticle);
 				TArrayCollection::AddArray(&MPhysicsProxy);
 			}
+
+			TArrayCollection::AddArray(&MResimType);
+			TArrayCollection::AddArray(&MEnabledDuringResim);
+			TArrayCollection::AddArray(&MLightWeightDisabled);
 		}
 
 		static constexpr bool IsRigidBodySim() { return SimType == EGeometryParticlesSimType::RigidBodySim; }
@@ -490,7 +511,7 @@ namespace Chaos
 #if CHAOS_DETERMINISTIC
 			TArrayCollection::AddArray(&MParticleIDs);
 #endif
-#if CHAOS_CHECKED
+#if CHAOS_DEBUG_NAME
 			TArrayCollection::AddArray(&MDebugName);
 #endif
 
@@ -500,6 +521,10 @@ namespace Chaos
 				TArrayCollection::AddArray(&MGeometryParticle);
 				TArrayCollection::AddArray(&MPhysicsProxy);
 			}
+			
+			TArrayCollection::AddArray(&MResimType);
+			TArrayCollection::AddArray(&MEnabledDuringResim);
+			TArrayCollection::AddArray(&MLightWeightDisabled);
 		}
 
 		CHAOS_API virtual ~TGeometryParticlesImp()
@@ -603,13 +628,13 @@ namespace Chaos
 			return MSpatialIdx[Index];
 		}
 
-#if CHAOS_CHECKED
-		const FName& DebugName(const int32 Index) const
+#if CHAOS_DEBUG_NAME
+		const TSharedPtr<FString, ESPMode::ThreadSafe>& DebugName(const int32 Index) const
 		{
 			return MDebugName[Index];
 		}
 
-		FName& DebugName(const int32 Index)
+		TSharedPtr<FString, ESPMode::ThreadSafe>& DebugName(const int32 Index)
 		{
 			return MDebugName[Index];
 		}
@@ -652,7 +677,7 @@ namespace Chaos
 		CHAOS_API TGeometryParticle<T, d>* GTGeometryParticle(const int32 Index) const { return MGeometryParticle[Index]; }
 		CHAOS_API TGeometryParticle<T, d>*& GTGeometryParticle(const int32 Index) { return MGeometryParticle[Index]; }
 
-		CHAOS_API const IPhysicsProxyBase* PhysicsProxy(const int32 Index) const { return MPhysicsProxy[Index]; }
+		CHAOS_API const IPhysicsProxyBase* PhysicsProxy(const int32 Index) const { return MPhysicsProxy[Index];  }
 		CHAOS_API IPhysicsProxyBase* PhysicsProxy(const int32 Index) { return MPhysicsProxy[Index]; }
 		CHAOS_API void SetPhysicsProxy(const int32 Index, IPhysicsProxyBase* InPhysicsProxy)
 		{
@@ -699,6 +724,15 @@ namespace Chaos
 		{
 			return MParticleCollisions[Index];
 		}
+
+		FORCEINLINE EResimType ResimType(const int32 Index) const { return MResimType[Index]; }
+		FORCEINLINE EResimType& ResimType(const int32 Index) { return MResimType[Index]; }
+
+		FORCEINLINE bool EnabledDuringResim(const int32 Index) const { return MEnabledDuringResim[Index]; }
+		FORCEINLINE bool& EnabledDuringResim(const int32 Index) { return MEnabledDuringResim[Index]; }
+
+		FORCEINLINE bool LightWeightDisabled(const int32 Index) const { return MLightWeightDisabled[Index]; }
+		FORCEINLINE bool& LightWeightDisabled(const int32 Index) { return MLightWeightDisabled[Index]; }
 
 private:
 		friend THandleType;
@@ -837,6 +871,9 @@ public:
 		TArrayCollectionArray<FWeakParticleHandle> MWeakParticleHandle;
 		TArrayCollectionArray<FConstraintHandleArray> MParticleConstraints;
 		TArrayCollectionArray<FParticleCollisions> MParticleCollisions;
+		TArrayCollectionArray<EResimType> MResimType;
+		TArrayCollectionArray<bool> MEnabledDuringResim;
+		TArrayCollectionArray<bool> MLightWeightDisabled;
 
 		void UpdateShapesArray(const int32 Index)
 		{
@@ -844,9 +881,9 @@ public:
 			MapImplicitShapes(Index);
 		}
 
-		void MapImplicitShapes();
+		CHAOS_API void MapImplicitShapes();
 
-		void MapImplicitShapes(int32 Index);
+		CHAOS_API void MapImplicitShapes(int32 Index);
 
 		template <typename T2, int d2, EGeometryParticlesSimType SimType2>
 		friend class TGeometryParticlesImp;
@@ -861,8 +898,8 @@ public:
 #if CHAOS_DETERMINISTIC
 		TArrayCollectionArray<FParticleID> MParticleIDs;
 #endif
-#if CHAOS_CHECKED
-		TArrayCollectionArray<FName> MDebugName;
+#if CHAOS_DEBUG_NAME
+		TArrayCollectionArray<TSharedPtr<FString, ESPMode::ThreadSafe>> MDebugName;
 #endif
 	};
 
@@ -878,13 +915,5 @@ public:
 
 	template<>
 	TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>* TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>::SerializationFactory(FChaosArchive& Ar, TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>* Particles);
-
-#if PLATFORM_MAC || PLATFORM_LINUX
-	extern template class CHAOS_API TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::RigidBodySim>;
-	extern template class CHAOS_API TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>;
-#else
-	extern template class TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::RigidBodySim>;
-	extern template class TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>;
-#endif
 
 }

@@ -30,9 +30,9 @@ namespace Chaos
 			return 0.0f;
 		}
 
-		FVec3 SupportCore(const FVec3 Dir, FReal InMargin) const
+		FVec3 SupportCore(const FVec3 Dir, const FReal InMargin, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
-			return Shape.Support(Dir, InMargin);
+			return Shape.Support(Dir, InMargin, VertexIndex);
 		}
 
 		bool IsConvex() const
@@ -64,7 +64,7 @@ namespace Chaos
 			, Margin(InShape.GetMargin())
 		{}
 
-		TGJKCoreShape(const FImplicitObjectType& InShape, FReal InMargin)
+		TGJKCoreShape(const FImplicitObjectType& InShape, const FReal InMargin)
 			: Shape(InShape)
 			, Margin(InMargin)
 		{}
@@ -74,9 +74,9 @@ namespace Chaos
 			return Margin;
 		}
 
-		FVec3 SupportCore(const FVec3 Dir, FReal InMargin) const
+		FVec3 SupportCore(const FVec3 Dir, const FReal InMargin, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
-			return Shape.SupportCore(Dir, InMargin);
+			return Shape.SupportCore(Dir, InMargin, OutSupportDelta, VertexIndex);
 		}
 
 		bool IsConvex() const

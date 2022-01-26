@@ -22,8 +22,8 @@ namespace Chaos
 
 	class FCapsule;
 	class FTriangle;
-
 	class FConvex;
+	class FTriangle;
 	struct FMTDInfo;
 	class FContactPoint;
 
@@ -106,8 +106,11 @@ namespace Chaos
 	public:
 		using FImplicitObject::GetTypeName;
 
+		using ParticlesType = TParticles<FRealSingle, 3>;
+		using ParticleVecType = TVec3<FRealSingle>;
+
 		template <typename IdxType>
-		FTriangleMeshImplicitObject(FParticles&& Particles, TArray<TVec3<IdxType>>&& Elements, TArray<uint16>&& InMaterialIndices, TUniquePtr<TArray<int32>>&& InExternalFaceIndexMap = nullptr, TUniquePtr<TArray<int32>>&& InExternalVertexIndexMap = nullptr, const bool bInCullsBackFaceRaycast = false)
+		FTriangleMeshImplicitObject(ParticlesType&& Particles, TArray<TVec3<IdxType>>&& Elements, TArray<uint16>&& InMaterialIndices, TUniquePtr<TArray<int32>>&& InExternalFaceIndexMap = nullptr, TUniquePtr<TArray<int32>>&& InExternalVertexIndexMap = nullptr, const bool bInCullsBackFaceRaycast = false)
 		: FImplicitObject(EImplicitObject::HasBoundingBox | EImplicitObject::DisableCollisions, ImplicitObjectType::TriangleMesh)
 		, MParticles(MoveTemp(Particles))
 		, MElements(MoveTemp(Elements))
@@ -295,7 +298,7 @@ namespace Chaos
 
 		virtual uint16 GetMaterialIndex(uint32 HintIndex) const override;
 
-		const FParticles& Particles() const;
+		const ParticlesType& Particles() const;
 		const FTrimeshIndexBuffer& Elements() const;
 
 		void UpdateVertices(const TArray<FVector>& Positions);
@@ -307,7 +310,7 @@ namespace Chaos
 	private:
 		void RebuildBV();
 
-		FParticles MParticles;
+		ParticlesType MParticles;
 		FTrimeshIndexBuffer MElements;
 		FAABB3 MLocalBoundingBox;
 		TArray<uint16> MaterialIndices;
@@ -315,7 +318,26 @@ namespace Chaos
 		TUniquePtr<TArray<int32>> ExternalVertexIndexMap;
 		bool bCullsBackFaceRaycast;
 
-		using BVHType = TAABBTree<int32, TAABBTreeLeafArray<int32, /*bComputeBounds=*/false>, /*bMutable=*/false>;
+		using BVHType = TAABBTree<int32, TAABBTreeLeafArray<int32, /*bComputeBounds=*/false, FRealSingle>, /*bMutable=*/false, FRealSingle>;
+
+		// Initialising constructor privately declared for use in CopySlow to copy the underlying BVH
+		template <typename IdxType>
+		FTriangleMeshImplicitObject(ParticlesType&& Particles, TArray<TVec3<IdxType>>&& Elements, TArray<uint16>&& InMaterialIndices, const BVHType& InBvhToCopy, TUniquePtr<TArray<int32>>&& InExternalFaceIndexMap = nullptr, TUniquePtr<TArray<int32>>&& InExternalVertexIndexMap = nullptr, const bool bInCullsBackFaceRaycast = false)
+			: FImplicitObject(EImplicitObject::HasBoundingBox | EImplicitObject::DisableCollisions, ImplicitObjectType::TriangleMesh)
+			, MParticles(MoveTemp(Particles))
+			, MElements(MoveTemp(Elements))
+			, MLocalBoundingBox(MParticles.X(0), MParticles.X(0))
+			, MaterialIndices(MoveTemp(InMaterialIndices))
+			, ExternalFaceIndexMap(MoveTemp(InExternalFaceIndexMap))
+			, ExternalVertexIndexMap(MoveTemp(InExternalVertexIndexMap))
+			, bCullsBackFaceRaycast(bInCullsBackFaceRaycast)
+		{
+			for(uint32 Idx = 1; Idx < MParticles.Size(); ++Idx)
+			{
+				MLocalBoundingBox.GrowToInclude(MParticles.X(Idx));
+			}
+			BVH.CopyFrom(InBvhToCopy);
+		}
 
 		template<typename InStorageType, typename InRealType>
 		friend struct FBvEntry;
@@ -328,11 +350,11 @@ namespace Chaos
 
 			bool HasBoundingBox() const { return true; }
 
-			FAABB3 BoundingBox() const
+			TAABB<FRealSingle, 3> BoundingBox() const
 			{
 				auto LambdaHelper = [&](const auto& Elements)
 				{
-					TAABB<FReal,3> Bounds(TmData->MParticles.X(Elements[Index][0]), TmData->MParticles.X(Elements[Index][0]));
+					TAABB<FRealSingle,3> Bounds(TmData->MParticles.X(Elements[Index][0]), TmData->MParticles.X(Elements[Index][0]));
 
 					Bounds.GrowToInclude(TmData->MParticles.X(Elements[Index][1]));
 					Bounds.GrowToInclude(TmData->MParticles.X(Elements[Index][2]));

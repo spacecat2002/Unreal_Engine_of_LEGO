@@ -54,6 +54,10 @@ namespace Chaos
 	bool bChaos_MinEvolution_RewindLerp = true;
 	FAutoConsoleVariableRef CVarChaosMinEvolutionRewindLerp(TEXT("p.Chaos.MinEvolution.RewindLerp"), bChaos_MinEvolution_RewindLerp, TEXT("If rewinding (fixed dt mode) use Backwards-Lerp as opposed to Backwards Velocity"));
 
+	// Forced iteration count to evaluate worst-case behaviour for a given simulation
+	bool Chaos_MinEvolution_ForceMaxConstraintIterations = false;
+	FAutoConsoleVariableRef CVarChaosMinEvolutionForceMaxConstraintIterations(TEXT("p.Chaos.MinEvolution.ForceMaxConstraintIterations"), Chaos_MinEvolution_ForceMaxConstraintIterations, TEXT("Whether to force constraints to always use the worst-case maximum number of iterations"));
+
 	//
 	//
 	//
@@ -81,10 +85,10 @@ namespace Chaos
 			RotationOfMass = Dynamics.AllRotationOfMass().GetData();
 			InvM = Dynamics.AllInvM().GetData();
 			InvI = Dynamics.AllInvI().GetData();
-			F = Dynamics.AllF().GetData();
-			T = Dynamics.AllT().GetData();
-			LinearImpulse = Dynamics.AllLinearImpulse().GetData();
-			AngularImpulse = Dynamics.AllAngularImpulse().GetData();
+			Acceleration = Dynamics.AllAcceleration().GetData();
+			AngularAcceleration = Dynamics.AllAngularAcceleration().GetData();
+			LinearImpulseVelocity = Dynamics.AllLinearImpulseVelocity().GetData();
+			AngularImpulseVelocity = Dynamics.AllAngularImpulseVelocity().GetData();
 			Disabled = Dynamics.AllDisabled().GetData();
 			GravityEnabled = Dynamics.AllGravityEnabled().GetData();
 			LinearEtherDrag = Dynamics.AllLinearEtherDrag().GetData();
@@ -108,10 +112,10 @@ namespace Chaos
 		FRotation3* RotationOfMass;
 		FReal* InvM;
 		FMatrix33* InvI;
-		FVec3* F;
-		FVec3* T;
-		FVec3* LinearImpulse;
-		FVec3* AngularImpulse;
+		FVec3* Acceleration;
+		FVec3* AngularAcceleration;
+		FVec3* LinearImpulseVelocity;
+		FVec3* AngularImpulseVelocity;
 		bool* Disabled;
 		bool* GravityEnabled;
 		FReal* LinearEtherDrag;
@@ -164,7 +168,7 @@ namespace Chaos
 		{
 			// StepFraction: how much of the remaining time this step represents, used to interpolate kinematic targets
 			// E.g., for 4 steps this will be: 1/4, 1/2, 3/4, 1
-			const FReal StepFraction = (FReal)(Step + 1) / (NumSteps);
+			const FReal StepFraction = (FReal)(Step + 1) / (FReal)(NumSteps);
 
 			UE_LOG(LogChaosMinEvolution, Verbose, TEXT("Advance dt = %f [%d/%d]"), StepDt, Step + 1, NumSteps);
 
@@ -175,8 +179,8 @@ namespace Chaos
 		{
 			if (Particle.ObjectState() == EObjectStateType::Dynamic)
 			{
-				Particle.F() = FVec3(0);
-				Particle.Torque() = FVec3(0);
+				Particle.Acceleration() = FVec3(0);
+				Particle.AngularAcceleration() = FVec3(0);
 			}
 		}
 
@@ -264,7 +268,7 @@ namespace Chaos
 				if (Particle.ObjectState() == EObjectStateType::Dynamic)
 				{
 					Particle.X() = FVec3::Lerp(Particle.Handle()->AuxilaryValue(ParticlePrevXs), Particle.X(), T);
-					Particle.R() = FRotation3::Slerp(Particle.Handle()->AuxilaryValue(ParticlePrevRs), Particle.R(), T);
+					Particle.R() = FRotation3::Slerp(Particle.Handle()->AuxilaryValue(ParticlePrevRs), Particle.R(), (decltype(FQuat::X))T);	// LWC_TODO: Remove decltype cast once FQuat supports variants
 				}
 			}
 		}
@@ -322,8 +326,8 @@ namespace Chaos
 				
 				// Forces and torques
 				const FMatrix33 WorldInvI = Utilities::ComputeWorldSpaceInertia(RCoM, Particle.InvI());
-				FVec3 DV = Particle.InvM() * (Particle.F() * Dt + Particle.LinearImpulse());
-				FVec3 DW = Utilities::Multiply(WorldInvI, (Particle.Torque() * Dt + Particle.AngularImpulse()));
+				FVec3 DV = Particle.Acceleration() * Dt + Particle.LinearImpulseVelocity();
+				FVec3 DW = Particle.AngularAcceleration() * Dt + Particle.AngularImpulseVelocity();
 				FVec3 TargetV = FVec3(0);
 				FVec3 TargetW = FVec3(0);
 
@@ -363,8 +367,8 @@ namespace Chaos
 				FParticleUtilitiesPQ::SetCoMWorldTransform(&Particle, PCoM, QCoM);
 				Particle.V() = V;
 				Particle.W() = W;
-				Particle.LinearImpulse() = FVec3(0);
-				Particle.AngularImpulse() = FVec3(0);
+				Particle.LinearImpulseVelocity() = FVec3(0);
+				Particle.AngularImpulseVelocity() = FVec3(0);
 
 				// Update cached world space state, including bounds. We use the Swept bounds update so that the bounds includes P,Q and X,Q.
 				// This is because when we have joints, they often pull bodies back to their original positions, so we need to know if there
@@ -388,11 +392,8 @@ namespace Chaos
 		for (auto& Particle : Particles.GetActiveKinematicParticlesView())
 		{
 			TKinematicTarget<FReal, 3>& KinematicTarget = Particle.KinematicTarget();
-
-			const TRigidTransform<FReal, 3>& Previous = KinematicTarget.GetPrevious();
-			const FVec3 PrevX = Previous.GetTranslation();
-			const FRotation3 PrevR = Previous.GetRotation();
-
+			const FVec3 CurrentX = Particle.X();
+			const FRotation3 CurrentR = Particle.R();
 
 			switch (KinematicTarget.GetMode())
 			{
@@ -413,26 +414,28 @@ namespace Chaos
 			{
 				// Move to kinematic target and update velocities to match
 				// Target positions only need to be processed once, and we reset the velocity next frame (if no new target is set)
-				FVec3 TargetPos;
-				FRotation3 TargetRot;
-				if (FMath::IsNearlyEqual(StepFraction, (FReal)1, KINDA_SMALL_NUMBER))
+				FVec3 NewX;
+				FRotation3 NewR;
+				if (FMath::IsNearlyEqual(StepFraction, (FReal)1, (FReal)KINDA_SMALL_NUMBER))
 				{
-					TargetPos = KinematicTarget.GetTarget().GetLocation();
-					TargetRot = KinematicTarget.GetTarget().GetRotation();
+					NewX = KinematicTarget.GetTarget().GetLocation();
+					NewR = KinematicTarget.GetTarget().GetRotation();
 					KinematicTarget.SetMode(EKinematicTargetMode::Reset);
 				}
 				else
 				{
-					TargetPos = FVec3::Lerp(PrevX, KinematicTarget.GetTarget().GetLocation(), StepFraction);
-					TargetRot = FRotation3::Slerp(PrevR, KinematicTarget.GetTarget().GetRotation(), StepFraction);
+					// as a reminder, stepfraction is the remaing fraction of the step from the remaining steps
+					// for total of 4 steps and current step of 2, this will be 1/3 ( 1 step passed, 3 steps remains )
+					NewX = FVec3::Lerp(CurrentX, KinematicTarget.GetTarget().GetLocation(), StepFraction);
+					NewR = FRotation3::Slerp(CurrentR, KinematicTarget.GetTarget().GetRotation(), (decltype(FQuat::X))StepFraction);		// LWC_TODO: Remove decltype cast once FQuat supports variants
 				}
 				if (Dt > MinDt)
 				{
-					Particle.V() = FVec3::CalculateVelocity(PrevX, TargetPos, Dt);
-					Particle.W() = FRotation3::CalculateAngularVelocity(PrevR, TargetRot, Dt);
+					Particle.V() = FVec3::CalculateVelocity(CurrentX, NewX, Dt);
+					Particle.W() = FRotation3::CalculateAngularVelocity(CurrentR, NewR, Dt);
 				}
-				Particle.X() = TargetPos;
-				Particle.R() = TargetRot;
+				Particle.X() = NewX;
+				Particle.R() = NewR;
 				break;
 			}
 
@@ -496,7 +499,7 @@ namespace Chaos
 
 		for (int32 i = 0; i < NumApplyIterations; ++i)
 		{
-			bool bNeedsAnotherIteration = false;
+			bool bNeedsAnotherIteration = Chaos_MinEvolution_ForceMaxConstraintIterations;
 			for (FSimpleConstraintRule* ConstraintRule : PrioritizedConstraintRules)
 			{
 				bNeedsAnotherIteration |= ConstraintRule->ApplyConstraints(Dt, i, NumApplyIterations);

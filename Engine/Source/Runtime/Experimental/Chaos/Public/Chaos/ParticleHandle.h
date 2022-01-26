@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Templates/ChooseClass.h"
+#include "Math/NumericLimits.h"
 #include "Chaos/PBDRigidClusteredParticles.h"
 #include "Chaos/PBDGeometryCollectionParticles.h"
 #include "Chaos/ParticleHandleFwd.h"
@@ -18,6 +19,7 @@ class IPhysicsProxyBase;
 namespace Chaos
 {
 	class FConstraintHandle;
+	class FPBDRigidsEvolutionBase;
 
 struct FGeometryParticleParameters
 {
@@ -62,6 +64,8 @@ void GeometryParticleDefaultConstruct(FConcrete& Concrete, const FGeometryPartic
 	Concrete.SetX(TVector<T, d>(0));
 	Concrete.SetR(TRotation<T, d>::Identity);
 	Concrete.SetSpatialIdx(FSpatialAccelerationIdx{ 0,0 });
+	Concrete.SetResimType(EResimType::FullResim);
+	Concrete.SetEnabledDuringResim(true);
 }
 
 
@@ -85,8 +89,10 @@ void PBDRigidParticleDefaultConstruct(FConcrete& Concrete, const FPBDRigidPartic
 {
 	//don't bother calling parent since the call gets made by the corresponding hierarchy in FConcrete
 	Concrete.SetCollisionGroup(0);
-	Concrete.SetLinearImpulse(TVector<T, d>(0));
-	Concrete.SetAngularImpulse(TVector<T, d>(0));
+	Concrete.SetLinearImpulseVelocity(TVector<T, d>(0));
+	Concrete.SetAngularImpulseVelocity(TVector<T, d>(0));
+	Concrete.SetMaxLinearSpeedSq(TNumericLimits<T>::Max());
+	Concrete.SetMaxAngularSpeedSq(TNumericLimits<T>::Max());
 	Concrete.SetM(1);
 	Concrete.SetInvM(1);
 	Concrete.SetCenterOfMass(TVector<T,d>(0));
@@ -97,7 +103,8 @@ void PBDRigidParticleDefaultConstruct(FConcrete& Concrete, const FPBDRigidPartic
 	Concrete.SetAngularEtherDrag(0.f);
 	Concrete.SetGravityEnabled(Params.bGravityEnabled);
 	Concrete.SetCCDEnabled(Params.bCCDEnabled);
-	Concrete.SetResimType(EResimType::FullResim);
+	Concrete.SetDisabled(Params.bDisabled);
+	Concrete.SetSleepType(ESleepType::MaterialSleep);
 }
 
 
@@ -418,6 +425,7 @@ protected:
 		//TODO: patch from SOA
 		GeometryParticleDefaultConstruct<T, d>(*this, Params);
 		SetHasBounds(false);
+		SetLightWeightDisabled(false);
 	}
 
 	template <typename TParticlesType, typename TParams>
@@ -486,8 +494,9 @@ public:
 		SetSharedGeometry(InData.SharedGeometryLowLevel());
 		SetUniqueIdx(InData.UniqueIdx());
 		SetSpatialIdx(InData.SpatialIdx());
+		SetResimType(InData.ResimType());
 
-#if CHAOS_CHECKED
+#if CHAOS_DEBUG_NAME
 		SetDebugName(InData.DebugName());
 #endif
 	}
@@ -512,7 +521,7 @@ public:
 	TSerializablePtr<FImplicitObject> Geometry() const { return GeometryParticles->Geometry(ParticleIdx); }
 	void SetGeometry(TSerializablePtr<FImplicitObject> InGeometry) { GeometryParticles->SetGeometry(ParticleIdx, InGeometry); }
 
-	TSharedPtr<FImplicitObject, ESPMode::ThreadSafe> SharedGeometry() const { return GeometryParticles->SharedGeometry(ParticleIdx); }
+	TSharedPtr<const FImplicitObject, ESPMode::ThreadSafe> SharedGeometry() const { return GeometryParticles->SharedGeometry(ParticleIdx); }
 	void SetSharedGeometry(TSharedPtr<const FImplicitObject, ESPMode::ThreadSafe> InGeometry) { GeometryParticles->SetSharedGeometry(ParticleIdx, InGeometry); }
 
 	const TSharedPtr<const FImplicitObject, ESPMode::ThreadSafe>& SharedGeometryLowLevel() const { return GeometryParticles->SharedGeometry(ParticleIdx); }
@@ -555,9 +564,9 @@ public:
 	FSpatialAccelerationIdx SpatialIdx() const { return GeometryParticles->SpatialIdx(ParticleIdx); }
 	void SetSpatialIdx(FSpatialAccelerationIdx Idx) { GeometryParticles->SpatialIdx(ParticleIdx) = Idx; }
 
-#if CHAOS_CHECKED
-	const FName& DebugName() const { return GeometryParticles->DebugName(ParticleIdx); }
-	void SetDebugName(const FName& InDebugName) { GeometryParticles->DebugName(ParticleIdx) = InDebugName; }
+#if CHAOS_DEBUG_NAME
+	const TSharedPtr<FString, ESPMode::ThreadSafe>& DebugName() const { return GeometryParticles->DebugName(ParticleIdx); }
+	void SetDebugName(const TSharedPtr<FString, ESPMode::ThreadSafe>& InDebugName) { GeometryParticles->DebugName(ParticleIdx) = InDebugName; }
 #endif
 	
 	EObjectStateType ObjectState() const;
@@ -597,6 +606,17 @@ public:
 	{
 		return AuxContainer[HandleIdx];
 	}
+
+	EResimType ResimType() const { return GeometryParticles->ResimType(ParticleIdx); }
+
+	void SetResimType(EResimType ResimType) { GeometryParticles->ResimType(ParticleIdx) = ResimType; }
+
+
+	bool EnabledDuringResim() const { return GeometryParticles->EnabledDuringResim(ParticleIdx); }
+	void SetEnabledDuringResim(bool bEnabledDuringResim) { GeometryParticles->EnabledDuringResim(ParticleIdx) = bEnabledDuringResim; }
+
+	bool LightWeightDisabled() const { return GeometryParticles->LightWeightDisabled(ParticleIdx); }
+	void SetLightWeightDisabled(bool bLightWeightDisabled) { GeometryParticles->LightWeightDisabled(ParticleIdx) = bLightWeightDisabled; }
 
 #if CHAOS_DETERMINISTIC
 	FParticleID ParticleID() const { return GeometryParticles->ParticleID(ParticleIdx); }
@@ -642,6 +662,11 @@ public:
 	}
 
 	FConstraintHandleArray& ParticleConstraints()
+	{
+		return GeometryParticles->ParticleConstraints(ParticleIdx);
+	}
+
+	const FConstraintHandleArray& ParticleConstraints() const
 	{
 		return GeometryParticles->ParticleConstraints(ParticleIdx);
 	}
@@ -770,6 +795,7 @@ class TPBDRigidParticleHandleImp : public TKinematicGeometryParticleHandleImp<T,
 public:
 	using TGeometryParticleHandleImp<T, d, bPersistent>::ParticleIdx;
 	using TGeometryParticleHandleImp<T, d, bPersistent>::PBDRigidParticles;
+	using TGeometryParticleHandleImp<T, d, bPersistent>::ParticleConstraints;
 	using TGeometryParticleHandleImp<T, d, bPersistent>::ParticleCollisions;
 	using TKinematicGeometryParticleHandleImp<T, d, bPersistent>::V;
 	using TKinematicGeometryParticleHandleImp<T, d, bPersistent>::W;
@@ -800,12 +826,13 @@ protected:
 		SetQ(this->R());
 		SetVSmooth(this->V());
 		SetWSmooth(this->W());
-		SetF(TVector<T, d>(0));
-		SetTorque(TVector<T, d>(0));
+		SetAcceleration(TVector<T, d>(0));
+		SetAngularAcceleration(TVector<T, d>(0));
 		SetObjectStateLowLevel(Params.bStartSleeping ? EObjectStateType::Sleeping : EObjectStateType::Dynamic);
 		SetIslandIndex(INDEX_NONE);
 		SetConstraintGraphIndex(INDEX_NONE);
 		SetToBeRemovedOnFracture(false);
+		SetSleepType(ESleepType::MaterialSleep);
 	}
 public:
 
@@ -874,31 +901,29 @@ public:
 	TVector<T, d>& WSmooth() { return PBDRigidParticles->WSmooth(ParticleIdx); }
 	void SetWSmooth(const TVector<T, d>& InWSmooth) { PBDRigidParticles->WSmooth(ParticleIdx) = InWSmooth; }
 
-	const TVector<T, d>& F() const { return PBDRigidParticles->F(ParticleIdx); }
-	TVector<T, d>& F() { return PBDRigidParticles->F(ParticleIdx); }
-	void SetF(const TVector<T, d>& InF) { PBDRigidParticles->F(ParticleIdx) = InF; }
+	const TVector<T, d>& Acceleration() const { return PBDRigidParticles->Acceleration(ParticleIdx); }
+	TVector<T, d>& Acceleration() { return PBDRigidParticles->Acceleration(ParticleIdx); }
+	void SetAcceleration(const TVector<T, d>& InAcceleration) { PBDRigidParticles->Acceleration(ParticleIdx) = InAcceleration; }
 
 	void AddForce(const TVector<T, d>& InF, bool bInvalidate = true)
 	{
-		SetF(F() + InF);
+		SetAcceleration(Acceleration() + InF * InvM());
 	}
 
-	const TVector<T, d>& Torque() const { return PBDRigidParticles->Torque(ParticleIdx); }
-	TVector<T, d>& Torque() { return PBDRigidParticles->Torque(ParticleIdx); }
-	void SetTorque(const TVector<T, d>& InTorque) { PBDRigidParticles->Torque(ParticleIdx) = InTorque; }
+	const TVector<T, d>& AngularAcceleration() const { return PBDRigidParticles->AngularAcceleration(ParticleIdx); }
+	TVector<T, d>& AngularAcceleration() { return PBDRigidParticles->AngularAcceleration(ParticleIdx); }
+	void SetAngularAcceleration(const TVector<T, d>& InAngularAcceleration) { PBDRigidParticles->AngularAcceleration(ParticleIdx) = InAngularAcceleration; }
 
-	void AddTorque(const TVector<T, d>& InTorque, bool bInvalidate = true)
-	{
-		SetTorque(Torque() + InTorque);
-	}
+	CHAOS_API void AddTorque(const TVector<T, d>& InTorque, bool bInvalidate = true);
+	CHAOS_API void SetTorque(const TVector<T, d>& InTorque, bool bInvalidate = true);
 
-	const TVector<T, d>& LinearImpulse() const { return PBDRigidParticles->LinearImpulse(ParticleIdx); }
-	TVector<T, d>& LinearImpulse() { return PBDRigidParticles->LinearImpulse(ParticleIdx); }
-	void SetLinearImpulse(const TVector<T, d>& InLinearImpulse, bool bInvalidate = false) { PBDRigidParticles->LinearImpulse(ParticleIdx) = InLinearImpulse; }
+	const TVector<T, d>& LinearImpulseVelocity() const { return PBDRigidParticles->LinearImpulseVelocity(ParticleIdx); }
+	TVector<T, d>& LinearImpulseVelocity() { return PBDRigidParticles->LinearImpulseVelocity(ParticleIdx); }
+	void SetLinearImpulseVelocity(const TVector<T, d>& InLinearImpulseVelocity, bool bInvalidate = false) { PBDRigidParticles->LinearImpulseVelocity(ParticleIdx) = InLinearImpulseVelocity; }
 
-	const TVector<T, d>& AngularImpulse() const { return PBDRigidParticles->AngularImpulse(ParticleIdx); }
-	TVector<T, d>& AngularImpulse() { return PBDRigidParticles->AngularImpulse(ParticleIdx); }
-	void SetAngularImpulse(const TVector<T, d>& InAngularImpulse, bool bInvalidate = false) { PBDRigidParticles->AngularImpulse(ParticleIdx) = InAngularImpulse; }
+	const TVector<T, d>& AngularImpulseVelocity() const { return PBDRigidParticles->AngularImpulseVelocity(ParticleIdx); }
+	TVector<T, d>& AngularImpulseVelocity() { return PBDRigidParticles->AngularImpulseVelocity(ParticleIdx); }
+	void SetAngularImpulseVelocity(const TVector<T, d>& InAngularImpulseVelocity, bool bInvalidate = false) { PBDRigidParticles->AngularImpulseVelocity(ParticleIdx) = InAngularImpulseVelocity; }
 
 	// Resets VSmooth value to something plausible based on external forces to prevent object from going back to sleep if it was just impulsed.
 	void ResetVSmoothFromForces()
@@ -908,10 +933,10 @@ public:
 
 	void SetDynamics(const FParticleDynamics& Dynamics)
 	{
-		SetF(Dynamics.F());
-		SetTorque(Dynamics.Torque());
-		SetLinearImpulse(Dynamics.LinearImpulse());
-		SetAngularImpulse(Dynamics.AngularImpulse());
+		SetAcceleration(Dynamics.Acceleration());
+		SetAngularAcceleration(Dynamics.AngularAcceleration());
+		SetLinearImpulseVelocity(Dynamics.LinearImpulseVelocity());
+		SetAngularImpulseVelocity(Dynamics.AngularImpulseVelocity());
 	}
 
 	void SetMassProps(const FParticleMassProps& Props)
@@ -924,17 +949,7 @@ public:
 		SetInvM(Props.InvM());
 	}
 
-	void SetDynamicMisc(const FParticleDynamicMisc& DynamicMisc)
-	{
-		SetLinearEtherDrag(DynamicMisc.LinearEtherDrag());
-		SetAngularEtherDrag(DynamicMisc.AngularEtherDrag());
-		SetCollisionGroup(DynamicMisc.CollisionGroup());
-		SetGravityEnabled(DynamicMisc.GravityEnabled());
-		SetCCDEnabled(DynamicMisc.CCDEnabled());
-		SetResimType(DynamicMisc.ResimType());
-		SetOneWayInteraction(DynamicMisc.OneWayInteraction());
-		AddCollisionConstraintFlag((Chaos::ECollisionConstraintFlags)DynamicMisc.CollisionConstraintFlag());
-	}
+	void SetDynamicMisc(const FParticleDynamicMisc& DynamicMisc, FPBDRigidsEvolutionBase& Evolution);
 
 	void ResetSmoothedVelocities()
 	{
@@ -972,6 +987,14 @@ public:
 	T AngularEtherDrag() const { return PBDRigidParticles->AngularEtherDrag(ParticleIdx); }
 	T& AngularEtherDrag() { return PBDRigidParticles->AngularEtherDrag(ParticleIdx); }
 	void SetAngularEtherDrag(const T& InAngularEtherDrag) { PBDRigidParticles->AngularEtherDrag(ParticleIdx) = InAngularEtherDrag; }
+
+	T MaxLinearSpeedSq() const { return PBDRigidParticles->MaxLinearSpeedSq(ParticleIdx); }
+	T& MaxLinearSpeedSq() { return PBDRigidParticles->MaxLinearSpeedSq(ParticleIdx); }
+	void SetMaxLinearSpeedSq(const T& InMaxLinearSpeed) { PBDRigidParticles->MaxLinearSpeedSq(ParticleIdx) = InMaxLinearSpeed; }
+
+	T MaxAngularSpeedSq() const { return PBDRigidParticles->MaxAngularSpeedSq(ParticleIdx); }
+	T& MaxAngularSpeedSq() { return PBDRigidParticles->MaxAngularSpeedSq(ParticleIdx); }
+	void SetMaxAngularSpeedSq(const T& InMaxAngularSpeed) { PBDRigidParticles->MaxAngularSpeedSq(ParticleIdx) = InMaxAngularSpeed; }
 
 	int32 IslandIndex() const { return PBDRigidParticles->IslandIndex(ParticleIdx); }
 	int32& IslandIndex() { return PBDRigidParticles->IslandIndex(ParticleIdx); }
@@ -1014,10 +1037,9 @@ public:
 
 	void SetOneWayInteraction(bool bInOneWayInteraction) { PBDRigidParticles->OneWayInteraction(ParticleIdx) = bInOneWayInteraction; }
 
-	EResimType ResimType() const { return PBDRigidParticles->ResimType(ParticleIdx);}
+	ESleepType SleepType() const { return PBDRigidParticles->SleepType(ParticleIdx);}
 
-	void SetResimType(EResimType ResimType){ PBDRigidParticles->ResimType(ParticleIdx) = ResimType; }
-
+	void SetSleepType(ESleepType SleepType){ PBDRigidParticles->SetSleepType(ParticleIdx, SleepType); }
 
 
 	static constexpr EParticleType StaticType() { return EParticleType::Rigid; }
@@ -1072,14 +1094,14 @@ public:
 		return Serializable;
 	}
 
-	FPBDRigidClusteredParticleHandle* Parent()
-	{
-		return (ClusterIds().Id) ? ClusterIds().Id->CastToClustered() : nullptr;
-	}
-
+	const TSet<IPhysicsProxyBase*>& PhysicsProxies() const { return PBDRigidClusteredParticles->PhysicsProxies(ParticleIdx); }
+	void AddPhysicsProxy(IPhysicsProxyBase* PhysicsProxy) { PBDRigidClusteredParticles->PhysicsProxies(ParticleIdx).Add(PhysicsProxy); }
+	
 	void SetClusterId(const ClusterId& Id) { PBDRigidClusteredParticles->ClusterIds(ParticleIdx) = Id; }
 	const ClusterId& ClusterIds() const { return PBDRigidClusteredParticles->ClusterIds(ParticleIdx); }
 	ClusterId& ClusterIds() { return PBDRigidClusteredParticles->ClusterIds(ParticleIdx); }
+
+	FPBDRigidClusteredParticleHandle* Parent() { return (ClusterIds().Id)? ClusterIds().Id->CastToClustered(): nullptr; }
 
 	const TRigidTransform<T,d>& ChildToParent() const { return PBDRigidClusteredParticles->ChildToParent(ParticleIdx); }
 	TRigidTransform<T,d>& ChildToParent() { return PBDRigidClusteredParticles->ChildToParent(ParticleIdx); }
@@ -1096,14 +1118,6 @@ public:
 	const TUniquePtr<FImplicitObjectUnionClustered>& ChildrenSpatial() const { return PBDRigidClusteredParticles->ChildrenSpatial(ParticleIdx); }
 	TUniquePtr<FImplicitObjectUnionClustered>& ChildrenSpatial() { return PBDRigidClusteredParticles->ChildrenSpatial(ParticleIdx); }
 	void SetChildrenSpatial(TUniquePtr<FImplicitObjectUnion>& Obj) { PBDRigidClusteredParticles->ChildrenSpatial(ParticleIdx) = Obj; }
-
-	const FMultiChildProxyId& MultiChildProxyId() const { return PBDRigidClusteredParticles->MultiChildProxyId(ParticleIdx); }
-	FMultiChildProxyId& MultiChildProxyId() { return PBDRigidClusteredParticles->MultiChildProxyId(ParticleIdx); }
-	void SetMultiChildProxyId(const FMultiChildProxyId& Id) { PBDRigidClusteredParticles->MultiChildProxyId(ParticleIdx) = Id; }
-
-	const TUniquePtr<TMultiChildProxyData<T, d>>& MultiChildProxyData() const { return PBDRigidClusteredParticles->MultiChildProxyData(ParticleIdx); }
-	TUniquePtr<TMultiChildProxyData<T, d>>& MultiChildProxyData() { return PBDRigidClusteredParticles->MultiChildProxyData(ParticleIdx); }
-	void SetMultiChildProxyData(TUniquePtr<TMultiChildProxyData<T, d>>&& ProxyData) { PBDRigidClusteredParticles->MultiChildProxyData(ParticleIdx) = MoveTemp(ProxyData); }
 
 	const T& CollisionImpulse() const { return PBDRigidClusteredParticles->CollisionImpulses(ParticleIdx); }
 	T& CollisionImpulse() { return PBDRigidClusteredParticles->CollisionImpulses(ParticleIdx); }
@@ -1285,6 +1299,8 @@ public:
 	bool Sleeping() const { return MHandle->Sleeping(); }
 	FString ToString() const { return MHandle->ToString(); }
 
+	bool EnabledDuringResim() const { return MHandle->EnabledDuringResim(); }
+
 	template <typename Container>
 	const auto& AuxilaryValue(const Container& AuxContainer) const { return MHandle->AuxilaryValue(AuxContainer); }
 	template <typename Container>
@@ -1324,7 +1340,7 @@ public:
 
 	int32 CollisionGroup() const
 	{
-		if (MHandle->CastToRigidParticle() && MHandle->ObjectState() == EObjectStateType::Dynamic)
+		if (MHandle->CastToRigidParticle())
 		{
 			return MHandle->CastToRigidParticle()->CollisionGroup();
 		}
@@ -1344,7 +1360,7 @@ public:
 
 	bool HasCollisionConstraintFlag(const ECollisionConstraintFlags Flag)  const
 	{
-		if (MHandle->CastToRigidParticle() && MHandle->ObjectState() == EObjectStateType::Dynamic)
+		if (MHandle->CastToRigidParticle() && (MHandle->ObjectState() == EObjectStateType::Dynamic || MHandle->ObjectState() == EObjectStateType::Sleeping))
 		{
 			return MHandle->CastToRigidParticle()->HasCollisionConstraintFlag(Flag);
 		}
@@ -1460,20 +1476,20 @@ public:
 		return W();
 	}
 
-	const FVec3& F() const
+	const FVec3& Acceleration() const
 	{ 
 		if (MHandle->CastToRigidParticle() && MHandle->ObjectState() == EObjectStateType::Dynamic)
 		{
-			return MHandle->CastToRigidParticle()->F();
+			return MHandle->CastToRigidParticle()->Acceleration();
 		}
 
 		return ZeroVector;
 	}
-	const FVec3& Torque() const
+	const FVec3& AngularAcceleration() const
 	{ 
 		if (MHandle->CastToRigidParticle() && MHandle->ObjectState() == EObjectStateType::Dynamic)
 		{
-			return MHandle->CastToRigidParticle()->Torque();
+			return MHandle->CastToRigidParticle()->AngularAcceleration();
 		}
 
 		return ZeroVector;
@@ -1605,8 +1621,8 @@ public:
 	}
 
 
-#if CHAOS_CHECKED
-	const FName& DebugName() const
+#if CHAOS_DEBUG_NAME
+	const TSharedPtr<FString, ESPMode::ThreadSafe>& DebugName() const
 	{
 		return MHandle->DebugName();
 	}
@@ -1918,9 +1934,9 @@ public:
 		check(false);
 	}
 
-	void MergeGeometry(TArray<TUniquePtr<FImplicitObject>>&& Objects);
+	CHAOS_API void MergeGeometry(TArray<TUniquePtr<FImplicitObject>>&& Objects);
 
-	void RemoveShape(FPerShapeData* InShape, bool bWakeTouching);
+	CHAOS_API void RemoveShape(FPerShapeData* InShape, bool bWakeTouching);
 
 	TSharedPtr<const FImplicitObject,ESPMode::ThreadSafe> SharedGeometryLowLevel() const { return MNonFrequentData.Read().SharedGeometryLowLevel(); }
 
@@ -1935,7 +1951,7 @@ public:
 		UpdateShapeBounds(FRigidTransform3(X(), R()));
 	}
 
-	void UpdateShapeBounds(const FTransform& Transform)
+	void UpdateShapeBounds(const FRigidTransform3& Transform)
 	{
 		auto GeomShared = MNonFrequentData.Read().Geometry();
 		if (GeomShared && GeomShared->HasBoundingBox())
@@ -1983,9 +1999,9 @@ public:
 		}
 	}
 
-#if CHAOS_CHECKED
-	const FName DebugName() const { return MNonFrequentData.Read().DebugName(); }
-	void SetDebugName(const FName& InDebugName)
+#if CHAOS_DEBUG_NAME
+	const TSharedPtr<FString, ESPMode::ThreadSafe>& DebugName() const { return MNonFrequentData.Read().DebugName(); }
+	void SetDebugName(const TSharedPtr<FString, ESPMode::ThreadSafe>& InDebugName)
 	{
 		MNonFrequentData.Modify(true,MDirtyFlags,Proxy,[&InDebugName](auto& Data){ Data.SetDebugName(InDebugName);});
 	}
@@ -2011,7 +2027,7 @@ public:
 	}
 
 	void SetIgnoreAnalyticCollisionsImp(FImplicitObject* Implicit, bool bIgnoreAnalyticCollisions);
-	void SetIgnoreAnalyticCollisions(bool bIgnoreAnalyticCollisions);
+	CHAOS_API void SetIgnoreAnalyticCollisions(bool bIgnoreAnalyticCollisions);
 
 	TSerializablePtr<FImplicitObject> Geometry() const { return MakeSerializable(MNonFrequentData.Read().Geometry()); }
 
@@ -2037,6 +2053,27 @@ public:
 		MNonFrequentData.Modify(true,MDirtyFlags,Proxy,[Idx](auto& Data){ Data.SetSpatialIdx(Idx);});
 	}
 
+	void SetResimType(EResimType ResimType)
+	{
+		MNonFrequentData.Modify(true, MDirtyFlags, Proxy, [ResimType](auto& Data) { Data.SetResimType(ResimType); });
+	}
+
+	EResimType ResimType() const
+	{
+		return MNonFrequentData.Read().ResimType();
+	}
+
+	void SetEnabledDuringResim(bool bEnabledDuringResim)
+	{
+		MNonFrequentData.Modify(true, MDirtyFlags, Proxy, [bEnabledDuringResim](auto& Data) { Data.SetEnabledDuringResim(bEnabledDuringResim); });
+	}
+
+	bool EnabledDuringResim() const
+	{
+		return MNonFrequentData.Read().EnabledDuringResim();
+	}
+
+
 	void SetNonFrequentData(const FParticleNonFrequentData& InData)
 	{
 		MNonFrequentData.Write(InData,true,MDirtyFlags,Proxy);
@@ -2052,12 +2089,12 @@ public:
 		return MDirtyFlags.IsClean();
 	}
 
-	bool IsDirty(const EParticleFlags CheckBits) const
+	bool IsDirty(const EChaosPropertyFlags CheckBits) const
 	{
 		return MDirtyFlags.IsDirty(CheckBits);
 	}
 
-	const FParticleDirtyFlags& DirtyFlags() const
+	const FDirtyChaosPropertyFlags& DirtyFlags() const
 	{
 		return MDirtyFlags;
 	}
@@ -2088,7 +2125,7 @@ public:
 		return nullptr;
 	}
 
-	void SyncRemoteData(FDirtyPropertiesManager& Manager, int32 DataIdx, FParticleDirtyData& RemoteData, const TArray<int32>& ShapeDataIndices, FShapeDirtyData* ShapesRemoteData) const
+	void SyncRemoteData(FDirtyPropertiesManager& Manager, int32 DataIdx, FDirtyChaosProperties& RemoteData, const TArray<int32>& ShapeDataIndices, FShapeDirtyData* ShapesRemoteData) const
 	{
 		RemoteData.SetParticleBufferType(Type);
 		RemoteData.SetFlags(MDirtyFlags);
@@ -2172,8 +2209,8 @@ protected:
 	}
 private:
 
-	TParticleProperty<FParticlePositionRotation, EParticleProperty::XR> MXR;
-	TParticleProperty<FParticleNonFrequentData,EParticleProperty::NonFrequentData> MNonFrequentData;
+	TChaosProperty<FParticlePositionRotation, EChaosProperty::XR> MXR;
+	TChaosProperty<FParticleNonFrequentData,EChaosProperty::NonFrequentData> MNonFrequentData;
 	void* MUserData;
 
 	FShapesArray MShapesArray;
@@ -2197,9 +2234,9 @@ private:
 protected:
 
 	EParticleType Type;
-	FParticleDirtyFlags MDirtyFlags;
+	FDirtyChaosPropertyFlags MDirtyFlags;
 
-	void MarkDirty(const EParticleFlags DirtyBits, bool bInvalidate = true);
+	void MarkDirty(const EChaosPropertyFlags DirtyBits, bool bInvalidate = true);
 
 	void UpdateShapesArray()
 	{
@@ -2207,13 +2244,13 @@ protected:
 		MapImplicitShapes();
 	}
 
-	virtual void SyncRemoteDataImp(FDirtyPropertiesManager& Manager, int32 DataIdx, const FParticleDirtyData& RemoteData) const
+	virtual void SyncRemoteDataImp(FDirtyPropertiesManager& Manager, int32 DataIdx, const FDirtyChaosProperties& RemoteData) const
 	{
 		MXR.SyncRemote(Manager, DataIdx, RemoteData);
 		MNonFrequentData.SyncRemote(Manager, DataIdx, RemoteData);
 	}
 
-	void MapImplicitShapes();
+	CHAOS_API void MapImplicitShapes();
 };
 
 template <typename T, int d>
@@ -2301,11 +2338,11 @@ public:
 
 
 private:
-	TParticleProperty<FParticleVelocities, EParticleProperty::Velocities> MVelocities;
-	TParticleProperty<FKinematicTarget, EParticleProperty::KinematicTarget> MKinematicTarget;
+	TChaosProperty<FParticleVelocities, EChaosProperty::Velocities> MVelocities;
+	TChaosProperty<FKinematicTarget, EChaosProperty::KinematicTarget> MKinematicTarget;
 
 protected:
-	virtual void SyncRemoteDataImp(FDirtyPropertiesManager& Manager, int32 DataIdx, const FParticleDirtyData& RemoteData) const
+	virtual void SyncRemoteDataImp(FDirtyPropertiesManager& Manager, int32 DataIdx, const FDirtyChaosProperties& RemoteData) const
 	{
 		Base::SyncRemoteDataImp(Manager, DataIdx, RemoteData);
 		MVelocities.SyncRemote(Manager, DataIdx, RemoteData);
@@ -2396,6 +2433,13 @@ public:
 		MMiscData.Modify(true, MDirtyFlags, Proxy, [bInCCDEnabled](auto& Data) {Data.SetCCDEnabled(bInCCDEnabled); });
 	}
 
+	bool Disabled() const { return MMiscData.Read().Disabled(); }
+
+	void SetDisabled(bool bInDisabled)
+	{
+		MMiscData.Modify(true, MDirtyFlags, Proxy, [bInDisabled](auto& Data) {Data.SetDisabled(bInDisabled); });
+	}
+
 	//todo: remove this
 	bool IsInitialized() const { return MInitialized; }
 	void SetInitialized(const bool InInitialized)
@@ -2403,33 +2447,21 @@ public:
 		this->MInitialized = InInitialized;
 	}
 
-	void SetResimType(EResimType ResimType)
-	{
-		MMiscData.Modify(true,MDirtyFlags,Proxy,[ResimType](auto& Data){ Data.SetResimType(ResimType);});
+	const TVector<T, d>& Acceleration() const { return MDynamics.Read().Acceleration(); }
+	void SetAcceleration(const FVec3& Acceleration, bool bInvalidate = true)
+	{ 
+		MDynamics.Modify(bInvalidate, MDirtyFlags, Proxy, [&Acceleration](auto& Data) { Data.SetAcceleration(Acceleration); });
 	}
 
-	EResimType ResimType() const
-	{
-		return MMiscData.Read().ResimType();
-	}
-
-	const TVector<T, d>& F() const { return MDynamics.Read().F(); }
 	void AddForce(const TVector<T, d>& InF, bool bInvalidate = true)
 	{
-		if (bInvalidate)
-		{
-			SetObjectState(EObjectStateType::Dynamic, true);
-		}
-		MDynamics.Modify(bInvalidate,MDirtyFlags,Proxy,[&InF](auto& Data){ Data.SetF(InF + Data.F());});
+		FReal InvMass = InvM();
+		MDynamics.Modify(bInvalidate,MDirtyFlags,Proxy,[&InF, InvMass](auto& Data){ Data.SetAcceleration(InF * InvMass + Data.Acceleration());});
 	}
 
 	void ClearForces(bool bInvalidate = true)
 	{
-		if (bInvalidate)
-		{
-			SetObjectState(EObjectStateType::Dynamic, true);
-		}
-		MDynamics.Modify(bInvalidate, MDirtyFlags, Proxy, [](auto& Data) { Data.SetF(FVec3(0)); });
+		MDynamics.Modify(bInvalidate, MDirtyFlags, Proxy, [](auto& Data) { Data.SetAcceleration(FVec3(0)); });
 	}
 
 	void ApplyDynamicsWeight(const FReal DynamicsWeight)
@@ -2438,49 +2470,34 @@ public:
 		{
 			MDynamics.Modify(false, MDirtyFlags, Proxy, [DynamicsWeight](auto& Data)
 			{
-				Data.SetF(Data.F() * DynamicsWeight);
-				Data.SetTorque(Data.Torque() * DynamicsWeight);
+				Data.SetAcceleration(Data.Acceleration() * DynamicsWeight);
+				Data.SetAngularAcceleration(Data.AngularAcceleration() * DynamicsWeight);
 			});
 		}
 	}
 
-	const TVector<T, d>& Torque() const { return MDynamics.Read().Torque(); }
-	void AddTorque(const TVector<T, d>& InTorque, bool bInvalidate=true)
+	const TVector<T, d>& AngularAcceleration() const { return MDynamics.Read().AngularAcceleration(); }
+	void SetAngularAcceleration(const TVector<T, d>& InTorque, bool bInvalidate = true)
 	{
-		if (bInvalidate)
-		{
-			SetObjectState(EObjectStateType::Dynamic, true);
-		}
-		MDynamics.Modify(bInvalidate,MDirtyFlags,Proxy,[&InTorque](auto& Data){ Data.SetTorque(InTorque + Data.Torque());});
+		MDynamics.Modify(bInvalidate, MDirtyFlags, Proxy, [&InTorque](auto& Data) { Data.SetAngularAcceleration(InTorque);});
 	}
+	CHAOS_API void AddTorque(const TVector<T, d>& InTorque, bool bInvalidate=true);
 
 	void ClearTorques(bool bInvalidate = true)
 	{
-		if (bInvalidate)
-		{
-			SetObjectState(EObjectStateType::Dynamic, true);
-		}
-		MDynamics.Modify(bInvalidate, MDirtyFlags, Proxy, [](auto& Data) { Data.SetTorque(FVec3(0)); });
+		MDynamics.Modify(bInvalidate, MDirtyFlags, Proxy, [](auto& Data) { Data.SetAngularAcceleration(FVec3(0)); });
 	}
 
-	const TVector<T, d>& LinearImpulse() const { return MDynamics.Read().LinearImpulse(); }
-	void SetLinearImpulse(const TVector<T, d>& InLinearImpulse, bool bInvalidate = true)
+	const TVector<T, d>& LinearImpulseVelocity() const { return MDynamics.Read().LinearImpulseVelocity(); }
+	void SetLinearImpulseVelocity(const TVector<T, d>& InLinearImpulseVelocity, bool bInvalidate = true)
 	{
-		if (bInvalidate)
-		{
-			SetObjectState(EObjectStateType::Dynamic, true);
-		}
-		MDynamics.Modify(bInvalidate,MDirtyFlags,Proxy,[&InLinearImpulse](auto& Data){ Data.SetLinearImpulse(InLinearImpulse);});
+		MDynamics.Modify(bInvalidate,MDirtyFlags,Proxy,[&InLinearImpulseVelocity](auto& Data){ Data.SetLinearImpulseVelocity(InLinearImpulseVelocity);});
 	}
 
-	const TVector<T, d>& AngularImpulse() const { return MDynamics.Read().AngularImpulse(); }
-	void SetAngularImpulse(const TVector<T, d>& InAngularImpulse, bool bInvalidate = true)
+	const TVector<T, d>& AngularImpulseVelocity() const { return MDynamics.Read().AngularImpulseVelocity(); }
+	void SetAngularImpulseVelocity(const TVector<T, d>& InAngularImpulseVelocity, bool bInvalidate = true)
 	{
-		if (bInvalidate)
-		{
-			SetObjectState(EObjectStateType::Dynamic, true);
-		}
-		MDynamics.Modify(bInvalidate,MDirtyFlags,Proxy,[&InAngularImpulse](auto& Data){ Data.SetAngularImpulse(InAngularImpulse);});
+		MDynamics.Modify(bInvalidate,MDirtyFlags,Proxy,[&InAngularImpulseVelocity](auto& Data){ Data.SetAngularImpulseVelocity(InAngularImpulseVelocity);});
 	}
 
 	void SetDynamics(const FParticleDynamics& InDynamics,bool bInvalidate = true)
@@ -2551,6 +2568,18 @@ public:
 		MMiscData.Modify(true,MDirtyFlags,Proxy,[&InAngularEtherDrag](auto& Data){ Data.SetAngularEtherDrag(InAngularEtherDrag);});
 	}
 
+	T MaxLinearSpeedSq() const { return MMiscData.Read().MaxLinearSpeedSq(); }
+	void SetMaxLinearSpeedSq(const T& InLinearSpeed)
+	{
+		MMiscData.Modify(true,MDirtyFlags,Proxy,[&InLinearSpeed](auto& Data){ Data.SetMaxLinearSpeedSq(InLinearSpeed);});
+	}
+
+	T MaxAngularSpeedSq() const { return MMiscData.Read().MaxAngularSpeedSq(); }
+	void SetMaxAngularSpeedSq(const T& InAngularSpeed)
+	{
+		MMiscData.Modify(true,MDirtyFlags,Proxy,[&InAngularSpeed](auto& Data){ Data.SetMaxAngularSpeedSq(InAngularSpeed);});
+	}
+
 	int32 Island() const { return MIsland; }
 	// TODO(stett): Make the setter private. It is public right now to provide access to proxies.
 	void SetIsland(const int32 InIsland)
@@ -2566,7 +2595,7 @@ public:
 	}
 
 	EObjectStateType ObjectState() const { return MMiscData.Read().ObjectState(); }
-	void SetObjectState(const EObjectStateType InState, bool bAllowEvents = false, bool bInvalidate=true)
+	void SetObjectState(const EObjectStateType InState, bool bAllowEvents=false, bool bInvalidate=true)
 	{
 		if (bAllowEvents)
 		{
@@ -2592,11 +2621,26 @@ public:
 			// have been buffered. If another force is added after the object is put to sleep, the old forces
 			// will remain and the new ones will accumulate and re-dirty the dynamic properties which will
 			// wake the body.
-			MDirtyFlags.MarkClean(ParticlePropToFlag(EParticleProperty::Dynamics));
+			MDirtyFlags.MarkClean(ChaosPropertyToFlag(EChaosProperty::Dynamics));
 		}
 
 		MMiscData.Modify(bInvalidate,MDirtyFlags,Proxy,[&InState](auto& Data){ Data.SetObjectState(InState);});
 
+	}
+
+	void SetSleepType(ESleepType SleepType, bool bAllowEvents=false, bool bInvalidate=true)
+	{
+		MMiscData.Modify(true,MDirtyFlags,Proxy,[SleepType](auto& Data){ Data.SetSleepType(SleepType);});
+
+		if (SleepType == ESleepType::NeverSleep && ObjectState() == EObjectStateType::Sleeping)
+		{
+			SetObjectState(EObjectStateType::Dynamic, bAllowEvents, bInvalidate);
+		}
+	}
+
+	ESleepType SleepType() const
+	{
+		return MMiscData.Read().SleepType();
 	}
 
 	void ClearEvents() { MWakeEvent = EWakeEventEntry::None; }
@@ -2613,9 +2657,9 @@ public:
 	}
 
 private:
-	TParticleProperty<FParticleMassProps,EParticleProperty::MassProps> MMassProps;
-	TParticleProperty<FParticleDynamics, EParticleProperty::Dynamics> MDynamics;
-	TParticleProperty<FParticleDynamicMisc,EParticleProperty::DynamicMisc> MMiscData;
+	TChaosProperty<FParticleMassProps,EChaosProperty::MassProps> MMassProps;
+	TChaosProperty<FParticleDynamics, EChaosProperty::Dynamics> MDynamics;
+	TChaosProperty<FParticleDynamicMisc,EChaosProperty::DynamicMisc> MMiscData;
 
 	int32 MIsland;
 	bool MToBeRemovedOnFracture;
@@ -2623,7 +2667,7 @@ private:
 	EWakeEventEntry MWakeEvent;
 
 protected:
-	virtual void SyncRemoteDataImp(FDirtyPropertiesManager& Manager, int32 DataIdx, const FParticleDirtyData& RemoteData) const
+	virtual void SyncRemoteDataImp(FDirtyPropertiesManager& Manager, int32 DataIdx, const FDirtyChaosProperties& RemoteData) const
 	{
 		Base::SyncRemoteDataImp(Manager,DataIdx,RemoteData);
 		MMassProps.SyncRemote(Manager,DataIdx,RemoteData);
@@ -2703,28 +2747,12 @@ const TPBDRigidParticle<T, d>* TGeometryParticle<T, d>::CastToRigidParticle()  c
 template <typename T, int d>
 void TGeometryParticle<T, d>::SetX(const TVector<T, d>& InX, bool bInvalidate)
 {
-	if (bInvalidate)
-	{
-		TPBDRigidParticle<T, d>* Dyn = CastToRigidParticle();
-		if (Dyn && Dyn->ObjectState() == EObjectStateType::Sleeping)
-		{
-			Dyn->SetObjectState(EObjectStateType::Dynamic, true);
-		}
-	}
 	MXR.Modify(bInvalidate, MDirtyFlags, Proxy, [&InX](auto& Data) { Data.SetX(InX); });
 }
 
 template <typename T, int d>
 void TGeometryParticle<T, d>::SetR(const TRotation<T, d>& InR, bool bInvalidate)
 {
-	if (bInvalidate)
-	{
-		TPBDRigidParticle<T, d>* Dyn = CastToRigidParticle();
-		if (Dyn && Dyn->ObjectState() == EObjectStateType::Sleeping)
-		{
-			Dyn->SetObjectState(EObjectStateType::Dynamic, true);
-		}
-	}
 	MXR.Modify(bInvalidate, MDirtyFlags, Proxy, [&InR](auto& Data) { Data.SetR(InR); });
 }
 
@@ -2745,28 +2773,12 @@ EObjectStateType TKinematicGeometryParticle<T, d>::ObjectState() const
 template <typename T, int d>
 void TKinematicGeometryParticle<T, d>::SetV(const TVector<T, d>& InV, bool bInvalidate)
 {
-	if (bInvalidate)
-	{
-		TPBDRigidParticle<T, d>* Dyn = CastToRigidParticle();
-		if (Dyn && Dyn->ObjectState() == EObjectStateType::Sleeping && !InV.IsNearlyZero())
-		{
-			Dyn->SetObjectState(EObjectStateType::Dynamic, true);
-		}
-	}
 	MVelocities.Modify(bInvalidate, MDirtyFlags, Proxy, [&InV](auto& Data) { Data.SetV(InV); });
 }
 
 template <typename T, int d>
 void TKinematicGeometryParticle<T, d>::SetW(const TVector<T, d>& InW, bool bInvalidate)
 {
-	if (bInvalidate)
-	{
-		TPBDRigidParticle<T, d>* Dyn = CastToRigidParticle();
-		if (Dyn && Dyn->ObjectState() == EObjectStateType::Sleeping && !InW.IsNearlyZero())
-		{
-			Dyn->SetObjectState(EObjectStateType::Dynamic, true);
-		}
-	}
 	MVelocities.Modify(bInvalidate, MDirtyFlags, Proxy, [&InW](auto& Data) { Data.SetW(InW); });
 }
 
@@ -2788,7 +2800,7 @@ TGeometryParticle<T, d>* TGeometryParticle<T, d>::SerializationFactory(FChaosArc
 }
 
 template <>
-CHAOS_API void Chaos::TGeometryParticle<FReal, 3>::MarkDirty(const EParticleFlags DirtyBits, bool bInvalidate);
+CHAOS_API void Chaos::TGeometryParticle<FReal, 3>::MarkDirty(const EChaosPropertyFlags DirtyBits, bool bInvalidate);
 
 FORCEINLINE_DEBUGGABLE FAccelerationStructureHandle::FAccelerationStructureHandle(FGeometryParticleHandle* InHandle)
 	: ExternalGeometryParticle(InHandle->GTGeometryParticle())
@@ -2923,15 +2935,5 @@ inline void SetObjectStateHelper(IPhysicsProxyBase& Proxy, FPBDRigidParticle& Ri
 
 CHAOS_API void SetObjectStateHelper(IPhysicsProxyBase& Proxy, FPBDRigidParticleHandle& Rigid, EObjectStateType InState, bool bAllowEvents = false, bool bInvalidate = true);
 
-
-#if PLATFORM_MAC || PLATFORM_LINUX
-extern template class CHAOS_API TGeometryParticle<FReal, 3>;
-extern template class CHAOS_API TKinematicGeometryParticle<FReal, 3>;
-extern template class CHAOS_API TPBDRigidParticle<FReal, 3>;
-#else
-extern template class TGeometryParticle<FReal, 3>;
-extern template class TKinematicGeometryParticle<FReal, 3>;
-extern template class TPBDRigidParticle<FReal, 3>;
-#endif
 } // namespace Chaos
 

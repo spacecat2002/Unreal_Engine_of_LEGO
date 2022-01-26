@@ -16,6 +16,8 @@
  */
 struct FVector2D 
 {
+	using FReal = float;
+	
 	/** Vector's X component. */
 	float X;
 

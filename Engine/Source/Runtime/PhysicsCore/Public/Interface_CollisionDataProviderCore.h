@@ -23,8 +23,10 @@ struct FTriIndices
 // Description of triangle mesh collision data necessary for cooking physics data
 struct FTriMeshCollisionData
 {
+	using FVector3f = FVector;
+	
 	/** Array of vertices included in the triangle mesh */
-	TArray<FVector> Vertices;
+	TArray<FVector3f> Vertices;
 
 	/** Array of indices defining the ordering of triangles in the mesh */
 	TArray<FTriIndices> Indices;

@@ -32,9 +32,19 @@ public :
 	FORCEINLINE FSolverBodyContainer& GetBodyContainer() { return *BodyContainer.Get(); };
 
 	/**
-	 * @brief The number of constraint containers registsred
+	 * @brief The number of constraint containers registered
 	*/
-	int32 NumConstraintContainerIds() const { return ConstraintDatas.Num(); }
+	int32 NumContainerIds() const { return ConstraintCounts.Num(); }
+
+	/**
+	* @brief Resize the constraint count array with a fixed number of containers
+	* @param NumContainers Number of containers extracted from the constraint rules
+	*/
+	void ResizeConstraintsCounts(const int32 NumContainers);
+
+	/** Number of constraints given a container id */
+	const int32& ConstraintCount(const int32 ContainerId) const;
+	int32& ConstraintCount(const int32 ContainerId);
 
 	/** Accessors of the constraint container */
 	template<typename ContainerType> const ContainerType& GetConstraintContainer(const int32 ContainerId) const;
@@ -52,6 +62,13 @@ public :
 	template<typename ConstraintType> const ConstraintType* GetConstraintHandle(const int32 ContainerId, const int32 ConstraintIndex) const;
 	template<typename ConstraintType> ConstraintType* GetConstraintHandle(const int32 ContainerId, const int32 ConstraintIndex);
 
+	/** Accessors of the current constraint index */
+	const int32& GetConstraintIndex(const int32 ContainerId) const { return ConstraintDatas[ContainerId].ConstraintIndex; };
+	int32& GetConstraintIndex(const int32 ContainerId) { return ConstraintDatas[ContainerId].ConstraintIndex; };
+
+	/** Init the current constraint index */
+	void InitConstraintIndex(const int32 ContainerId) { ConstraintDatas[ContainerId].ConstraintIndex = 0; };
+
 	/** Add a constraint container to the solver island given a container id
 	* @param ContainerId Constraints container id from which the solver constraint datas is being built
 	*/
@@ -68,6 +85,9 @@ protected:
 
 		/** Constraint handles that will be used for legacy solver */
 		TArray<FConstraintHandle*> ConstraintHandles;
+
+		/** Current constraint index in the constraint container */
+		int32 ConstraintIndex;
 	};
 
 	/** Solver body container of that datas */
@@ -78,6 +98,9 @@ protected:
 	
 	/** List of constraint datas (collision, joints...) that will be used to solve constraints */
 	TSparseArray<FConstraintDatas> ConstraintDatas;
+
+	/** Number of constraints per container id*/
+	TArray<int32> ConstraintCounts;
 
 	/** Island index in case these datas belong to an island */
 	int32 IslandIndex;
@@ -125,6 +148,22 @@ template<typename ConstraintType>
 FORCEINLINE ConstraintType* FPBDIslandSolverData::GetConstraintHandle(const int32 ContainerId, const int32 ConstraintIndex)
 {
 	return static_cast<ConstraintType*>(ConstraintDatas[ContainerId].ConstraintHandles[ConstraintIndex]);
+};
+	
+FORCEINLINE const int32& FPBDIslandSolverData::ConstraintCount(const int32 ContainerId) const
+{
+	return ConstraintCounts[ContainerId];
+};
+	
+FORCEINLINE int32& FPBDIslandSolverData::ConstraintCount(const int32 ContainerId)
+{
+	return ConstraintCounts[ContainerId];
+};
+
+FORCEINLINE void FPBDIslandSolverData::ResizeConstraintsCounts(const int32 NumContainers)
+{
+	ConstraintCounts.SetNum(NumContainers, false);
+	FMemory::Memzero(ConstraintCounts.GetData(), ConstraintCounts.Num() * sizeof(int32));
 };
 	
 template<typename ConstraintType>

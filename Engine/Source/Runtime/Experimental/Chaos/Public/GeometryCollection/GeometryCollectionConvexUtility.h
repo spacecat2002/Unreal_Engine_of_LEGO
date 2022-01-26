@@ -44,3 +44,4 @@ public:
 	static void SetDefaults(FGeometryCollection* GeometryCollection, FName Group, uint32 StartSize, uint32 NumElements);
 
 };
+

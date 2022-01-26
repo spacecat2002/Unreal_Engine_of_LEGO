@@ -48,6 +48,26 @@ namespace Chaos
 			return SolverBodies[BodyIndex];
 		}
 
+		inline FConstraintSolverBody& Body0()
+		{
+			return SolverBodies[0];
+		}
+
+		inline const FConstraintSolverBody& Body0() const
+		{
+			return SolverBodies[0];
+		}
+
+		inline FConstraintSolverBody& Body1()
+		{
+			return SolverBodies[1];
+		}
+
+		inline const FConstraintSolverBody& Body1() const
+		{
+			return SolverBodies[1];
+		}
+
 		inline const FVec3& X(int BodyIndex) const
 		{
 			return Body(BodyIndex).X();
@@ -58,14 +78,18 @@ namespace Chaos
 			return Body(BodyIndex).R();
 		}
 
-		inline const FVec3& P(int BodyIndex) const
+		inline const FVec3 P(int BodyIndex) const
 		{
-			return Body(BodyIndex).P();
+			// NOTE: Joints always use the latest post-correction position and rotation. This makes the joint error calculations non-linear and more robust against explosion
+			// but adds a cost because we need to apply the latest correction each time we request the latest transform
+			return Body(BodyIndex).CorrectedP();
 		}
 
-		inline const FRotation3& Q(int BodyIndex) const
+		inline const FRotation3 Q(int BodyIndex) const
 		{
-			return Body(BodyIndex).Q();
+			// NOTE: Joints always use the latest post-correction position and rotation. This makes the joint error calculations non-linear and more robust against explosion
+			// but adds a cost because we need to apply the latest correction each time we request the latest transform
+			return Body(BodyIndex).CorrectedQ();
 		}
 
 		inline const FVec3& V(int BodyIndex) const
@@ -80,12 +104,12 @@ namespace Chaos
 
 		inline FReal InvM(int32 BodyIndex) const
 		{
-			return Body(BodyIndex).InvM();
+			return ConditionedInvMs[BodyIndex];
 		}
 
 		inline FMatrix33 InvI(int32 BodyIndex) const
 		{
-			return Body(BodyIndex).InvI();
+			return ConditionedInvIs[BodyIndex];
 		}
 
 		inline const FVec3& GetNetLinearImpulse() const
@@ -680,6 +704,10 @@ namespace Chaos
 		// XPBD Initial iteration world-space body state
 		FVec3 InitConnectorXs[MaxConstrainedBodies];		// World-space joint connector positions
 		FRotation3 InitConnectorRs[MaxConstrainedBodies];	// World-space joint connector rotations
+
+		// Conditioned InvM and InvI
+		FReal ConditionedInvMs[MaxConstrainedBodies];
+		FMatrix33 ConditionedInvIs[MaxConstrainedBodies];
 
 		// Accumulated Impulse and AngularImpulse (Impulse * Dt since they are mass multiplied position corrections)
 		FVec3 NetLinearImpulse;

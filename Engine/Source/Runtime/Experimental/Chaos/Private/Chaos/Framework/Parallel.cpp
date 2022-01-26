@@ -8,25 +8,34 @@ using namespace Chaos;
 
 namespace Chaos
 {
+	CHAOS_API int32 GSingleThreadedPhysics = 0;
+	
 #if !UE_BUILD_SHIPPING
-	bool bDisablePhysicsParallelFor = false;
+	CHAOS_API bool bDisablePhysicsParallelFor = false;
 	CHAOS_API bool bDisableParticleParallelFor = false;
 	CHAOS_API bool bDisableCollisionParallelFor = false;
 
 	FAutoConsoleVariableRef CVarDisablePhysicsParallelFor(TEXT("p.Chaos.DisablePhysicsParallelFor"), bDisablePhysicsParallelFor, TEXT("Disable parallel execution in Chaos Evolution"));
 	FAutoConsoleVariableRef CVarDisableParticleParallelFor(TEXT("p.Chaos.DisableParticleParallelFor"), bDisableParticleParallelFor, TEXT("Disable parallel execution for Chaos Particles (Collisions, "));
 	FAutoConsoleVariableRef CVarDisableCollisionParallelFor(TEXT("p.Chaos.DisableCollisionParallelFor"), bDisableCollisionParallelFor, TEXT("Disable parallel execution for Chaos Collisions (also disabled by DisableParticleParallelFor)"));
-#else
-	const bool bDisablePhysicsParallelFor = false;
 #endif
 }
 
 void Chaos::PhysicsParallelFor(int32 InNum, TFunctionRef<void(int32)> InCallable, bool bForceSingleThreaded)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(Chaos_PhysicsParallelFor);
 	using namespace Chaos;
+
 	// Passthrough for now, except with global flag to disable parallel
-	
-	auto PassThrough = [InCallable, bIsInPhysicsSimContext = IsInPhysicsThreadContext(), bIsInGameThreadContext = IsInGameThreadContext()](int32 Idx)
+#if PHYSICS_THREAD_CONTEXT
+	const bool bIsInPhysicsSimContext = IsInPhysicsThreadContext();
+	const bool bIsInGameThreadContext = IsInGameThreadContext();
+#else
+	const bool bIsInPhysicsSimContext = false;
+	const bool bIsInGameThreadContext = false;
+#endif
+
+	auto PassThrough = [InCallable, bIsInPhysicsSimContext, bIsInGameThreadContext](int32 Idx)
 	{
 #if PHYSICS_THREAD_CONTEXT
 		FPhysicsThreadContextScope PTScope(bIsInPhysicsSimContext);
@@ -34,7 +43,7 @@ void Chaos::PhysicsParallelFor(int32 InNum, TFunctionRef<void(int32)> InCallable
 #endif
 		InCallable(Idx);
 	};
-	::ParallelFor(InNum, PassThrough, bDisablePhysicsParallelFor || bForceSingleThreaded);
+	::ParallelFor(InNum, PassThrough, !!GSingleThreadedPhysics || bDisablePhysicsParallelFor || bForceSingleThreaded);
 }
 
 //class FRecursiveDivideTask

@@ -1,5 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+#if WITH_CHAOS
 #include "Physics/Experimental/PhysScene_Chaos.h"
 
 
@@ -31,11 +32,12 @@
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "PhysicsProxy/SkeletalMeshPhysicsProxy.h"
 #include "PhysicsProxy/StaticMeshPhysicsProxy.h"
-#include "Chaos/Real.h"
+#include "PhysicsProxy/JointConstraintProxy.h"
 #include "Chaos/UniformGrid.h"
 #include "Chaos/BoundingVolume.h"
 #include "Chaos/Framework/DebugSubstep.h"
 #include "Chaos/PBDSpringConstraints.h"
+#include "Chaos/PBDJointConstraints.h"
 #include "Chaos/PerParticleGravity.h"
 #include "PBDRigidActiveParticlesBuffer.h"
 #include "Chaos/GeometryParticlesfwd.h"
@@ -44,7 +46,7 @@
 #include "EventManager.h"
 #include "RewindData.h"
 #include "Chaos/PhysicsSolverBaseImpl.h"
-
+#include "Chaos/Defines.h"
 
 #if !UE_BUILD_SHIPPING
 #include "Engine/World.h"
@@ -100,15 +102,16 @@ public:
 
 	}
 
-	virtual void Box(const Chaos::FAABB3& InBox, const Chaos::FVec3& InLinearColor, Chaos::FReal InThickness) override
+	virtual void Box(const Chaos::FAABB3& InBox, const Chaos::FVec3& InLinearColor, float InThickness) override
 	{
-		DrawDebugBox(World, InBox.Center(), InBox.Extents(), FQuat::Identity, FLinearColor(InLinearColor).ToFColor(true), false, -1.0f, SDPG_Foreground, InThickness);
+		// LWC_TODO: Remove FVector cast here.
+		DrawDebugBox(World, InBox.Center(), InBox.Extents(), FQuat::Identity, FLinearColor(FVector(InLinearColor)).ToFColor(true), false, -1.0f, SDPG_Foreground, InThickness);
 	}
 
 
-	virtual void Line(const Chaos::FVec3& InBegin, const Chaos::FVec3& InEnd, const Chaos::FVec3& InLinearColor, Chaos::FReal InThickness) override
+	virtual void Line(const Chaos::FVec3& InBegin, const Chaos::FVec3& InEnd, const Chaos::FVec3& InLinearColor, float InThickness) override
 	{
-		DrawDebugLine(World, InBegin, InEnd, FLinearColor(InLinearColor).ToFColor(true), false, -1.0f, SDPG_Foreground, InThickness);
+		DrawDebugLine(World, InBegin, InEnd, FLinearColor(FVector(InLinearColor)).ToFColor(true), false, -1.0f, SDPG_Foreground, InThickness);
 	}
 
 private:
@@ -366,17 +369,21 @@ struct FPhysScenePendingComponentTransform_Chaos
 };
 
 FPhysScene_Chaos::FPhysScene_Chaos(AActor* InSolverActor
-#if CHAOS_CHECKED
+#if CHAOS_DEBUG_NAME
 	, const FName& DebugName
 #endif
 )
 	: Super(InSolverActor ? InSolverActor->GetWorld() : nullptr
-#if CHAOS_CHECKED
+		, UPhysicsSettings::Get()->bTickPhysicsAsync ? UPhysicsSettings::Get()->AsyncFixedTimeStepSize : -1
+#if CHAOS_DEBUG_NAME
 		, DebugName
 #endif
 	)
 	, PhysicsReplication(nullptr)
 	, SolverActor(InSolverActor)
+#if WITH_CHAOS
+	, LastEventDispatchTime(Chaos::FReal(-1))
+#endif
 #if WITH_EDITOR
 	, SingleStepCounter(0)
 #endif
@@ -385,7 +392,7 @@ FPhysScene_Chaos::FPhysScene_Chaos(AActor* InSolverActor
 #endif
 {
 #if WITH_CHAOS
-	LLM_SCOPE(ELLMTag::Chaos);
+	LLM_SCOPE(ELLMTag::ChaosScene);
 
 	PhysicsProxyToComponentMap.Reset();
 	ComponentToPhysicsProxyMap.Reset();
@@ -593,21 +600,26 @@ void FPhysScene_Chaos::RemoveObject(FSingleParticlePhysicsProxy* InObject)
 
 void FPhysScene_Chaos::RemoveObject(FGeometryCollectionPhysicsProxy* InObject)
 {
+#if WITH_CHAOS
 	Chaos::FPhysicsSolver* Solver = InObject->GetSolver<Chaos::FPhysicsSolver>();
 
 	for (TUniquePtr<Chaos::TGeometryParticle<Chaos::FReal, 3>>& GTParticleUnique : InObject->GetExternalParticles())
 	{
 		Chaos::TGeometryParticle<Chaos::FReal, 3>* GTParticle = GTParticleUnique.Get();
-		RemoveActorFromAccelerationStructure(GTParticle);
+		RemoveActorFromAccelerationStructureImp(GTParticle);
 		if(Solver)
 		{
 			Solver->UpdateParticleInAccelerationStructure_External(GTParticle, /*bDelete=*/true); // ensures deletion will be applied to structures passed from physics thread.
 		}
 	}
 
-	Solver->UnregisterObject(InObject);
+	if(Solver)
+	{
+		Solver->UnregisterObject(InObject);
+	}
 
 	RemoveFromComponentMaps(InObject);
+#endif
 }
 
 FPhysicsReplication* FPhysScene_Chaos::GetPhysicsReplication()
@@ -632,24 +644,23 @@ void FPhysScene_Chaos::AddReferencedObjects(FReferenceCollector& Collector)
 #endif
 }
 
-static void SetCollisionInfoFromComp(FRigidBodyCollisionInfo& Info, UPrimitiveComponent* Comp)
+FBodyInstance* FPhysScene_Chaos::GetBodyInstanceFromProxy(const IPhysicsProxyBase* PhysicsProxy) const
 {
-	if (Comp)
+	FBodyInstance* BodyInstance = nullptr;
+	if (PhysicsProxy && PhysicsProxy->GetType() == EPhysicsProxyType::SingleParticleProxy)
 	{
-		Info.Component = Comp;
-		Info.Actor = Comp->GetOwner();
-
-		const FBodyInstance* const BodyInst = Comp->GetBodyInstance();
-		Info.BodyIndex = BodyInst ? BodyInst->InstanceBodyIndex : INDEX_NONE;
-		Info.BoneName = BodyInst && BodyInst->BodySetup.IsValid() ? BodyInst->BodySetup->BoneName : NAME_None;
+		const Chaos::FRigidBodyHandle_External& RigidBodyHandle = static_cast<const FSingleParticlePhysicsProxy*>(PhysicsProxy)->GetGameThreadAPI();
+		BodyInstance = FPhysicsUserData::Get<FBodyInstance>(RigidBodyHandle.UserData());
 	}
-	else
+	// found none, let's see if there's an owning component in the scene
+	if (BodyInstance == nullptr)
 	{
-		Info.Component = nullptr;
-		Info.Actor = nullptr;
-		Info.BodyIndex = INDEX_NONE;
-		Info.BoneName = NAME_None;
+		if (UPrimitiveComponent* const OwningComponent = GetOwningComponent<UPrimitiveComponent>(PhysicsProxy))
+		{
+			BodyInstance = OwningComponent->GetBodyInstance();
+		}
 	}
+	return BodyInstance;
 }
 
 FCollisionNotifyInfo& FPhysScene_Chaos::GetPendingCollisionForContactPair(const void* P0, const void* P1, bool& bNewEntry)
@@ -671,15 +682,18 @@ FCollisionNotifyInfo& FPhysScene_Chaos::GetPendingCollisionForContactPair(const 
 
 void FPhysScene_Chaos::HandleCollisionEvents(const Chaos::FCollisionEventData& Event)
 {
-
+#if WITH_CHAOS
 	ContactPairToPendingNotifyMap.Reset();
 
 	TMap<IPhysicsProxyBase*, TArray<int32>> const& PhysicsProxyToCollisionIndicesMap = Event.PhysicsProxyToCollisionIndices.PhysicsProxyToIndicesMap;
 	Chaos::FCollisionDataArray const& CollisionData = Event.CollisionData.AllCollisionsArray;
 	const Chaos::FReal MinDeltaVelocityThreshold = UPhysicsSettings::Get()->MinDeltaVelocityForHitEvents;
 	int32 NumCollisions = CollisionData.Num();
-	if (NumCollisions > 0)
+
+	if (NumCollisions > 0 && LastEventDispatchTime < Event.CollisionData.TimeCreated)
 	{
+		LastEventDispatchTime = Event.CollisionData.TimeCreated;
+
 		// look through all the components that someone is interested in, and see if they had a collision
 		// note that we only need to care about the interaction from the POV of the registered component,
 		// since if anyone wants notifications for the other component it hit, it's also registered and we'll get to that elsewhere in the list
@@ -701,7 +715,13 @@ void FPhysScene_Chaos::HandleCollisionEvents(const Chaos::FCollisionEventData& E
 							int32 CollisionIdx = Chaos::FEventManager::DecodeCollisionIndex(EncodedCollisionIdx, bSwapOrder);
 
 							Chaos::FCollidingData const& CollisionDataItem = CollisionData[CollisionIdx];
-							IPhysicsProxyBase* const PhysicsProxy1 = bSwapOrder ? CollisionDataItem.ParticleProxy : CollisionDataItem.LevelsetProxy;
+							IPhysicsProxyBase* const PhysicsProxy1 = bSwapOrder ? CollisionDataItem.Proxy1 : CollisionDataItem.Proxy2;
+
+							// Are the proxies pending destruction? If they are no longer tracked by the PhysScene, the proxy is deleted or pending deletion.
+							if (GetOwningComponent<UPrimitiveComponent>(PhysicsProxy0) == nullptr || GetOwningComponent<UPrimitiveComponent>(PhysicsProxy1) == nullptr)
+							{
+								continue;
+							}
 
 							bool bNewEntry = false;
 							FCollisionNotifyInfo& NotifyInfo = GetPendingCollisionForContactPair(PhysicsProxy0, PhysicsProxy1, bNewEntry);
@@ -714,21 +734,24 @@ void FPhysScene_Chaos::HandleCollisionEvents(const Chaos::FCollisionEventData& E
 
 							if (bNewEntry)
 							{
-								UPrimitiveComponent* const Comp1 = GetOwningComponent<UPrimitiveComponent>(PhysicsProxy1);
-
 								// fill in legacy contact data
 								NotifyInfo.bCallEvent0 = true;
 								// if Comp1 wants this event too, it will get its own pending collision entry, so we leave it false
 
-								SetCollisionInfoFromComp(NotifyInfo.Info0, Comp0);
-								SetCollisionInfoFromComp(NotifyInfo.Info1, Comp1);
+								NotifyInfo.Info0.SetFrom(GetBodyInstanceFromProxy(PhysicsProxy0));
+								NotifyInfo.Info1.SetFrom(GetBodyInstanceFromProxy(PhysicsProxy1));
 
 								FRigidBodyContactInfo& NewContact = NotifyInfo.RigidCollisionData.ContactInfos.AddZeroed_GetRef();
 								NewContact.ContactNormal = CollisionDataItem.Normal;
 								NewContact.ContactPosition = CollisionDataItem.Location;
 								NewContact.ContactPenetration = CollisionDataItem.PenetrationDepth;
 								NotifyInfo.RigidCollisionData.bIsVelocityDeltaUnderThreshold = CollisionDataItem.DeltaVelocity1.IsNearlyZero(MinDeltaVelocityThreshold) && CollisionDataItem.DeltaVelocity2.IsNearlyZero(MinDeltaVelocityThreshold);
-								// NewContact.PhysMaterial[1] UPhysicalMaterial required here
+								
+								Chaos::FChaosPhysicsMaterial* InternalMat1 = CollisionDataItem.Mat1.Get();
+								Chaos::FChaosPhysicsMaterial* InternalMat2 = CollisionDataItem.Mat2.Get();
+								
+								NewContact.PhysMaterial[0] = InternalMat1 ? FPhysicsUserData::Get<UPhysicalMaterial>(InternalMat1->UserData) : nullptr;
+								NewContact.PhysMaterial[1] = InternalMat2 ? FPhysicsUserData::Get<UPhysicalMaterial>(InternalMat2->UserData) : nullptr;
 							}
 						}
 					}
@@ -739,6 +762,7 @@ void FPhysScene_Chaos::HandleCollisionEvents(const Chaos::FCollisionEventData& E
 
 	// Tell the world and actors about the collisions
 	DispatchPendingCollisionNotifies();
+#endif
 }
 
 void FPhysScene_Chaos::DispatchPendingCollisionNotifies()
@@ -1132,7 +1156,7 @@ bool FPhysScene_Chaos::MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSk
 #endif
 
 	// If null, or pending kill, do nothing
-	if (InSkelComp != nullptr && !InSkelComp->IsPendingKill())
+	if (IsValid(InSkelComp))
 	{
 		// If we are already flagged, just need to update info
 		if (InSkelComp->DeferredKinematicUpdateIndex != INDEX_NONE)
@@ -1310,8 +1334,8 @@ void FPhysScene_Chaos::ProcessDeferredCreatePhysicsState()
 	// TODO explore parallelization of other physics initialization, not trivial and likely to break stuff.
 	for (UPrimitiveComponent* PrimitiveComponent : DeferredCreatePhysicsStateComponents)
 	{
-		const bool bPendingKill = PrimitiveComponent->GetOwner() && PrimitiveComponent->GetOwner()->IsPendingKill();
-		if ( !bPendingKill && PrimitiveComponent->ShouldCreatePhysicsState() && PrimitiveComponent->IsPhysicsStateCreated() == false)
+		const bool bPendingKill = PrimitiveComponent->GetOwner() && !IsValid(PrimitiveComponent->GetOwner());
+		if (!bPendingKill && PrimitiveComponent->ShouldCreatePhysicsState() && PrimitiveComponent->IsPhysicsStateCreated() == false)
 		{
 			PrimitiveComponent->OnCreatePhysicsState();
 			PrimitiveComponent->GlobalCreatePhysicsDelegate.Broadcast(PrimitiveComponent);
@@ -1603,51 +1627,85 @@ void FPhysScene_Chaos::OnSyncBodies(Chaos::FPhysicsSolverBase* Solver)
 	using namespace Chaos;
 	TArray<FPhysScenePendingComponentTransform_Chaos> PendingTransforms;
 	TSet<FGeometryCollectionPhysicsProxy*> GCProxies;
+
 	FPhysicsCommand::ExecuteWrite(this, [&Solver, &PendingTransforms](FPhysScene* PhysScene)
+	{
+		auto RigidLambda = [&PhysScene, &PendingTransforms](FSingleParticlePhysicsProxy* Proxy)
 		{
-			Solver->PullPhysicsStateForEachDirtyProxy_External([&PhysScene, &PendingTransforms](FSingleParticlePhysicsProxy* Proxy)
+			FPBDRigidParticle* DirtyParticle = Proxy->GetRigidParticleUnsafe();
+
+			if(FBodyInstance* BodyInstance = FPhysicsUserData::Get<FBodyInstance>(DirtyParticle->UserData()))
+			{
+				if(BodyInstance->OwnerComponent.IsValid())
 				{
-					FPBDRigidParticle* DirtyParticle = Proxy->GetRigidParticleUnsafe();
-
-					if (FBodyInstance* BodyInstance = FPhysicsUserData::Get<FBodyInstance>(DirtyParticle->UserData()))
+					if (SyncKinematicOnGameThread == 0 && BodyInstance->IsInstanceSimulatingPhysics() == false)
 					{
-						if (BodyInstance->OwnerComponent.IsValid())
-						{
-							if (SyncKinematicOnGameThread == 0 && BodyInstance->IsInstanceSimulatingPhysics() == false)
-							{
-								return;
-							}
+						return;
+					}
+					UPrimitiveComponent* OwnerComponent = BodyInstance->OwnerComponent.Get();
+					if(OwnerComponent != nullptr)
+					{
+						bool bPendingMove = false;
+							FRigidTransform3 NewTransform(DirtyParticle->X(),DirtyParticle->R());
 
-							UPrimitiveComponent* OwnerComponent = BodyInstance->OwnerComponent.Get();
-							if (OwnerComponent != nullptr)
+							if(!NewTransform.EqualsNoScale(OwnerComponent->GetComponentTransform()))
 							{
-								bool bPendingMove = false;
 								if (BodyInstance->InstanceBodyIndex == INDEX_NONE)
 								{
-									FRigidTransform3 NewTransform(DirtyParticle->X(), DirtyParticle->R());
 
-									if (!NewTransform.EqualsNoScale(OwnerComponent->GetComponentTransform()))
-									{
-										bPendingMove = true;
-										const FVector MoveBy = NewTransform.GetLocation() - OwnerComponent->GetComponentTransform().GetLocation();
-										const FQuat NewRotation = NewTransform.GetRotation();
-										PendingTransforms.Add(FPhysScenePendingComponentTransform_Chaos(OwnerComponent, MoveBy, NewRotation, Proxy->GetWakeEvent()));
-									}
+								bPendingMove = true;
+								const FVector MoveBy = NewTransform.GetLocation() - OwnerComponent->GetComponentTransform().GetLocation();
+								const FQuat NewRotation = NewTransform.GetRotation();
+								PendingTransforms.Add(FPhysScenePendingComponentTransform_Chaos(OwnerComponent,MoveBy,NewRotation,Proxy->GetWakeEvent()));
 
-									PhysScene->UpdateActorInAccelerationStructure(BodyInstance->ActorHandle);
-
-								}
-
-								if (Proxy->GetWakeEvent() != Chaos::EWakeEventEntry::None && !bPendingMove)
-								{
-									PendingTransforms.Add(FPhysScenePendingComponentTransform_Chaos(OwnerComponent, Proxy->GetWakeEvent()));
-								}
-								Proxy->ClearEvents();
 							}
+
+								PhysScene->UpdateActorInAccelerationStructure(BodyInstance->ActorHandle);
 						}
+
+						if(Proxy->GetWakeEvent() != Chaos::EWakeEventEntry::None && !bPendingMove)
+						{
+							PendingTransforms.Add(FPhysScenePendingComponentTransform_Chaos(OwnerComponent,Proxy->GetWakeEvent()));
+						}
+						Proxy->ClearEvents();
 					}
-				});
-		});
+				}
+			}
+		};
+
+		
+		auto ConstraintLambda = [&PendingTransforms](FJointConstraintPhysicsProxy* Proxy)
+		{
+		// @todo(chaos) for now disable Constraint breakage and plasticity deformation Notification until we have the rest of the system integrated
+		// 	Chaos::FJointConstraint* Constraint = Proxy->GetConstraint();
+		//
+		// 	if (Constraint->GetOutputData().bIsBreaking)
+		// 	{
+		// 		if (FConstraintInstanceBase* ConstraintInstance = (Constraint) ? FPhysicsUserData_Chaos::Get<FConstraintInstanceBase>(Constraint->GetUserData()) : nullptr)
+		// 		{
+		// 			FConstraintBrokenDelegateWrapper CBD(ConstraintInstance);
+		// 			CBD.DispatchOnBroken();
+		// 		}
+		//
+		// 		Constraint->GetOutputData().bIsBreaking = false;
+		// 	}
+		//
+		// 	if (Constraint->GetOutputData().bDriveTargetChanged)
+		// 	{
+		// 		if (FConstraintInstanceBase* ConstraintInstance = (Constraint) ? FPhysicsUserData_Chaos::Get<FConstraintInstanceBase>(Constraint->GetUserData()) : nullptr)
+		// 		{
+		// 			FPlasticDeformationDelegateWrapper CPD(ConstraintInstance);
+		// 			CPD.DispatchPlasticDeformation();
+		// 		}
+		//
+		// 		Constraint->GetOutputData().bDriveTargetChanged = false;
+		// 	}
+		};
+
+		Solver->PullPhysicsStateForEachDirtyProxy_External(RigidLambda, ConstraintLambda);
+
+	});
+
 	for (const FPhysScenePendingComponentTransform_Chaos& ComponentTransform : PendingTransforms)
 	{
 		if (ComponentTransform.OwningComp != nullptr)
@@ -1659,7 +1717,7 @@ void FPhysScene_Chaos::OnSyncBodies(Chaos::FPhysicsSolverBase* Solver)
 				ComponentTransform.OwningComp->MoveComponent(ComponentTransform.NewTranslation, ComponentTransform.NewRotation, false, NULL, MOVECOMP_SkipPhysicsMove);
 			}
 
-			if (OwnerPtr != NULL && !OwnerPtr->IsPendingKill())
+			if (IsValid(OwnerPtr))
 			{
 				OwnerPtr->CheckStillInWorld();
 			}
@@ -1686,6 +1744,30 @@ void FPhysScene_Chaos::RemoveSpringConstraint(const FPhysicsConstraintHandle& Co
 {
 	// #todo : Implement
 }
+
+// FConstraintBrokenDelegateWrapper::FConstraintBrokenDelegateWrapper(FConstraintInstanceBase* ConstraintInstance)
+// 	: OnConstraintBrokenDelegate(ConstraintInstance->OnConstraintBrokenDelegate)
+// 	, ConstraintIndex(ConstraintInstance->ConstraintIndex)
+// {
+//
+// }
+//
+// void FConstraintBrokenDelegateWrapper::DispatchOnBroken()
+// {
+// 	OnConstraintBrokenDelegate.ExecuteIfBound(ConstraintIndex);
+// }
+
+// FPlasticDeformationDelegateWrapper::FPlasticDeformationDelegateWrapper(FConstraintInstanceBase* ConstraintInstance)
+// 	: OnPlasticDeformationDelegate(ConstraintInstance->OnPlasticDeformationDelegate)
+// 	, ConstraintIndex(ConstraintInstance->ConstraintIndex)
+// {
+//
+// }
+//
+// void FPlasticDeformationDelegateWrapper::DispatchPlasticDeformation()
+// {
+// 	OnPlasticDeformationDelegate.ExecuteIfBound(ConstraintIndex);
+// }
 
 void FPhysScene_Chaos::ResimNFrames(const int32 NumFramesRequested)
 {
@@ -1741,3 +1823,4 @@ void FPhysScene_Chaos::ResimNFrames(const int32 NumFramesRequested)
 TSharedPtr<IPhysicsReplicationFactory> FPhysScene_Chaos::PhysicsReplicationFactory;
 
 #endif // WITH_CHAOS
+#endif

@@ -26,6 +26,7 @@
 struct FVector 
 {
 public:
+	using FReal = float;
 
 	/** Vector's X component. */
 	float X;

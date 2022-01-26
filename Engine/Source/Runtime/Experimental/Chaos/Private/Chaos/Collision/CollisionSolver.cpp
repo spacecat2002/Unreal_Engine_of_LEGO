@@ -49,6 +49,9 @@ namespace Chaos
 		FAutoConsoleVariableRef CVarChaos_Manifold_PushOut_MinStiffness(TEXT("p.Chaos.Collision.Manifold.PushOut.MinStiffness"), Chaos_Manifold_PushOut_MinStiffness, TEXT(""));
 		FAutoConsoleVariableRef CVarChaos_Manifold_PushOut_MaxStiffness(TEXT("p.Chaos.Collision.Manifold.PushOut.MaxStiffness"), Chaos_Manifold_PushOut_MaxStiffness, TEXT(""));
 
+		float Chaos_ConstraintStiffness_Modifier = 5.0;
+		FAutoConsoleVariableRef CVarChaos_ConstraintStiffness_Modifier(TEXT("p.Chaos.Collision.ConstraintStiffnessModifier"), Chaos_ConstraintStiffness_Modifier, TEXT(""));
+
 		FRealSingle Chaos_Manifold_Apply_ImpulseTolerance = 1.e-4f;
 		FAutoConsoleVariableRef CVarChaos_Manifold_Apply_ImpulseTolerance(TEXT("p.Chaos.Collision.Manifold.Apply.ImpulseTolerance"), Chaos_Manifold_Apply_ImpulseTolerance, TEXT(""));
 
@@ -61,6 +64,19 @@ namespace Chaos
 
 	namespace Collisions
 	{
+		inline FReal GetConstraintStiffness(const FReal InStiffness, const FContactIterationParameters& IterationParameters)
+		{
+			FReal Stiffness = FMath::Clamp(InStiffness, (FReal)0.0, (FReal)1.0);
+			if (Stiffness < 1.0)
+			{
+				FReal Factor = (FReal)Chaos_ConstraintStiffness_Modifier * (FReal)IterationParameters.NumIterations * (FReal)IterationParameters.NumPairIterations;
+				if (!FMath::IsNearlyZero(Factor))
+				{
+					return Stiffness / Factor;
+				}
+			}
+			return (FReal)1;
+		}
 
 		inline FReal GetApplyStiffness(int32 It, int32 NumIts)
 		{
@@ -86,6 +102,7 @@ namespace Chaos
 			FSolverBody& Body1,
 			FManifoldPoint& ManifoldPoint)
 		{
+		#if 0
 			// Velocity correction uses the average contact point, and not the deepest point on each body
 			const FVec3 RelativeContactPoint0 = ManifoldPoint.ContactPoint.Location - Body0.P();
 			const FVec3 RelativeContactPoint1 = ManifoldPoint.ContactPoint.Location - Body1.P();
@@ -117,7 +134,7 @@ namespace Chaos
 			FReal ContactVelocityTargetNormal = 0.0f;
 			if (bApplyRestitution)
 			{
-				ContactVelocityTargetNormal = FMath::Max(0.0f, -Restitution * ManifoldPoint.InitialContactVelocity);
+				ContactVelocityTargetNormal = FMath::Max((FReal)0., -Restitution * ManifoldPoint.InitialContactVelocity);
 			}
 
 			// Calculate constraint-space mass
@@ -171,6 +188,7 @@ namespace Chaos
 			// If we applied any additional impulse, we need to go again next iteration
 			const FReal ImpulseTolerance = Chaos_Manifold_Apply_ImpulseTolerance * Chaos_Manifold_Apply_ImpulseTolerance;
 			*IterationParameters.NeedsAnotherIteration |= (Impulse.SizeSquared() > ImpulseTolerance);
+#endif
 		}
 
 		void CalculateManifoldFrictionVelocityCorrection(
@@ -183,6 +201,7 @@ namespace Chaos
 			FSolverBody& Body1,
 			FManifoldPoint& ManifoldPoint)
 		{
+#if 0
 			// Reject inactive contacts (no normal impulse)
 			if (!ManifoldPoint.bActive || (StaticFriction == 0.0f))
 			{
@@ -263,6 +282,7 @@ namespace Chaos
 			// If we applied any additional impulse, we need to go again next iteration
 			const FReal ImpulseTolerance = Chaos_Manifold_Apply_ImpulseTolerance * Chaos_Manifold_Apply_ImpulseTolerance;
 			*IterationParameters.NeedsAnotherIteration |= (Impulse.SizeSquared() > ImpulseTolerance);
+#endif
 		}
 
 
@@ -277,6 +297,7 @@ namespace Chaos
 			FConstraintSolverBody& Body1,
 			FManifoldPoint& ManifoldPoint)
 		{
+#if 0
 			const FReal Margin0 = ManifoldPoint.ContactPoint.ShapeMargins[0];
 			const FReal Margin1 = ManifoldPoint.ContactPoint.ShapeMargins[1];
 
@@ -290,7 +311,7 @@ namespace Chaos
 			}
 			else
 			{
-				const FRotation3& PlaneQ = (ManifoldPoint.ContactPoint.ContactNormalOwnerIndex == 0) ? Body0.Q() : Body1.Q();
+				const FRotation3 PlaneQ = (ManifoldPoint.ContactPoint.ContactNormalOwnerIndex == 0) ? Body0.Q() : Body1.Q();
 				ContactNormal = PlaneQ * ManifoldPoint.ManifoldContactNormal;
 			}
 
@@ -384,6 +405,7 @@ namespace Chaos
 
 			ManifoldPoint.NetPushOut = NetPushOut;
 			*IterationParameters.NeedsAnotherIteration = true;
+#endif
 		}
 
 
@@ -399,6 +421,7 @@ namespace Chaos
 			FConstraintSolverBody& Body1,
 			FManifoldPoint& ManifoldPoint)
 		{
+#if 0
 			// Velocity correction uses the average contact point, and not the deepest point on each body
 			const FVec3 RelativeContactPoint0 = ManifoldPoint.ContactPoint.Location - Body0.P();
 			const FVec3 RelativeContactPoint1 = ManifoldPoint.ContactPoint.Location - Body1.P();
@@ -437,7 +460,7 @@ namespace Chaos
 				FReal TargetVelocityNormal = 0.0f;
 				if (ManifoldPoint.bRestitutionEnabled && Chaos_Manifold_PushOut_Restitution)
 				{
-					TargetVelocityNormal = FMath::Max(0.0f, -Restitution * ManifoldPoint.InitialContactVelocity);
+					TargetVelocityNormal = FMath::Max((FReal)0., -Restitution * ManifoldPoint.InitialContactVelocity);
 				}
 
 				const FReal ImpulseNormalDenominator = FVec3::DotProduct(ContactNormal, ContactMassInv * ContactNormal);
@@ -499,6 +522,7 @@ namespace Chaos
 
 			ManifoldPoint.NetPushOutImpulseNormal = NetImpulseNormal;
 			ManifoldPoint.NetPushOutImpulseTangent = NetImpulseTangent;
+#endif
 		}
 
 
@@ -508,12 +532,14 @@ namespace Chaos
 			const FContactIterationParameters& IterationParameters,
 			const FContactParticleParameters& ParticleParameters)
 		{
+#if 0
 			FSolverBody& Body0 = *Constraint.GetSolverBody0();
 			FSolverBody& Body1 = *Constraint.GetSolverBody1();
 
 			Constraint.AccumulatedImpulse = FVec3(0);
 
-			const FReal Stiffness = GetApplyStiffness(IterationParameters.Iteration, IterationParameters.NumIterations);
+			const FReal ConstraintStiffness = GetConstraintStiffness(Constraint.GetStiffness(), IterationParameters);
+			const FReal Stiffness = ConstraintStiffness * GetApplyStiffness(IterationParameters.Iteration, IterationParameters.NumIterations);
 
 			const FVec3 InitialV0 = Body0.V();
 			const FVec3 InitialW0 = Body0.W();
@@ -579,6 +605,7 @@ namespace Chaos
 				Body1.ApplyTransformDelta(DX1, DR1);
 				Body1.UpdateRotationDependentState();
 			}
+#endif
 		}
 
 
@@ -588,6 +615,7 @@ namespace Chaos
 			const FContactIterationParameters& IterationParameters,
 			const FContactParticleParameters& ParticleParameters)
 		{
+#if 0
 			TArrayView<FManifoldPoint> ManifoldPoints = Constraint.GetManifoldPoints();
 
 			FConstraintSolverBody Body0 = *Constraint.GetSolverBody0();
@@ -675,6 +703,7 @@ namespace Chaos
 					//Constraint.AccumulatedImpulse += ManifoldPoint.NetPushOutImpulseNormal * ManifoldPoint.ContactPoint.Normal;
 				}
 			}
+#endif
 		}
 
 	}

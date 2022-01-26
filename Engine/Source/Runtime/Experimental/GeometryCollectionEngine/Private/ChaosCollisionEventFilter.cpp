@@ -59,8 +59,8 @@ void FChaosCollisionEventFilter::FilterEvents(const FTransform& ChaosComponentTr
 			NewData.Mass1 = CollisionData.Mass1;
 			NewData.Mass2 = CollisionData.Mass2;
 			NewData.Impulse = CollisionData.AccumulatedImpulse;
-			NewData.Particle = CollisionData.Particle;
-			NewData.Levelset = CollisionData.Levelset;
+			NewData.Particle = nullptr; 
+			NewData.Levelset = nullptr;
 
 			FilteredDataArray.Add(NewData);
 

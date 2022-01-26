@@ -412,6 +412,8 @@ namespace Chaos
 		static inline TVector<FReal, 3> Lerp(const TVector<FReal, 3>& V1, const TVector<FReal, 3>& V2, const FReal F) { return FMath::Lerp<FVector, FReal>(V1, V2, F); }
 		static inline TVector<FReal, 3> CrossProduct(const TVector<FReal, 3>& V1, const TVector<FReal, 3>& V2) { return FVector::CrossProduct(V1, V2); }
 		static inline FReal DotProduct(const TVector<FReal, 3>& V1, const TVector<FReal, 3>& V2) { return FVector::DotProduct(V1, V2); }
+
+		inline FReal Dot(const TVector<FReal, 3>& V) { return FVector::DotProduct(*this, V); }
 		bool operator<=(const TVector<FReal, 3>& V) const
 		{
 			return X <= V.X && Y <= V.Y && Z <= V.Z;
@@ -565,6 +567,16 @@ namespace Chaos
 		static bool IsNearlyEqual(const TVector<FReal, 3>& A, const TVector<FReal, 3>& B, const FReal Epsilon)
 		{
 			return (B - A).IsNearlyZero(Epsilon);
+		}
+
+		FORCEINLINE FReal Length() const
+		{
+			return Size();
+		}
+		
+		FORCEINLINE FReal SquaredLength() const
+		{
+			return SizeSquared();
 		}
 	};
 
@@ -956,6 +968,8 @@ namespace Chaos
 	}
 
 } // namespace Chaos
+
+#define MakeVectorRegisterConstant(x,y,z,w) VectorRegister{ x, y, z, w }
 
 //template<>
 //uint32 GetTypeHash(const Chaos::TVector<int32, 2>& V)

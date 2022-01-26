@@ -5,6 +5,7 @@
 #include "Chaos/Capsule.h"
 #include "Chaos/ChaosPerfTest.h"
 #include "Chaos/ChaosDebugDraw.h"
+#include "Chaos/ContactModification.h"
 #include "Chaos/PBDCollisionConstraintsContact.h"
 #include "Chaos/CollisionResolutionUtil.h"
 #include "Chaos/CollisionResolution.h"
@@ -79,6 +80,9 @@ namespace Chaos
 	int32 CollisionCanNeverDisableContacts = 0;
 	FAutoConsoleVariableRef CVarCollisionCanNeverDisableContacts(TEXT("p.CollisionCanNeverDisableContacts"), CollisionCanNeverDisableContacts, TEXT("Collision culling will never be able to permanently disable contacts"));
 
+	bool CollisionsAllowParticleTracking = true;
+	FAutoConsoleVariableRef CVarCollisionsAllowParticleTracking(TEXT("p.Chaos.Collision.AllowParticleTracking"), CollisionsAllowParticleTracking, TEXT("Allow particles to track their collisions constraints when their DoBufferCollisions flag is enable [def:true]"));
+
 #if INTEL_ISPC
 	bool bChaos_Collision_ISPC_Enabled = false;
 	FAutoConsoleVariableRef CVarChaosCollisionISPCEnabled(TEXT("p.Chaos.Collision.ISPC"), bChaos_Collision_ISPC_Enabled, TEXT("Whether to use ISPC optimizations in the Collision Solver"));
@@ -114,11 +118,12 @@ namespace Chaos
 		, bEnableCollisions(true)
 		, bEnableRestitution(true)
 		, bHandlesEnabled(true)
+		, bIsDeterministic(false)
 		, bCanDisableContacts(true)
-		, GravityDirection(FVec3(0, 0, -1))
+		, GravityDirection(FVec3(0,0,-1))
 		, GravitySize(980)
 		, MaxPushOutVelocity(0)
-		, SolverType(EConstraintSolverType::GbfPbd)
+		, SolverType(EConstraintSolverType::QuasiPbd)
 	{
 #if INTEL_ISPC
 		if (bRealTypeCompatibleWithISPC && bChaos_Collision_ISPC_Enabled)
@@ -278,34 +283,36 @@ namespace Chaos
 		// Prune the unused contacts
 		ConstraintAllocator.EndDetectCollisions();
 
-		// Initialize container properties
-		// @todo(chaos): this could be set on creation if the allocator knew about the container
+		if (bIsDeterministic)
+		{
+			ConstraintAllocator.SortConstraintsHandles();
+		}
+
+		// Bind the constraints to this container and initialize other properties
+		// @todo(chaos): this could be set on creation if the midphase knew about the container
 		for (FPBDCollisionConstraint* Contact : GetConstraints())
 		{
-			Contact->SetContainer(this);
-
-			UpdateConstraintMaterialProperties(*Contact);
+			if (Contact->GetContainer() == nullptr)
+			{
+				Contact->SetContainer(this);
+				UpdateConstraintMaterialProperties(*Contact);
+			}
 		}
 	}
 
-	void FPBDCollisionConstraints::ApplyCollisionModifier(const TArray<ISimCallbackObject*>& CollisionModifiers)
+	void FPBDCollisionConstraints::ApplyCollisionModifier(const TArray<ISimCallbackObject*>& CollisionModifiers, FReal Dt)
 	{
 		if (GetConstraints().Num() > 0)
 		{
-			for(ISimCallbackObject* Modifier : CollisionModifiers)
-			{
-				TArray<FPBDCollisionConstraintHandleModification> ModificationResults;
-				ModificationResults.Reserve(GetConstraints().Num());
-				for (FPBDCollisionConstraintHandle* Handle : GetConstraintHandles())
-				{
-					if (Handle)
-					{
-						ModificationResults.Emplace(Handle);
-					}
-				}
+			TArrayView<FPBDCollisionConstraint* const> ConstraintHandles = GetConstraintHandles();
+			FCollisionContactModifier Modifier(ConstraintHandles, Dt);
 
-				Modifier->ContactModification_Internal(TArrayView<FPBDCollisionConstraintHandleModification>(ModificationResults.GetData(), ModificationResults.Num()));
+			for(ISimCallbackObject* ModifierCallback : CollisionModifiers)
+			{
+				ModifierCallback->ContactModification_Internal(Modifier);
 			}
+
+			Modifier.UpdateConstraintManifolds();
 		}
 	}
 
@@ -348,7 +355,12 @@ namespace Chaos
 	{
 		if (SolverType == EConstraintSolverType::QuasiPbd)
 		{
-			GetConstraintSolverContainer(SolverData).Reset(NumIslandConstraints);
+			FPBDCollisionSolverContainer& SolverContainer = GetConstraintSolverContainer(SolverData);
+			SolverContainer.SetNum(NumIslandConstraints);
+
+			// @todo(chaos): we shouldn't have to pass settings down to the solvers every frame. Ideally the solver containers would be created by the constraint containers and
+			// the settings would be passed on then. Currently the solver containers are created here FPBDIslandSolverData::AddConstraintDatas
+			SolverContainer.SetMaxPushOutVelocity(MaxPushOutVelocity);
 		}
 		else
 		{
@@ -370,11 +382,7 @@ namespace Chaos
 			check(Constraint.IsEnabled());
 
 			FPBDCollisionSolverContainer& SolverContainer = GetConstraintSolverContainer(SolverData);
-			SolverContainer.AddConstraintSolver(Dt, Constraint, Particle0Level, Particle1Level, SolverData.GetBodyContainer());
-
-			// @todo(chaos): we shouldn't have to pass settings down to the solvers every frame. Ideally the solver containers would be created by the constraint containers and
-			// the settings would be passed on then. Currently the solver containers are created here FPBDIslandSolverData::AddConstraintDatas
-			SolverContainer.SetMaxPushOutVelocity(MaxPushOutVelocity);
+			SolverContainer.AddConstraintSolver(Dt, Constraint, Particle0Level, Particle1Level, SolverData.GetBodyContainer(), SolverData.GetConstraintIndex(ContainerId));
 		}
 		else
 		{

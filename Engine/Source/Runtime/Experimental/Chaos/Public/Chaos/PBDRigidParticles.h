@@ -168,19 +168,29 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 		this->ObjectState(Index) = InObjectState;
 	}
 
+	CHAOS_API void SetSleepType(int32 Index, ESleepType InSleepType)
+	{
+		if (InSleepType == ESleepType::NeverSleep && this->ObjectState(Index) == EObjectStateType::Sleeping)
+		{
+			SetObjectState(Index, EObjectStateType::Dynamic);
+		}
+
+		this->SleepType(Index) = InSleepType;
+	}
+
 
 	void ResetVSmoothFromForces(int32 Index)
 	{
 		// Reset VSmooth to something roughly in the same direction as what V will be after integration.
 		// This is temp fix, if this is only re-computed after solve, island will get incorrectly put back to sleep even if it was just impulsed.
 		FReal FakeDT = (FReal)1. / (FReal)30.;
-		if (this->LinearImpulse(Index).IsNearlyZero() == false || this->F(Index).IsNearlyZero() == false)
+		if (this->LinearImpulseVelocity(Index).IsNearlyZero() == false || this->Acceleration(Index).IsNearlyZero() == false)
 		{
-			this->VSmooth(Index) = this->F(Index) * this->InvM(Index) * FakeDT + this->LinearImpulse(Index) * this->InvM(Index);
+			this->VSmooth(Index) = this->Acceleration(Index) * FakeDT + this->LinearImpulseVelocity(Index);
 		}
-		if (this->AngularImpulse(Index).IsNearlyZero() == false || this->Torque(Index).IsNearlyZero() == false)
+		if (this->AngularImpulseVelocity(Index).IsNearlyZero() == false || this->AngularAcceleration(Index).IsNearlyZero() == false)
 		{
-			this->WSmooth(Index) = this->Torque(Index) * FakeDT + this->AngularImpulse(Index);
+			this->WSmooth(Index) = this->AngularAcceleration(Index) * FakeDT + this->AngularImpulseVelocity(Index);
 		}
 	}
 
@@ -208,12 +218,6 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 	TArrayCollectionArray<TVector<T, d>> MPreW;
 	TArrayCollectionArray<int32> MSolverBodyIndex;	// Transient for use in constraint solver
 };
-
-#if PLATFORM_MAC || PLATFORM_LINUX
-extern template class CHAOS_API TPBDRigidParticles<FReal,3>;
-#else
-extern template class TPBDRigidParticles<FReal,3>;
-#endif
 
 using FPBDRigidParticles = TPBDRigidParticles<FReal, 3>;
 

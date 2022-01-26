@@ -22,8 +22,24 @@ namespace Chaos
 	class FSingleShapePairCollisionDetector;
 
 	/**
+	 * @brief The result of the test to see whether we can reuse a manifold (when the bodies have not moved much)
+	*/
+	enum class ECollisionRestoreType
+	{
+		// Do not retore the manifold - bodies have moved beyond the threshold
+		None,
+
+		// Restore the manifold exactly as-is - the bodies have barely moved
+		Reuse,
+
+		// Restore the manifold, but the bodies have moved a bit so reproject the contacts
+		Reproject,
+	};
+
+	/**
 	 * @brief Handles collision detection for a pair of simple shapes (i.e., not compound shapes)
-	 * @note this is not used for collisions involving Unions.
+	 * 
+	 * @note this is not used for collisions involving Unions that require a recursive collision test.
 	 * @see FMultiShapePairCollisionDetector
 	*/
 	class CHAOS_API FSingleShapePairCollisionDetector
@@ -32,10 +48,11 @@ namespace Chaos
 		using FCollisionsArray = TArray<FPBDCollisionConstraint*, TInlineAllocator<1>>;
 
 		FSingleShapePairCollisionDetector(
-			const FPerShapeData* InShape0, 
-			const FPerShapeData* InShape1, 
+			FGeometryParticleHandle* InParticle0,
+			const FPerShapeData* InShape0,
+			FGeometryParticleHandle* InParticle1,
+			const FPerShapeData* InShape1,
 			const EContactShapesType InShapePairType, 
-			const bool bInSwap, 
 			FParticlePairMidPhase& MidPhase);
 		FSingleShapePairCollisionDetector(FSingleShapePairCollisionDetector&& R);
 		FSingleShapePairCollisionDetector(const FSingleShapePairCollisionDetector& R) = delete;
@@ -44,6 +61,10 @@ namespace Chaos
 
 		const FPBDCollisionConstraint* GetConstraint() const{ return Constraint.Get(); }
 		FPBDCollisionConstraint* GetConstraint() { return Constraint.Get(); }
+		const FGeometryParticleHandle* GetParticle0() const { return Particle0; }
+		FGeometryParticleHandle* GetParticle0() { return Particle0; }
+		const FGeometryParticleHandle* GetParticle1() const { return Particle1; }
+		FGeometryParticleHandle* GetParticle1() { return Particle1; }
 		const FPerShapeData* GetShape0() const { return Shape0; }
 		const FPerShapeData* GetShape1() const { return Shape1; }
 
@@ -57,8 +78,6 @@ namespace Chaos
 		 * @return The number of collisions constraints that were activated
 		*/
 		int32 GenerateCollision(
-			FGeometryParticleHandle* Particle0,
-			FGeometryParticleHandle* Particle1,
 			const FReal CullDistance,
 			const bool bUseCCD,
 			const FReal Dt);
@@ -67,7 +86,7 @@ namespace Chaos
 		 * @brief Reactivate the collision exactly as it was last frame
 		 * @return The number of collisions constraints that were restored
 		*/
-		int32 RestoreCollision();
+		int32 RestoreCollision(const FReal CullDistance, const bool bReproject);
 
 		/**
 		 * @brief Reactivate the constraint (essentially the same as Restore but slightly optimized)
@@ -82,39 +101,50 @@ namespace Chaos
 		*/
 		void SetCollision(const FPBDCollisionConstraint& Constraint);
 
+		/**
+		 * @brief Whether we want to use manifold restore for this shape type
+		 * @see FParticlePairMidPhase::ShouldRestoreConstraints
+		*/
+		bool EnableManifoldRestore() const
+		{
+			return Flags.bEnableManifoldCheck;
+		}
+
 	private:
-		int32 GenerateCollisionImpl(
-			FGeometryParticleHandle* Particle0,
-			const FPerShapeData* Shape0,
-			FGeometryParticleHandle* Particle1,
-			const FPerShapeData* Shape1,
-			const FReal CullDistance,
-			const bool bUseCCD,
-			const FReal Dt);
-
-		void CreateConstraint(
-			FGeometryParticleHandle* Particle0,
-			const FPerShapeData* InShape0,
-			FGeometryParticleHandle* Particle1,
-			const FPerShapeData* InShape1,
-			const FReal CullDistance);
+		int32 GenerateCollisionImpl(const FReal CullDistance, const bool bUseCCD, const FReal Dt);
 
 		/**
-		 * @brief Reset or save the constraint manifold
+		 * @brief Whether the two shapes are separated by less than CullDistance (i.e., we should run the narrow phase).
+		 * Also returns true if bounds checking is disabled (globally or for this pair)
 		*/
-		void PrepareConstraint(const bool bUseCCD);
+		bool DoBoundsOverlap(const FReal CullDistance);
 
 		/**
-		 * @brief Add the constraint to the scene's active list
+		 * @brief Create a constraint
 		*/
-		bool ActivateConstraint();
+		void CreateConstraint(const FReal CullDistance);
 
 		FParticlePairMidPhase& MidPhase;
 		TUniquePtr<FPBDCollisionConstraint> Constraint;
+		FGeometryParticleHandle* Particle0;
+		FGeometryParticleHandle* Particle1;
 		const FPerShapeData* Shape0;
 		const FPerShapeData* Shape1;
 		EContactShapesType ShapePairType;
-		bool bSwap;
+		FReal SphereBoundsCheckSize;
+		int32 LastUsedEpoch;
+		union FFlags
+		{
+			FFlags() : Bits(0) {}
+			struct 
+			{
+				uint32 bEnableAABBCheck : 1;
+				uint32 bEnableOBBCheck0 : 1;
+				uint32 bEnableOBBCheck1 : 1;
+				uint32 bEnableManifoldCheck : 1;
+			};
+			uint32 Bits;
+		} Flags;
 	};
 
 
@@ -127,8 +157,10 @@ namespace Chaos
 	{
 	public:
 		FMultiShapePairCollisionDetector(
-			const FPerShapeData* InShape0, 
-			const FPerShapeData* InShape1, 
+			FGeometryParticleHandle* InParticle0,
+			const FPerShapeData* InShape0,
+			FGeometryParticleHandle* InParticle1,
+			const FPerShapeData* InShape1,
 			FParticlePairMidPhase& MidPhase);
 		FMultiShapePairCollisionDetector(FMultiShapePairCollisionDetector&& R);
 		FMultiShapePairCollisionDetector(const FMultiShapePairCollisionDetector& R) = delete;
@@ -140,19 +172,22 @@ namespace Chaos
 		 * @return The number of collisions constraints that were activated
 		*/
 		int32 GenerateCollisions(
-			FGeometryParticleHandle* Particle0,
-			FGeometryParticleHandle* Particle1,
 			const FReal CullDistance,
 			const bool bUseCCD,
 			const FReal Dt,
 			FCollisionContext& Context);
 
+		/**
+		 * @brief Callback from the narrow phase to create a collision constraint for this particle pair.
+		 * We should never be asked for a collision for a different particle pair, but the 
+		 * implicit objects may be children of the root shape.
+		*/
 		FPBDCollisionConstraint* FindOrCreateConstraint(
-			FGeometryParticleHandle* Particle0,
+			FGeometryParticleHandle* InParticle0,
 			const FImplicitObject* Implicit0,
 			const FBVHParticles* BVHParticles0,
 			const FRigidTransform3& ShapeRelativeTransform0,
-			FGeometryParticleHandle* Particle1,
+			FGeometryParticleHandle* InParticle1,
 			const FImplicitObject* Implicit1,
 			const FBVHParticles* BVHParticles1,
 			const FRigidTransform3& ShapeRelativeTransform1,
@@ -160,12 +195,15 @@ namespace Chaos
 			const EContactShapesType ShapePairType,
 			const bool bInUseManifold);
 
+		/**
+		 * @brief FindOrCreateConstraint for swept constraints 
+		*/
 		FPBDCollisionConstraint* FindOrCreateSweptConstraint(
-			FGeometryParticleHandle* Particle0,
+			FGeometryParticleHandle* InParticle0,
 			const FImplicitObject* Implicit0,
 			const FBVHParticles* BVHParticles0,
 			const FRigidTransform3& ShapeRelativeTransform0,
-			FGeometryParticleHandle* Particle1,
+			FGeometryParticleHandle* InParticle1,
 			const FImplicitObject* Implicit1,
 			const FBVHParticles* BVHParticles1,
 			const FRigidTransform3& ShapeRelativeTransform1,
@@ -176,7 +214,7 @@ namespace Chaos
 		 * @brief Reactivate the collision exactly as it was last frame
 		 * @return The number of collisions constraints that were restored
 		*/
-		int32 RestoreCollisions();
+		int32 RestoreCollisions(const FReal CullDistance, const bool bReproject);
 
 		/**
 		 * @brief Reactivate the constraint (essentially the same as Restore but slightly optimized)
@@ -210,6 +248,8 @@ namespace Chaos
 		FParticlePairMidPhase& MidPhase;
 		TMap<uint32, TUniquePtr<FPBDCollisionConstraint>> Constraints;
 		TArray<FPBDCollisionConstraint*> NewConstraints;
+		FGeometryParticleHandle* Particle0;
+		FGeometryParticleHandle* Particle1;
 		const FPerShapeData* Shape0;
 		const FPerShapeData* Shape1;
 	};
@@ -249,36 +289,47 @@ namespace Chaos
 	class CHAOS_API FParticlePairMidPhase
 	{
 	public:
-		FParticlePairMidPhase(
-			FGeometryParticleHandle* InParticle0, 
-			FGeometryParticleHandle* InParticle1, 
-			const FCollisionParticlePairKey& InKey,
-			FCollisionConstraintAllocator& InCollisionAllocator);
+		FParticlePairMidPhase();
 
 		UE_NONCOPYABLE(FParticlePairMidPhase);
 
 		~FParticlePairMidPhase();
 
+		/**
+		 * @brief Set up the midphase based on the SHapesArrays of the two particles
+		 * Only intended to be called once right after constructor. We don't do this work in
+		 * the constructor so that we can reduce the time that the lock is held when allocating
+		 * new MidPhases.
+		*/
+		void Init(
+			FGeometryParticleHandle* InParticle0,
+			FGeometryParticleHandle* InParticle1,
+			const FCollisionParticlePairKey& InKey,
+			FCollisionConstraintAllocator& InCollisionAllocator);
 
-		FGeometryParticleHandle* GetParticle0() { return Particle0; }
+		inline FGeometryParticleHandle* GetParticle0() { return Particle0; }
 
-		FGeometryParticleHandle* GetParticle1() { return Particle1; }
+		inline FGeometryParticleHandle* GetParticle1() { return Particle1; }
 
-		const FCollisionParticlePairKey& GetKey() const { return Key; }
+		inline const FCollisionParticlePairKey& GetKey() const { return Key; }
 
-		FCollisionConstraintAllocator& GetCollisionAllocator() { return *CollisionAllocator; }
+		inline FCollisionConstraintAllocator& GetCollisionAllocator() { return *CollisionAllocator; }
 
-		bool IsValid() const { return (Particle0 != nullptr) && (Particle1 != nullptr); }
+		inline bool IsValid() const { return (Particle0 != nullptr) && (Particle1 != nullptr); }
 
 		/**
 		 * @brief Have we run collision detection since this Epoch (inclusive)
 		*/
-		bool IsUsedSince(const int32 Epoch) const;
+		inline bool IsUsedSince(const int32 Epoch) const
+		{
+			return (LastUsedEpoch >= Epoch);
+		}
+
 
 		/**
 		 * @brief Whether the particle pair is sleeping and therefore contacts should not be culled (they will be reused on wake)
 		*/
-		bool IsSleeping() const { return bIsSleeping; }
+		inline bool IsSleeping() const { return Flags.bIsSleeping; }
 
 		/**
 		 * @brief Update the sleeping state
@@ -321,12 +372,39 @@ namespace Chaos
 		*/
 		void VisitCollisions(const FPBDCollisionVisitor& Visitor) const;
 
-	private:
 		/**
-		 * @brief Set up the midphase based on the SHapesArrays of the two particles
+		 * @brief Cookie for use by FParticleCollisions
 		*/
-		void Init();
+		int32 GetParticleCollisionsIndex(FGeometryParticleHandle* InParticle) const
+		{
+			check((InParticle == Particle0) || (InParticle == Particle1));
+			if (InParticle == Particle0)
+			{
+				return ParticleCollisionsIndex0;
+			}
+			else
+			{
+				return ParticleCollisionsIndex1;
+			}
+		}
 
+		/**
+		 * @brief Cookie for use by FParticleCollisions
+		*/
+		void SetParticleCollisionsIndex(FGeometryParticleHandle* InParticle, const int32 InIndex)
+		{
+			check((InParticle == Particle0) || (InParticle == Particle1));
+			if (InParticle == Particle0)
+			{
+				ParticleCollisionsIndex0 = InIndex;
+			}
+			else
+			{
+				ParticleCollisionsIndex1 = InIndex;
+			}
+		}
+
+	private:
 		/**
 		 * @brief Build the list of potentially colliding shape pairs.
 		 * This is all the shape pairs in the partilces' shapes arrays that pass the collision filter.
@@ -347,19 +425,19 @@ namespace Chaos
 		*/
 		bool ShouldEnableCCD(const FReal Dt);
 
-		void InitRestoreThresholds();
+		void InitThresholds();
 
 		/**
 		 * @brief Whether we should reuse the constraint as-is and skip the narrow phase
 		 * This will be true if neither particle has moved much. 
 		 * This is non-const because it updates some position tracking data.
 		*/
-		bool ShouldRestoreConstraints(const FReal Dt);
+		ECollisionRestoreType ShouldRestoreConstraints(const FReal Dt);
 
 		/**
 		 * @brief If the particles have not moved muc, reactivate all the colisions and skip the narrow phase.
 		*/
-		bool TryRestoreConstraints(const FReal Dt);
+		bool TryRestoreConstraints(const FReal Dt, const FReal CullDistance);
 
 
 		FGeometryParticleHandle* Particle0;
@@ -370,12 +448,24 @@ namespace Chaos
 		TArray<FMultiShapePairCollisionDetector> MultiShapePairDetectors;
 		FCollisionConstraintAllocator* CollisionAllocator;
 
-		bool bIsCCD;
-		bool bIsInitialized;
-		bool bRestorable;
-		bool bIsSleeping;
+		union FFlags
+		{
+			FFlags() : Bits(0) {}
+			struct
+			{
+				uint32 bIsCCD : 1;
+				uint32 bIsInitialized : 1;
+				uint32 bRestorable : 1;
+				uint32 bIsSleeping : 1;
+			};
+			uint32 Bits;
+		} Flags;
 		int32 LastUsedEpoch;
 		int32 NumActiveConstraints;
+
+		// Indices into the arrays of collisions on the particles. This is a cookie for use by FParticleCollisions
+		int32 ParticleCollisionsIndex0;
+		int32 ParticleCollisionsIndex1;
 
 		// The particle transforms the last time the collisions were updated (used to determine whether we can restore contacts)
 		FMidPhaseRestoreThresholds RestoreThresholdZeroContacts;
@@ -384,5 +474,8 @@ namespace Chaos
 		FVec3 RestoreParticleP1;
 		FRotation3 RestoreParticleQ0;
 		FRotation3 RestoreParticleQ1;
+
+		// A number based on the size of the dynamic objects used to scale cull distance
+		FReal CullDistanceScale;
 	};
 }

@@ -57,10 +57,10 @@ public:
 
 	/** Return true if the specified bone is a root bone */
 	static bool IsARootBone(const FGeometryCollection* GeometryCollection, int32 InBone);
-
+	
 	/** Finds all Bones in same cluster as the one specified */
 	static void GetClusteredBonesWithCommonParent(const FGeometryCollection* GeometryCollection, int32 SourceBone, TArray<int32>& BonesOut);
-
+	
 	/** Get list of child bones down from the source bone below the specified hierarchy level */
 	static void GetChildBonesFromLevel(const FGeometryCollection* GeometryCollection, int32 SourceBone, int32 Level, TArray<int32>& BonesOut);
 
@@ -81,7 +81,7 @@ public:
 	* from the given bone index down through the hierarchy to the leaf nodes
 	*/
 	static void RecursivelyUpdateChildBoneNames(int32 BoneIndex, const TManagedArray<TSet<int32>>& Children, TManagedArray<FString>& BoneNames, bool OverrideBoneNames = false);
-
+	
 	/** Recursively update the hierarchy level of all the children below this bone */
 	static void UpdateHierarchyLevelOfChildren(FGeometryCollection* GeometryCollection, int32 ParentElement);
 
@@ -125,7 +125,7 @@ public:
 private:
 	// #todo: intend to remove reliance on custom attributes for slider by making use of Rest/Dynamic collections
 	static void ResetSliderTransforms(TManagedArray<FTransform>& ExplodedTransforms, TManagedArray<FTransform>& Transforms);
-
+	
 	static void RecursivelyUpdateHierarchyLevelOfChildren(TManagedArray<int32>& Levels, const TManagedArray<TSet<int32>>& Children, int32 ParentElement);
 
 	static int32 FindLowestCommonAncestor(FGeometryCollection* GeometryCollection, int32 N0, int32 N1);

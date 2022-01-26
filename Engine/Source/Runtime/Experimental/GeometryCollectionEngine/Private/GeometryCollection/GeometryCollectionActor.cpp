@@ -68,6 +68,7 @@ const Chaos::FPhysicsSolver* GetSolver(const AGeometryCollectionActor& GeomColle
 
 bool LowLevelRaycastImp(const Chaos::FVec3& Start, const Chaos::FVec3& Dir, float DeltaMag, const AGeometryCollectionActor& GeomCollectionActor, FHitResult& OutHit)
 {
+#if TODO_REIMPLEMENT_GET_RIGID_PARTICLES
 	using namespace Chaos;
 	//todo(ocohen): need to add thread safety / lock semantics
 	//const TManagedArray<int32>& RigidBodyIdArray = GeomCollectionActor.GetGeometryCollectionComponent()->GetRigidBodyIdArray();
@@ -78,7 +79,6 @@ bool LowLevelRaycastImp(const Chaos::FVec3& Start, const Chaos::FVec3& Dir, floa
 	const Chaos::FPhysicsSolver* Solver = GetSolver(GeomCollectionActor);
 	if(ensure(Solver))
 	{
-#if TODO_REIMPLEMENT_GET_RIGID_PARTICLES
 		const TPBDRigidParticles<float, 3>& Particles = Solver->GetRigidParticles();	//todo(ocohen): should these just get passed in instead of hopping through scene?
 		FAABB3 RayBox(Start, Start);
 		RayBox.Thicken(Dir * DeltaMag);
@@ -112,8 +112,8 @@ bool LowLevelRaycastImp(const Chaos::FVec3& Start, const Chaos::FVec3& Dir, floa
 				return true;
 			}
 		}
-#endif
 	}
+#endif
 
 	return false;
 }

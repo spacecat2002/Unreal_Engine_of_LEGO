@@ -51,6 +51,8 @@ FAutoConsoleVariableRef CVarGeometryCollectionTripleBufferUploads(
 
 DEFINE_LOG_CATEGORY_STATIC(FGeometryCollectionSceneProxyLogging, Log, All);
 
+FGeometryCollectionDynamicDataPool GDynamicDataPool;
+
 FGeometryCollectionSceneProxy::FGeometryCollectionSceneProxy(UGeometryCollectionComponent* Component)
 	: FPrimitiveSceneProxy(Component)
 	, MaterialRelevance(Component->GetMaterialRelevance(GetScene().GetFeatureLevel()))
@@ -1037,4 +1039,64 @@ void FGeometryCollectionSceneProxy::ReleaseSubSections_RenderThread()
 void FGeometryCollectionSceneProxy::GetPreSkinnedLocalBounds(FBoxSphereBounds& OutBounds) const
 {
 	OutBounds = PreSkinnedBounds;
+}
+
+FGeometryCollectionDynamicDataPool::FGeometryCollectionDynamicDataPool()
+{
+	FreeList.SetNum(32);
+	for (int32 ListIndex = 0; ListIndex < FreeList.Num(); ++ListIndex)
+	{
+		FreeList[ListIndex] = new FGeometryCollectionDynamicData;
+	}
+}
+
+FGeometryCollectionDynamicDataPool::~FGeometryCollectionDynamicDataPool()
+{
+	FScopeLock ScopeLock(&ListLock);
+
+	for (FGeometryCollectionDynamicData* Entry : FreeList)
+	{
+		delete Entry;
+	}
+
+	for (FGeometryCollectionDynamicData* Entry : UsedList)
+	{
+		delete Entry;
+	}
+
+	FreeList.Empty();
+	UsedList.Empty();
+}
+
+FGeometryCollectionDynamicData* FGeometryCollectionDynamicDataPool::Allocate()
+{
+	FScopeLock ScopeLock(&ListLock);
+
+	FGeometryCollectionDynamicData* NewEntry = nullptr;
+	if (FreeList.Num() > 0)
+	{
+		NewEntry = FreeList.Pop(false /* no shrinking */);
+	}
+
+	if (NewEntry == nullptr)
+	{
+		NewEntry = new FGeometryCollectionDynamicData;
+	}
+
+	NewEntry->Reset();
+	UsedList.Push(NewEntry);
+
+	return NewEntry;
+}
+
+void FGeometryCollectionDynamicDataPool::Release(FGeometryCollectionDynamicData* DynamicData)
+{
+	FScopeLock ScopeLock(&ListLock);
+
+	int32 UsedIndex = UsedList.Find(DynamicData);
+	if (ensure(UsedIndex != INDEX_NONE))
+	{
+		UsedList.RemoveAt(UsedIndex, 1, false /* no shrinking */);
+		FreeList.Push(DynamicData);
+	}
 }

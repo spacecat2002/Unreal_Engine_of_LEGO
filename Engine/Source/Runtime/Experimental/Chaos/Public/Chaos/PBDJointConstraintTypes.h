@@ -32,6 +32,14 @@ namespace Chaos
 		Force,
 	};
 
+	enum class EPlasticityType : int32
+	{
+		Free,
+		Shrink,
+		Grow,
+	};
+
+
 	/**
 	 * The order of the angular constraints (for settings held in vectors etc)
 	 */
@@ -113,6 +121,11 @@ namespace Chaos
 		// whenever settings change.
 		void Sanitize();
 
+		bool operator==(const FPBDJointSettings& Other) const
+		{
+			return !FMemory::Memcmp(this, &Other, sizeof(*this));
+		}
+
 		FTransformPair ConnectorTransforms;
 
 		FReal Stiffness;
@@ -173,8 +186,12 @@ namespace Chaos
 
 		FReal LinearBreakForce;
 		FReal LinearPlasticityLimit;
+		EPlasticityType LinearPlasticityType;
+		FReal LinearPlasticityInitialDistanceSquared;
 		FReal AngularBreakTorque;
 		FReal AngularPlasticityLimit;
+
+		FReal ContactTransferScale;
 
 		void* UserData;
 	};

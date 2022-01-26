@@ -7,6 +7,7 @@
 #include "GeometryCollection/ManagedArray.h"
 #include "GeometryCollection/GeometryCollectionSimulationTypes.h"
 #include "Chaos/ChaosSolverActor.h"
+
 #include "GeometryCollectionObject.generated.h"
 
 class UMaterialInterface;
@@ -36,13 +37,13 @@ struct GEOMETRYCOLLECTIONENGINE_API FGeometryCollectionEmbeddedExemplar
 {
 	GENERATED_BODY()
 
-		FGeometryCollectionEmbeddedExemplar()
+	FGeometryCollectionEmbeddedExemplar() 
 		: StaticMeshExemplar(FString(TEXT("None")))
 		, StartCullDistance(0.0f)
 		, EndCullDistance(0.0f)
 		, InstanceCount(0)
 	{ };
-
+	
 	FGeometryCollectionEmbeddedExemplar(FSoftObjectPath NewExemplar)
 		: StaticMeshExemplar(NewExemplar)
 		, StartCullDistance(0.0f)
@@ -87,6 +88,7 @@ struct GEOMETRYCOLLECTIONENGINE_API FGeometryCollectionLevelSetData
 	*/
 	UPROPERTY(EditAnywhere, Category = "LevelSet")
 	int32 MinClusterLevelSetResolution;
+
 	/*
 	*  Resolution on the smallest axes for the level set. (def: 10)
 	*/
@@ -100,7 +102,7 @@ struct GEOMETRYCOLLECTIONENGINE_API FGeometryCollectionCollisionParticleData
 {
 	GENERATED_BODY()
 
-		FGeometryCollectionCollisionParticleData();
+	FGeometryCollectionCollisionParticleData();
 
 	/**
 	 * Number of particles on the triangulated surface to use for collisions.
@@ -153,6 +155,14 @@ struct GEOMETRYCOLLECTIONENGINE_API FGeometryCollectionCollisionTypeData
 	*/
 	UPROPERTY(EditAnywhere, Category = "Collisions")
 	float CollisionObjectReductionPercentage;
+
+	/**
+	* A collision margin is a fraction of size used by some boxes and convex shapes to improve collision detection results.
+	* The core geometry of shapes that support a margin are reduced in size by the margin, and the margin
+	* is added back on during collision detection. The net result is a shape of the same size but with rounded corners.
+	*/
+	UPROPERTY(EditAnywhere, Category = "Collisions", meta = (EditCondition = "ImplicitType == EImplicitTypeEnum::Chaos_Implicit_Convex || ImplicitType == EImplicitTypeEnum::Chaos_Implicit_Box", EditConditionHides))
+	float CollisionMarginFraction;
 
 };
 
@@ -273,12 +283,14 @@ public:
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual bool Modify(bool bAlwaysMarkDirty = true) override;
 #endif
+	virtual void PostLoad() override;
+	virtual void BeginDestroy() override;
 	/** End UObject Interface */
 
 	void Serialize(FArchive& Ar);
 
 #if WITH_EDITOR
-	void EnsureDataIsCooked();
+	void EnsureDataIsCooked(bool bInitResources = true);
 #endif
 
 	/** Accessors for internal geometry collection */
@@ -296,7 +308,7 @@ public:
 	/** ReindexMaterialSections */
 	void ReindexMaterialSections();
 
-	/** appends the standard materials to this uobject */
+	/** appends the standard materials to this UObject */
 	void InitializeMaterials();
 
 
@@ -315,6 +327,8 @@ public:
 	/** Remove embedded geometry exemplars with indices matching the sorted removal list. */
 	void RemoveExemplars(const TArray<int32>& SortedRemovalIndices);
 
+	/** Produce a deep copy of GeometryCollection member, stripped of data unecessary for gameplay. */
+	TSharedPtr<FGeometryCollection, ESPMode::ThreadSafe> GenerateMinimalGeometryCollection() const;
 
 #if WITH_EDITOR
 	/** If this flag is set, we only regenerate simulation data when requested via CreateSimulationData() */
@@ -322,6 +336,7 @@ public:
 	
 	/** Create the simulation data that can be shared among all instances (mass, volume, etc...)*/
 	void CreateSimulationData();
+
 #endif
 
 	void InitResources();
@@ -334,9 +349,6 @@ public:
 	/** Accessors for the two guids used to identify this collection */
 	FGuid GetIdGuid() const;
 	FGuid GetStateGuid() const;
-
-	/** The editable mesh representation of this geometry collection */
-	class UObject* EditableMesh;
 
 	UPROPERTY(EditAnywhere, Category = "Clustering")
 	bool EnableClustering;
@@ -357,9 +369,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Clustering")
 	EClusterConnectionTypeEnum ClusterConnectionType;
 
+#if WITH_EDITORONLY_DATA
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GeometrySource")
 	TArray<FGeometryCollectionSource> GeometrySource;
-	
+#endif
+
 	UPROPERTY(EditAnywhere, Category = "Materials")
 	TArray<UMaterialInterface*> Materials;
 
@@ -367,6 +381,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "EmbeddedGeometry")
 	TArray<FGeometryCollectionEmbeddedExemplar> EmbeddedGeometryExemplar;
 
+	/** Whether to use full precision UVs when rendering this geometry. */
+	UPROPERTY(EditAnywhere, Category = "Rendering")
+	bool bUseFullPrecisionUVs = false;
+	
 #if WITH_EDITORONLY_DATA
 	/*
 	*  CollisionType defines how to initialize the rigid collision structures.
@@ -446,7 +464,7 @@ public:
 	/** Remove particle from simulation and dissolve rendered geometry once sleep threshold has been exceeded. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "RemoveOnMaxSleep"))
 	bool bRemoveOnMaxSleep;
-
+	
 	/** How long may the particle sleep before initiating removal (in seconds). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal)
 	FVector2D MaximumSleepTime;
