@@ -53,7 +53,7 @@ UGeometryCollection::UGeometryCollection(const FObjectInitializer& ObjectInitial
 	, ClusterGroupIndex(0)
 	, MaxClusterLevel(100)
 	, DamageThreshold({ 250.0 })
-	, ClusterConnectionType(EClusterConnectionTypeEnum::Chaos_PointImplicit)
+	, ClusterConnectionType(EClusterConnectionTypeEnum::Chaos_MinimalSpanningSubsetDelaunayTriangulation)
 	, bUseFullPrecisionUVs(false)
 #if WITH_EDITORONLY_DATA
 	, CollisionType_DEPRECATED(ECollisionTypeEnum::Chaos_Volumetric)
