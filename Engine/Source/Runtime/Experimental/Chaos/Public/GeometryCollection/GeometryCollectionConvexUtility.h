@@ -25,6 +25,9 @@ public:
 	/** Ensure that convex hull data exists for the Geometry Collection and construct it if not (or if some data is missing. */
 	static FGeometryCollectionConvexData GetValidConvexHullData(FGeometryCollection* GeometryCollection);
 
+	/** @return true if convex hull data is present */
+	static bool HasConvexHullData(FGeometryCollection* GeometryCollection);
+
 	/**
 	 Create non-overlapping convex hull data for all transforms in the geometry collection (except transforms where it would be better to just use the hulls of the children) 
 

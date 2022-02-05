@@ -210,7 +210,7 @@ UGeometryCollectionComponent::UGeometryCollectionComponent(const FObjectInitiali
 	, EnableClustering(true)
 	, ClusterGroupIndex(0)
 	, MaxClusterLevel(100)
-	, DamageThreshold({250.0})
+	, DamageThreshold({ 500000.f, 50000.f, 5000.f })
 	, bUseSizeSpecificDamageThreshold(false)
 	, ClusterConnectionType_DEPRECATED(EClusterConnectionTypeEnum::Chaos_MinimalSpanningSubsetDelaunayTriangulation)
 	, CollisionGroup(0)
@@ -2056,6 +2056,12 @@ FGeometryCollectionEdit::FGeometryCollectionEdit(UGeometryCollectionComponent* I
 	{
 		Component->DestroyPhysicsState();
 	}
+
+	if (EnumHasAnyFlags(EditUpdate, GeometryCollection::EEditUpdate::Rest) && GetRestCollection())
+	{
+		Component->Modify();
+		GetRestCollection()->Modify();
+	}
 }
 
 FGeometryCollectionEdit::~FGeometryCollectionEdit()
@@ -2070,7 +2076,8 @@ FGeometryCollectionEdit::~FGeometryCollectionEdit()
 
 		if (EnumHasAnyFlags(EditUpdate, GeometryCollection::EEditUpdate::Rest) && GetRestCollection())
 		{
-			GetRestCollection()->Modify();
+			GetRestCollection()->UpdateConvexGeometry();
+			GetRestCollection()->InvalidateCollection();
 		}
 
 		if (EnumHasAnyFlags(EditUpdate, GeometryCollection::EEditUpdate::Physics) && bHadPhysicsState)

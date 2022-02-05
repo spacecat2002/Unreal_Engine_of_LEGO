@@ -362,8 +362,8 @@ public:
 	int32 MaxClusterLevel;
 
 	/** Damage threshold for clusters at different levels. */
-	UPROPERTY(EditAnywhere, Category = "Clustering")
-	TArray<float> DamageThreshold;
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated. Use the default SizeSpecificData instead."))
+	TArray<float> DamageThreshold_DEPRECATED;
 
 	/** */
 	UPROPERTY(EditAnywhere, Category = "Clustering")
@@ -466,7 +466,7 @@ public:
 	bool bRemoveOnMaxSleep;
 	
 	/** How long may the particle sleep before initiating removal (in seconds). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, DisplayName = "Sleep Min Max")
 	FVector2D MaximumSleepTime;
 
 	/** How long does the removal process take (in seconds). */
@@ -509,6 +509,11 @@ public:
 	class UThumbnailInfo* ThumbnailInfo;
 #endif // WITH_EDITORONLY_DATA
 
+	/*
+	* Update the convex geometry on the collection.
+	*/
+	void UpdateConvexGeometry();
+
 private:
 #if WITH_EDITOR
 	void CreateSimulationDataImp(bool bCopyFromDDC, const TCHAR* OverrideVersion = nullptr);
@@ -516,7 +521,7 @@ private:
 
 	/*
 	* Used to transfer deprecated properties to the size specific structures during serialization
-	* and to add back the default size specific data when deleted. 
+	* and to add back the default size specific data when deleted.
 	*/
 	void ValidateSizeSpecificDataDefaults();
 
