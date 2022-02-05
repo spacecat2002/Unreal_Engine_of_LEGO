@@ -1612,36 +1612,32 @@ namespace Chaos
 		void ConstructLevelsetLevelsetConstraints(TGeometryParticleHandle<FReal, 3>* Particle0, TGeometryParticleHandle<FReal, 3>* Particle1, const FImplicitObject* Implicit0, const FBVHParticles* Simplicial0, const FImplicitObject* Implicit1, const FBVHParticles* Simplicial1, const FRigidTransform3& ParticleWorldTransform0, const FRigidTransform3& LocalTransform0, const FRigidTransform3& ParticleWorldTransform1, const FRigidTransform3& LocalTransform1, const FReal CullDistance, const FReal Dt, const FCollisionContext& Context)
 		{
 			const bool bAllowManifolds = Context.bAllowManifolds && bChaos_Collision_AllowLevelsetManifolds;
-			FPBDCollisionConstraint* Constraint = Context.CollisionAllocator->FindOrCreateConstraint(Particle0, Implicit0, Simplicial0, LocalTransform0, Particle1, Implicit1, Simplicial1, LocalTransform1, CullDistance, EContactShapesType::LevelSetLevelSet, bAllowManifolds);
+			FPBDCollisionConstraint* Constraint = nullptr;
 
-			// @todo(chaos): support manifold restoration for Levelsets and remove this
-			Constraint->ResetActiveManifoldContacts();
-
-			// @todo(chaos): the order test should be done befor we create the constraint so we can do it right first time, rather than patching it after
-			bool bIsParticleDynamic0 = Particle0->CastToRigidParticle() && Particle0->ObjectState() == EObjectStateType::Dynamic;
+			// @todo(chaos): We do not really support a runtime decision for the particle order now that we have persistent collisions. Fix the logic below...?
+			// Also clean this logic up so it is readable. When is Simplical0 not equal to CollisionParticles0?
+			bool bIsParticleDynamic0 = Particle0->CastToRigidParticle() && ((Particle0->ObjectState() == EObjectStateType::Dynamic) || (Particle0->ObjectState() == EObjectStateType::Sleeping));
 			int32 P0NumCollisionParticles = Simplicial0 ? Simplicial0->Size() : Particle0->CastToRigidParticle()->CollisionParticlesSize();
 			if (!Particle1->Geometry() || (bIsParticleDynamic0 && !P0NumCollisionParticles && Particle0->Geometry() && !Particle0->Geometry()->IsUnderlyingUnion()))
 			{
-				Constraint->Particle[0] = Particle1;
-				Constraint->Particle[1] = Particle0;
-				Constraint->ImplicitTransform[0] = LocalTransform1;
-				Constraint->ImplicitTransform[1] = LocalTransform0;
-				Constraint->SetManifold(Implicit1, Simplicial1, Implicit0, Simplicial0);
+				Constraint = Context.CollisionAllocator->FindOrCreateConstraint(Particle1, Implicit1, Simplicial1, LocalTransform1, Particle0, Implicit0, Simplicial0, LocalTransform0, CullDistance, EContactShapesType::LevelSetLevelSet, bAllowManifolds);
 			}
 			else
 			{
-				Constraint->Particle[0] = Particle0;
-				Constraint->Particle[1] = Particle1;
-				Constraint->ImplicitTransform[0] = LocalTransform0;
-				Constraint->ImplicitTransform[1] = LocalTransform1;
-				Constraint->SetManifold(Implicit0, Simplicial0, Implicit1, Simplicial1);
+				Constraint = Context.CollisionAllocator->FindOrCreateConstraint(Particle0, Implicit0, Simplicial0, LocalTransform0, Particle1, Implicit1, Simplicial1, LocalTransform1, CullDistance, EContactShapesType::LevelSetLevelSet, bAllowManifolds);
 			}
 
-			if (T_TRAITS::bImmediateUpdate && !Constraint->WasManifoldRestored())
+			if (Constraint != nullptr)
 			{
-				FRigidTransform3 WorldTransform0 = Constraint->ImplicitTransform[0] * ParticleWorldTransform0;
-				FRigidTransform3 WorldTransform1 = Constraint->ImplicitTransform[1] * ParticleWorldTransform1;
-				UpdateLevelsetLevelsetConstraint<ECollisionUpdateType::Deepest>(WorldTransform0, WorldTransform1, Dt, *Constraint);
+				// @todo(chaos): support manifold restoration for Levelsets and remove this
+				Constraint->ResetActiveManifoldContacts();
+
+				if (T_TRAITS::bImmediateUpdate && !Constraint->WasManifoldRestored())
+				{
+					FRigidTransform3 WorldTransform0 = Constraint->GetShapeRelativeTransform0() * ParticleWorldTransform0;
+					FRigidTransform3 WorldTransform1 = Constraint->GetShapeRelativeTransform1() * ParticleWorldTransform1;
+					UpdateLevelsetLevelsetConstraint<ECollisionUpdateType::Deepest>(WorldTransform0, WorldTransform1, Dt, *Constraint);
+				}
 			}
 		}
 
