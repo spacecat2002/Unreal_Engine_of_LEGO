@@ -334,10 +334,9 @@ void CreateNonoverlappingConvexHulls(
 
 	auto IsColliding = [&Convexes](int32 ConvexA, int32 ConvexB)
 	{
-		if (ConvexA == -1 || ConvexB == -1 || !ensure(Convexes[ConvexA]->NumVertices() > 0 && Convexes[ConvexB]->NumVertices() > 0))
+		if (ConvexA == -1 || ConvexB == -1 || !(Convexes[ConvexA]->NumVertices() > 0 && Convexes[ConvexB]->NumVertices() > 0))
 		{
 			// at least one of the convex hulls was empty, so cannot be colliding
-			// TODO: eventually remove this ensure; and add more handling for empty hulls
 			return false;
 		}
 		const Chaos::TRigidTransform<Chaos::FReal, 3> IdentityTransform = Chaos::TRigidTransform<Chaos::FReal, 3>::Identity;
@@ -347,7 +346,7 @@ void CreateNonoverlappingConvexHulls(
 	auto GetConvexSpan = [](const Chaos::FConvex& Convex, const Chaos::FVec3& Center, const Chaos::FVec3& Normal) -> Chaos::FVec2
 	{
 		int32 NumVertices = Convex.NumVertices();
-		if (!ensure(NumVertices > 0))
+		if (!(NumVertices > 0))
 		{
 			return Chaos::FVec2(0, 0);
 		}
@@ -466,10 +465,9 @@ void CreateNonoverlappingConvexHulls(
 
 	auto FixCollisionWithCut = [&Convexes, &FindCutPlane, &SimplificationDistanceThreshold](int32 ConvexA, int32 ConvexB)
 	{
-		if (!ensure(Convexes[ConvexA]->NumVertices() > 0 && Convexes[ConvexB]->NumVertices() > 0))
+		if (!(Convexes[ConvexA]->NumVertices() > 0 && Convexes[ConvexB]->NumVertices() > 0))
 		{
 			// at least one of the convex hulls was empty, so cannot be colliding
-			// TODO: eventually remove this ensure; and add more handling for empty hulls
 			return false;
 		}
 		Chaos::FReal Depth;
@@ -872,7 +870,7 @@ void HullsFromGeometry(
 			{
 				// if we've failed to make a convex hull, add a tiny bounding box just to ensure every geometry has a hull
 				Chaos::FConvex::FAABB3Type AABB = Convexes[ConvexIdx]->GetLocalBoundingBox();
-				AABB.Thicken(.001f);
+				AABB.Thicken(.01f);
 				Chaos::FConvex::FVec3Type Min = AABB.Min();
 				Chaos::FConvex::FVec3Type Max = AABB.Max();
 				HullPts.Add(Min);
@@ -886,7 +884,7 @@ void HullsFromGeometry(
 				// note: Do not use SimplificationDistanceThreshold for this fixed tiny hull
 				*Convexes[ConvexIdx] = Chaos::FConvex(HullPts, KINDA_SMALL_NUMBER);
 			}
-			ensure(Convexes[ConvexIdx]->NumVertices() > 0);
+			// Note: in practice we will end up with empty convex hulls whenever there are small pieces of geometry, because the FConvex returns empty hulls in that case
 			TransformToConvexIndices[Idx].Add(ConvexIdx);
 		}
 	}
