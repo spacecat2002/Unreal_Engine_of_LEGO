@@ -103,7 +103,7 @@ FGeometryCollectionCollisionTypeData::FGeometryCollectionCollisionTypeData()
 	, LevelSet()
 	, CollisionParticles()
 	, CollisionObjectReductionPercentage(0.0f)
-	, CollisionMarginFraction(0.1)
+	, CollisionMarginFraction(0.f)
 {
 }
 
