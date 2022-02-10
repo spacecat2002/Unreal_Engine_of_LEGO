@@ -34,6 +34,13 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogGeometryCollectionInternal, Log, All);
 
+bool bGeometryCollectionEnableForcedConvexGenerationInSerialize = true;
+FAutoConsoleVariableRef CVarGeometryCollectionEnableForcedConvexGenerationInSerialize(
+	TEXT("p.GeometryCollectionEnableForcedConvexGenerationInSerialize"),
+	bGeometryCollectionEnableForcedConvexGenerationInSerialize,
+	TEXT("Enable generation of convex geometry on older destruction files.[def:true]"));
+
+
 #if ENABLE_COOK_STATS
 namespace GeometryCollectionCookStats
 {
@@ -53,7 +60,7 @@ UGeometryCollection::UGeometryCollection(const FObjectInitializer& ObjectInitial
 	, EnableClustering(true)
 	, ClusterGroupIndex(0)
 	, MaxClusterLevel(100)
-	, DamageThreshold_DEPRECATED({ 500000.f, 50000.f, 5000.f })
+	, DamageThreshold({ 500000.f, 50000.f, 5000.f })
 	, ClusterConnectionType(EClusterConnectionTypeEnum::Chaos_MinimalSpanningSubsetDelaunayTriangulation)
 	, bUseFullPrecisionUVs(false)
 #if WITH_EDITORONLY_DATA
@@ -708,13 +715,16 @@ void UGeometryCollection::Serialize(FArchive& Ar)
 	if (Ar.CustomVer(FPhysicsObjectVersion::GUID) < FPhysicsObjectVersion::GeometryCollectionConvexDefaults)
 	{
 #if WITH_EDITOR
-		if (!FGeometryCollectionConvexUtility::HasConvexHullData(GeometryCollection.Get()))
+		if (bGeometryCollectionEnableForcedConvexGenerationInSerialize)
 		{
-			UE_LOG(LogGeometryCollectionInternal, Warning, TEXT("Regenerated GeoemtryCollections convex geometry on asset (%s). Please resave package %s."), *GetName(), *GetOutermost()->GetPathName());
-			FGeometryCollectionConvexPropertiesInterface::FConvexCreationProperties ConvexProperties = GeometryCollection->GetConvexProperties();
-			FGeometryCollectionConvexUtility::CreateNonOverlappingConvexHullData(GeometryCollection.Get(), ConvexProperties.FractionRemove, ConvexProperties.SimplificationThreshold);
-			bCreateSimulationData = true;
-			InvalidateCollection();
+			if (!FGeometryCollectionConvexUtility::HasConvexHullData(GeometryCollection.Get()))
+			{
+				UE_LOG(LogGeometryCollectionInternal, Warning, TEXT("Regenerated GeoemtryCollections convex geometry on asset (%s). Please resave package %s."), *GetName(), *GetOutermost()->GetPathName());
+				FGeometryCollectionConvexPropertiesInterface::FConvexCreationProperties ConvexProperties = GeometryCollection->GetConvexProperties();
+				FGeometryCollectionConvexUtility::CreateNonOverlappingConvexHullData(GeometryCollection.Get(), ConvexProperties.FractionRemove, ConvexProperties.SimplificationThreshold);
+				bCreateSimulationData = true;
+				InvalidateCollection();
+			}
 		}
 #endif
 	}
