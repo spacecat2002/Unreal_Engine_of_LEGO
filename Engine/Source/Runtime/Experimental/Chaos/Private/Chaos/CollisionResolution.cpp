@@ -1352,8 +1352,8 @@ namespace Chaos
 		{
 			CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_UpdateGenericConvexConvexConstraintSwept, ConstraintsDetailedStats);
 			FReal TOI = TNumericLimits<FReal>::Max();
-			const FRigidTransform3 EndWorldTransform0(FGenericParticleHandle(Particle0)->P(), FGenericParticleHandle(Particle0)->Q());
-			const FRigidTransform3 EndWorldTransform1(FGenericParticleHandle(Particle1)->P(), FGenericParticleHandle(Particle1)->Q());
+			const FRigidTransform3& EndWorldTransform0 = Constraint.GetShapeWorldTransform0();
+			const FRigidTransform3& EndWorldTransform1 = Constraint.GetShapeWorldTransform1();
 			UpdateContactPointNoCull(Constraint, GenericConvexConvexContactPointSwept(Implicit0, StartWorldTransform0, EndWorldTransform0, Implicit1, StartWorldTransform1, EndWorldTransform1, Dir, Length, TOI), Dt);
 			SetSweptConstraintTOI(Particle0, TOI, Length, Dir, Constraint);
 		}
