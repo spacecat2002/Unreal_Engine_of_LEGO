@@ -77,6 +77,8 @@ UGeometryCollection::UGeometryCollection(const FObjectInitializer& ObjectInitial
 	, Mass(2500.0f)
 	, MinimumMassClamp(0.1f)
 	, bRemoveOnMaxSleep(false)
+	, bShrinkOnMaxSleep(true) // true to keep backward compatibility
+	, bUpdateMaterialFadeAmount(false)
 	, MaximumSleepTime(5.0, 10.0)
 	, RemovalDuration(2.5, 5.0)
 	, EnableRemovePiecesOnFracture(false)

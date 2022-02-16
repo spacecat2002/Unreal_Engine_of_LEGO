@@ -874,6 +874,7 @@ void UGeometryCollectionComponent::SetRestState(TArray<FTransform>&& InRestTrans
 	DynamicData->SetPrevTransforms(GlobalMatrices);
 	CalculateGlobalMatrices();
 	DynamicData->SetTransforms(GlobalMatrices);
+	DynamicData->SetDefaultAttributes(GlobalMatrices.Num());
 	DynamicData->IsDynamic = true;
 
 	if (SceneProxy)
@@ -1553,17 +1554,18 @@ FGeometryCollectionDynamicData* UGeometryCollectionComponent::InitDynamicData(bo
 			CalculateGlobalMatrices();
 
 			DynamicData->SetAllTransforms(GlobalMatrices);
+			SetDynamicDataAttributes(DynamicData);
 		}
 		else
 		{
+			bool bComputeChanges = true;
+			
 			// Copy existing global matrices into prev transforms
 			DynamicData->SetPrevTransforms(GlobalMatrices);
 
 			// Copy global matrices over to DynamicData
 			CalculateGlobalMatrices();
-
-			bool bComputeChanges = true;
-
+			
 			// if the number of matrices has changed between frames, then sync previous to current
 			if (GlobalMatrices.Num() != DynamicData->PrevTransforms.Num())
 			{
@@ -1573,6 +1575,11 @@ FGeometryCollectionDynamicData* UGeometryCollectionComponent::InitDynamicData(bo
 			}
 
 			DynamicData->SetTransforms(GlobalMatrices);
+
+			if (SetDynamicDataAttributes(DynamicData))
+			{
+				bComputeChanges = false; // Optimization, if attributes need to be updated , then skip the transform comparison
+			}
 
 			// The number of transforms for current and previous should match now
 			check(DynamicData->PrevTransforms.Num() == DynamicData->Transforms.Num());
@@ -1608,6 +1615,33 @@ FGeometryCollectionDynamicData* UGeometryCollectionComponent::InitDynamicData(bo
 	}
 
 	return DynamicData;
+}
+
+bool UGeometryCollectionComponent::SetDynamicDataAttributes(FGeometryCollectionDynamicData* DynamicData) const
+{
+	bool bUpdatedAttributes = false;
+	if (DynamicData)
+	{
+		const bool bNeedAttributes = (RestCollection->bUpdateMaterialFadeAmount);
+		if (bNeedAttributes)
+		{
+			if (DynamicCollection && DynamicCollection->HasAttribute("Decay", FGeometryCollection::TransformGroup))
+			{
+				const TManagedArray<float>& Decay = DynamicCollection->AddAttribute<float>("Decay", FGeometryCollection::TransformGroup);
+				DynamicData->SetAttributes(Decay);
+			}
+
+			// make sure attributes were set to match the matrices
+			if (DynamicData->Attributes.Num() != GlobalMatrices.Num())
+			{
+				DynamicData->SetDefaultAttributes(DynamicData->Transforms.Num());
+			}
+
+			bUpdatedAttributes = true;
+		}
+	}
+
+	return bUpdatedAttributes;
 }
 
 void UGeometryCollectionComponent::OnUpdateTransform(EUpdateTransformFlags UpdateTransformFlags, ETeleportType Teleport)
@@ -1715,6 +1749,12 @@ void UGeometryCollectionComponent::ResetDynamicCollection()
 			{
 				TManagedArray<float>& SleepTimer = DynamicCollection->AddAttribute<float>("SleepTimer", FGeometryCollection::TransformGroup);
 				SleepTimer.Fill(0.f);
+			}
+
+			if (!DynamicCollection->HasAttribute("Decay", FGeometryCollection::TransformGroup))
+			{
+				TManagedArray<float>& Decay = DynamicCollection->AddAttribute<float>("Decay", FGeometryCollection::TransformGroup);
+				Decay.Fill(0);
 			}
 
 			if (!DynamicCollection->HasAttribute("UniformScale", FGeometryCollection::TransformGroup))
@@ -2733,26 +2773,24 @@ void UGeometryCollectionComponent::CalculateGlobalMatrices()
 		else
 		{
 			// Have to fully rebuild
-			if (DynamicCollection 
+			if (DynamicCollection
 				&& RestCollection->bRemoveOnMaxSleep 
-				&& DynamicCollection->HasAttribute("SleepTimer", FGeometryCollection::TransformGroup) 
 				&& DynamicCollection->HasAttribute("UniformScale", FGeometryCollection::TransformGroup)
-				&& DynamicCollection->HasAttribute("MaxSleepTime", FGeometryCollection::TransformGroup)
-				&& DynamicCollection->HasAttribute("RemovalDuration", FGeometryCollection::TransformGroup))
+				&& DynamicCollection->HasAttribute("Decay", FGeometryCollection::TransformGroup))
 			{
-				const TManagedArray<float>& SleepTimer = DynamicCollection->GetAttribute<float>("SleepTimer", FGeometryCollection::TransformGroup);
-				const TManagedArray<float>& MaxSleepTime = DynamicCollection->GetAttribute<float>("MaxSleepTime", FGeometryCollection::TransformGroup);
-				const TManagedArray<float>& RemovalDuration = DynamicCollection->GetAttribute<float>("RemovalDuration", FGeometryCollection::TransformGroup);
+				const TManagedArray<float>& Decay = DynamicCollection->GetAttribute<float>("Decay", FGeometryCollection::TransformGroup);
 				TManagedArray<FTransform>& UniformScale = DynamicCollection->GetAttribute<FTransform>("UniformScale", FGeometryCollection::TransformGroup);
 
 				for (int32 Idx = 0; Idx < GetTransformArray().Num(); ++Idx)
 				{
-					if (SleepTimer[Idx] > MaxSleepTime[Idx])
+					// only update values if the decay has changed 
+					if (Decay[Idx] > 0.f && Decay[Idx] < 1.f)
 					{
-						float Scale = 1.0 - FMath::Min<float>(1.0, (SleepTimer[Idx] - MaxSleepTime[Idx]) / RemovalDuration[Idx]);
-						
-						if ((Scale < 1.0) && (Scale > 0.0))
+						//const bool bUpdateUniformScale = (Decay[Idx] >= 1.f) || RestCollection->bShrinkOnMaxSleep;
+						const bool bUpdateUniformScale = RestCollection->bShrinkOnMaxSleep;
+						if (bUpdateUniformScale)
 						{
+							const float Scale = 1.0 - Decay[Idx];
 							float ShrinkRadius = 0.0f;
 							FSphere AccumulatedSphere;
 							if (CalculateInnerSphere(Idx, AccumulatedSphere))
@@ -2765,7 +2803,6 @@ void UGeometryCollectionComponent::CalculateGlobalMatrices()
 							FTransform ToCOM(DynamicCollection->MassToLocal[Idx].GetTranslation());
 							UniformScale[Idx] = ToCOM.Inverse() * LocalDown.Inverse() * FTransform(FQuat::Identity, FVector(0.f, 0.f, 0.f), FVector(Scale)) * LocalDown * ToCOM;
 						}
-	
 					}
 				}
 				
@@ -2991,27 +3028,38 @@ void UGeometryCollectionComponent::IncrementSleepTimer(float DeltaTime)
 	if (DynamicCollection && PhysicsProxy 
 		&& DynamicCollection->HasAttribute("SleepTimer", FGeometryCollection::TransformGroup) 
 		&& DynamicCollection->HasAttribute("MaxSleepTime", FGeometryCollection::TransformGroup)
-		&& DynamicCollection->HasAttribute("RemovalDuration", FGeometryCollection::TransformGroup))
+		&& DynamicCollection->HasAttribute("RemovalDuration", FGeometryCollection::TransformGroup)
+		&& DynamicCollection->HasAttribute("Decay", FGeometryCollection::TransformGroup))
 	{
 		TManagedArray<float>& SleepTimer = DynamicCollection->GetAttribute<float>("SleepTimer", FGeometryCollection::TransformGroup);
 		const TManagedArray<float>& RemovalDuration = DynamicCollection->GetAttribute<float>("RemovalDuration", FGeometryCollection::TransformGroup);
 		const TManagedArray<float>& MaxSleepTime = DynamicCollection->GetAttribute<float>("MaxSleepTime", FGeometryCollection::TransformGroup);
+		TManagedArray<float>& Decay = DynamicCollection->GetAttribute<float>("Decay", FGeometryCollection::TransformGroup);
+		
 		TArray<int32> ToDisable;
 		for (int32 TransformIdx = 0; TransformIdx < SleepTimer.Num(); ++TransformIdx)
 		{
-			bool PreviouslyAwake = SleepTimer[TransformIdx] < MaxSleepTime[TransformIdx];
-			if (SleepTimer[TransformIdx] < (MaxSleepTime[TransformIdx] + RemovalDuration[TransformIdx]))
+			// update the sleeping timer accordingly
+			const bool IsSleeping = (DynamicCollection->DynamicState[TransformIdx] == (int)EObjectStateTypeEnum::Chaos_Object_Sleeping);
+			const bool HasStartedDecaying = (Decay[TransformIdx] > 0); 
+			if (IsSleeping || HasStartedDecaying)
 			{
-				SleepTimer[TransformIdx] = (DynamicCollection->DynamicState[TransformIdx] == (int)EObjectStateTypeEnum::Chaos_Object_Sleeping) ? SleepTimer[TransformIdx] + DeltaTime : 0.0f;
+				SleepTimer[TransformIdx] += DeltaTime;
+			}
 
-				if (SleepTimer[TransformIdx] > MaxSleepTime[TransformIdx])
-				{ 
-					DynamicCollection->MakeDirty();
-					if (PreviouslyAwake)
-					{
-						// Disable the particle if it has been asleep for the requisite time
-						ToDisable.Add(TransformIdx);
-					}
+			// update the decay and disable the particle when decay has completed 
+			const float UpdatedDecay = FMath::Clamp<float>((SleepTimer[TransformIdx] - MaxSleepTime[TransformIdx]) / RemovalDuration[TransformIdx], 0.f, 1.f);
+			if (UpdatedDecay != Decay[TransformIdx])
+			{
+				ensure(UpdatedDecay > Decay[TransformIdx]);
+				DynamicCollection->MakeDirty();
+				Decay[TransformIdx] = UpdatedDecay;
+
+				if (Decay[TransformIdx] >= 1.f)
+				{
+					// Disable the particle if it has been asleep for the requisite time
+					Decay[TransformIdx] = 1.0f;
+					ToDisable.Add(TransformIdx);
 				}
 			}
 		}

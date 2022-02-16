@@ -731,6 +731,9 @@ protected:
 	/** Populate the dynamic particle data for the render thread. */
 	FGeometryCollectionDynamicData* InitDynamicData(bool bInitialization);
 
+	/** Populate the dynamic data with required GC attributes, return true if attributes were updated */
+	bool SetDynamicDataAttributes(FGeometryCollectionDynamicData* DynamicData) const;
+
 	/** Reset the dynamic collection from the current rest state. */
 	void ResetDynamicCollection();
 

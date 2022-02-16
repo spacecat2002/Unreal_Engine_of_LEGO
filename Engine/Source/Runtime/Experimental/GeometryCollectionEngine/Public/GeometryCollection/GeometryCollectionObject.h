@@ -464,13 +464,21 @@ public:
 	/** Remove particle from simulation and dissolve rendered geometry once sleep threshold has been exceeded. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "RemoveOnMaxSleep"))
 	bool bRemoveOnMaxSleep;
+
+	/** Scale the particle down until it is removed when bRemoveOnMaxSleep is enabled */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "ShrinkOnMaxSleep", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
+	bool bShrinkOnMaxSleep;
+
+	/** Update the "Per Instance fade Amount" value in materials */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "UpdateMaterialFadeAmount", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
+	bool bUpdateMaterialFadeAmount;
 	
 	/** How long may the particle sleep before initiating removal (in seconds). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, DisplayName = "Sleep Min Max")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "SleepMinMax", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
 	FVector2D MaximumSleepTime;
 
 	/** How long does the removal process take (in seconds). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
 	FVector2D RemovalDuration;
 
 	/*

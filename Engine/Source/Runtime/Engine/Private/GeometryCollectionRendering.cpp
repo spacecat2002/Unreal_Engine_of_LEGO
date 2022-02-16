@@ -68,5 +68,6 @@ void FGeometryCollectionVertexFactoryShaderParameters::GetElementShaderBindings(
 		ShaderBindings.Add(VertexFetch_InstanceTransformBufferParameter, LocalVertexFactory->GetInstanceTransformSRV());
 		ShaderBindings.Add(VertexFetch_InstancePrevTransformBufferParameter, LocalVertexFactory->GetInstancePrevTransformSRV());
 		ShaderBindings.Add(VertexFetch_InstanceBoneMapBufferParameter, LocalVertexFactory->GetInstanceBoneMapSRV());
+		ShaderBindings.Add(VertexFetch_InstanceAttributeBufferParameter, LocalVertexFactory->GetInstanceAttributeSRV());
 	}
 }
