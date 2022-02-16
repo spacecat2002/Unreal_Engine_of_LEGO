@@ -229,17 +229,22 @@ void FGeometryCollectionSceneProxy::InitResources()
 
 		TransformBuffers.AddDefaulted(1);
 		PrevTransformBuffers.AddDefaulted(1);
+		AttributeBuffers.AddDefaulted(1);
 
 		TransformBuffers[0].NumTransforms = ConstantData->NumTransforms;
 		PrevTransformBuffers[0].NumTransforms = ConstantData->NumTransforms;
+		AttributeBuffers[0].NumTransforms = ConstantData->NumTransforms;
+		
 		TransformBuffers[0].InitResource();
 		PrevTransformBuffers[0].InitResource();
-
+		AttributeBuffers[0].InitResource();
+		
 		BoneMapBuffer.InitResource();
 
 		Data.InstanceBoneMapSRV = BoneMapBuffer.VertexBufferSRV;			
 		Data.InstanceTransformSRV = TransformBuffers[0].VertexBufferSRV;
 		Data.InstancePrevTransformSRV = PrevTransformBuffers[0].VertexBufferSRV;
+		Data.InstanceAttributeSRV = AttributeBuffers[0].VertexBufferSRV;
 	}
 
 	// 
@@ -276,6 +281,7 @@ void FGeometryCollectionSceneProxy::ReleaseResources()
 		{
 			TransformBuffers[i].ReleaseResource();
 			PrevTransformBuffers[i].ReleaseResource();
+			AttributeBuffers[i].ReleaseResource();
 		}
 		TransformBuffers.Reset();
 	}
@@ -496,13 +502,17 @@ void FGeometryCollectionSceneProxy::SetDynamicData_RenderThread(FGeometryCollect
 			{
 				TransformBuffers.AddDefaulted(2);
 				PrevTransformBuffers.AddDefaulted(2);
+				AttributeBuffers.AddDefaulted(2);
 
 				for (int32 i = 1; i < 3; i++)
 				{
 					TransformBuffers[i].NumTransforms = ConstantData->NumTransforms;
 					PrevTransformBuffers[i].NumTransforms = ConstantData->NumTransforms;
+					AttributeBuffers[i].NumTransforms = ConstantData->NumTransforms;
+					
 					TransformBuffers[i].InitResource();
 					PrevTransformBuffers[i].InitResource();
+					AttributeBuffers[i].InitResource();
 				}
 			}
 
@@ -527,6 +537,17 @@ void FGeometryCollectionSceneProxy::SetDynamicData_RenderThread(FGeometryCollect
 				void* PrevVertexBufferData = RHILockVertexBuffer(PrevTransformBuffer.VertexBufferRHI, 0, DynamicData->PrevTransforms.Num() * sizeof(FMatrix), LockMode);
 				FMemory::Memcpy(PrevVertexBufferData, DynamicData->PrevTransforms.GetData(), DynamicData->PrevTransforms.Num() * sizeof(FMatrix));
 				RHIUnlockVertexBuffer(PrevTransformBuffer.VertexBufferRHI);
+				
+				// attributes are opt-in
+				FGeometryCollectionAttributeBuffer& AttributeBuffer = GetCurrentAttributeBuffer();
+				if ((AttributeBuffer.NumTransforms * FGeometryCollectionAttributeBuffer::NumAttributesPerInstance) == DynamicData->Attributes.Num())
+				{
+					VertexFactory.SetInstanceAttributeSRV(AttributeBuffer.VertexBufferSRV);
+					
+					void* AttributeBufferData = RHILockVertexBuffer(AttributeBuffer.VertexBufferRHI, 0, DynamicData->Attributes.Num() * sizeof(float), LockMode);
+					FMemory::Memcpy(AttributeBufferData, DynamicData->Attributes.GetData(), DynamicData->Attributes.Num() * sizeof(float));
+					RHIUnlockVertexBuffer(AttributeBuffer.VertexBufferRHI);
+				}
 
 				TransformVertexBuffersContainsOriginalMesh = false;
 			}
@@ -535,8 +556,10 @@ void FGeometryCollectionSceneProxy::SetDynamicData_RenderThread(FGeometryCollect
 				CycleTransformBuffers(bLocalGeometryCollectionTripleBufferUploads);
 				FGeometryCollectionTransformBuffer& TransformBuffer = GetCurrentTransformBuffer();
 				FGeometryCollectionTransformBuffer& PrevTransformBuffer = GetCurrentPrevTransformBuffer();
+				FGeometryCollectionAttributeBuffer& AttributeBuffer = GetCurrentAttributeBuffer();
 				VertexFactory.SetInstanceTransformSRV(TransformBuffer.VertexBufferSRV);
 				VertexFactory.SetInstancePrevTransformSRV(PrevTransformBuffer.VertexBufferSRV);
+				VertexFactory.SetInstanceAttributeSRV(AttributeBuffer.VertexBufferSRV);
 
 				// if we are rendering the base mesh geometry, then use rest transforms rather than the simulated one for both current and previous transforms
 				void* VertexBufferData = RHILockVertexBuffer(TransformBuffer.VertexBufferRHI, 0, ConstantData->RestTransforms.Num() * sizeof(FMatrix), LockMode);
@@ -547,6 +570,10 @@ void FGeometryCollectionSceneProxy::SetDynamicData_RenderThread(FGeometryCollect
 				FMemory::Memcpy(PrevVertexBufferData, ConstantData->RestTransforms.GetData(), ConstantData->RestTransforms.Num() * sizeof(FMatrix));
 				RHIUnlockVertexBuffer(PrevTransformBuffer.VertexBufferRHI);
 
+				void* AttributeBufferData = RHILockVertexBuffer(AttributeBuffer.VertexBufferRHI, 0, ConstantData->RestAttributes.Num() * sizeof(float), LockMode);
+				FMemory::Memcpy(AttributeBufferData, ConstantData->RestAttributes.GetData(), ConstantData->RestAttributes.Num() * sizeof(float));
+				RHIUnlockVertexBuffer(AttributeBuffer.VertexBufferRHI);
+					
 				TransformVertexBuffersContainsOriginalMesh = true;
 			}
 		}
@@ -1100,3 +1127,4 @@ void FGeometryCollectionDynamicDataPool::Release(FGeometryCollectionDynamicData*
 		FreeList.Push(DynamicData);
 	}
 }
+

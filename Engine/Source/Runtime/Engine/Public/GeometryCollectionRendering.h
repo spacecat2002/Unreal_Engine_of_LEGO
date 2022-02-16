@@ -14,7 +14,6 @@ class FGeometryCollectionVertexFactoryShaderParameters : public FLocalVertexFact
 {
 	DECLARE_TYPE_LAYOUT(FGeometryCollectionVertexFactoryShaderParameters, NonVirtual);
 public:
-
 	// #note: We are reusing VertexFetch_InstanceTransformBuffer that was created for instanced static mesh 
 	void Bind(const FShaderParameterMap& ParameterMap)
 	{
@@ -23,8 +22,8 @@ public:
 		VertexFetch_InstanceTransformBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstanceTransformBuffer"));
 		VertexFetch_InstancePrevTransformBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstancePrevTransformBuffer"));
 		VertexFetch_InstanceBoneMapBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstanceBoneMapBuffer"));
-	}	
-
+		VertexFetch_InstanceAttributeBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstanceAttributeBuffer"));
+	}
 	void GetElementShaderBindings(
 		const FSceneInterface* Scene,
 		const FSceneView* View,
@@ -41,6 +40,7 @@ private:
 		LAYOUT_FIELD(FShaderResourceParameter, VertexFetch_InstanceTransformBufferParameter)
 		LAYOUT_FIELD(FShaderResourceParameter, VertexFetch_InstancePrevTransformBufferParameter)
 		LAYOUT_FIELD(FShaderResourceParameter, VertexFetch_InstanceBoneMapBufferParameter)
+		LAYOUT_FIELD(FShaderResourceParameter, VertexFetch_InstanceAttributeBufferParameter)
 	
 };
 
@@ -62,6 +62,7 @@ public:
 		FRHIShaderResourceView* InstanceTransformSRV = nullptr;
 		FRHIShaderResourceView* InstancePrevTransformSRV = nullptr;
 		FRHIShaderResourceView* InstanceBoneMapSRV = nullptr;
+		FRHIShaderResourceView* InstanceAttributeSRV = nullptr;
 	};
 
 	//
@@ -122,6 +123,11 @@ public:
 		Data.InstancePrevTransformSRV = InstancePrevTransformSRV;
 	}
 
+	inline void SetInstanceAttributeSRV(FRHIShaderResourceView* InstanceAttributeSRV)
+	{
+		Data.InstanceAttributeSRV = InstanceAttributeSRV;
+	}
+
 	inline FRHIShaderResourceView* GetInstancePrevTransformSRV() const
 	{
 		return Data.InstancePrevTransformSRV;
@@ -130,6 +136,11 @@ public:
 	inline FRHIShaderResourceView* GetInstanceBoneMapSRV() const
 	{
 		return Data.InstanceBoneMapSRV;
+	}
+
+	inline FRHIShaderResourceView* GetInstanceAttributeSRV() const
+	{
+		return Data.InstanceAttributeSRV;
 	}
 	
 private:

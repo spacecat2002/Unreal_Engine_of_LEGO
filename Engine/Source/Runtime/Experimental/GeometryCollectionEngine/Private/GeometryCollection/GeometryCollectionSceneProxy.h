@@ -11,11 +11,11 @@
 #include "GeometryCollection/GeometryCollectionEditorSelection.h"
 #include "HitProxies.h"
 #include "EngineUtils.h"
+#include "GeometryCollection/ManagedArray.h"
 
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
 #include "GeometryCollection/GeometryCollectionHitProxy.h"
 #endif
-
 
 class UGeometryCollectionComponent;
 struct FGeometryCollectionSection;
@@ -27,7 +27,7 @@ class FGeometryCollectionIndexBuffer : public FIndexBuffer
 public:
 	virtual void InitRHI() override
 	{
-		FRHIResourceCreateInfo CreateInfo;
+		FRHIResourceCreateInfo CreateInfo(TEXT("GeometryCollectionIndexBuffer_IndexBufferRHI"));
 		IndexBufferRHI = RHICreateIndexBuffer(sizeof(int32), NumIndices * sizeof(int32), BUF_Dynamic, CreateInfo);
 	}
 
@@ -40,7 +40,7 @@ class FGeometryCollectionBoneMapBuffer : public FVertexBuffer
 public:
 	virtual void InitRHI() override
 	{
-		FRHIResourceCreateInfo CreateInfo;
+		FRHIResourceCreateInfo CreateInfo(TEXT("FGeometryCollectionBoneMapBuffer_VertexBufferRHI"));
 
 		// #note: Bone Map is stored in uint16, but shaders only support uint32
 		VertexBufferRHI = RHICreateVertexBuffer(NumVertices * sizeof(uint32), BUF_Static | BUF_ShaderResource, CreateInfo);		
@@ -58,7 +58,7 @@ class FGeometryCollectionTransformBuffer : public FVertexBuffer
 public:
 	virtual void InitRHI() override
 	{
-		FRHIResourceCreateInfo CreateInfo;
+		FRHIResourceCreateInfo CreateInfo(TEXT("FGeometryCollectionTransformBuffer_VertexBufferRHI"));
 
 		// #note: This differs from instanced static mesh in that we are storing the entire transform in the buffer rather than
 		// splitting out the translation.  This is to simplify transferring data at runtime as a memcopy
@@ -71,11 +71,58 @@ public:
 	FShaderResourceViewRHIRef VertexBufferSRV;
 };
 
+/** Vertex Buffer for transform data */
+class FGeometryCollectionAttributeBuffer : public FVertexBuffer
+{
+public:
+	virtual void InitRHI() override
+	{
+		FRHIResourceCreateInfo CreateInfo(TEXT("FGeometryCollectionAttributeBuffer_VertexBufferRHI"));
+
+		// #note: This differs from instanced static mesh in that we are storing the entire transform in the buffer rather than
+		// splitting out the translation.  This is to simplify transferring data at runtime as a memcopy
+		VertexBufferRHI = RHICreateVertexBuffer(NumTransforms * NumAttributesPerInstance * sizeof(float), BUF_Dynamic | BUF_ShaderResource, CreateInfo);		
+		VertexBufferSRV = RHICreateShaderResourceView(VertexBufferRHI, sizeof(float), PF_R32_FLOAT);
+	}
+
+	static constexpr int32 NumAttributesPerInstance = 1;
+	int32 NumTransforms;
+
+	FShaderResourceViewRHIRef VertexBufferSRV;
+};
 
 inline void CopyTransformsWithConversionWhenNeeded(TArray<FMatrix>& DstTransforms, const TArray<FMatrix>& SrcTransforms)
 {
 	DstTransforms = SrcTransforms; // add move option?
 }
+
+
+struct FGeometryCollectionAttributeData
+{
+public:
+	FGeometryCollectionAttributeData()
+	{
+		Set(0.0f);
+	}
+
+	void SetDefault()
+	{
+		Set(0.0f);
+	}
+	
+	void Set(float InDecay)
+	{
+		Attributes[0] = InDecay;
+	}
+
+	float GetDecay() const
+	{
+		return Attributes[0];
+	}
+private:
+	float Attributes[1]; // @todo(ccaillaud) sync FGeometryCollectionAttributeBuffer num attribute 
+};
+
 
 /** Immutable rendering data (kind of) */
 struct FGeometryCollectionConstantData
@@ -99,11 +146,15 @@ struct FGeometryCollectionConstantData
 	TArray<FGeometryCollectionSection> OriginalMeshSections;
 
 	TArray<FMatrix> RestTransforms;
+	TArray<FGeometryCollectionAttributeData> RestAttributes;
 	
 	void SetRestTransforms(const TArray<FMatrix>& InTransforms)
 	{
 		// use for LWC as FMatrix and FMatrix44f are different when LWC is on 
 		CopyTransformsWithConversionWhenNeeded(RestTransforms, InTransforms);
+		// simply initialize the attributes to default
+		RestAttributes.Empty(InTransforms.Num());
+		RestAttributes.SetNum(InTransforms.Num());
 	}
 };
 
@@ -112,6 +163,7 @@ struct FGeometryCollectionDynamicData
 {
 	TArray<FMatrix> Transforms;
 	TArray<FMatrix> PrevTransforms;
+	TArray<FGeometryCollectionAttributeData> Attributes;
 	uint32 ChangedCount;
 	uint8 IsDynamic : 1;
 	uint8 IsLoading : 1;
@@ -125,6 +177,7 @@ struct FGeometryCollectionDynamicData
 	{
 		Transforms.Reset();
 		PrevTransforms.Reset();
+		Attributes.Reset();
 		IsDynamic = false;
 		IsLoading = false;
 	}
@@ -148,6 +201,33 @@ struct FGeometryCollectionDynamicData
 		ChangedCount = Transforms.Num();
 	}
 
+	void SetDefaultAttributes(const int32 AttribCount)
+	{
+		Attributes.SetNum(AttribCount);
+		for (int32 AttribIndex = 0; AttribIndex < AttribCount; ++AttribIndex)
+		{
+			Attributes[AttribIndex].SetDefault();
+		}
+		// we invalidate everything when attribute are changed
+		// it is the caller responsibility to avoid calling this when possible
+		// as we do not have previous values like transforms
+		ChangedCount = AttribCount;
+	}
+	
+	void SetAttributes(const TManagedArray<float>& InDecay)
+	{
+		const int32 AttribCount = InDecay.Num();
+		Attributes.SetNum(AttribCount);
+		for (int32 AttribIndex = 0; AttribIndex < AttribCount; ++AttribIndex)
+		{
+			Attributes[AttribIndex].Set(InDecay[AttribIndex]);
+		}
+		// we invalidate everything when attribute are changed
+		// it is the caller responsibility to avoid calling this when possible
+		// as we do not have previous values like transforms
+		ChangedCount = AttribCount;
+	}
+	
 	void DetermineChanges()
 	{
 		// Check if previous transforms are the same as current
@@ -221,6 +301,7 @@ class FGeometryCollectionSceneProxy final : public FPrimitiveSceneProxy
 	FGeometryCollectionBoneMapBuffer BoneMapBuffer;
 	TArray<FGeometryCollectionTransformBuffer, TInlineAllocator<3>> TransformBuffers;
 	TArray<FGeometryCollectionTransformBuffer, TInlineAllocator<3>> PrevTransformBuffers;
+	TArray<FGeometryCollectionAttributeBuffer, TInlineAllocator<3>> AttributeBuffers;
 
 	int32 CurrentTransformBufferIndex = 0;
 	FBoxSphereBounds PreSkinnedBounds;
@@ -321,6 +402,11 @@ protected:
 		return PrevTransformBuffers[CurrentTransformBufferIndex];
 	}
 
+	FGeometryCollectionAttributeBuffer& GetCurrentAttributeBuffer()
+	{
+		return AttributeBuffers[CurrentTransformBufferIndex];
+	}
+	
 	void CycleTransformBuffers(bool bCycle)
 	{
 		if (bCycle)
