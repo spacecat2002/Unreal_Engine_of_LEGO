@@ -413,7 +413,7 @@ namespace Chaos
 		static inline TVector<FReal, 3> CrossProduct(const TVector<FReal, 3>& V1, const TVector<FReal, 3>& V2) { return FVector::CrossProduct(V1, V2); }
 		static inline FReal DotProduct(const TVector<FReal, 3>& V1, const TVector<FReal, 3>& V2) { return FVector::DotProduct(V1, V2); }
 
-		inline FReal Dot(const TVector<FReal, 3>& V) { return FVector::DotProduct(*this, V); }
+		inline FReal Dot(const TVector<FReal, 3>& V) const { return FVector::DotProduct(*this, V); }
 		bool operator<=(const TVector<FReal, 3>& V) const
 		{
 			return X <= V.X && Y <= V.Y && Z <= V.Z;
@@ -578,6 +578,8 @@ namespace Chaos
 		{
 			return SizeSquared();
 		}
+
+		static FORCEINLINE TVector<FReal, 3> Zero() { return ZeroVector; }
 	};
 
 	template<>

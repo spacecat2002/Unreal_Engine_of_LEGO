@@ -10,13 +10,14 @@
 #include "ChaosLog.h"
 
 #include "Framework/Threading.h"
+#include "Misc/App.h"
 
 /** Cvar to enable/disable the island sleeping */
 bool ChaosSolverSleepEnabled = true;
 FAutoConsoleVariableRef CVarChaosSolverSleepEnabled(TEXT("p.Chaos.Solver.SleepEnabled"), ChaosSolverSleepEnabled, TEXT(""));
 
 /** Cvar to control the number of island groups used in the solver. The total number will be NumThreads * IslandGroupsMultiplier */
-int32 GChaosSolverIslandGroupsMultiplier = 1;
+Chaos::FRealSingle GChaosSolverIslandGroupsMultiplier = 1;
 FAutoConsoleVariableRef CVarSolverIslandGroupsMultiplier(TEXT("p.Chaos.Solver.IslandGroupsMultiplier"), GChaosSolverIslandGroupsMultiplier, TEXT("Total number of island groups in the solver will be NumThreads * IslandGroupsMultiplier.[def:1]"));
 
 /** Cvar to override the sleep counter threshold if necessary */
@@ -33,6 +34,7 @@ FAutoConsoleVariableRef CVarChaosSolverCollisionDefaultAngularSleepThreshold(TEX
 
 namespace Chaos
 {
+	extern int32 GSingleThreadedPhysics;
 	
 /** Check if a particle is dynamic or sleeping */
 FORCEINLINE bool IsDynamicParticle(const FGeometryParticleHandle* ParticleHandle)
@@ -112,17 +114,32 @@ inline void UpdateSleepState(FPBDIslandSolver* IslandSolver, FPBDRigidsSOAs& Par
 		bool bNeedRebuild = false;
 		for (auto& IslandParticle : IslandSolver->GetParticles())
 		{
-			// If not sleeping we activate the sleeping particles
-			if (!bIsSleeping && IslandParticle->Sleeping())
+			if(IslandParticle->CastToRigidParticle() && !IslandParticle->CastToRigidParticle()->Disabled())
 			{
-				Particles.ActivateParticle(IslandParticle, true);
-				bNeedRebuild = true;
-			}
-			// If sleeping we deactivate the dynamic particles
-			else if (bIsSleeping && !IslandParticle->Sleeping())
-			{
-				Particles.DeactivateParticle(IslandParticle, true);
-				bNeedRebuild = true;
+				// If not sleeping we activate the sleeping particles
+				if (!bIsSleeping && IslandParticle->Sleeping())
+				{
+					Particles.ActivateParticle(IslandParticle, true);
+
+					// When we wake particles, we have skipped their integrate step which causes some issues:
+					//	- we have zero velocity (no gravity or external forces applied)
+					//	- the world transforms cached in the ShapesArray will be at the last post-integrate positions
+					//	  which doesn't match what the velocity is telling us
+					// This causes problems for the solver - essentially we have an "initial overlap" situation.
+					// @todo(chaos): We could just run (partial) integrate here for this particle, but we don't know about the Evolution - fix this
+					for (const TUniquePtr<FPerShapeData>& Shape : IslandParticle->ShapesArray())
+					{
+						Shape->UpdateLeafWorldTransform(IslandParticle);
+					}
+
+					bNeedRebuild = true;
+				}
+				// If sleeping we deactivate the dynamic particles
+				else if (bIsSleeping && !IslandParticle->Sleeping())
+				{
+					Particles.DeactivateParticle(IslandParticle, true);
+					bNeedRebuild = true;
+				}
 			}
 		}
 		if(bNeedRebuild)
@@ -174,8 +191,8 @@ inline void PopulateIslands(FPBDIslandManager::GraphType* IslandGraph)
 	TSet<int32> NodeIslands;
 	for(auto& GraphNode : IslandGraph->GraphNodes)
 	{
-		// If the node has one edge or if the node is valid : only one island
-		if((GraphNode.NodeEdges.Num() == 0) || GraphNode.bValidNode)
+		// If the node is valid : only one island
+		if( GraphNode.bValidNode)
 		{
 			AddNodeToIsland(GraphNode.IslandIndex, GraphNode);
 		}
@@ -277,6 +294,9 @@ FPBDIslandManager::FPBDIslandManager(const TParticleView<FPBDRigidParticles>& PB
 }
 
 FPBDIslandManager::~FPBDIslandManager()
+{}
+
+void FPBDIslandManager::ResetIndices()
 {
 	// Reset of all the particles / constraint graph index to INDEX_NONE
 	for(auto& ItemNode : IslandGraph->ItemNodes)
@@ -294,8 +314,12 @@ FPBDIslandManager::~FPBDIslandManager()
 
 void FPBDIslandManager::InitializeGroups()
 {
-	const int32 NumThreads = FTaskGraphInterface::Get().GetNumWorkerThreads();
-	IslandGroups.SetNum(NumThreads * GChaosSolverIslandGroupsMultiplier, false);
+	// @todo(chaos): is the number of worker threads a good indicator of how many threads we get in the solver loop? (Currently uses ParallelFor)
+	// Check for use of the "-onethread" command line arg, and physics threading disabled (GetNumWorkerThreads() is not affected by these)
+	const int32 NumWorkerThreads = (FApp::ShouldUseThreadingForPerformance() && !GSingleThreadedPhysics) ? FTaskGraphInterface::Get().GetNumWorkerThreads() : 0;
+	const int32 MaxIslandGroups = FMath::Max(1, FMath::CeilToInt(FReal(NumWorkerThreads) * GChaosSolverIslandGroupsMultiplier));
+
+	IslandGroups.SetNum(MaxIslandGroups, false);
 	
 	for(int32 GroupIndex = 0, NumGroups = IslandGroups.Num(); GroupIndex < NumGroups; ++GroupIndex)
 	{
@@ -323,6 +347,11 @@ void FPBDIslandManager::InitializeGraph(const TParticleView<FPBDRigidParticles>&
 			FGeometryParticleHandle* ParticleHandle = GraphNode.NodeItem;
 			IslandGraph->UpdateNode(ParticleHandle, IsDynamicParticle(ParticleHandle), GraphNode.IslandIndex,
 													IsStationaryParticle(ParticleHandle), NodeIndex);
+
+			if (ParticleHandle->CastToRigidParticle() && ParticleHandle->CastToRigidParticle()->Disabled())
+			{
+				RemoveParticle(ParticleHandle);
+			}
 		}
 	}
 	// For now we are resetting all the constraints but we should keep the
@@ -334,6 +363,33 @@ void FPBDIslandManager::InitializeGraph(const TParticleView<FPBDRigidParticles>&
 		{
 			IslandSolver->ClearConstraints();
 		}
+	}
+}
+
+void FPBDIslandManager::RemoveConstraints()
+{
+	for(auto& ItemEdge : IslandGraph->ItemEdges)
+	{
+		ItemEdge.Key->SetConstraintGraphIndex(INDEX_NONE);
+	}
+	IslandGraph->ItemEdges.Reset();
+	IslandGraph->GraphEdges.Reset();
+	
+	for(auto& GraphIsland : IslandGraph->GraphIslands)
+	{
+		GraphIsland.NumEdges = 0;
+	}
+	for(auto& GraphNode: IslandGraph->GraphNodes)
+	{
+		GraphNode.NodeEdges.Reset();
+	}
+	for(auto& IslandSolver : IslandSolvers)
+	{
+		IslandSolver->ClearConstraints();
+	}
+	for(auto& IslandGroup : IslandGroups)
+	{
+		IslandGroup->NumConstraints() = 0;
 	}
 }
 
@@ -404,14 +460,21 @@ int32 FPBDIslandManager::AddConstraint(const uint32 ContainerId, FConstraintHand
 			const int32 EdgeIndex = IslandGraph->AddEdge(ConstraintHandle, ContainerId, NodeIndex0, NodeIndex1);
 			ConstraintHandle->SetConstraintGraphIndex(EdgeIndex);
 
-			// Make sure to sync the state of the constraint with its owning island, otherwise the constraint may be flag as destroyable and leave a dangling pointer in the islands
-			const int32 IslandIndex = IslandGraph->GraphEdges[EdgeIndex].IslandIndex;
-			if (IslandGraph->GraphIslands.IsValidIndex(IslandIndex) && IslandGraph->GraphIslands[IslandIndex].bIsSleeping)
+			if(IslandGraph->GraphEdges.IsValidIndex(EdgeIndex))
 			{
-				ConstraintHandle->SetIsSleeping(true);
+				// Make sure to sync the state of the constraint with its owning island, otherwise the constraint may be flag as destroyable and leave a dangling pointer in the islands
+				const int32 IslandIndex = IslandGraph->GraphEdges[EdgeIndex].IslandIndex;
+				if (IslandGraph->GraphIslands.IsValidIndex(IslandIndex) && IslandGraph->GraphIslands[IslandIndex].bIsSleeping)
+				{
+					ConstraintHandle->SetIsSleeping(true);
+				}
 			}
 
 			return EdgeIndex;
+		}
+		else
+		{
+			ConstraintHandle->SetConstraintGraphIndex(INDEX_NONE);
 		}
 		return INDEX_NONE;
 	}
@@ -436,7 +499,7 @@ void FPBDIslandManager::RemoveParticle(FGeometryParticleHandle* ParticleHandle)
 			if (IslandGraph->GraphNodes.IsValidIndex(*NodeIndex))
 			{
 				const FGraphNode& GraphNode = IslandGraph->GraphNodes[*NodeIndex];
-				// the list of edges could be empty or the node is valid : we need to also remove it from its own island 
+				// If the node is valid : we need to also remove it from its own island 
 				if(GraphNode.NodeEdges.Num() == 0 && IslandSolvers.IsValidIndex(GraphNode.IslandIndex))
 				{
 					IslandSolvers[GraphNode.IslandIndex]->RemoveParticle(ParticleHandle);

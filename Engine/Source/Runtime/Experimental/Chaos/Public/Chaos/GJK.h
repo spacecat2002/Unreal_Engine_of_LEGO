@@ -12,6 +12,18 @@
 #include "ChaosCheck.h"
 #include "ChaosLog.h"
 
+
+// Platform specific vector intrinsics include.
+#if PLATFORM_ENABLE_VECTORINTRINSICS_NEON || PLATFORM_ENABLE_VECTORINTRINSICS
+#include "Math/VectorRegister.h"
+#include "Chaos/VectorUtility.h"
+#include "Chaos/SimplexVectorized.h"
+#include "Chaos/EPAVectorized.h"
+#define GJK_VECTORIZED 1
+#else
+#define GJK_VECTORIZED 0
+#endif
+
 namespace Chaos
 {
 	
@@ -277,7 +289,7 @@ namespace Chaos
 	 *
 	*/
 	template <typename T, typename TGeometryA, typename TGeometryB>
-	bool GJKPenetrationWarmStartable(const TGeometryA& A, const TGeometryB& B, const TRigidTransform<T, 3>& BToATM, T& OutPenetration, TVec3<T>& OutClosestA, TVec3<T>& OutClosestB, TVec3<T>& OutNormalA, TVec3<T>& OutNormalB, int32& OutVertexA, int32& OutVertexB, TGJKSimplexData<T>& InOutSimplexData, T& OutMaxSupportDelta, const T Epsilon = T(1.e-3))
+	bool GJKPenetrationWarmStartable(const TGeometryA& A, const TGeometryB& B, const TRigidTransform<T, 3>& BToATM, T& OutPenetration, TVec3<T>& OutClosestA, TVec3<T>& OutClosestB, TVec3<T>& OutNormalA, TVec3<T>& OutNormalB, int32& OutVertexA, int32& OutVertexB, TGJKSimplexData<T>& InOutSimplexData, T& OutMaxSupportDelta, const T Epsilon = T(1.e-3), const T EPAEpsilon = T(1.e-2))
 	{
 		T SupportDeltaA = 0;
 		T SupportDeltaB = 0;
@@ -360,14 +372,12 @@ namespace Chaos
 			}
 			Distance = NewDistance;
 		}
-
 		// Save the warm-start data (not much to store since we updated most of it in the loop above)
 		InOutSimplexData.Save(SimplexIDs);
-
 		if (bIsContact)
 		{
 			// We did not converge or we detected an overlap situation, so run EPA to get contact data
-			// Rebuild the simplex into a variable sized array - EPA can generate any mumber of vertices
+			// Rebuild the simplex into a variable sized array - EPA can generate any number of vertices
 			TArray<TVec3<T>> VertsA;
 			TArray<TVec3<T>> VertsB;
 			VertsA.Reserve(8);
@@ -387,7 +397,7 @@ namespace Chaos
 
 			T Penetration;
 			TVec3<T> MTD, ClosestA, ClosestBInA;
-			const EEPAResult EPAResult = EPA(VertsA, VertsB, SupportAFunc, SupportBInAFunc, Penetration, MTD, ClosestA, ClosestBInA);
+			const EEPAResult EPAResult = EPA(VertsA, VertsB, SupportAFunc, SupportBInAFunc, Penetration, MTD, ClosestA, ClosestBInA, EPAEpsilon);
 
 			switch (EPAResult)
 			{
@@ -438,6 +448,178 @@ namespace Chaos
 			OutClosestA = ClosestA + OutNormalA * ThicknessA;
 			OutClosestB = ClosestB - OutNormalB * ThicknessB;
 
+			OutMaxSupportDelta = MaxSupportDelta;
+
+			// @todo(chaos): we should pass back failure for the degenerate case so we can decide how to handle it externally.
+			return true;
+		}
+	}
+
+	/**
+	 * @brief Calculate the penetration data for two shapes using GJK, assuming both shapes are already in the same space.
+	 * This is intended for use with triangles which have been transformed into the space of the convex shape.
+	 * 
+	 * @tparam T
+	 * @tparam TGeometryA First geometry type
+	 * @tparam TGeometryB Second geometry type. Usually FTriangle
+	 * @param A First geometry
+	 * @param B Second geometry (usually triangle)
+	 * @param OutPenetration penetration depth (negative for separation)
+	 * @param OutClosestA Closest point on A
+	 * @param OutClosestB Closest point on B
+	 * @param OutNormal Contact normal (points from A to B)
+	 * @param OutVertexA The closest vertex on A
+	 * @param OutVertexB The closest vertex on B
+	 * @param OutMaxSupportDelta When the convex has a margin, an upper bounds on the distance from the contact point to the vertex on the outer hull
+	 * @param Epsilon GJK tolerance
+	 * @param EPAEpsilon EPA tolerance
+	 * @return true always
+	*/
+	template <typename T, typename TGeometryA, typename TGeometryB>
+	bool GJKPenetrationSameSpace(const TGeometryA& A, const TGeometryB& B, T& OutPenetration, TVec3<T>& OutClosestA, TVec3<T>& OutClosestB, TVec3<T>& OutNormal, int32& OutVertexA, int32& OutVertexB, T& OutMaxSupportDelta, const T Epsilon = T(1.e-3), const T EPAEpsilon = T(1.e-2))
+	{
+		TGJKSimplexData<T> SimplexData;
+		T SupportDeltaA = 0;
+		T SupportDeltaB = 0;
+		T MaxSupportDelta = 0;
+
+		int32& VertexIndexA = OutVertexA;
+		int32& VertexIndexB = OutVertexB;
+
+		// Return the support vertex in A-local space for a vector V in A-local space
+		auto SupportAFunc = [&A, &SupportDeltaA, &VertexIndexA](const TVec3<T>& V)
+		{
+			return A.SupportCore(V, A.GetMargin(), &SupportDeltaA, VertexIndexA);
+		};
+
+		// Return the support point on B, in B-local space, for a vector V in A-local space
+		auto SupportBFunc = [&B, &SupportDeltaB, &VertexIndexB](const TVec3<T>& V)
+		{
+			return B.SupportCore(V, B.GetMargin(), &SupportDeltaB, VertexIndexB);
+		};
+
+		// V and Simplex are in A-local space
+		TVec3<T> V = TVec3<T>(-1, 0, 0);
+		TVec3<T> Simplex[4];
+		FSimplex SimplexIDs;
+		T Distance = FLT_MAX;
+
+		TVec3<T> Normal = -V;					// Remember the last good normal (i.e. don't update it if separation goes less than Epsilon and we can no longer normalize)
+		bool bIsDegenerate = false;				// True if GJK cannot make any more progress
+		bool bIsContact = false;				// True if shapes are within Epsilon or overlapping - GJK cannot provide a solution
+		int32 NumIterations = 0;
+		const T ThicknessA = A.GetMargin();
+		const T ThicknessB = B.GetMargin();
+		const T SeparatedDistance = ThicknessA + ThicknessB + Epsilon;
+		while (!bIsContact && !bIsDegenerate)
+		{
+			if (!ensure(NumIterations++ < 32))	//todo: take this out
+			{
+				break;	//if taking too long just stop. This should never happen
+			}
+
+			const TVec3<T> NegV = -V;
+			const TVec3<T> SupportA = SupportAFunc(NegV);
+			const TVec3<T> SupportB = SupportBFunc(V);
+			const TVec3<T> W = SupportA - SupportB;
+			MaxSupportDelta = FMath::Max(SupportDeltaA, SupportDeltaB);
+
+			// If we didn't move to at least ConvergedDistance or closer, assume we have reached a minimum
+			const T ConvergenceTolerance = 1.e-4f;
+			const T ConvergedDistance = (1.0f - ConvergenceTolerance) * Distance;
+			const T VW = TVec3<T>::DotProduct(V, W);
+
+			SimplexData.As[SimplexIDs.NumVerts] = SupportA;
+			SimplexData.Bs[SimplexIDs.NumVerts] = SupportB;
+			SimplexIDs[SimplexIDs.NumVerts] = SimplexIDs.NumVerts;
+			Simplex[SimplexIDs.NumVerts++] = W;
+
+			V = SimplexFindClosestToOrigin(Simplex, SimplexIDs, SimplexData.Barycentric, SimplexData.As, SimplexData.Bs);
+			T NewDistance = V.Size();
+
+			// Are we overlapping or too close for GJK to get a good result?
+			bIsContact = (NewDistance < Epsilon);
+
+			// If we did not get closer in this iteration, we are in a degenerate situation
+			bIsDegenerate = (NewDistance >= Distance);
+
+			// If we are not too close, update the separating vector and keep iterating
+			// If we are too close we drop through to EPA, but if EPA determines the shapes are actually separated 
+			// after all, we will wend up using the normal from the previous loop
+			if (!bIsContact)
+			{
+				V /= NewDistance;
+				Normal = -V;
+			}
+			Distance = NewDistance;
+		}
+
+		// Save the warm-start data (not much to store since we updated most of it in the loop above)
+		SimplexData.Save(SimplexIDs);
+
+		if (bIsContact)
+		{
+			// We did not converge or we detected an overlap situation, so run EPA to get contact data
+			// Rebuild the simplex into a variable sized array - EPA can generate any mumber of vertices
+			TArray<TVec3<T>> VertsA;
+			TArray<TVec3<T>> VertsB;
+			VertsA.Reserve(8);
+			VertsB.Reserve(8);
+			for (int i = 0; i < SimplexIDs.NumVerts; ++i)
+			{
+				VertsA.Add(SimplexData.As[i]);
+				VertsB.Add(SimplexData.Bs[i]);
+			}
+
+			T Penetration;
+			TVec3<T> MTD, ClosestA, ClosestB;
+			const EEPAResult EPAResult = EPA(VertsA, VertsB, SupportAFunc, SupportBFunc, Penetration, MTD, ClosestA, ClosestB, EPAEpsilon);
+
+			switch (EPAResult)
+			{
+			case EEPAResult::MaxIterations:
+				// Possibly a solution but with unknown error. Just return the last EPA state. 
+				// Fall through...
+			case EEPAResult::Ok:
+				// EPA has a solution - return it now
+				OutNormal = MTD;
+				OutPenetration = Penetration + ThicknessA + ThicknessB;
+				OutClosestA = ClosestA + MTD * ThicknessA;
+				OutClosestB = ClosestB - MTD * ThicknessB;
+				OutMaxSupportDelta = MaxSupportDelta;
+				return true;
+			case EEPAResult::BadInitialSimplex:
+				// The origin is outside the simplex. Must be a touching contact and EPA setup will have calculated the normal
+				// and penetration but we keep the position generated by GJK.
+				Normal = MTD;
+				Distance = -Penetration;
+				//UE_LOG(LogChaos, Warning, TEXT("EPA Touching Case"));
+				break;
+			case EEPAResult::Degenerate:
+				// We hit a degenerate simplex condition and could not reach a solution so use whatever near touching point GJK came up with.
+				// The result from EPA under these circumstances is not usable.
+				//UE_LOG(LogChaos, Warning, TEXT("EPA Degenerate Case"));
+				break;
+			}
+		}
+
+		// @todo(chaos): handle the case where EPA hits a degenerate triangle in the simplex.
+		// Currently we return a touching contact with the last position and normal from GJK. We could run SAT instead.
+
+		// GJK converged or we have a touching contact
+		{
+			TVec3<T> ClosestA(0);
+			TVec3<T> ClosestB(0);
+			for (int i = 0; i < SimplexIDs.NumVerts; ++i)
+			{
+				ClosestA += SimplexData.As[i] * SimplexData.Barycentric[i];
+				ClosestB += SimplexData.Bs[i] * SimplexData.Barycentric[i];
+			}
+
+			OutPenetration = ThicknessA + ThicknessB - Distance;
+			OutClosestA = ClosestA + Normal * ThicknessA;
+			OutClosestB = ClosestB - Normal * ThicknessB;
+			OutNormal = Normal;
 			OutMaxSupportDelta = MaxSupportDelta;
 
 			// @todo(chaos): we should pass back failure for the degenerate case so we can decide how to handle it externally.
@@ -690,7 +872,7 @@ namespace Chaos
 		bool bNearZero = false;
 		bool bDegenerate = false;
 		int NumIterations = 0;
-		T InGJKPreDist2 = TNumericLimits<T>::Max();
+		T GJKPreDist2 = TNumericLimits<T>::Max();
 		do
 		{
 			//if (!ensure(NumIterations++ < 32))	//todo: take this out
@@ -739,7 +921,7 @@ namespace Chaos
 					Simplex[2] += XMinusOldX;
 					Simplex[SimplexIDs.NumVerts++] = X - P;
 
-					InGJKPreDist2 = TNumericLimits<T>::Max();	//translated origin so restart gjk search
+					GJKPreDist2 = TNumericLimits<T>::Max();	//translated origin so restart gjk search
 				}
 			}
 			else
@@ -751,8 +933,8 @@ namespace Chaos
 
 			T NewDist2 = V.SizeSquared();	//todo: relative error
 			bNearZero = NewDist2 < 1e-6;
-			bDegenerate = NewDist2 >= InGJKPreDist2;
-			InGJKPreDist2 = NewDist2;
+			bDegenerate = NewDist2 >= GJKPreDist2;
+			GJKPreDist2 = NewDist2;
 			bTerminate = bNearZero || bDegenerate;
 
 		} while (!bTerminate);
@@ -859,7 +1041,7 @@ namespace Chaos
 		bool bTerminate = bCloseEnough;
 		bool bInflatedCloseEnough = bCloseEnough;
 		int NumIterations = 0;
-		T InGJKPreDist2 = TNumericLimits<T>::Max();
+		T GJKPreDist2 = TNumericLimits<T>::Max();
 		while (!bTerminate)
 		{
 			//if (!ensure(NumIterations++ < 32))	//todo: take this out
@@ -909,7 +1091,7 @@ namespace Chaos
 					Simplex[2] += XMinusOldX;
 					Simplex[SimplexIDs.NumVerts++] = X - P;
 
-					InGJKPreDist2 = TNumericLimits<T>::Max();	//translated origin so restart gjk search
+					GJKPreDist2 = TNumericLimits<T>::Max();	//translated origin so restart gjk search
 					bInflatedCloseEnough = false;
 				}
 			}
@@ -922,7 +1104,7 @@ namespace Chaos
 			{
 				//Inflated shapes are close enough, but we want MTD so we need to find closest point on core shape
 				const T VDotW2 = VDotW * VDotW;
-				bCloseEnough = InGJKPreDist2 <= Eps2 + VDotW2;	//todo: relative error
+				bCloseEnough = GJKPreDist2 <= Eps2 + VDotW2;	//todo: relative error
 			}
 
 			if (!bCloseEnough)
@@ -930,11 +1112,11 @@ namespace Chaos
 				V = SimplexFindClosestToOrigin(Simplex, SimplexIDs, Barycentric, As, Bs);
 				T NewDist2 = V.SizeSquared();	//todo: relative error
 				bCloseEnough = NewDist2 < Inflation2;
-				bDegenerate = NewDist2 >= InGJKPreDist2;
-				InGJKPreDist2 = NewDist2;
+				bDegenerate = NewDist2 >= GJKPreDist2;
+				GJKPreDist2 = NewDist2;
 
 
-				if (bComputeMTD && bCloseEnough && Lambda == 0 && InGJKPreDist2 > 1e-6 && Inflation2 > 1e-6 && SimplexIDs.NumVerts < 4)
+				if (bComputeMTD && bCloseEnough && Lambda == 0 && GJKPreDist2 > 1e-6 && Inflation2 > 1e-6 && SimplexIDs.NumVerts < 4)
 				{
 					//For mtd of inflated shapes we have to find the closest point, so we have to keep going
 					bCloseEnough = false;
@@ -969,7 +1151,7 @@ namespace Chaos
 			// If Inflation == 0 we would expect GJKPreDist2 to be 0
 			// However, due to precision we can still end up with GJK failing.
 			// When that happens fall back on EPA
-			if (Inflation > 0 && InGJKPreDist2 > 1e-6 && InGJKPreDist2 < TNumericLimits<T>::Max())
+			if (Inflation > 0 && GJKPreDist2 > 1e-6 && GJKPreDist2 < TNumericLimits<T>::Max())
 			{
 				OutNormal = Normal;
 				TVector<T, 3> ClosestA(0);
@@ -991,7 +1173,7 @@ namespace Chaos
 				}
 				
 				const TVec3<T> ClosestBInA = StartPoint + ClosestB;
-				const T InGJKPreDist = FMath::Sqrt(InGJKPreDist2);
+				const T InGJKPreDist = FMath::Sqrt(GJKPreDist2);
 				OutNormal = V.GetUnsafeNormal();
 
 				const T Penetration = FMath::Clamp<T>(MarginA + MarginB - InGJKPreDist, 0, TNumericLimits<T>::Max());
@@ -1058,6 +1240,406 @@ namespace Chaos
 		return true;
 	}
 
+	template <typename TGeometryA, typename TGeometryB, typename T>
+	bool GJKRaycast2ImplSimd(const TGeometryA& A, const TGeometryB& B, const VectorRegister4Float& BToARotation, const VectorRegister4Float& StartPoint, const VectorRegister4Float& RayDir, const T RayLength,
+		T& OutTime, VectorRegister4Float& OutPosition, VectorRegister4Float& OutNormal, bool bComputeMTD, const VectorRegister4Float& InitialDir, const TRigidTransform<FReal, 3>& StartTM)
+	{
+		ensure(RayLength > 0);
+
+		// Margin selection logic: we only need a small margin for sweeps since we only move the sweeping object
+		// to the point where it just touches.
+		// Spheres and Capsules: always use the core shape and full "margin" because it represents the radius
+		// Sphere/Capsule versus OtherShape: no margin on other
+		// OtherShape versus OtherShape: use margin of the smaller shape, zero margin on the other
+		const T RadiusA = static_cast<T>(A.GetRadius());
+		const T RadiusB = static_cast<T>(B.GetRadius());
+		const bool bHasRadiusA = RadiusA > 0;
+		const bool bHasRadiusB = RadiusB > 0;
+
+		// The sweep margins if required. Only one can be non-zero (we keep the smaller one)
+		const T SweepMarginScale = 0.05f;
+		const bool bAIsSmallest = A.GetMargin() < B.GetMargin();
+		const T SweepMarginA = (bHasRadiusA || bHasRadiusB) ? 0.0f : (bAIsSmallest ? SweepMarginScale * static_cast<T>(A.GetMargin()) : 0.0f);
+		const T SweepMarginB = (bHasRadiusA || bHasRadiusB) ? 0.0f : (bAIsSmallest ? 0.0f : SweepMarginScale * static_cast<T>(B.GetMargin()));
+
+		// Net margin (note: both SweepMargins are zero if either Radius is non-zero, and only one SweepMargin can be non-zero)
+		const T MarginA = RadiusA + SweepMarginA;
+		const T MarginB = RadiusB + SweepMarginB;
+
+		const VectorRegister4Float MarginASimd = VectorLoadFloat1(&MarginA);
+		const VectorRegister4Float MarginBSimd = VectorLoadFloat1(&MarginB);
+
+		VectorRegister4Float Simplex[4] = { VectorZeroFloat(), VectorZeroFloat(), VectorZeroFloat(), VectorZeroFloat() };
+		VectorRegister4Float As[4] = { VectorZeroFloat(), VectorZeroFloat(), VectorZeroFloat(), VectorZeroFloat() };
+		VectorRegister4Float Bs[4] = { VectorZeroFloat(), VectorZeroFloat(), VectorZeroFloat(), VectorZeroFloat() };
+
+		VectorRegister4Float Barycentric = VectorZeroFloat();
+
+		VectorRegister4Float Inflation = VectorAdd(MarginASimd, MarginBSimd);
+		constexpr VectorRegister4Float Eps2Simd = MakeVectorRegisterFloatConstant(1e-6f, 1e-6f, 1e-6f, 1e-6f);
+		const VectorRegister4Float Inflation2Simd = VectorMultiplyAdd(Inflation, Inflation, Eps2Simd);
+
+		const VectorRegister4Float RayLengthSimd = MakeVectorRegisterFloat(RayLength, RayLength, RayLength, RayLength);
+
+		VectorRegister4Int NumVerts = GlobalVectorConstants::IntZero;
+
+		VectorRegister4Float AToBRotation = VectorQuaternionInverse(BToARotation);
+
+		auto SupportAFunc = [&A, MarginA](const VectorRegister4Float& V)
+		{
+			return A.SupportCoreSimd(V, MarginA);
+		};
+
+		auto SupportBFunc = [&B, MarginB, &AToBRotation, &BToARotation](const VectorRegister4Float& V)
+		{
+			const VectorRegister4Float VInB = VectorQuaternionRotateVector(AToBRotation, V);
+			const VectorRegister4Float SupportBLocal = B.SupportCoreSimd(VInB, MarginB);
+
+			return VectorQuaternionRotateVector(BToARotation, SupportBLocal);
+		};
+
+
+		VectorRegister4Float SupportA = SupportAFunc(InitialDir);
+		As[0] = SupportA;
+
+		VectorRegister4Float SupportB = SupportBFunc(VectorNegate(InitialDir));
+		Bs[0] = SupportB;
+
+		VectorRegister4Float Lambda = VectorZeroFloat();
+		VectorRegister4Float X = StartPoint;
+		VectorRegister4Float V = VectorSubtract(X, VectorSubtract(SupportA, SupportB));
+		VectorRegister4Float Normal = MakeVectorRegisterFloat(0.f, 0.f, 1.f, 0.f);
+
+		const VectorRegister4Float InitialPreDist2Simd = VectorDot3(V, V);
+
+		FRealSingle InitialPreDist2;
+		VectorStoreFloat1(InitialPreDist2Simd, &InitialPreDist2);
+
+		FRealSingle Inflation2;
+		VectorStoreFloat1(Inflation2Simd, &Inflation2);
+		
+		constexpr FRealSingle Eps2 = 1e-6f;
+
+		//mtd needs to find closest point even in inflation region, so can only skip if we found the closest points
+		bool bCloseEnough = InitialPreDist2 < Inflation2 && (!bComputeMTD || InitialPreDist2 < Eps2);
+		bool bDegenerate = false;
+		bool bTerminate = bCloseEnough;
+		bool bInflatedCloseEnough = bCloseEnough;
+		int NumIterations = 0;
+		constexpr VectorRegister4Float LimitMax = MakeVectorRegisterFloatConstant(TNumericLimits<T>::Max(), TNumericLimits<T>::Max(), TNumericLimits<T>::Max(), TNumericLimits<T>::Max());
+		VectorRegister4Float GJKPreDist2 = LimitMax;
+
+		while (!bTerminate)
+		{
+			if (!(NumIterations++ < 32))	//todo: take this out
+			{
+				break;	//if taking too long just stop. This should never happen
+			}
+
+			V = VectorNormalizeAccurate(V);
+
+			SupportA = SupportAFunc(V);
+			SupportB = SupportBFunc(VectorNegate(V));
+			const VectorRegister4Float P = VectorSubtract(SupportA, SupportB);
+			const VectorRegister4Float W = VectorSubtract(X, P);
+
+			// NumVerts store here at the beginning of the loop, it should be safe to reuse it further in the loop 
+			alignas(16) int32 NumVertsInts[4];
+			VectorIntStoreAligned(NumVerts, NumVertsInts);
+			const int32 NumVertsInt = NumVertsInts[0];
+
+			As[NumVertsInt] = SupportA;
+			Bs[NumVertsInt] = SupportB;
+
+			const VectorRegister4Float VDotW = VectorDot3(V, W);
+
+			VectorRegister4Float VDotWGTInflationSimd = VectorCompareGT(VDotW, Inflation);
+
+			if (VectorMaskBits(VDotWGTInflationSimd))
+			{
+				const VectorRegister4Float VDotRayDir = VectorDot3(V, RayDir);
+				VectorRegister4Float VDotRayDirGEZero = VectorCompareGE(VDotRayDir, VectorZeroFloat());
+
+				if (VectorMaskBits(VDotRayDirGEZero))
+				{
+					return false;
+				}
+
+				const VectorRegister4Float PreLambda = Lambda;	//use to check for no progress
+				// @todo(ccaulfield): this can still overflow - the comparisons against zero above should be changed (though not sure to what yet)
+				Lambda = VectorSubtract(Lambda, VectorDivide(VectorSubtract(VDotW, Inflation), VDotRayDir));
+				VectorRegister4Float LambdaGTPreLambda = VectorCompareGT(Lambda, PreLambda);
+				if (VectorMaskBits(LambdaGTPreLambda))
+				{
+					VectorRegister4Float LambdaGTRayLength = VectorCompareGT(Lambda, RayLengthSimd);
+					if (VectorMaskBits(LambdaGTRayLength))
+					{
+						return false;
+					}
+
+					const VectorRegister4Float OldX = X;
+					X = VectorMultiplyAdd(Lambda, RayDir, StartPoint);
+					Normal = V;
+
+					//Update simplex from (OldX - P) to (X - P)
+					VectorRegister4Float XMinusOldX = VectorSubtract(X, OldX);
+					Simplex[0] = VectorAdd(Simplex[0], XMinusOldX);
+					Simplex[1] = VectorAdd(Simplex[1], XMinusOldX);
+					Simplex[2] = VectorAdd(Simplex[2], XMinusOldX);
+					Simplex[NumVertsInt] = VectorSubtract(X, P);
+					NumVerts = VectorIntAdd(NumVerts, GlobalVectorConstants::IntOne);
+
+					GJKPreDist2 = LimitMax; //translated origin so restart gjk search
+					bInflatedCloseEnough = false;
+				}
+			}
+			else
+			{
+				Simplex[NumVertsInt] = W;	//this is really X - P which is what we need for simplex computation
+				NumVerts = VectorIntAdd(NumVerts, GlobalVectorConstants::IntOne);
+			}
+
+			if (bInflatedCloseEnough && VectorMaskBits(VectorCompareGE(VDotW, VectorZeroFloat())))
+			{
+				//Inflated shapes are close enough, but we want MTD so we need to find closest point on core shape
+				const VectorRegister4Float VDotW2 = VectorDot3(VDotW, VDotW);
+				bCloseEnough = static_cast<bool>(VectorMaskBits(VectorCompareGE(VectorAdd(Eps2Simd, VDotW), GJKPreDist2)));
+			}
+
+			if (!bCloseEnough)
+			{
+				V = VectorSimplexFindClosestToOrigin(Simplex, NumVerts, Barycentric, As, Bs);
+
+				VectorRegister4Float NewDist2 = VectorDot3(V, V);	//todo: relative error
+				bCloseEnough = static_cast<bool>(VectorMaskBits(VectorCompareGT(Inflation2Simd, NewDist2)));
+				bDegenerate = static_cast<bool>(VectorMaskBits(VectorCompareGE(NewDist2, GJKPreDist2)));
+				GJKPreDist2 = NewDist2;
+
+				if (bComputeMTD && bCloseEnough)
+				{
+					const VectorRegister4Float LambdaEqZero = VectorCompareEQ(Lambda, VectorZeroFloat());
+					const VectorRegister4Float InGJKPreDist2GTEps2 = VectorCompareGT(GJKPreDist2, Eps2Simd);
+					const VectorRegister4Float Inflation22GTEps2 = VectorCompareGT(Inflation2Simd, Eps2Simd);
+					const VectorRegister4Int fourInt = MakeVectorRegisterIntConstant(4, 4, 4, 4);
+					const VectorRegister4Int Is4GTNumVerts = VectorIntCompareGT(fourInt, NumVerts);
+
+					const VectorRegister4Float IsInflatCloseEnough = VectorBitwiseAnd(LambdaEqZero, VectorBitwiseAnd(InGJKPreDist2GTEps2, VectorBitwiseAnd(Inflation22GTEps2, VectorCast4IntTo4Float(Is4GTNumVerts))));
+
+					// Leaving the original code, to explain the logic there
+					//if (bComputeMTD && bCloseEnough && Lambda == 0 && GJKPreDist2 > 1e-6 && Inflation2 > 1e-6 && NumVerts < 4)
+					//{
+					//	bCloseEnough = false;
+					//	bInflatedCloseEnough = true;
+					//}
+					bInflatedCloseEnough = static_cast<bool>(VectorMaskBits(IsInflatCloseEnough));
+					bCloseEnough = !bInflatedCloseEnough;
+				}
+			}
+			else
+			{
+				//It must be that we want MTD and we can terminate. However, we must make one final call to fixup the simplex
+				V = VectorSimplexFindClosestToOrigin(Simplex, NumVerts, Barycentric, As, Bs);
+			}
+			bTerminate = bCloseEnough || bDegenerate;
+		}
+		VectorStoreFloat1(Lambda, &OutTime);
+
+		if (OutTime > 0)
+		{
+			OutNormal = Normal;
+			VectorRegister4Float ClosestB = VectorZeroFloat();
+
+			VectorRegister4Float Barycentrics[4];
+			Barycentrics[0] = VectorSwizzle(Barycentric, 0, 0, 0, 0);
+			Barycentrics[1] = VectorSwizzle(Barycentric, 1, 1, 1, 1);
+			Barycentrics[2] = VectorSwizzle(Barycentric, 2, 2, 2, 2);
+			Barycentrics[3] = VectorSwizzle(Barycentric, 3, 3, 3, 3);
+
+
+			const VectorRegister4Float  ClosestB1 = VectorMultiplyAdd(Bs[0], Barycentrics[0], ClosestB);
+			const VectorRegister4Float  ClosestB2 = VectorMultiplyAdd(Bs[1], Barycentrics[1], ClosestB1);
+			const VectorRegister4Float  ClosestB3 = VectorMultiplyAdd(Bs[2], Barycentrics[2], ClosestB2);
+			const VectorRegister4Float  ClosestB4 = VectorMultiplyAdd(Bs[3], Barycentrics[3], ClosestB3);
+
+			const VectorRegister4Int TwoInt = MakeVectorRegisterIntConstant(2, 2, 2, 2);
+			const VectorRegister4Int ThreeInt = MakeVectorRegisterIntConstant(3, 3, 3, 3);
+
+			const VectorRegister4Float IsB0 = VectorCast4IntTo4Float(VectorIntCompareEQ(NumVerts, GlobalVectorConstants::IntZero));
+			const VectorRegister4Float IsB1 = VectorCast4IntTo4Float(VectorIntCompareEQ(NumVerts, GlobalVectorConstants::IntOne));
+			const VectorRegister4Float IsB2 = VectorCast4IntTo4Float(VectorIntCompareEQ(NumVerts, TwoInt));
+			const VectorRegister4Float IsB3 = VectorCast4IntTo4Float(VectorIntCompareEQ(NumVerts, ThreeInt));
+
+			ClosestB = VectorSelect(IsB0, ClosestB, ClosestB4);
+			ClosestB = VectorSelect(IsB1, ClosestB1, ClosestB);
+			ClosestB = VectorSelect(IsB2, ClosestB2, ClosestB);
+			ClosestB = VectorSelect(IsB3, ClosestB3, ClosestB);
+
+			const VectorRegister4Float ClosestLocal = VectorNegateMultiplyAdd(OutNormal, MarginBSimd, ClosestB);
+
+			OutPosition = VectorAdd(VectorMultiplyAdd(RayDir, Lambda, StartPoint), ClosestLocal);
+
+		}
+		else if (bComputeMTD)
+		{
+			// If Inflation == 0 we would expect GJKPreDist2 to be 0
+			// However, due to precision we can still end up with GJK failing.
+			// When that happens fall back on EPA
+			VectorRegister4Float InflationGTZero = VectorCompareGT(Inflation, VectorZeroFloat());
+			VectorRegister4Float InGJKPreDist2GTEps2 = VectorCompareGT(GJKPreDist2, Eps2Simd);
+			VectorRegister4Float LimitMaxGTInGJKPreDist2 = VectorCompareGT(LimitMax, GJKPreDist2);
+			VectorRegister4Float IsDone = VectorBitwiseAnd(InflationGTZero, VectorBitwiseAnd(InGJKPreDist2GTEps2, LimitMaxGTInGJKPreDist2));
+			if (VectorMaskBits(IsDone))
+			{
+				OutNormal = Normal;
+				VectorRegister4Float ClosestA = VectorZeroFloat();
+				VectorRegister4Float ClosestB = VectorZeroFloat();
+
+				if (NumIterations)
+				{
+					VectorRegister4Float Barycentrics[4];
+					Barycentrics[0] = VectorSwizzle(Barycentric, 0, 0, 0, 0);
+					Barycentrics[1] = VectorSwizzle(Barycentric, 1, 1, 1, 1);
+					Barycentrics[2] = VectorSwizzle(Barycentric, 2, 2, 2, 2);
+					Barycentrics[3] = VectorSwizzle(Barycentric, 3, 3, 3, 3);
+
+					alignas(16) int32 NumVertsInts[4];
+					VectorIntStoreAligned(NumVerts, NumVertsInts);
+					const int NumVertsInt = NumVertsInts[0];
+					for (int i = 0; i < NumVertsInt; ++i)
+					{
+						ClosestA = VectorMultiplyAdd(As[i], Barycentrics[i], ClosestA);
+						ClosestB = VectorMultiplyAdd(Bs[i], Barycentrics[i], ClosestB);
+					}
+				}
+				else
+				{
+					//didn't even go into gjk loop
+					ClosestA = As[0];
+					ClosestB = Bs[0];
+				}
+
+				const VectorRegister4Float ClosestBInA = VectorAdd(StartPoint, ClosestB);
+				const VectorRegister4Float InGJKPreDist = VectorSqrt(GJKPreDist2);
+				OutNormal = VectorNormalizeAccurate(V);
+
+				VectorRegister4Float Penetration = VectorSubtract(VectorAdd(MarginASimd, MarginBSimd), InGJKPreDist);
+				Penetration = VectorMin(Penetration, LimitMax);
+				Penetration = VectorMax(Penetration, VectorZeroFloat());
+
+				const VectorRegister4Float ClosestLocal = VectorNegateMultiplyAdd(OutNormal, MarginBSimd, ClosestB);
+
+				OutPosition = VectorAdd(VectorMultiplyAdd(OutNormal, Penetration, StartPoint), ClosestLocal);
+				Penetration = VectorNegate(Penetration);
+				VectorStoreFloat1(Penetration, &OutTime);
+			}
+			else
+			{
+				if (NumIterations)
+				{
+					TArray<VectorRegister4Float> VertsA;
+					TArray<VectorRegister4Float> VertsB;
+
+					VertsA.Reserve(8);
+					VertsB.Reserve(8);
+
+					alignas(16) int32 NumVertsInts[4];
+					VectorIntStoreAligned(NumVerts, NumVertsInts);
+					const int32 NumVertsInt = NumVertsInts[0];
+
+					for (int i = 0; i < NumVertsInt; ++i)
+					{
+						VertsA.Add(As[i]);
+						VertsB.Add(VectorAdd(Bs[i], X));
+					}
+
+					auto SupportBAtOriginFunc = [&B, MarginB, &BToARotation, &StartPoint, &AToBRotation](const VectorRegister4Float& Dir)
+					{
+						int32 VertexIndex = INDEX_NONE;
+						const VectorRegister4Float DirInB = VectorQuaternionRotateVector(AToBRotation, Dir);
+						const VectorRegister4Float SupportBLocal = B.SupportCoreSimd(DirInB, MarginB);
+
+						const VectorRegister4Float RotatedVec = VectorQuaternionRotateVector(BToARotation, SupportBLocal);
+						return VectorAdd(RotatedVec, StartPoint);
+					};
+
+					VectorRegister4Float Penetration;
+					VectorRegister4Float MTD, ClosestA, ClosestBInA;
+					const EEPAResult EPAResult = VectorEPA(VertsA, VertsB, SupportAFunc, SupportBAtOriginFunc, Penetration, MTD, ClosestA, ClosestBInA);
+					if (IsEPASuccess(EPAResult))
+					{
+						OutNormal = MTD;
+						VectorStoreFloat1(Penetration, &OutTime);
+						OutTime = -OutTime - (MarginA + MarginB);
+						OutPosition = ClosestA;
+					}
+					else
+					{
+						//assume touching hit
+						OutTime = -(MarginA + MarginB);
+						OutNormal = MTD;
+						OutPosition = VectorMultiplyAdd(OutNormal, MarginASimd, As[0]);
+					}
+				}
+
+				else
+				{
+					//didn't even go into gjk loop, touching hit
+					OutTime = -(MarginA + MarginB);
+					OutNormal = MakeVectorRegisterFloat(0.0f, 0.0f, 1.0f, 0.0f);
+					OutPosition = VectorMultiplyAdd(OutNormal, MarginASimd, As[0]);
+				}
+			}
+		}
+		else
+		{
+			// Initial overlap without MTD. These properties are not valid, but assigning them anyway so they don't contain NaNs and cause issues in invoking code.
+			OutNormal = MakeVectorRegisterFloat(0.0f, 0.0f, 1.0f, 0.0f);
+			OutPosition = MakeVectorRegisterFloat(0.0f, 0.0f, 0.0f, 0.0f);
+		}
+
+		return true;
+	}
+
+#if GJK_VECTORIZED
+	template <typename T, typename TGeometryA, typename TGeometryB>
+	bool GJKRaycast2(const TGeometryA& A, const TGeometryB& B, const TRigidTransform<T, 3>& StartTM, const TVector<T, 3>& RayDir, const T RayLength,
+		T& OutTime, TVector<T, 3>& OutPosition, TVector<T, 3>& OutNormal, const T GivenThicknessA = 0, bool bComputeMTD = false, const TVector<T, 3>& InitialDir = TVector<T, 3>(1, 0, 0), const T GivenThicknessB = 0)
+	{
+		const FQuat& RotationDouble = StartTM.GetRotation();
+		VectorRegister4Float Rotation = MakeVectorRegisterFloatFromDouble(MakeVectorRegister(RotationDouble.X, RotationDouble.Y, RotationDouble.Z, RotationDouble.W));
+
+		const FVector& TranslationDouble = StartTM.GetTranslation();
+		const VectorRegister4Float Translation = MakeVectorRegisterFloatFromDouble(MakeVectorRegister(TranslationDouble.X, TranslationDouble.Y, TranslationDouble.Z, 0.0));
+
+		// Normalize rotation
+		Rotation = VectorNormalizeSafe(Rotation, GlobalVectorConstants::Float0001);
+		
+		const VectorRegister4Float InitialDirSimd = MakeVectorRegisterFloatFromDouble(MakeVectorRegister(InitialDir[0], InitialDir[1], InitialDir[2], 0.0));
+		const VectorRegister4Float RayDirSimd = MakeVectorRegisterFloatFromDouble(MakeVectorRegister(RayDir[0], RayDir[1], RayDir[2], 0.0));
+
+		FRealSingle OutTimeFloat;
+		VectorRegister4Float OutPositionSimd, OutNormalSimd;
+		bool result = GJKRaycast2ImplSimd(A, B, Rotation, Translation, RayDirSimd, static_cast<FRealSingle>(RayLength), OutTimeFloat, OutPositionSimd, OutNormalSimd, bComputeMTD, InitialDirSimd, StartTM);
+
+		OutTime = static_cast<FReal>(OutTimeFloat);
+
+
+		alignas(16) FRealSingle OutFloat[4];
+		VectorStoreAligned(OutNormalSimd, OutFloat);
+		OutNormal.X = OutFloat[0];
+		OutNormal.Y = OutFloat[1];
+		OutNormal.Z = OutFloat[2];
+
+		VectorStoreAligned(OutPositionSimd, OutFloat);
+		OutPosition.X = OutFloat[0];
+		OutPosition.Y = OutFloat[1];
+		OutPosition.Z = OutFloat[2];
+
+		return result;
+	}
+
+#else // GJK_VECTORIZED
+
 	/** Sweeps one geometry against the other
 	 @A The first geometry
 	 @B The second geometry
@@ -1080,6 +1662,8 @@ namespace Chaos
 	{
 		return GJKRaycast2Impl(A, B, StartTM, RayDir, RayLength, OutTime, OutPosition, OutNormal, GivenThicknessA, bComputeMTD, InitialDir, GivenThicknessB);
 	}
+#endif // GJK_VECTORIZED
+
 	/**
 	 * Used by GJKDistance. It must return a vector in the Minkowski sum A - B. In principle this can be the vector of any point
 	 * in A to any point in B, but some choices will cause GJK to minimize faster (e.g., for two spheres, we can easily calculate

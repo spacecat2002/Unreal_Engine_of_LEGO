@@ -2,8 +2,8 @@
 #pragma once
 
 #include "Chaos/Core.h"
+#include "Chaos/VectorUtility.h"
 #include "Math/Quat.h"
-
 
 #if DO_CHECK && !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 #define ChaosSolverEnsure( condition )		ensure( condition )
@@ -23,8 +23,10 @@ namespace Chaos
 	// issues and/or memory bloat.
 #if CHAOS_CONSTRAINTSOLVER_LOWPRECISION
 	using FSolverReal = FRealSingle;
+	using SolverVectorRegister = VectorRegister4Float;
 #else
 	using FSolverReal = FReal;
+	using SolverVectorRegister = VectorRegister4;
 #endif
 	using FSolverVec3 = TVec3<FSolverReal>;
 	using FSolverMatrix33 = TMatrix33<FSolverReal>;
@@ -98,7 +100,7 @@ namespace Chaos
 			if (IsDynamic() && (Dt != FReal(0)))
 			{
 				const FSolverReal InvDt = FSolverReal(1) / FSolverReal(Dt);
-				State.V += State.DP * InvDt;
+				State.V += FVec3(State.DP * InvDt);
 				SetW(State.W + State.DQ * InvDt);
 			}
 		}
@@ -299,7 +301,7 @@ namespace Chaos
 		*/
 		inline void ApplyLinearVelocityDelta(const FSolverVec3& DV)
 		{
-			State.V += DV;
+			State.V += FVec3(DV);
 		}
 
 		/**

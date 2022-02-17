@@ -6,6 +6,8 @@
 #include "Chaos/ConvexStructureData.h"
 #include "Chaos/MassProperties.h"
 
+#include "Math/UnrealMathVectorCommon.h"
+
 #include "CollisionConvexMesh.h"
 #include "ChaosArchive.h"
 #include "ChaosCheck.h"
@@ -332,6 +334,7 @@ namespace Chaos
 		 * caller. 
 		 */
 		virtual bool Raycast(const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex) const override;
+		bool RaycastFast(const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex) const;
 
 		virtual Pair<FVec3, bool> FindClosestIntersectionImp(const FVec3& StartPoint, const FVec3& EndPoint, const FReal Thickness) const override
 		{
@@ -369,8 +372,16 @@ namespace Chaos
 		// Get the index of the plane that most opposes the normal
 		int32 GetMostOpposingPlaneScaled(const FVec3& Normal, const FVec3& Scale) const;
 
+		// Get the nearest point on an edge and the edge vertices
+		// Used for manifold generation
+		FVec3 GetClosestEdge(int32 PlaneIndexHint, const FVec3& Position, FVec3& OutEdgePos0, FVec3& OutEdgePos1) const;
+
 		// Get the nearest point on an edge of the specified face
-		FVec3 GetClosestEdgePosition(int32 PlaneIndex, const FVec3& Position) const;
+		FVec3 GetClosestEdgePosition(int32 PlaneIndex, const FVec3& Position) const
+		{
+			FVec3 Unused0, Unused1;
+			return GetClosestEdge(PlaneIndex, Position, Unused0, Unused1);
+		}
 
 		bool GetClosestEdgeVertices(int32 PlaneIndex, const FVec3& Position, int32& OutVertexIndex0, int32& OutVertexIndex1) const;
 
@@ -409,6 +420,17 @@ namespace Chaos
 			return TPlaneConcrete<FReal, 3>::MakeFrom(Planes[FaceIndex]);
 		}
 
+		void GetPlaneNX(const int32 FaceIndex, FVec3& OutN, FVec3& OutX) const
+		{
+			OutN = FVec3(Planes[FaceIndex].Normal());
+			OutX = FVec3(Planes[FaceIndex].X());
+		}
+
+		const FPlaneType& GetPlaneRaw(int32 FaceIndex) const
+		{
+			return Planes[FaceIndex];
+		}
+
 		// Get the vertex at the specified index (e.g., indices from GetPlaneVertexs)
 		const FVec3Type& GetVertex(int32 VertexIndex) const
 		{
@@ -442,15 +464,15 @@ namespace Chaos
 		}
 
 	private:
-		int32 GetSupportVertex(const FVec3& Direction) const
+		FORCEINLINE_DEBUGGABLE int32 GetSupportVertex(const FVec3Type& Direction) const
 		{
-			FReal MaxDot = TNumericLimits<FReal>::Lowest();
+			FRealType MaxDot = TNumericLimits<FRealType>::Lowest();
 			int32 MaxVIdx = INDEX_NONE;
 			const int32 NumVertices = Vertices.Num();
 
 			for (int32 Idx = 0; Idx < NumVertices; ++Idx)
 			{
-				const FReal Dot = FVec3::DotProduct(Vertices[Idx], Direction);
+				const FRealType Dot = FVec3Type::DotProduct(Vertices[Idx], Direction);
 				if (Dot > MaxDot)
 				{
 					MaxDot = Dot;
@@ -549,11 +571,6 @@ namespace Chaos
 
 		FVec3 GetMarginAdjustedVertexScaled(int32 VertexIndex, FReal InMargin, const FVec3& Scale, FReal* OutSupportDelta) const
 		{
-			if (InMargin == 0.0f)
-			{
-				return GetVertex(VertexIndex) * Scale;
-			}
-
 			// Get any 3 planes that contribute to this vertex
 			int32 PlaneIndex0 = INDEX_NONE;
 			int32 PlaneIndex1 = INDEX_NONE;
@@ -612,7 +629,7 @@ namespace Chaos
 		// Return support point on the core shape (the convex shape with all planes moved inwards by margin).
 		FVec3 SupportCore(const FVec3& Direction, const FReal InMargin, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
-			const int32 SupportVertexIndex = GetSupportVertex(Direction);
+			const int32 SupportVertexIndex = GetSupportVertex(FVec3Type(Direction));
 			VertexIndex = SupportVertexIndex;
 			if (SupportVertexIndex != INDEX_NONE)
 			{
@@ -621,20 +638,42 @@ namespace Chaos
 			return FVec3(0);
 		}
 
+		// Return support point on the core shape (the convex shape with all planes moved inwards by margin).
+		VectorRegister4Float SupportCoreSimd(const VectorRegister4Float& Direction, const FReal InMargin) const
+		{
+			FVec3 DirectionVec3;
+			VectorStoreFloat3(Direction, &DirectionVec3);
+			const int32 SupportVertexIndex = GetSupportVertex(DirectionVec3);
+			if (SupportVertexIndex != INDEX_NONE)
+			{
+				FVec3 SupportVert =  GetMarginAdjustedVertex(SupportVertexIndex, InMargin, nullptr);
+				return MakeVectorRegisterFloatFromDouble(MakeVectorRegister(SupportVert.X, SupportVert.Y, SupportVert.Z, 0.0));
+			}
+			return VectorZeroFloat();
+		}
+
+
 		// SupportCore with non-uniform scale support. This is required for the margin in scaled
 		// space to by uniform. Note in this version all the inputs are in outer container's (scaled shape) space
 		FVec3 SupportCoreScaled(const FVec3& Direction, FReal InMargin, const FVec3& Scale, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
 			// Find the supporting vertex index
-			const FVec3 DirectionScaled = Scale * Direction;	// does not need to be normalized
+			const FVec3Type DirectionScaled = FVec3Type(Scale * Direction);	// does not need to be normalized
 			const int32 SupportVertexIndex = GetSupportVertex(DirectionScaled);
 			VertexIndex = SupportVertexIndex;
 			// Adjust the vertex position based on margin
 			if (SupportVertexIndex != INDEX_NONE)
 			{
-				// Note: Shapes wrapped in a non-uniform scale should not have their own margin and we assume that here
-				// @chaos(todo): apply an upper limit to the margin to prevent a non-convex or null shape (also see comments in GetMarginAdjustedVertex)
-				return GetMarginAdjustedVertexScaled(SupportVertexIndex, InMargin, Scale, OutSupportDelta);
+				if (InMargin == 0.0f)
+				{
+					return FVec3(GetVertex(VertexIndex)) * Scale;
+				}
+				else
+				{
+					// Note: Shapes wrapped in a non-uniform scale should not have their own margin and we assume that here
+					// @chaos(todo): apply an upper limit to the margin to prevent a non-convex or null shape (also see comments in GetMarginAdjustedVertex)
+					return FVec3(GetMarginAdjustedVertexScaled(SupportVertexIndex, InMargin, Scale, OutSupportDelta));
+				}
 			}
 			return FVec3(0);
 		}
@@ -643,7 +682,7 @@ namespace Chaos
 		// @todo(chaos): do we need to support thickness?
 		FORCEINLINE FVec3 Support(const FVec3& Direction, const FReal Thickness, int32& VertexIndex) const
 		{
-			const int32 MaxVIdx = GetSupportVertex(Direction);
+			const int32 MaxVIdx = GetSupportVertex(FVec3Type(Direction));
 			VertexIndex = MaxVIdx;
 			if (MaxVIdx != INDEX_NONE)
 			{

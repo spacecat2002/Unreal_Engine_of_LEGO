@@ -4,7 +4,7 @@
 #include "Chaos/Sphere.h"
 #include "Chaos/ImplicitObjectScaled.h"
 
-//PRAGMA_DISABLE_OPTIMIZATION
+#define CHAOS_CONVEX_USE_FAST_RAYCAST 1
 
 namespace Chaos
 {
@@ -18,12 +18,69 @@ namespace Chaos
 
 	bool FConvex::Raycast(const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex) const
 	{
+#if CHAOS_CONVEX_USE_FAST_RAYCAST
+		return RaycastFast(StartPoint, Dir, Length, Thickness, OutTime, OutPosition, OutNormal, OutFaceIndex);
+#else
 		OutFaceIndex = INDEX_NONE;	//finding face is expensive, should be called directly by user
 		const FRigidTransform3 StartTM(StartPoint, FRotation3::FromIdentity());
 		const TSphere<FReal, 3> Sphere(FVec3(0), Thickness);
 		return GJKRaycast(*this, Sphere, StartTM, Dir, Length, OutTime, OutPosition, OutNormal);
+#endif
 	}
 
+	bool FConvex::RaycastFast(const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex) const
+	{
+		FReal EntryTime = 0.;
+		FReal ExitTime = Length;
+		int32 PlaneIndex = -1;
+		
+		for (int32 Idx = 0; Idx < Planes.Num(); ++Idx)
+		{
+			const FPlaneType& Plane = Planes[Idx];
+			
+			const FReal NDotDir = FVec3::DotProduct(Plane.Normal(), Dir);
+			const FReal Distance = FVec3::DotProduct((StartPoint - FVec3{Plane.X()}), Plane.Normal()); //Plane.SignedDistance(StartPoint);
+
+			if (NDotDir == 0.)
+			{
+				if (Distance > 0.)
+				{
+					// ray is perpendicular to one plane and outside of the convex, no intersection 
+					return false;
+				}
+			}
+			else
+			{
+				const FReal Time = -Distance /  NDotDir;
+				if (NDotDir < 0.)
+				{
+					// ray opposite to the plane normal, it is an entry
+					if (Time > EntryTime)
+					{
+						EntryTime = Time; 
+						PlaneIndex = Idx;
+					}
+				}
+				else
+				{
+					// ray has same orientation as the plane normal, it is an exit
+					ExitTime = FMath::Min(ExitTime, Time);
+				}
+			}
+			// early exit when possible
+			if (EntryTime > ExitTime)
+			{
+				return false;
+			};
+		} 
+
+		// successful intersection
+		OutTime = EntryTime;
+		OutPosition = StartPoint + (Dir * OutTime);
+		OutNormal = (PlaneIndex >= 0)? FVec3{Planes[PlaneIndex].Normal()}: -Dir;
+		OutFaceIndex = INDEX_NONE; // @todo(chaos) we could return PlaneIndex ( but would differ from previous implementation )
+		return true;
+	}
 
 	int32 FConvex::FindMostOpposingFace(const FVec3& Position, const FVec3& UnitDir, int32 HintFaceIndex, FReal SearchDist) const
 	{
@@ -61,7 +118,8 @@ namespace Chaos
 		FReal MostOpposingDot = TNumericLimits<FReal>::Max();
 		for (int32 Idx = 0; Idx < Planes.Num(); ++Idx)
 		{
-			const FPlaneType Plane = FPlaneType::MakeScaledUnsafe(Planes[Idx], Scale);
+			// @todo(chaos): pass in InvScale
+			const FPlaneType Plane = FPlaneType::MakeScaledUnsafe(Planes[Idx], Scale, FVec3(1) / Scale);
 			const FReal Distance = Plane.SignedDistance(Position);
 			if (FMath::Abs(Distance) < SearchDist)
 			{
@@ -153,34 +211,44 @@ namespace Chaos
 		return MostOpposingIdx;
 	}
 
-	FVec3 FConvex::GetClosestEdgePosition(int32 PlaneIndex, const FVec3& Position) const
+	FVec3 FConvex::GetClosestEdge(int32 PlaneIndex, const FVec3& InPosition, FVec3& OutEdgePos0, FVec3& OutEdgePos1) const
 	{
-		FVec3 ClosestEdgePosition = FVec3(0);
-		FReal ClosestDistanceSq = FLT_MAX;
+		FVec3Type ClosestEdgePosition = FVec3Type(0);
+		FRealType ClosestDistanceSq = FLT_MAX;
+		FVec3Type Position = FVec3Type(InPosition);
 
 		const int32 PlaneVerticesNum = NumPlaneVertices(PlaneIndex);
 		if (PlaneVerticesNum > 0)
 		{
-			FVec3 P0 = GetVertex(GetPlaneVertex(PlaneIndex, PlaneVerticesNum - 1));
+			FVec3Type P0 = GetVertex(GetPlaneVertex(PlaneIndex, PlaneVerticesNum - 1));
 			for (int32 PlaneVertexIndex = 0; PlaneVertexIndex < PlaneVerticesNum; ++PlaneVertexIndex)
 			{
 				const int32 VertexIndex = GetPlaneVertex(PlaneIndex, PlaneVertexIndex);
-				const FVec3 P1 = GetVertex(VertexIndex);
+				const FVec3Type P1 = GetVertex(VertexIndex);
 				
-				const FVec3 EdgePosition = FMath::ClosestPointOnLine(P0, P1, Position);
-				const FReal EdgeDistanceSq = (EdgePosition - Position).SizeSquared();
-
+				// LWC_TODO: low-precision version of FMath::ClosestPointOnLine
+				// See FMath::ClosestPointOnLine (which does not have a float version when LWC is enbled)
+				//const FVec3Type EdgePosition = FMath::ClosestPointOnLine(P0, P1, Position);
+				const FVec3Type DP = P1 - P0;
+				const FRealType A = FVec3Type::DotProduct((P0 - Position), DP);
+				const FRealType B = DP.SizeSquared();
+				const FRealType T = FMath::Clamp(-A / B, FRealType(0), FRealType(1));
+				const FVec3Type EdgePosition = P0 + (T * DP);
+				
+				const FRealType EdgeDistanceSq = (EdgePosition - Position).SizeSquared();
 				if (EdgeDistanceSq < ClosestDistanceSq)
 				{
 					ClosestDistanceSq = EdgeDistanceSq;
 					ClosestEdgePosition = EdgePosition;
+					OutEdgePos0 = P0;
+					OutEdgePos1 = P1;
 				}
 
 				P0 = P1;
 			}
 		}
 
-		return ClosestEdgePosition;
+		return FVec3(ClosestEdgePosition);
 	}
 
 	bool FConvex::GetClosestEdgeVertices(int32 PlaneIndex, const FVec3& Position, int32& OutVertexIndex0, int32& OutVertexIndex1) const

@@ -282,6 +282,11 @@ void FChaosEngineInterface::DetachShape(const FPhysicsActorHandle& InActor,FPhys
 	}
 }
 
+void FChaosEngineInterface::SetSmoothEdgeCollisionsEnabled(const FPhysicsActorHandle& InActor, const bool bSmoothEdgeCollisionsEnabled)
+{
+	InActor->GetGameThreadAPI().SetSmoothEdgeCollisionsEnabled(bSmoothEdgeCollisionsEnabled);
+}
+
 void FChaosEngineInterface::AddDisabledCollisionsFor_AssumesLocked(const TMap<FPhysicsActorHandle, TArray< FPhysicsActorHandle > >& InMap)
 {
 	if (bEnableChaosCollisionManager)
@@ -306,12 +311,12 @@ void FChaosEngineInterface::AddDisabledCollisionsFor_AssumesLocked(const TMap<FP
 
 			if (Chaos::FPBDRigidParticle* Rigid0 = ActorReference->GetParticle_LowLevel()->CastToRigidParticle())
 			{
-				Rigid0->SetCollisionConstraintFlag((uint32)Chaos::ECollisionConstraintFlags::CCF_BroadPhaseIgnoreCollisions);
+				Rigid0->AddCollisionConstraintFlag(Chaos::ECollisionConstraintFlags::CCF_BroadPhaseIgnoreCollisions);
 				for (auto Handle1 : Elem.Value)
 				{
 					if (Chaos::FPBDRigidParticle* Rigid1 = Handle1->GetParticle_LowLevel()->CastToRigidParticle())
 					{
-						Rigid1->SetCollisionConstraintFlag((uint32)Chaos::ECollisionConstraintFlags::CCF_BroadPhaseIgnoreCollisions);
+						Rigid1->AddCollisionConstraintFlag(Chaos::ECollisionConstraintFlags::CCF_BroadPhaseIgnoreCollisions);
 						DisabledCollisions.Add(Handle1->GetGameThreadAPI().UniqueIdx());
 					}
 				}
@@ -1280,6 +1285,17 @@ void FChaosEngineInterface::SetProjectionEnabled_AssumesLocked(const FPhysicsCon
 			Constraint->SetProjectionEnabled(bInProjectionEnabled);
 			Constraint->SetProjectionLinearAlpha(InLinearAlpha);
 			Constraint->SetProjectionAngularAlpha(InAngularAlpha);
+		}
+	}
+}
+
+void FChaosEngineInterface::SetShockPropagationAlpha_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, float InShockPropagationAlpha)
+{
+	if (InConstraintRef.IsValid() && InConstraintRef.Constraint->IsType(Chaos::EConstraintType::JointConstraintType))
+	{
+		if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(InConstraintRef.Constraint))
+		{
+			Constraint->SetShockPropagationAlpha(InShockPropagationAlpha);
 		}
 	}
 }

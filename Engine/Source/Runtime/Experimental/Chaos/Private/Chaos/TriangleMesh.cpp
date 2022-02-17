@@ -4,6 +4,7 @@
 #include "Chaos/Box.h"
 #include "Chaos/Defines.h"
 #include "Chaos/Plane.h"
+#include "Chaos/TriangleCollisionPoint.h"
 #include "HAL/IConsoleManager.h"
 #include "Math/NumericLimits.h"
 #include "Math/RandomStream.h"
@@ -18,11 +19,45 @@
 #endif
 
 #if INTEL_ISPC && !UE_BUILD_SHIPPING
+//static_assert(sizeof(ispc::FVector3f) == sizeof(Chaos::TVec3<Chaos::FRealSingle>), "sizeof(ispc::FVector3f) != sizeof(Chaos::TVec3<Chaos::FRealSingle>)");
+//static_assert(sizeof(ispc::TArrayInt) == sizeof(TArray<int32>), "sizeof(ispc::TArrayInt) != sizeof(TArray<int32>)");
+
 bool bChaos_TriangleMesh_ISPC_Enabled = true;
 FAutoConsoleVariableRef CVarChaosTriangleMeshISPCEnabled(TEXT("p.Chaos.TriangleMesh.ISPC"), bChaos_TriangleMesh_ISPC_Enabled, TEXT("Whether to use ISPC optimizations in triangle mesh calculations"));
 #endif
 
-using namespace Chaos;
+namespace Chaos
+{
+template<typename T>
+struct TTriangleMeshBvEntry
+{
+	const FTriangleMesh* TmData;
+	const TConstArrayView<TVec3<T>>* Points;
+	int32 Index;
+
+	bool HasBoundingBox() const 
+	{
+		return true;
+	}
+
+	Chaos::TAABB<T,3> BoundingBox() const
+	{
+		const TVec3<int32>& Tri = TmData->GetElements()[Index];
+		const TVec3<T>& A = (*Points)[Tri[0]];
+		const TVec3<T>& B = (*Points)[Tri[1]];
+		const TVec3<T>& C = (*Points)[Tri[2]];
+
+		TAABB<T,3> Bounds(A, A);
+
+		Bounds.GrowToInclude(B);
+		Bounds.GrowToInclude(C);
+
+		return Bounds;
+	}
+
+	template<typename TPayloadType>
+	int32 GetPayload(int32 Idx) const { return Idx; }
+};
 
 FTriangleMesh::FTriangleMesh()
     : MStartIdx(0)
@@ -216,26 +251,20 @@ TArray<TVec4<int32>> FTriangleMesh::GetUniqueAdjacentElements() const
 	return BendingConstraints;
 }
 
-TArray<FVec3> FTriangleMesh::GetFaceNormals(const TConstArrayView<FVec3>& Points, const bool ReturnEmptyOnError) const
-{
-	TArray<FVec3> Normals;
-	GetFaceNormals(Normals, Points, ReturnEmptyOnError);
-	return Normals;
-}
-
 // Note:	This function assumes Counter Clockwise triangle windings in a Left Handed coordinate system
 //			If this is not the case the returned face normals may need to be inverted
-void FTriangleMesh::GetFaceNormals(TArray<FVec3>& Normals, const TConstArrayView<FVec3>& Points, const bool ReturnEmptyOnError) const
+template <typename T>
+void FTriangleMesh::GetFaceNormals(TArray<TVec3<T>>& Normals, const TConstArrayView<TVec3<T>>& Points, const bool ReturnEmptyOnError) const
 {
 	Normals.Reset(MElements.Num());
 	if (ReturnEmptyOnError)
 	{
 		for (const TVec3<int32>& Tri : MElements)
 		{
-			FVec3 p10 = Points[Tri[1]] - Points[Tri[0]];
-			FVec3 p20 = Points[Tri[2]] - Points[Tri[0]];
-			FVec3 Cross = FVec3::CrossProduct(p20, p10);
-			const FReal Size2 = Cross.SizeSquared();
+			const TVec3<T> p10 = Points[Tri[1]] - Points[Tri[0]];
+			const TVec3<T> p20 = Points[Tri[2]] - Points[Tri[0]];
+			const TVec3<T> Cross = TVec3<T>::CrossProduct(p20, p10);
+			const T Size2 = Cross.SizeSquared();
 			if (Size2 < SMALL_NUMBER)
 			{
 				//particles should not be coincident by the time they get here. Return empty to signal problem to caller
@@ -251,31 +280,41 @@ void FTriangleMesh::GetFaceNormals(TArray<FVec3>& Normals, const TConstArrayView
 	}
 	else
 	{
-		if (bRealTypeCompatibleWithISPC && bChaos_TriangleMesh_ISPC_Enabled)
+#if INTEL_ISPC
+		if (bChaos_TriangleMesh_ISPC_Enabled && TAreTypesEqual<T, FRealSingle>::Value)
 		{
 			Normals.SetNumUninitialized(MElements.Num());
-
-#if INTEL_ISPC
-			static_assert(std::is_same<FReal, float>::value == true, "ISPC only supports float template type");
 			ispc::GetFaceNormals(
 				(ispc::FVector*)Normals.GetData(),
 				(ispc::FVector*)Points.GetData(),
 				(ispc::FIntVector*)MElements.GetData(),
 				MElements.Num());
-#endif
 		}
 		else
+#endif
 		{
 			for (const TVec3<int32>& Tri : MElements)
 			{
-				FVec3 p10 = Points[Tri[1]] - Points[Tri[0]];
-				FVec3 p20 = Points[Tri[2]] - Points[Tri[0]];
-				FVec3 Cross = FVec3::CrossProduct(p20, p10);
+				const TVec3<FRealSingle> p10 = Points[Tri[1]] - Points[Tri[0]];
+				const TVec3<FRealSingle> p20 = Points[Tri[2]] - Points[Tri[0]];
+				const TVec3<FRealSingle> Cross = TVec3<FRealSingle>::CrossProduct(p20, p10);
 				Normals.Add(Cross.GetSafeNormal());
 			}
 		}
 	}
 }
+template CHAOS_API void FTriangleMesh::GetFaceNormals<FRealSingle>(TArray<TVec3<FRealSingle>>&, const TConstArrayView<TVec3<FRealSingle>>&, const bool) const;
+//template CHAOS_API void FTriangleMesh::GetFaceNormals<FRealDouble>(TArray<TVec3<FRealDouble>>&, const TConstArrayView<TVec3<FRealDouble>>&, const bool) const;
+
+template <typename T>
+TArray<TVec3<T>> FTriangleMesh::GetFaceNormals(const TConstArrayView<TVec3<T>>& Points, const bool ReturnEmptyOnError) const
+{
+	TArray<TVec3<T>> Normals;
+	GetFaceNormals(Normals, Points, ReturnEmptyOnError);
+	return Normals;
+}
+template CHAOS_API TArray<TVec3<FRealSingle>> FTriangleMesh::GetFaceNormals<FRealSingle>(const TConstArrayView<TVec3<FRealSingle>>&, const bool) const;
+//template CHAOS_API TArray<TVec3<FRealDouble>> FTriangleMesh::GetFaceNormals<FRealDouble>(const TConstArrayView<TVec3<FRealDouble>>&, const bool) const;
 
 TArray<FVec3> FTriangleMesh::GetPointNormals(const TConstArrayView<FVec3>& Points, const bool ReturnEmptyOnError)
 {
@@ -296,14 +335,13 @@ void FTriangleMesh::GetPointNormals(TArrayView<FVec3> PointNormals, const TConst
 	ConstThis->GetPointNormals(PointNormals, FaceNormals, bUseGlobalArray);
 }
 
-void FTriangleMesh::GetPointNormals(TArrayView<FVec3> PointNormals, const TConstArrayView<FVec3>& FaceNormals, const bool bUseGlobalArray) const
+CHAOS_API void FTriangleMesh::GetPointNormals(TArrayView<FVec3> PointNormals, const TConstArrayView<FVec3>& FaceNormals, const bool bUseGlobalArray) const
 {
 	check(MPointToTriangleMap.Num() != 0);
 
-	if (bRealTypeCompatibleWithISPC && bChaos_TriangleMesh_ISPC_Enabled)
-	{
 #if INTEL_ISPC
-		static_assert(std::is_same<FReal, float>::value == true, "ISPC only supports float template type");
+	if (bChaos_TriangleMesh_ISPC_Enabled)
+	{
 		ispc::GetPointNormals(
 			(ispc::FVector*)PointNormals.GetData(),
 			(const ispc::FVector*)FaceNormals.GetData(),
@@ -311,15 +349,15 @@ void FTriangleMesh::GetPointNormals(TArrayView<FVec3> PointNormals, const TConst
 			bUseGlobalArray ? LocalToGlobal(0) : 0,
 			FaceNormals.Num(),
 			MNumIndices);
-#endif
 	}
 	else
+#endif
 	{
 		for (int32 Element = 0; Element < MNumIndices; ++Element)  // Iterate points with local indexes
 		{
 			const int32 NormalIndex = bUseGlobalArray ? LocalToGlobal(Element) : Element;  // Select whether the points normal indices match the points indices or start at 0
 			FVec3& Normal = PointNormals[NormalIndex];
-			Normal = FVec3(0);
+			Normal = FVec3(0.);
 			const TArray<int32>& TriangleMap = MPointToTriangleMap[Element];  // Access MPointToTriangleMap with local index
 			for (int32 k = 0; k < TriangleMap.Num(); ++k)
 			{
@@ -618,7 +656,7 @@ struct OrderedEdgeKeyFuncs : BaseKeyFuncs<TVec2<int32>, TVec2<int32>, false>
 
 	static FORCEINLINE uint32 GetKeyHash(const TVec2<int32>& elem)
 	{
-		const uint32 v = HashCombine(GetTypeHash(elem[0]), GetTypeHash(elem[1]));
+		const uint32 v = HashCombine(::GetTypeHash(elem[0]), ::GetTypeHash(elem[1]));
 		return v;
 	}
 };
@@ -1285,8 +1323,11 @@ TArray<int32> FTriangleMesh::GetVertexImportanceOrdering(
 	}
 
 	// Sort remaining non-coincident points by curvature
-	DescendingPredicate<FReal> DescendingCurvaturePred(PointCurvatures);
-	Sort(&PointOrder[MovedPtsOffset], NumPoints - MovedPtsOffset - NumCoincident, DescendingCurvaturePred);
+	if (MovedPtsOffset < NumPoints)
+	{
+		DescendingPredicate<FReal> DescendingCurvaturePred(PointCurvatures);
+		Sort(&PointOrder[MovedPtsOffset], NumPoints - MovedPtsOffset - NumCoincident, DescendingCurvaturePred);
+	}
 
 	return PointOrder;
 }
@@ -1391,3 +1432,71 @@ void FTriangleMesh::RemoveDegenerateElements()
 		}
 	}
 }
+
+template<typename T>
+void FTriangleMesh::BuildBVH(const TConstArrayView<TVec3<T>>& Points, TBVHType<T>& BVH) const
+{
+	TArray<TTriangleMeshBvEntry<T>> BVEntries;
+	const int32 NumTris = MElements.Num();
+	BVEntries.Reset(NumTris);
+	for (int32 Tri = 0; Tri < NumTris; ++Tri)
+	{
+		BVEntries.Add({ this, &Points, Tri });
+	}
+	BVH.Reinitialize(BVEntries);
+}
+template CHAOS_API void FTriangleMesh::BuildBVH<FRealSingle>(const TConstArrayView<TVec3<FRealSingle>>& Points, TBVHType<FRealSingle>& BVH) const;
+//template CHAOS_API void FTriangleMesh::BuildBVH<FRealDouble>(const TConstArrayView<TVec3<FRealDouble>>& Points, TBVHType<FRealDouble>& BVH) const;
+
+template<typename T>
+bool FTriangleMesh::PointProximityQuery(const TBVHType<T>& BVH, const TConstArrayView<TVec3<T>>& Points, const int32 PointIndex, const TVec3<T>& PointPosition, const T PointThickness, const T ThisThickness, 
+	TFunctionRef<bool(const int32 PointIndex, const int32 TriangleIndex)> BroadphaseTest, TArray<TTriangleCollisionPoint<T>>& Result) const
+{
+	const T TotalThickness = ThisThickness + PointThickness;
+	const T TotalThicknessSq = TotalThickness * TotalThickness;
+	FAABB3 QueryBounds(PointPosition, PointPosition);
+	QueryBounds.Thicken(TotalThickness);
+
+	const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
+
+	Result.Reset(PotentialIntersections.Num());
+
+	for (int32 TriIdx : PotentialIntersections)
+	{
+		if (!BroadphaseTest(PointIndex, TriIdx))
+		{
+			continue;
+		}
+
+		const TVec3<T>& A = Points[MElements[TriIdx][0]];
+		const TVec3<T>& B = Points[MElements[TriIdx][1]];
+		const TVec3<T>& C = Points[MElements[TriIdx][2]];
+		TVec3<T> Bary;
+		const TVec3<T> ClosestPoint = FindClosestPointAndBaryOnTriangle(A, B, C, PointPosition, Bary);
+
+		const T DistSq = (PointPosition - ClosestPoint).SizeSquared();
+		if (DistSq > TotalThicknessSq)
+		{
+			// Failed narrow test.
+			continue;
+		}
+
+		TVec3<T> Normal = TVec3<T>::CrossProduct(B-A, C-A).GetSafeNormal();
+		Normal = (TVec3<T>::DotProduct(Normal, PointPosition-A) > 0) ? Normal : -Normal;
+
+		TTriangleCollisionPoint<T> CollisionPoint;
+		CollisionPoint.ContactType = TTriangleCollisionPoint<T>::EContactType::PointFace;
+		CollisionPoint.Indices[0] = PointIndex;
+		CollisionPoint.Indices[1] = TriIdx;
+		CollisionPoint.Bary = TVec4<T>((T)1., Bary.X, Bary.Y, Bary.Z);
+		CollisionPoint.Location = ClosestPoint;
+		CollisionPoint.Normal = Normal;
+		CollisionPoint.Phi = FMath::Sqrt(DistSq);
+		Result.Add(CollisionPoint);
+	}
+	return Result.Num() > 0;
+}
+template CHAOS_API bool FTriangleMesh::PointProximityQuery<FRealSingle>(const TBVHType<FRealSingle>& BVH, const TConstArrayView<TVector<FRealSingle, 3>>& Points, const int32 PointIndex, const TVector<FRealSingle, 3>& PointPosition, const FRealSingle PointThickness, const FRealSingle ThisThickness, TFunctionRef<bool(const int32 PointIndex, const int32 TriangleIndex)> BroadphaseTest, TArray<TTriangleCollisionPoint<FRealSingle>>& Result) const;
+//template CHAOS_API bool FTriangleMesh::PointProximityQuery<FRealDouble>(const TBVHType<FRealDouble>& BVH, const TConstArrayView<TVector<FRealDouble, 3>>& Points, const int32 PointIndex, const TVector<FRealDouble, 3>& PointPosition, const FRealDouble PointThickness, const FRealDouble ThisThickness, TFunctionRef<bool(const int32 PointIndex, const int32 TriangleIndex)> BroadphaseTest, TArray<TTriangleCollisionPoint<FRealDouble>>& Result) const;
+
+}  // End namespace Chaos

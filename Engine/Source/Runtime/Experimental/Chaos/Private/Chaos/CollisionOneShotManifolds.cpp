@@ -18,12 +18,18 @@
 
 namespace Chaos
 {
+	// If a sphere is this much smaller than a capsule, we create a single-point manifold. Otherwise a three-point manifold
+	FRealSingle Chaos_Collision_Manifold_SphereCapsuleSizeThreshold = 0.5f;
+	FAutoConsoleVariableRef CVarChaos_Manifold_SphereCapsuleSizeThreshold(TEXT("p.Chaos.Collision.Manifold.SphereCapsuleSizeThreshold"), Chaos_Collision_Manifold_SphereCapsuleSizeThreshold, TEXT(""));
+
 	FRealSingle Chaos_Collision_Manifold_PlaneContactNormalEpsilon = 0.001f;
 	FAutoConsoleVariableRef CVarChaos_Manifold_PlaneContactNormalEpsilon(TEXT("p.Chaos.Collision.Manifold.PlaneContactNormalEpsilon"), Chaos_Collision_Manifold_PlaneContactNormalEpsilon, TEXT("Normal tolerance used to distinguish face contacts from edge-edge contacts"));
 
-	// @todo(chaos): TEMP - use convex-convex collisio detection for box-box until TBox::GetClosestEdgePosition is implemented for that path (without plane hint)
-	bool bChaos_Collision_Manifold_BoxAsConvex = true;
-	FAutoConsoleVariableRef CVarChaosCollisioConvexManifoldBoxAsConvex(TEXT("p.Chaos.Collision.Manifold.BoxAsConvex"), bChaos_Collision_Manifold_BoxAsConvex, TEXT(""));
+	FRealSingle Chaos_Collision_Manifold_TriangleContactNormalThreshold = 0.75f;	// About 40deg
+	FAutoConsoleVariableRef CVarChaos_Manifold_TriangleContactNormalThreshold(TEXT("p.Chaos.Collision.Manifold.TriangleNormalThreshold"), Chaos_Collision_Manifold_TriangleContactNormalThreshold, TEXT(""));
+
+	FRealSingle Chaos_Collision_Manifold_EdgeContactNormalThreshold = 0.9f;	// About 25deg
+	FAutoConsoleVariableRef CVarChaos_Manifold_EdgeContactNormalThreshold(TEXT("p.Chaos.Collision.Manifold.EdgeNormalThreshold"), Chaos_Collision_Manifold_EdgeContactNormalThreshold, TEXT(""));
 
 	FRealSingle Chaos_Collision_Manifold_CullDistanceMarginMultiplier = 1.0f;
 	FAutoConsoleVariableRef CVarChaosCollisioConvexManifoldCullDistanceMarginMultiplier(TEXT("p.Chaos.Collision.Manifold.CullDistanceMarginMultiplier"), Chaos_Collision_Manifold_CullDistanceMarginMultiplier, TEXT(""));
@@ -31,17 +37,27 @@ namespace Chaos
 	FRealSingle Chaos_Collision_Manifold_MinFaceSearchDistance = 1.0f;
 	FAutoConsoleVariableRef CVarChaosCollisioConvexManifoldMinFaceSearchDistance(TEXT("p.Chaos.Collision.Manifold.MinFaceSearchDistance"), Chaos_Collision_Manifold_MinFaceSearchDistance, TEXT(""));
 
-	bool bChaos_Collision_Manifold_FixNormalsInWorldSpace = true;
-	FAutoConsoleVariableRef CVarChaosCollisioFixNormalsInWorldSpace(TEXT("p.Chaos.Collision.Manifold.FixNormalsInWorldSpace"), bChaos_Collision_Manifold_FixNormalsInWorldSpace, TEXT("Fix normals in world space at beginning of frame"));	
-
 	bool ForceOneShotManifoldEdgeEdgeCaseZeroCullDistance = false;
 	FAutoConsoleVariableRef CVarForceOneShotManifoldEdgeEdgeCaseZeroCullDistance(TEXT("p.Chaos.Collision.Manifold.ForceOneShotManifoldEdgeEdgeCaseZeroCullDistance"), ForceOneShotManifoldEdgeEdgeCaseZeroCullDistance,
 	TEXT("If enabled, if one shot manifold hits edge/edge case, we will force a cull distance of zero. That means edge/edge contacts will be thrown out if separated at all. Only applies to Convex/Convex oneshot impl."));
 
-	bool bChaos_Collision_EnableManifoldInject = false;
-	FAutoConsoleVariableRef CVarChaos_Collision_EnableManifoldInject(TEXT("p.Chaos.Collision.EnableManifolInject"), bChaos_Collision_EnableManifoldInject, TEXT(""));
+	bool bChaos_Collision_EnableManifoldGJKReplace = false;
+	bool bChaos_Collision_EnableManifoldGJKInject = false;
+	FAutoConsoleVariableRef CVarChaos_Collision_EnableManifoldReplace(TEXT("p.Chaos.Collision.EnableManifoldGJKReplace"), bChaos_Collision_EnableManifoldGJKReplace, TEXT(""));
+	FAutoConsoleVariableRef CVarChaos_Collision_EnableManifoldInject(TEXT("p.Chaos.Collision.EnableManifoldGJKInject"), bChaos_Collision_EnableManifoldGJKInject, TEXT(""));
 
-	
+	// See GJKContactPointMargin for comments on why these matter
+	FRealSingle Chaos_Collision_GJKEpsilon = 1e-3f;
+	FRealSingle Chaos_Collision_EPAEpsilon = 1e-3f;
+	FAutoConsoleVariableRef CVarChaos_Collision_GJKEpsilon(TEXT("p.Chaos.Collision.GJKEpsilon"), Chaos_Collision_GJKEpsilon, TEXT(""));
+	FAutoConsoleVariableRef CVarChaos_Collision_EPAEpsilon(TEXT("p.Chaos.Collision.EPAEpsilon"), Chaos_Collision_EPAEpsilon, TEXT(""));
+
+	// Whether to prune spurious edge contacts in trimesh nd heighfield contacts (pretty much essential)
+	bool bChaos_Collision_EnableEdgePrune = true;
+	FRealSingle Chaos_Collision_EdgePrunePlaneDistance = 3.0;
+	FAutoConsoleVariableRef CVarChaos_Collision_EnableEdgePrune(TEXT("p.Chaos.Collision.EnableEdgePrune"), bChaos_Collision_EnableEdgePrune, TEXT(""));
+	FAutoConsoleVariableRef CVarChaos_Collision_EdgePrunePlaneDistance(TEXT("p.Chaos.Collision.EdgePrunePlaneDistance"), Chaos_Collision_EdgePrunePlaneDistance, TEXT(""));
+
 	namespace Collisions
 	{
 		// Forward delarations we need from CollisionRestitution.cpp
@@ -131,204 +147,7 @@ namespace Chaos
 			const FReal Dt,
 			FPBDCollisionConstraint& Constraint)
 		{
-			if (bChaos_Collision_Manifold_BoxAsConvex)
-			{
-				ConstructConvexConvexOneShotManifold(Box1, Box1Transform, Box2, Box2Transform, Dt, Constraint);
-				return;
-			}
-
-			const uint32 SpaceDimension = 3;
-
-			// We only build one shot manifolds once
-			// All boxes are prescaled
-			check(Constraint.GetManifoldPoints().Num() == 0);
-			check(Box1Transform.GetScale3D() == FVec3(1.0f, 1.0f, 1.0f));
-			check(Box2Transform.GetScale3D() == FVec3(1.0f, 1.0f, 1.0f));
-
-			const uint32 MaxContactPointCount = 8;
-			uint32 ContactPointCount = 0;
-
-			// Use GJK only once
-			FContactPoint GJKContactPoint = BoxBoxContactPoint(Box1, Box2, Box1Transform, Box2Transform, Constraint.Manifold.RestitutionPadding);
-
-			FRigidTransform3 Box1TransformCenter = Box1Transform;
-			Box1TransformCenter.SetTranslation(Box1Transform.TransformPositionNoScale(Box1.GetCenter()));
-			FRigidTransform3 Box2TransformCenter = Box2Transform;
-			Box2TransformCenter.SetTranslation(Box2Transform.TransformPositionNoScale(Box2.GetCenter()));
-
-			// GJK does not give us any face information yet, so find the best reference face here
-			uint32 BestFaceNormalAxisBox1 = 0; // Note: Face normals are axis aligned due to coordinates. This is an element of {0 , 1, 2}
-			int32 BestFaceNormalAxisDirectionBox1 = 1; // {-1, 1}
-			FReal BestFaceNormalSizeInDirectionBox1 = -1.0f;
-			const FVec3 SeparationDirectionLocalBox1 = Box1TransformCenter.InverseTransformVectorNoScale(GJKContactPoint.Normal);   // Todo: Check if we can have Non uniform scale here
-			// Box1: Iterating through 2 faces at a time here
-			for (uint32 FaceNormalAxis = 0; FaceNormalAxis < SpaceDimension; FaceNormalAxis++)
-			{
-				const FReal AbsSeparationDirectionDotFaceNormal = FMath::Abs(SeparationDirectionLocalBox1[FaceNormalAxis]);
-				if (AbsSeparationDirectionDotFaceNormal > BestFaceNormalSizeInDirectionBox1)
-				{
-					BestFaceNormalAxisBox1 = FaceNormalAxis;
-					BestFaceNormalSizeInDirectionBox1 = AbsSeparationDirectionDotFaceNormal;
-					BestFaceNormalAxisDirectionBox1 = SeparationDirectionLocalBox1[FaceNormalAxis] >= 0.0f ? -1 : 1;
-				}
-			}
-
-			// Now for Box2
-			uint32 BestFaceNormalAxisBox2 = 0; // Note: Face normals are axis aligned due to coordinates. This is a n element of {0, 1, 2}
-			int32 BestFaceNormalAxisDirectionBox2 = 1; // {-1, 1}
-			FReal BestFaceNormalSizeInDirectionBox2 = -1.0f;
-			const FVec3 SeparationDirectionLocalBox2 = Box2TransformCenter.InverseTransformVectorNoScale(GJKContactPoint.Normal);   // Todo: Check if we can have Non uniform scale here
-			for (uint32 FaceNormalAxis = 0; FaceNormalAxis < SpaceDimension; FaceNormalAxis++)
-			{
-				FVec3 FaceNormal(FVec3::ZeroVector);
-				FaceNormal[FaceNormalAxis] = 1.0f;
-				const FReal SeparationDirectionDotFaceNormal = FMath::Abs(SeparationDirectionLocalBox2[FaceNormalAxis]);
-
-				if (SeparationDirectionDotFaceNormal > BestFaceNormalSizeInDirectionBox2)
-				{
-					BestFaceNormalAxisBox2 = FaceNormalAxis;
-					BestFaceNormalSizeInDirectionBox2 = SeparationDirectionDotFaceNormal;
-					BestFaceNormalAxisDirectionBox2 = SeparationDirectionLocalBox2[FaceNormalAxis] >= 0.0f ? 1 : -1;  // Note opposite of box1
-				}
-			}
-
-			const FReal SmallBiasToPreventFeatureFlipping = 0.002f; // This improves frame coherence by penalizing box 1 in favour of box 2
-			bool ReferenceFaceBox1 = true; // Is the reference face on box1 or box2?
-			if (BestFaceNormalSizeInDirectionBox2 + SmallBiasToPreventFeatureFlipping > BestFaceNormalSizeInDirectionBox1)
-			{
-				ReferenceFaceBox1 = false;
-			}
-
-			// Is this a vertex-plane or edge-edge contact? 
-			const FReal PlaneContactNormalEpsilon = Chaos_Collision_Manifold_PlaneContactNormalEpsilon;
-			const bool bIsPlaneContact = FMath::IsNearlyEqual(BestFaceNormalSizeInDirectionBox1, (FReal)1., PlaneContactNormalEpsilon) || FMath::IsNearlyEqual(BestFaceNormalSizeInDirectionBox2, (FReal)1., PlaneContactNormalEpsilon);
-
-			// For edge-edge contacts we find the edges involved and project the contact onto the edges
-			if (!bIsPlaneContact)
-			{
-				FVec3 ShapeEdgePos1 = Box1.GetClosestEdgePosition(INDEX_NONE, GJKContactPoint.ShapeContactPoints[0]);
-				FVec3 ShapeEdgePos2 = Box2.GetClosestEdgePosition(INDEX_NONE, GJKContactPoint.ShapeContactPoints[1]);
-				FVec3 EdgePos1 = Box1Transform.TransformPosition(ShapeEdgePos1);
-				FVec3 EdgePos2 = Box2Transform.TransformPosition(ShapeEdgePos2);
-				FReal EdgePhi = FVec3::DotProduct(EdgePos1 - EdgePos2, GJKContactPoint.Normal);
-
-				GJKContactPoint.ShapeContactPoints[0] = ShapeEdgePos1;
-				GJKContactPoint.ShapeContactPoints[1] = ShapeEdgePos2;
-				GJKContactPoint.Phi = EdgePhi;
-				GJKContactPoint.Location = 0.5f * (EdgePos1 + EdgePos2);
-
-				Constraint.AddOneshotManifoldContact(GJKContactPoint);
-				return;
-			}
-
-
-			// For vertex-plane contacts, we use a convex face as the manifold plane
-			// Setup pointers to other box and reference box
-			const FRigidTransform3* RefBoxTM;
-			const FRigidTransform3* OtherBoxTM;
-			const FImplicitBox3* RefBox;
-			const FImplicitBox3* OtherBox;
-
-			if (ReferenceFaceBox1)
-			{
-				RefBoxTM = &Box1TransformCenter;
-				OtherBoxTM = &Box2TransformCenter;
-				RefBox = &Box1;
-				OtherBox = &Box2;
-			}
-			else
-			{
-				RefBoxTM = &Box2TransformCenter;
-				OtherBoxTM = &Box1TransformCenter;
-				RefBox = &Box2;
-				OtherBox = &Box1;
-			}
-
-			// Populate the clipped vertices by the other face's vertices
-
-			// Populate initial clipping vertices with a face from the other box
-			FVec3 otherBoxHalfExtents = 0.5f * OtherBox->Extents();
-			uint32 ConstantCoordinateIndex = ReferenceFaceBox1 ? BestFaceNormalAxisBox2 : BestFaceNormalAxisBox1;
-			FReal ConstantCoordinate = otherBoxHalfExtents[ConstantCoordinateIndex] * (FReal)(ReferenceFaceBox1 ? BestFaceNormalAxisDirectionBox2 : BestFaceNormalAxisDirectionBox1);
-
-			uint32 VariableCoordinateIndices[2];
-			FReal VariableCoordinates[2];
-
-			uint32 VariableCoordinateCount = 0;
-			for (uint32 Coordinate = 0; Coordinate < 3; ++Coordinate)
-			{
-				if (Coordinate != ConstantCoordinateIndex)
-				{
-					VariableCoordinateIndices[VariableCoordinateCount] = Coordinate;
-					VariableCoordinates[VariableCoordinateCount] = otherBoxHalfExtents[Coordinate];
-					++VariableCoordinateCount;
-				}
-			}
-
-			ContactPointCount = 4; // Number of face vertices
-			const uint32 GreyCode[4] = { 0, 1, 3, 2 }; // Grey code to make sure we add vertices in correct order
-			FVec3 ClippedVertices[MaxContactPointCount];
-			// Add the vertices in an order that will form a closed loop
-			const FRigidTransform3 BoxOtherToRef = OtherBoxTM->GetRelativeTransform(*RefBoxTM);
-			for (uint32 Vertex = 0; Vertex < ContactPointCount; Vertex++)
-			{
-				ClippedVertices[Vertex][ConstantCoordinateIndex] = ConstantCoordinate;
-				ClippedVertices[Vertex][VariableCoordinateIndices[0]] = (GreyCode[Vertex] & (1 << 0)) ? VariableCoordinates[0] : -VariableCoordinates[0];
-				ClippedVertices[Vertex][VariableCoordinateIndices[1]] = (GreyCode[Vertex] & (1 << 1)) ? VariableCoordinates[1] : -VariableCoordinates[1];
-				ClippedVertices[Vertex] = BoxOtherToRef.TransformPositionNoScale(ClippedVertices[Vertex]);
-			}
-
-			// Now clip against all planes that belong to the reference plane's, edges
-			FVec3 ClippedVertices2[MaxContactPointCount]; // We will use a double buffer as an optimization
-			FVec3* VertexBuffer1 = ClippedVertices;
-			FVec3* VertexBuffer2 = ClippedVertices2;
-
-			FVec3 refBoxHalfExtents = 0.5f * RefBox->Extents();
-			uint32 RefPlaneCoordinateIndex = ReferenceFaceBox1 ? BestFaceNormalAxisBox1 : BestFaceNormalAxisBox2;
-			for (uint32 Coordinate = 0; Coordinate < 3; ++Coordinate)
-			{
-				if (Coordinate != RefPlaneCoordinateIndex)
-				{
-					ContactPointCount = BoxBoxClipVerticesAgainstPlane(VertexBuffer1, VertexBuffer2, ContactPointCount, static_cast<int32>(Coordinate), refBoxHalfExtents[Coordinate]);
-					ContactPointCount = BoxBoxClipVerticesAgainstPlane(VertexBuffer2, VertexBuffer1, ContactPointCount, static_cast<int32>(Coordinate), -refBoxHalfExtents[Coordinate]);
-				}
-			}
-
-			// Reduce number of contacts to a maximum of 4
-			if (ContactPointCount > 4)
-			{
-				FRotation3 RotateSeperationToZ = FRotation3::FromRotatedVector(ReferenceFaceBox1 ? SeparationDirectionLocalBox1 : SeparationDirectionLocalBox2, FVec3(0.0f, 0.0f, 1.0f));
-				for (uint32 ContactPointIndex = 0; ContactPointIndex < ContactPointCount; ++ContactPointIndex)
-				{
-					ClippedVertices[ContactPointIndex] = RotateSeperationToZ * ClippedVertices[ContactPointIndex];
-				}
-
-				ContactPointCount = ReduceManifoldContactPoints(ClippedVertices, ContactPointCount);
-
-				for (uint32 ContactPointIndex = 0; ContactPointIndex < ContactPointCount; ++ContactPointIndex)
-				{
-					ClippedVertices[ContactPointIndex] = RotateSeperationToZ.Inverse() * ClippedVertices[ContactPointIndex];
-				}
-			}
-
-			// Generate the contact points from the clipped vertices
-			for (uint32 ContactPointIndex = 0; ContactPointIndex < ContactPointCount; ++ContactPointIndex)
-			{
-				FContactPoint ContactPoint;
-				const FVec3 VertexInReferenceCubeCoordinates = ClippedVertices[ContactPointIndex];
-				FVec3 PointProjectedOntoReferenceFace = VertexInReferenceCubeCoordinates;
-				PointProjectedOntoReferenceFace[RefPlaneCoordinateIndex] = refBoxHalfExtents[RefPlaneCoordinateIndex] * (FReal)(ReferenceFaceBox1 ? BestFaceNormalAxisDirectionBox1 : BestFaceNormalAxisDirectionBox2);
-				FVec3 ClippedPointInOtherCubeCoordinates = BoxOtherToRef.InverseTransformPositionNoScale(VertexInReferenceCubeCoordinates);
-
-				ContactPoint.ShapeContactPoints[0] = ReferenceFaceBox1 ? PointProjectedOntoReferenceFace + RefBox->GetCenter() : ClippedPointInOtherCubeCoordinates + OtherBox->GetCenter();
-				ContactPoint.ShapeContactPoints[1] = ReferenceFaceBox1 ? ClippedPointInOtherCubeCoordinates + OtherBox->GetCenter() : PointProjectedOntoReferenceFace + RefBox->GetCenter();
-				ContactPoint.ShapeContactNormal = SeparationDirectionLocalBox2;
-				ContactPoint.Location = RefBoxTM->TransformPositionNoScale(PointProjectedOntoReferenceFace);
-				ContactPoint.Normal = GJKContactPoint.Normal;
-				ContactPoint.Phi = FVec3::DotProduct(PointProjectedOntoReferenceFace - VertexInReferenceCubeCoordinates, ReferenceFaceBox1 ? SeparationDirectionLocalBox1 : -SeparationDirectionLocalBox2);
-
-				Constraint.AddOneshotManifoldContact(ContactPoint);
-			}
+			ConstructConvexConvexOneShotManifold(Box1, Box1Transform, Box2, Box2Transform, Dt, Constraint);
 		}
 
 		/////////////////////////////
@@ -427,6 +246,73 @@ namespace Chaos
 			return OutPointCount; // This should always be 4
 		}
 
+		// Remove spurious edge contact by removing edge-edge contact that are in the plane of another vertex-plane contact.
+		// Note: this assumes that the first shape in the contacts is the same convex shape (e.g., a box), and the second
+		// can be from any other shape(s), e.g., triangles of a non-convex shape.
+		// We treat PlaneVertex contacts the same because these are contacts on the convex face with a vertex of the triangle
+		// which require the same culling rule be applied.
+		template<bool bMaintainOrder>
+		void PruneEdgeContactPointsImp(TArray<FContactPoint>& ContactPoints, const FReal MaxPlaneDistance)
+		{
+			if (!bChaos_Collision_EnableEdgePrune)
+			{
+				return;
+			}
+
+			int32 NumContactPoints = ContactPoints.Num();
+			for (int32 EdgeContactIndex = 0; EdgeContactIndex < NumContactPoints; ++EdgeContactIndex)
+			{
+				const FContactPoint& EdgeContactPoint = ContactPoints[EdgeContactIndex];
+				const bool bIsTriangleEdgeOrVertex = (EdgeContactPoint.ContactType == EContactPointType::EdgeEdge) || (EdgeContactPoint.ContactType == EContactPointType::PlaneVertex);
+
+				if (bIsTriangleEdgeOrVertex)
+				{
+					for (int32 PlaneContactIndex = 0; PlaneContactIndex < NumContactPoints; ++PlaneContactIndex)
+					{
+						const FContactPoint PlaneContactPoint = ContactPoints[PlaneContactIndex];
+						const bool bIsTriangleFace = (PlaneContactPoint.ContactType == EContactPointType::VertexPlane);
+
+						// If this is a triangle face contact, does the edge/vertex contact lie in the plane?
+						if (bIsTriangleFace)
+						{
+							const int32 PlaneShapeIndex = 1;
+							const FVec3 DeltaPos = PlaneContactPoint.ShapeContactPoints[PlaneShapeIndex] - EdgeContactPoint.ShapeContactPoints[PlaneShapeIndex];
+							const FReal PlaneDistance = FVec3::DotProduct(DeltaPos, PlaneContactPoint.ShapeContactNormal);
+							if (FMath::Abs(PlaneDistance) < MaxPlaneDistance)
+							{
+								// @todo(chaos): Pretty sure we'll need to do an absolute distance check here too so we don;t reject edge
+								// contacts because of plane contacts a long way away.
+
+								// Note: Cannot use RemoveAtSwap unless we re-sort at the end. See ReduceManifoldContactPointsTriangeMesh
+								const bool bAllowShrinking = false;
+								if (bMaintainOrder)
+								{
+									ContactPoints.RemoveAt(EdgeContactIndex, 1, bAllowShrinking);
+								}
+								else
+								{
+									ContactPoints.RemoveAtSwap(EdgeContactIndex, 1, bAllowShrinking);
+								}
+								--EdgeContactIndex;
+								--NumContactPoints;
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		void PruneEdgeContactPointsOrdered(TArray<FContactPoint>& ContactPoints, const FReal MaxPlaneDistance)
+		{
+			PruneEdgeContactPointsImp<true>(ContactPoints, MaxPlaneDistance);
+		}
+
+		void PruneEdgeContactPointsUnordered(TArray<FContactPoint>& ContactPoints, const FReal MaxPlaneDistance)
+		{
+			PruneEdgeContactPointsImp<false>(ContactPoints, MaxPlaneDistance);
+		}
+
 		// Reduce the number of contact points (in place)
 		// Prerequisites to calling this function:
 		// ContactPoints are sorted on phi (ascending)
@@ -439,6 +325,20 @@ namespace Chaos
 
 			// Point 1) is the deepest contact point
 			// It is already in position
+			
+			//
+			// @todo(chaos): actually this isn't really good enough. We want to take the outer 4 points for the most stable manifold, but also
+			// must take the deepest for correct behaviour. We also have a problem right now where if we have a number of contacts at the same 
+			// depth, the "deepest" one is arbitrary and may be a poor choice as the anchor of the manifold building. E.g., Consider 5 contact 
+			// points in a X config where the center point is first in the list - this leads to a triangular/unstable manifold.
+			// 
+			// Maybe we should do this:
+			//	- build the manifold using the current process
+			//	- revisit point 0 at the end and replace with the best choice for stability if the depth is similar
+			// Or this:
+			//	- build manifold for best stabilty (largest convex area)
+			//	- if manifold does not contain deepest point, replace one point so minimize area reduction
+			//
 			
 			// Point 2) Find the point with the largest distance to the deepest contact point
 			{
@@ -500,6 +400,8 @@ namespace Chaos
 				Swap(ContactPoints[3], ContactPoints[LargestTrianglePointIndex]);
 			}
 
+			// Revisit Point 0 - if we have a choice that increases area at similar depth, use it
+
 			ContactPoints.SetNum(4); // Will end up with 4 points
 		}
 
@@ -507,56 +409,55 @@ namespace Chaos
 		// more vertices may be added to outputVertexBuffer by this function
 		// This is the core of the Sutherland-Hodgman algorithm
 		// Plane Normals face outwards 
-		uint32 ClipVerticesAgainstPlane(const FVec3* InputVertexBuffer, FVec3* outputVertexBuffer, uint32 ClipPointCount, uint32 MaxNumberOfOutputPoints, FVec3 ClippingPlaneNormal, FReal PlaneDistance)
+		inline uint32 ClipVerticesAgainstPlane(const FVec3* InputVertexBuffer, FVec3* OutputVertexBuffer, const uint32 ClipPointCount, const uint32 MaxNumberOfOutputPoints, const FVec3 ClippingPlaneNormal, const FReal PlaneDistance)
 		{
-
-			auto CalculateIntersect = [=](const FVec3& Point1, const FVec3& Point2) -> FVec3
-			{
-				// Only needs to be valid if the line connecting Point1 with Point2 actually intersects
-				FVec3 Result;
-
-				FReal Denominator = FVec3::DotProduct(Point2 - Point1, ClippingPlaneNormal); // Can be negative
-				if (FMath::Abs(Denominator) < SMALL_NUMBER)
-				{
-					Result = Point1;
-				}
-				else
-				{
-					FReal Alpha = (PlaneDistance - FVec3::DotProduct(Point1, ClippingPlaneNormal)) / Denominator;
-					Result = FMath::Lerp(Point1, Point2, Alpha);
-				}
-				return Result;
-			};
-
-			auto InsideClipFace = [=](const FVec3& Point) -> bool
-			{
-				// Epsilon is there so that previously clipped points will still be inside the plane
-				return FVec3::DotProduct(Point, ClippingPlaneNormal) <= PlaneDistance + PlaneDistance * SMALL_NUMBER; 
-			};
+			check(ClipPointCount > 0);
 
 			uint32 NewClipPointCount = 0;
 
+			FVec3 PrevClipPoint;
+			FReal PrevClipPointDotNormal;
+			FVec3 CurrentClipPoint = InputVertexBuffer[ClipPointCount - 1];;
+			FReal CurrentClipPointDotNormal = FVec3::DotProduct(CurrentClipPoint, ClippingPlaneNormal);
+			const FReal PlaneClipDistance = PlaneDistance + PlaneDistance * SMALL_NUMBER;
+
+			auto CalculateIntersect = [&PrevClipPoint, &CurrentClipPoint, &PlaneDistance](const FReal Dot1, const FReal Dot2)
+			{
+				const FReal Denominator = Dot2 - Dot1; // Can be negative
+				if (FMath::Abs(Denominator) < SMALL_NUMBER)
+				{
+					return PrevClipPoint;
+				}
+				else
+				{
+					const FReal Alpha = (PlaneDistance - Dot1) / Denominator;
+					return FVec3::Lerp(PrevClipPoint, CurrentClipPoint, Alpha);
+				}
+			};
+
 			for (uint32 ClipPointIndex = 0; ClipPointIndex < ClipPointCount; ClipPointIndex++)
 			{
-				FVec3 CurrentClipPoint = InputVertexBuffer[ClipPointIndex];
-				FVec3 PrevClipPoint = InputVertexBuffer[(ClipPointIndex + ClipPointCount - 1) % ClipPointCount];
-				FVec3 InterSect = CalculateIntersect(PrevClipPoint, CurrentClipPoint);
+				PrevClipPoint = CurrentClipPoint;
+				PrevClipPointDotNormal = CurrentClipPointDotNormal;
+				CurrentClipPoint = InputVertexBuffer[ClipPointIndex];
+				CurrentClipPointDotNormal = FVec3::DotProduct(CurrentClipPoint, ClippingPlaneNormal);
 
-				if (InsideClipFace(CurrentClipPoint))
+				// Epsilon is there so that previously clipped points will still be inside the plane
+				if (CurrentClipPointDotNormal <= PlaneClipDistance)
 				{
-					if (!InsideClipFace(PrevClipPoint))
+					if (PrevClipPointDotNormal > PlaneClipDistance)
 					{
-						outputVertexBuffer[NewClipPointCount++] = InterSect;
+						OutputVertexBuffer[NewClipPointCount++] = CalculateIntersect(PrevClipPointDotNormal, CurrentClipPointDotNormal);
 						if (NewClipPointCount >= MaxNumberOfOutputPoints)
 						{
 							break;
 						}
 					}
-					outputVertexBuffer[NewClipPointCount++] = CurrentClipPoint;
+					OutputVertexBuffer[NewClipPointCount++] = CurrentClipPoint;
 				}
-				else if (InsideClipFace(PrevClipPoint))
+				else if (PrevClipPointDotNormal < PlaneClipDistance)
 				{
-					outputVertexBuffer[NewClipPointCount++] = InterSect;
+					OutputVertexBuffer[NewClipPointCount++] = CalculateIntersect(PrevClipPointDotNormal, CurrentClipPointDotNormal);
 				}
 
 				if (NewClipPointCount >= MaxNumberOfOutputPoints)
@@ -599,7 +500,7 @@ namespace Chaos
 			const int32 RefConvexFaceVerticesNum = RefConvex.NumPlaneVertices(RefPlaneIndex);
 			int32 ClippingPlaneCount = RefConvexFaceVerticesNum;
 			FVec3 PrevPoint = RefConvex.GetVertex(RefConvex.GetPlaneVertex(RefPlaneIndex, ClippingPlaneCount - 1));
-			for (int32 ClippingPlaneIndex = 0; ClippingPlaneIndex < ClippingPlaneCount; ++ClippingPlaneIndex)
+			for (int32 ClippingPlaneIndex = 0; (ClippingPlaneIndex < ClippingPlaneCount) && (ContactPointCount > 1); ++ClippingPlaneIndex)
 			{
 				FVec3 CurrentPoint = RefConvex.GetVertex(RefConvex.GetPlaneVertex(RefPlaneIndex, ClippingPlaneIndex));
 				FVec3 ClippingPlaneNormal = RefWindingOrder * FVec3::CrossProduct(RefPlaneNormal, PrevPoint - CurrentPoint);
@@ -615,7 +516,7 @@ namespace Chaos
 		// Use GJK to find the closest points (or shallowest penetrating points) on two convex shapes usingthe specified margin
 		// @todo(chaos): dedupe from GJKContactPoint in CollisionResolution.cpp
 		template <typename GeometryA, typename GeometryB>
-		FContactPoint GJKContactPointMargin(const GeometryA& A, const GeometryB& B, const FRigidTransform3& ATM, const FRigidTransform3& BTM, FReal MarginA, FReal MarginB, FGJKSimplexData& InOutGjkWarmStartData, FReal& OutMaxMarginDelta, int32& VertexIndexA, int32& VertexIndexB)
+		FContactPoint GJKContactPointMargin(const GeometryA& A, const GeometryB& B, const FRigidTransform3& BToATM, FReal MarginA, FReal MarginB, FGJKSimplexData& InOutGjkWarmStartData, FReal& OutMaxMarginDelta, int32& VertexIndexA, int32& VertexIndexB)
 		{
 			SCOPE_CYCLE_COUNTER_MANIFOLD_GJK();
 
@@ -624,22 +525,58 @@ namespace Chaos
 			FReal Penetration;
 			FVec3 ClosestA, ClosestB, NormalA, NormalB;
 
-			// Slightly increased epsilon to reduce error in normal for almost touching objects.
-			const FReal Epsilon = 3.e-3f;
+			// GJK and EPA tolerances.
+			// The GJK tolerance controls the separating distance at which GJK hands over to EPA. We need to be
+			// able to normalize vectors of size epsilon with low error to avoid bad normals. 
+			// This is a problem for floats with Epsilon < 1e-3f. For doubles it can be nmuch smaller although this
+			// increases how many iterations we need when quadratic shapes are involved.
+			// The EPA tolerance is used to determine whether a point projects inside a face on the simplezx.
+			// EPA is also sensitive to the GJK tolerance, because it assumes the simplex from GJK contains the origin
+			// but if it does not and the origin also does not project onto any simplex planes, we can end up with
+			// a bad case in EPA where it rejects the correct face and returns some arbitrary other face. We need an
+			// EPA Tolerance of about 1e-6 to avoid this in our test cases. It may need to be smaller.
+			//const FReal Epsilon = 3.e-3f;	// original value for float implementation
+			const FReal GJKEpsilon = Chaos_Collision_GJKEpsilon;
+			const FReal EPAEpsilon = Chaos_Collision_EPAEpsilon;
 
 			const TGJKCoreShape<GeometryA> AWithMargin(A, MarginA);
 			const TGJKCoreShape<GeometryB> BWithMargin(B, MarginB);
-			const FRigidTransform3 BToATM = BTM.GetRelativeTransformNoScale(ATM);
 
-			if (GJKPenetrationWarmStartable(AWithMargin, BWithMargin, BToATM, Penetration, ClosestA, ClosestB, NormalA, NormalB, VertexIndexA, VertexIndexB, InOutGjkWarmStartData, OutMaxMarginDelta, Epsilon))
+			if (GJKPenetrationWarmStartable(AWithMargin, BWithMargin, BToATM, Penetration, ClosestA, ClosestB, NormalA, NormalB, VertexIndexA, VertexIndexB, InOutGjkWarmStartData, OutMaxMarginDelta, GJKEpsilon, EPAEpsilon))
 			{
 				Contact.ShapeContactPoints[0] = ClosestA;
 				Contact.ShapeContactPoints[1] = ClosestB;
 				Contact.ShapeContactNormal = -NormalB;	// We want normal pointing from B to A
-				const FVec3 WorldLocationA = ATM.TransformPositionNoScale(ClosestA);
-				const FVec3 WorldLocationB = BTM.TransformPositionNoScale(ClosestB);
-				Contact.Location = FReal(0.5) * (WorldLocationA + WorldLocationB);
-				Contact.Normal = -ATM.TransformVectorNoScale(NormalA);
+				Contact.Phi = -Penetration;
+			}
+
+			return Contact;
+		}
+
+		// GJK contact point between a convex and a triangle
+		// This assumes that the triangle has been transformed into convex space
+		template <typename GeometryA>
+		FContactPoint GJKContactPointConvexTriangle(const GeometryA& A, const FTriangle& B, FReal MarginA, FReal& OutMaxMarginDelta, int32& VertexIndexA, int32& VertexIndexB)
+		{
+			SCOPE_CYCLE_COUNTER_MANIFOLD_GJK();
+
+			FContactPoint Contact;
+
+			FReal Penetration;
+			FVec3 ClosestA, ClosestB, Normal;
+
+			// GJK and EPA tolerances. See comments in GJKContactPointMargin
+			const FReal GJKEpsilon = Chaos_Collision_GJKEpsilon;
+			const FReal EPAEpsilon = Chaos_Collision_EPAEpsilon;
+
+			const TGJKCoreShape<GeometryA> AWithMargin(A, MarginA);
+			const TGJKShape<FTriangle> BNoMargin(B);
+
+			if (GJKPenetrationSameSpace(AWithMargin, BNoMargin, Penetration, ClosestA, ClosestB, Normal, VertexIndexA, VertexIndexB, OutMaxMarginDelta, GJKEpsilon, EPAEpsilon))
+			{
+				Contact.ShapeContactPoints[0] = ClosestA;
+				Contact.ShapeContactPoints[1] = ClosestB;
+				Contact.ShapeContactNormal = -Normal;	// We want normal pointing from B to A
 				Contact.Phi = -Penetration;
 			}
 
@@ -658,20 +595,64 @@ namespace Chaos
 			FReal& BestPlaneDot)
 		{
 			const TPlaneConcrete<FReal, 3> Plane = Convex.GetPlane(PlaneIndex);
-			const FReal PlaneNormalDotN = FVec3::DotProduct(N, Plane.Normal());
 				
-			// Ignore planes that do not oppose N
-			if (PlaneNormalDotN <= -SMALL_NUMBER)
+			// Reject planes farther than MaxDistance
+			const FReal PlaneDistance = Plane.SignedDistance(X);
+			if (FMath::Abs(PlaneDistance) <= MaxDistance)
 			{
-				// Reject planes farther than MaxDistance
-				const FReal PlaneDistance = Plane.SignedDistance(X);
-				if (FMath::Abs(PlaneDistance) <= MaxDistance)
+				// Ignore planes that do not oppose N
+				const FReal PlaneNormalDotN = FVec3::DotProduct(N, Plane.Normal());
+				if (PlaneNormalDotN <= -SMALL_NUMBER)
 				{
 					// Keep the most opposing plane
 					if (PlaneNormalDotN < BestPlaneDot)
 					{
 						BestPlaneDot = PlaneNormalDotN;
 						BestPlaneIndex = PlaneIndex;
+					}
+				}
+			}
+		}
+
+		// Specialization for scaled convex. Avoids the instantiation of a scaled plane object
+		// which almost doubles the cost of the function.
+		void FindBestPlaneScaledConvex(
+			const TImplicitObjectScaled<FConvex>& ScaledConvex,
+			const FConvex::FVec3Type& X,
+			const FConvex::FVec3Type& N,
+			const FConvex::FVec3Type& Scale,
+			const FConvex::FVec3Type& ScaleInv,
+			const FConvex::FRealType MaxDistance,
+			const int32 PlaneIndex,
+			int32& OutBestPlaneIndex,
+			FConvex::FRealType& InOutBestPlaneDot)
+		{
+			using FConvexReal = FConvex::FRealType;
+			using FConvexVec3 = FConvex::FVec3Type;
+			using FConvexPlane = FConvex::FPlaneType;
+
+			const FConvex* UnscaledConvex = ScaledConvex.GetInnerObject()->template GetObject<FConvex>();
+			const FConvexPlane& UnscaledPlane = UnscaledConvex->GetPlaneRaw(PlaneIndex);
+
+			const FConvexVec3 ScaledPlaneX = UnscaledPlane.X() * Scale;
+			FConvexVec3 ScaledPlaneN = UnscaledPlane.Normal() * ScaleInv;
+
+			if (ScaledPlaneN.Normalize())
+			{
+				// Reject planes farther than MaxDistance
+				const FConvexReal PlaneDistance = FConvexVec3::DotProduct(X - ScaledPlaneX, ScaledPlaneN);
+				if (FMath::Abs(PlaneDistance) <= MaxDistance)
+				{
+					// Ignore planes that do not oppose N
+					const FConvexReal PlaneNormalDotN = FConvexVec3::DotProduct(N, ScaledPlaneN);
+					if (PlaneNormalDotN <= -SMALL_NUMBER)
+					{
+						// Keep the most opposing plane
+						if (PlaneNormalDotN < InOutBestPlaneDot)
+						{
+							InOutBestPlaneDot = PlaneNormalDotN;
+							OutBestPlaneIndex = PlaneIndex;
+						}
 					}
 				}
 			}
@@ -730,6 +711,71 @@ namespace Chaos
 			return BestPlaneIndex;
 		}
 
+		template <>
+		int32 SelectContactPlane<TImplicitObjectScaled<FConvex>>(
+			const TImplicitObjectScaled<FConvex>& ScaledConvex,
+			const FVec3 InX,
+			const FVec3 InN,
+			const FReal InMaxDistance,
+			const int32 VertexIndex)
+		{
+			using FConvexReal = FConvex::FRealType;
+			using FConvexVec3 = FConvex::FVec3Type;
+			using FConvexPlane = FConvex::FPlaneType;
+
+			// Handle InMaxDistance = 0. We expect that the X is actually on the surface in this case, so the search distance just needs to be some reasonable tolerance.
+			// @todo(chaos): this should probable be dependent on the size of the objects...
+			const FConvexReal MinFaceSearchDistance = Chaos_Collision_Manifold_MinFaceSearchDistance;
+			const FConvexReal MaxDistance = FMath::Max(FConvexReal(InMaxDistance), MinFaceSearchDistance);
+
+			// LWC_TODO: Precision Loss
+			// Scale precision is ok as long as we only support large positions and not large sizes...
+			// N precision is ok with floats (normalized)
+			// X precision is ok as long as we don't try to find the exact separation of objects that are separated by LWC distances
+			// which we don't in collision detection (objects must pass bounds checks first).
+			const FConvexVec3 Scale = FConvexVec3(ScaledConvex.GetScale());
+			const FConvexVec3 ScaleInv = FConvexVec3(ScaledConvex.GetInvScale());
+			const FConvexVec3 X = FConvexVec3(InX);
+			const FConvexVec3 N = FConvexVec3(InN);
+
+			int32 BestPlaneIndex = INDEX_NONE;
+			FConvexReal BestPlaneDot = 1.0f;
+			{
+				int32 PlaneIndices[3] = { INDEX_NONE, INDEX_NONE, INDEX_NONE };
+				int32 NumPlanes = ScaledConvex.GetVertexPlanes3(VertexIndex, PlaneIndices[0], PlaneIndices[1], PlaneIndices[2]);
+
+				// If we have more than 3 planes we iterate over the full set of planes since it is faster than using the half edge structure
+				if (NumPlanes > 3)
+				{
+					NumPlanes = ScaledConvex.NumPlanes();
+					for (int32 PlaneIndex = 0; PlaneIndex < NumPlanes; ++PlaneIndex)
+					{
+						FindBestPlaneScaledConvex(ScaledConvex, X, N, Scale, ScaleInv, MaxDistance, PlaneIndex, BestPlaneIndex, BestPlaneDot);
+					}
+				}
+				// Otherwise we iterate over the cached planes
+				else
+				{
+					for (int32 PlaneIndex = 0; PlaneIndex < NumPlanes; ++PlaneIndex)
+					{
+						FindBestPlaneScaledConvex(ScaledConvex, X, N, Scale, ScaleInv, MaxDistance, PlaneIndices[PlaneIndex], BestPlaneIndex, BestPlaneDot);
+					}
+				}
+			}
+
+			// Malformed convexes or half-spaces or capsules could have all planes rejected above.
+			// If that happens, select the most opposing plane including those that
+			// may point the same direction as N. 
+			if (BestPlaneIndex == INDEX_NONE)
+			{
+				// This always returns a valid plane.
+				BestPlaneIndex = ScaledConvex.GetMostOpposingPlane(N);
+			}
+
+			check(BestPlaneIndex != INDEX_NONE);
+			return BestPlaneIndex;
+		}
+
 
 		template <typename ConvexImplicitType1, typename ConvexImplicitType2>
 		void ConstructConvexConvexOneShotManifold(
@@ -754,15 +800,16 @@ namespace Chaos
 			// Get the adjusted margins for each convex
 			const FReal Margin1 = Constraint.GetCollisionMargin0();
 			const FReal Margin2 = Constraint.GetCollisionMargin1();
+			const FRigidTransform3 Convex2ToConvex1Transform = Convex2Transform.GetRelativeTransformNoScale(Convex1Transform);
 
 			// Find the deepest penetration. This is used to determine the planes and points to use for the manifold
 			// MaxMarginDelta is an upper bound on the distance from the contact on the rounded core shape to the actual shape surface. 
 			FReal MaxMarginDelta = FReal(0);
 			int32 VertexIndexA = INDEX_NONE, VertexIndexB = INDEX_NONE;
-			FContactPoint GJKContactPoint = GJKContactPointMargin(Convex1, Convex2, Convex1Transform, Convex2Transform, Margin1, Margin2, Constraint.GetGJKWarmStartData(), MaxMarginDelta, VertexIndexA, VertexIndexB);
+			FContactPoint GJKContactPoint = GJKContactPointMargin(Convex1, Convex2, Convex2ToConvex1Transform, Margin1, Margin2, Constraint.GetGJKWarmStartData(), MaxMarginDelta, VertexIndexA, VertexIndexB);
 			PHYSICS_CSV_CUSTOM_EXPENSIVE(PhysicsCounters, NumManifoldsGJKCalled, 1, ECsvCustomStatOp::Accumulate);
 
-			const bool bCanUpdateManifold = bChaos_Collision_EnableManifoldInject;
+			const bool bCanUpdateManifold = bChaos_Collision_EnableManifoldGJKReplace;
 			if (bCanUpdateManifold && Constraint.TryAddManifoldContact(GJKContactPoint))
 			{
 				PHYSICS_CSV_CUSTOM_EXPENSIVE(PhysicsCounters, NumManifoldsMaintained, 1, ECsvCustomStatOp::Accumulate);
@@ -782,17 +829,20 @@ namespace Chaos
 
 			PHYSICS_CSV_CUSTOM_EXPENSIVE(PhysicsCounters, NumManifoldsCreated, 1, ECsvCustomStatOp::Accumulate);
 
+
 			// @todo(chaos): get the vertex index from GJK and use to to get the plane
-			const FVec3 SeparationDirectionLocalConvex1 = Convex1Transform.InverseTransformVectorNoScale(GJKContactPoint.Normal);
+			const FVec3 SeparationDirectionLocalConvex1 = Convex2ToConvex1Transform.TransformVectorNoScale(GJKContactPoint.ShapeContactNormal);
 			const int32 MostOpposingPlaneIndexConvex1 = SelectContactPlane(Convex1, GJKContactPoint.ShapeContactPoints[0], SeparationDirectionLocalConvex1, Margin1, VertexIndexA);
-			const TPlaneConcrete<FReal, 3> BestPlaneConvex1 = Convex1.GetPlane(MostOpposingPlaneIndexConvex1);
-			const FReal BestPlaneDotNormalConvex1 = !bConvex1IsCapsule ? FMath::Abs(FVec3::DotProduct(-SeparationDirectionLocalConvex1, BestPlaneConvex1.Normal())) : -FLT_MAX;
+			FVec3 BestPlanePosition1, BestPlaneNormal1;
+			Convex1.GetPlaneNX(MostOpposingPlaneIndexConvex1, BestPlaneNormal1, BestPlanePosition1);
+			const FReal BestPlaneDotNormalConvex1 = !bConvex1IsCapsule ? FMath::Abs(FVec3::DotProduct(-SeparationDirectionLocalConvex1, BestPlaneNormal1)) : -FLT_MAX;
 
 			// Now for Convex2
-			const FVec3 SeparationDirectionLocalConvex2 = Convex2Transform.InverseTransformVectorNoScale(GJKContactPoint.Normal);
+			const FVec3 SeparationDirectionLocalConvex2 = GJKContactPoint.ShapeContactNormal;
 			const int32 MostOpposingPlaneIndexConvex2 = SelectContactPlane(Convex2, GJKContactPoint.ShapeContactPoints[1], -SeparationDirectionLocalConvex2, Margin2, VertexIndexB);
-			const TPlaneConcrete<FReal, 3> BestPlaneConvex2 = Convex2.GetPlane(MostOpposingPlaneIndexConvex2);
-			const FReal BestPlaneDotNormalConvex2 = FMath::Abs(FVec3::DotProduct(SeparationDirectionLocalConvex2, BestPlaneConvex2.Normal()));
+			FVec3 BestPlanePosition2, BestPlaneNormal2;
+			Convex2.GetPlaneNX(MostOpposingPlaneIndexConvex2, BestPlaneNormal2, BestPlanePosition2);
+			const FReal BestPlaneDotNormalConvex2 = FMath::Abs(FVec3::DotProduct(SeparationDirectionLocalConvex2, BestPlaneNormal2));
 
 			const FReal SmallBiasToPreventFeatureFlipping = 0.002f; // This improves frame coherence by penalizing convex 1 in favour of convex 2
 			bool ReferenceFaceConvex1 = true; // Is the reference face on convex1 or convex2?
@@ -805,7 +855,7 @@ namespace Chaos
 			const FReal PlaneContactNormalEpsilon = Chaos_Collision_Manifold_PlaneContactNormalEpsilon;
 			const bool bIsPlaneContact = FMath::IsNearlyEqual(BestPlaneDotNormalConvex1, (FReal)1., PlaneContactNormalEpsilon) || FMath::IsNearlyEqual(BestPlaneDotNormalConvex2, (FReal)1., PlaneContactNormalEpsilon);
 
-			// For edge-edge contacts, we find the edges involved and project the contact onto the edges
+			// For edge-edge contacts, we find the edges involved and project the contact onto the edges (if necessary - see below)
 			if (!bIsPlaneContact)
 			{
 				SCOPE_CYCLE_COUNTER_MANIFOLD_ADDEDGEEDGE();
@@ -815,26 +865,48 @@ namespace Chaos
 					return;
 				}
 
-				// @todo(chaos): this does not work well when the edges are parallel. We should always have points with zero
-				// position delta perpendicular to the normal, but that is not the case for parallel edges
-				FVec3 ShapeEdgePos1 = Convex1.GetClosestEdgePosition(MostOpposingPlaneIndexConvex1, GJKContactPoint.ShapeContactPoints[0]);
-				FVec3 ShapeEdgePos2 = Convex2.GetClosestEdgePosition(MostOpposingPlaneIndexConvex2, GJKContactPoint.ShapeContactPoints[1]);
-				if (bConvex1IsCapsule)
+				// This is an edge-edge contact
+				GJKContactPoint.ContactType = EContactPointType::EdgeEdge;
+
+				// @todo(chaos): remove this if we ditch convex margins
+				// We only need to find the best edges when we have convex margins enabled because then the GJK result
+				// is a contact on the rounded margin-reduced shape and not the actual shape. If we are using zero
+				// margins, then the GJK result is already on the real shape surface. Likewise, if we have a
+				// quadratic-versus-polygonal contact, the GJK results are already on the real surfaces.
+				const FReal PolygonalMargin1 = Constraint.IsQuadratic0() ? FReal(0) : Margin1;
+				const FReal PolygonalMargin2 = Constraint.IsQuadratic1() ? FReal(0) : Margin2;
+				if ((PolygonalMargin1 > 0) || (PolygonalMargin2 > 0))
 				{
-					ShapeEdgePos1 -= Margin1 * SeparationDirectionLocalConvex1;
+					// @todo(chaos): this does not work well when the edges are parallel. We should always have points with zero
+					// position delta perpendicular to the normal, but that is not the case for parallel edges
+					FVec3 ShapeEdgePos1 = Convex1.GetClosestEdgePosition(MostOpposingPlaneIndexConvex1, GJKContactPoint.ShapeContactPoints[0]);
+					FVec3 ShapeEdgePos2 = Convex2.GetClosestEdgePosition(MostOpposingPlaneIndexConvex2, GJKContactPoint.ShapeContactPoints[1]);
+					if (bConvex1IsCapsule)
+					{
+						ShapeEdgePos1 -= Margin1 * SeparationDirectionLocalConvex1;
+					}
+
+					const FVec3 EdgePos1In2 = Convex2ToConvex1Transform.InverseTransformPositionNoScale(ShapeEdgePos1);
+					const FVec3 EdgePos2In2 = ShapeEdgePos2;
+					const FReal EdgePhi = FVec3::DotProduct(EdgePos1In2 - EdgePos2In2, GJKContactPoint.ShapeContactNormal);
+
+					// We now have an accurate separation, so reject points beyond cull distance.
+					// This is quite important because if we use a larger cull distance for edge-edge contacts than for vertex-plane
+					// contacts, the pruning of unnecessary edge-edge contacts does not work (Tri Mesh and heighfield)
+					if (EdgePhi > Constraint.GetCullDistance())
+					{
+						return;
+					}
+
+					// @todo(chaos): we leave the contact point on the second shape because this is better for triangle meshes (see PruneContactEdges). For other shapes it should probably be the average
+					//const FVec3 EdgePosIn2 = FReal(0.5) * (EdgePos1In2 + EdgePos2In2);
+					//GJKContactPoint.ShapeContactPoints[0] = Convex2ToConvex1Transform.TransformPositionNoScale(EdgePosIn2 + FReal(0.5) * EdgePhi * GJKContactPoint.ShapeContactNormal);
+					//GJKContactPoint.ShapeContactPoints[1] = EdgePosIn2 - FReal(0.5) * EdgePhi * GJKContactPoint.ShapeContactNormal;
+					GJKContactPoint.ShapeContactPoints[0] = Convex2ToConvex1Transform.TransformPositionNoScale(EdgePos2In2 + EdgePhi * GJKContactPoint.ShapeContactNormal);
+					GJKContactPoint.ShapeContactPoints[1] = EdgePos2In2;
+					GJKContactPoint.Phi = EdgePhi;
+					// Normal unchanged from GJK result
 				}
-
-				const FVec3 EdgePos1 = Convex1Transform.TransformPosition(ShapeEdgePos1);
-				const FVec3 EdgePos2 = Convex2Transform.TransformPosition(ShapeEdgePos2);
-				const FReal EdgePhi = FVec3::DotProduct(EdgePos1 - EdgePos2, GJKContactPoint.Normal);
-				const FVec3 WorldPos = FReal(0.5) * (EdgePos1 + EdgePos2);
-				const FVec3& WorldNormal = GJKContactPoint.Normal;
-
-				GJKContactPoint.ShapeContactPoints[0] = Convex1Transform.InverseTransformPositionNoScale(WorldPos + FReal(0.5) * EdgePhi * WorldNormal);
-				GJKContactPoint.ShapeContactPoints[1] = Convex2Transform.InverseTransformPositionNoScale(WorldPos - FReal(0.5) * EdgePhi * WorldNormal);
-				GJKContactPoint.Phi = EdgePhi;
-				GJKContactPoint.Location = WorldPos;
-				// Normal unchanged from GJK result
 
 				Constraint.AddOneshotManifoldContact(GJKContactPoint);
 				return;
@@ -842,25 +914,25 @@ namespace Chaos
 
 			// For vertex-plane contacts, we use a convex face as the manifold plane
 			const FVec3 RefSeparationDirection = ReferenceFaceConvex1 ? SeparationDirectionLocalConvex1 : SeparationDirectionLocalConvex2;
-			const FVec3 RefPlaneNormal = ReferenceFaceConvex1 ? BestPlaneConvex1.Normal() : BestPlaneConvex2.Normal();
-			const FVec3 RefPlanePosition = ReferenceFaceConvex1 ? BestPlaneConvex1.X() : BestPlaneConvex2.X();
+			const FVec3 RefPlaneNormal = ReferenceFaceConvex1 ? BestPlaneNormal1 : BestPlaneNormal2;
+			const FVec3 RefPlanePosition = ReferenceFaceConvex1 ? BestPlanePosition1 : BestPlanePosition2;
 
 			// @todo(chaos): fix use of hard-coded max array size
 			// We will use a double buffer as an optimization
 			const uint32 MaxContactPointCount = 32; // This should be tuned
 			uint32 ContactPointCount = 0;
-			FVec3 ClippedVertices1[MaxContactPointCount];
-			FVec3 ClippedVertices2[MaxContactPointCount];
 			FVec3* ClippedVertices = nullptr;
 			const FRigidTransform3* RefConvexTM;
 			FRigidTransform3 ConvexOtherToRef;
+			FVec3 ClippedVertices1[MaxContactPointCount];
+			FVec3 ClippedVertices2[MaxContactPointCount];
 
 			{
 				SCOPE_CYCLE_COUNTER_MANIFOLD_CLIP();
 				if (ReferenceFaceConvex1)
 				{
 					RefConvexTM = &Convex1Transform;
-					ConvexOtherToRef = Convex2Transform.GetRelativeTransform(Convex1Transform);
+					ConvexOtherToRef = Convex2ToConvex1Transform;
 
 					ClippedVertices = GenerateConvexManifoldClippedVertices(
 						Convex1,
@@ -878,7 +950,7 @@ namespace Chaos
 				else
 				{
 					RefConvexTM = &Convex2Transform;
-					ConvexOtherToRef = Convex1Transform.GetRelativeTransform(Convex2Transform);
+					ConvexOtherToRef = Convex1Transform.GetRelativeTransformNoScale(Convex2Transform);
 
 					ClippedVertices = GenerateConvexManifoldClippedVertices(
 						Convex2,
@@ -922,6 +994,9 @@ namespace Chaos
 				}
 			}
 
+			// This is a vertex-plane contact
+			EContactPointType ContactType = ReferenceFaceConvex1 ? EContactPointType::PlaneVertex : EContactPointType::VertexPlane;
+
 			// Generate the contact points from the clipped vertices
 			{
 				SCOPE_CYCLE_COUNTER_MANIFOLD_ADDFACEVERTEX();
@@ -939,15 +1014,230 @@ namespace Chaos
 					ContactPoint.ShapeContactPoints[0] = ReferenceFaceConvex1 ? PointProjectedOntoReferenceFace : ClippedPointInOtherCoordinates;
 					ContactPoint.ShapeContactPoints[1] = ReferenceFaceConvex1 ? ClippedPointInOtherCoordinates : PointProjectedOntoReferenceFace;
 					ContactPoint.ShapeContactNormal = SeparationDirectionLocalConvex2;
-					ContactPoint.Location = ReferenceFaceConvex1 ? RefConvexTM->TransformPositionNoScale(VertexInReferenceCoordinates) : RefConvexTM->TransformPositionNoScale(PointProjectedOntoReferenceFace);
-					ContactPoint.Normal = GJKContactPoint.Normal;
 					ContactPoint.Phi = FVec3::DotProduct(PointProjectedOntoReferenceFace - VertexInReferenceCoordinates, ReferenceFaceConvex1 ? SeparationDirectionLocalConvex1 : -SeparationDirectionLocalConvex2);				
+					ContactPoint.ContactType = ContactType;
 
 					Constraint.AddOneshotManifoldContact(ContactPoint);
 				}
 			}
 		}
 
+
+		template <typename ConvexType>
+		void ConstructPlanarConvexTriangleOneShotManifold(const ConvexType& Convex, const FTriangle& Triangle, const FReal CullDistance, TCArray<FContactPoint, 4>& OutContactPoints)
+		{
+			SCOPE_CYCLE_COUNTER_MANIFOLD();
+			check(OutContactPoints.Num() == 0);
+
+			// Find the deepest penetration. This is used to determine the planes and points to use for the manifold
+			// MaxMarginDelta is an upper bound on the distance from the contact on the rounded core shape to the actual shape surface. 
+			const FReal ConvexMargin = Convex.GetMargin();
+			FReal MaxMarginDelta = FReal(0);
+			int32 VertexIndexA = INDEX_NONE, VertexIndexB = INDEX_NONE;
+			FContactPoint GJKContactPoint = GJKContactPointConvexTriangle(Convex, Triangle, ConvexMargin, MaxMarginDelta, VertexIndexA, VertexIndexB);
+
+			PHYSICS_CSV_CUSTOM_EXPENSIVE(PhysicsCounters, NumManifoldsGJKCalled, 1, ECsvCustomStatOp::Accumulate);
+
+			// GJK is using margins and rounded corner, so if we have a corner-to-corner contact it will under-report the actual distance by an amount that depends on how
+			// "pointy" the edge/corner is - this error is bounded by MaxMarginDelta.
+			const FReal GJKCullDistance = CullDistance + MaxMarginDelta;
+			if (GJKContactPoint.Phi > GJKCullDistance)
+			{
+				PHYSICS_CSV_CUSTOM_EXPENSIVE(PhysicsCounters, NumManifoldsGJKCulled, 1, ECsvCustomStatOp::Accumulate);
+				return;
+			}
+
+			PHYSICS_CSV_CUSTOM_EXPENSIVE(PhysicsCounters, NumManifoldsCreated, 1, ECsvCustomStatOp::Accumulate);
+
+			// See if the triangle face is a good choice for the manifold plane. We preferentially use the triangle face with
+			// a high threshold to avoid spurious edge/vertex collisions.
+			const FVec3 TrianglePlaneNormal = Triangle.GetNormal();
+			const FVec3 TrianglePlanePosition = Triangle[0];
+			const FReal TrianglePlaneNormalDotContactNormal = FVec3::DotProduct(TrianglePlaneNormal, GJKContactPoint.ShapeContactNormal);
+
+			// Find the best opposing plane on the convex
+			// @todo(chaos): handle zero margins...
+			const FReal PlaneSearchDistance = ConvexMargin;
+			const int32 ConvexPlaneIndex = SelectContactPlane(Convex, GJKContactPoint.ShapeContactPoints[0], GJKContactPoint.ShapeContactNormal, PlaneSearchDistance, VertexIndexA);
+			FVec3 ConvexPlanePosition, ConvexPlaneNormal;
+			Convex.GetPlaneNX(ConvexPlaneIndex, ConvexPlaneNormal, ConvexPlanePosition);
+			const FReal ConvexPlaneNormalDotContactNormal = FVec3::DotProduct(ConvexPlaneNormal, GJKContactPoint.ShapeContactNormal);
+
+			// Is either plane a good choice, or do we have and edge-edge collision
+			// For edge-edge contacts, we find the edges involved and project the contact onto the edges (if necessary - see below)
+			const FReal PlaneContactNormalEpsilon = Chaos_Collision_Manifold_PlaneContactNormalEpsilon;
+			bool bIsPlaneContact = FMath::IsNearlyEqual(ConvexPlaneNormalDotContactNormal, FReal(-1), PlaneContactNormalEpsilon) || FMath::IsNearlyEqual(TrianglePlaneNormalDotContactNormal, FReal(1), PlaneContactNormalEpsilon);
+			if (!bIsPlaneContact)
+			{
+				SCOPE_CYCLE_COUNTER_MANIFOLD_ADDEDGEEDGE();
+				if (ForceOneShotManifoldEdgeEdgeCaseZeroCullDistance && GJKContactPoint.Phi > 0)
+				{
+					return;
+				}
+
+				// @todo(chaos): remove this if we ditch convex margins
+				// We only need to find the best edges when we have convex margins enabled because then the GJK result
+				// is a contact on the rounded margin-reduced shape and not the actual shape. If we are using zero
+				// margins, then the GJK result is already on the real shape surface. Likewise, if we have a
+				// quadratic-versus-polygonal contact, the GJK results are already on the real surfaces.
+				if (ConvexMargin > 0)
+				{
+					FVec3 ConvexEdgePos0, ConvexEdgePos1;
+					const FVec3 ConvexEdgeNearPos = Convex.GetClosestEdge(ConvexPlaneIndex, GJKContactPoint.ShapeContactPoints[0], ConvexEdgePos0, ConvexEdgePos1);
+
+					FVec3 TriangleEdgePos0, TriangleEdgePos1;
+					const FVec3 TriangleEdgeNearPos = Triangle.GetClosestEdge(0, GJKContactPoint.ShapeContactPoints[1], TriangleEdgePos0, TriangleEdgePos1);
+
+					// Does the normal we found from the edges match the GJK normal? If not, we have a false negative in the check for
+					// bIsPlaneContact above caused by margins. If this happens, fall back to a plane contact.
+					const FVec3 EdgeNormal = FVec3::CrossProduct(ConvexEdgePos1 - ConvexEdgePos0, TriangleEdgePos1 - TriangleEdgePos0).GetSafeNormal();
+					const FReal EdgeNormalDotContactNormal = FVec3::DotProduct(EdgeNormal, GJKContactPoint.ShapeContactNormal);
+					bIsPlaneContact = (FMath::Abs(EdgeNormalDotContactNormal) < Chaos_Collision_Manifold_EdgeContactNormalThreshold);
+
+					if (!bIsPlaneContact)
+					{
+						const FReal EdgePhi = FVec3::DotProduct(ConvexEdgeNearPos - TriangleEdgeNearPos, GJKContactPoint.ShapeContactNormal);
+
+						// We now have an accurate separation, so reject points beyond cull distance.
+						// This is quite important because if we use a larger cull distance for edge-edge contacts than for vertex-plane
+						// contacts, the pruning of unnecessary edge-edge contacts does not work (Tri Mesh and heighfield)
+						if (EdgePhi > CullDistance)
+						{
+							return;
+						}
+
+						// Remove anmy lateral delta from the contact on point on the convex
+						GJKContactPoint.ShapeContactPoints[0] = TriangleEdgeNearPos + EdgePhi * GJKContactPoint.ShapeContactNormal;
+						GJKContactPoint.ShapeContactPoints[1] = TriangleEdgeNearPos;
+						// Normal unchanged from GJK result
+						GJKContactPoint.Phi = EdgePhi;
+					}
+				}
+
+				if (!bIsPlaneContact)
+				{
+					GJKContactPoint.ContactType = EContactPointType::EdgeEdge;
+					OutContactPoints.Add(GJKContactPoint);
+					return;
+				}
+			}
+
+			// We prefer to use the triangle face for the contact to avoid collisions with internal edges and vertices
+			const EContactPointType ContactType = (TrianglePlaneNormalDotContactNormal > Chaos_Collision_Manifold_TriangleContactNormalThreshold) ? EContactPointType::VertexPlane : EContactPointType::PlaneVertex;
+
+			// @todo(chaos): fix use of hard-coded max array size
+			// We will use a double buffer as an optimization
+			const int32 MaxContactPointCount = 32; // This should be tuned
+			int32 ContactPointCount = 0;
+			FVec3 RefPlaneNormal;
+			FVec3* ClippedVertices = nullptr;
+			FVec3 ClippedVertices1[MaxContactPointCount];
+			FVec3 ClippedVertices2[MaxContactPointCount];
+
+			// Generate the set of vertices by clipping the convex face against the triangle face in the selected face plane
+			if (ContactType == EContactPointType::VertexPlane)
+			{
+				// We have a triangle face contact
+				RefPlaneNormal = TrianglePlaneNormal;
+
+				ClippedVertices = GenerateConvexManifoldClippedVertices(
+					Triangle,
+					Convex,
+					FRigidTransform3(),
+					0,
+					ConvexPlaneIndex,
+					TrianglePlaneNormal,
+					TrianglePlanePosition,
+					ClippedVertices1,
+					ClippedVertices2,
+					(uint32&)ContactPointCount,
+					(uint32)MaxContactPointCount);
+
+			}
+			else
+			{
+				// We have a convex face contact
+				RefPlaneNormal = ConvexPlaneNormal;
+
+				ClippedVertices = GenerateConvexManifoldClippedVertices(
+					Convex,
+					Triangle,
+					FRigidTransform3(),
+					ConvexPlaneIndex,
+					0,
+					ConvexPlaneNormal,
+					ConvexPlanePosition,
+					ClippedVertices1,
+					ClippedVertices2,
+					(uint32&)ContactPointCount,
+					(uint32)MaxContactPointCount);
+			}
+
+			// If we have the max number of contact points already, they will be in cyclic order. Stability is better
+			// if we solve points non-sequentially (e.g., on a box, solve one point, then it's opposite corner).
+			// If we have more than 4 contacts, the contact reduction step already effectively does something similar.
+			if (ContactPointCount == 4)
+			{
+				Swap(ClippedVertices[1], ClippedVertices[2]);
+			}
+
+			// Reduce number of contacts to the maximum allowed
+			if (ContactPointCount > 4)
+			{
+				SCOPE_CYCLE_COUNTER_MANIFOLD_REDUCE();
+
+				FRotation3 RotateSeperationToZ = FRotation3::FromRotatedVector(RefPlaneNormal, FVec3(0.0f, 0.0f, 1.0f));
+				for (int32 ContactPointIndex = 0; ContactPointIndex < ContactPointCount; ++ContactPointIndex)
+				{
+					ClippedVertices[ContactPointIndex] = RotateSeperationToZ * ClippedVertices[ContactPointIndex];
+				}
+
+				ContactPointCount = ReduceManifoldContactPoints(ClippedVertices, ContactPointCount);
+
+				for (int32 ContactPointIndex = 0; ContactPointIndex < ContactPointCount; ++ContactPointIndex)
+				{
+					ClippedVertices[ContactPointIndex] = RotateSeperationToZ.Inverse() * ClippedVertices[ContactPointIndex];
+				}
+			}
+
+			// Generate the contact points from the clipped vertices
+			check(ContactPointCount + OutContactPoints.Num() <= OutContactPoints.Max());
+
+			if (ContactType == EContactPointType::VertexPlane)
+			{
+				// Triangle face contact (clipped vertices are convex vertices)
+				SCOPE_CYCLE_COUNTER_MANIFOLD_ADDFACEVERTEX();
+				for (int32 ContactPointIndex = 0; ContactPointIndex < ContactPointCount; ++ContactPointIndex)
+				{
+					FContactPoint& ContactPoint = OutContactPoints[OutContactPoints.Add()];
+					const FVec3& ConvexContactPoint = ClippedVertices[ContactPointIndex];
+					const FVec3 TriangleContactPoint = ConvexContactPoint - FVec3::DotProduct(ConvexContactPoint - TrianglePlanePosition, TrianglePlaneNormal) * TrianglePlaneNormal;
+
+					ContactPoint.ShapeContactPoints[0] = ConvexContactPoint;
+					ContactPoint.ShapeContactPoints[1] = TriangleContactPoint;
+					ContactPoint.ShapeContactNormal = TrianglePlaneNormal;
+					ContactPoint.Phi = FVec3::DotProduct(ConvexContactPoint - TriangleContactPoint, TrianglePlaneNormal);
+					ContactPoint.ContactType = ContactType;
+				}
+			}
+			else
+			{
+				// Convex face contact (clipped vertices are triangle vertices)
+				SCOPE_CYCLE_COUNTER_MANIFOLD_ADDFACEVERTEX();
+				for (int32 ContactPointIndex = 0; ContactPointIndex < ContactPointCount; ++ContactPointIndex)
+				{
+					FContactPoint& ContactPoint = OutContactPoints[OutContactPoints.Add()];
+					const FVec3& TriangleContactPoint = ClippedVertices[ContactPointIndex];
+					const FVec3 ConvexContactPoint = TriangleContactPoint - FVec3::DotProduct(TriangleContactPoint - ConvexPlanePosition, ConvexPlaneNormal) * ConvexPlaneNormal;
+
+					ContactPoint.ShapeContactPoints[0] = ConvexContactPoint;
+					ContactPoint.ShapeContactPoints[1] = TriangleContactPoint;
+					ContactPoint.ShapeContactNormal = -ConvexPlaneNormal;
+					ContactPoint.Phi = FVec3::DotProduct(ConvexContactPoint - TriangleContactPoint, -ConvexPlaneNormal);
+					ContactPoint.ContactType = ContactType;
+				}
+			}
+		}
 
 
 		//
@@ -1206,7 +1496,49 @@ namespace Chaos
 				const FRigidTransform3& Convex2Transform, //world
 				const FReal Dt,
 				FPBDCollisionConstraint& Constraint);
-		
+	
+	
+		template
+			void ConstructPlanarConvexTriangleOneShotManifold(
+				const FImplicitConvex3& Convex, 
+				const FTriangle& Triangle, 
+				const FReal CullDistance, 
+				TCArray<FContactPoint, 4>& OutContactPoints);
+
+		template
+			void ConstructPlanarConvexTriangleOneShotManifold(
+				const TImplicitObjectInstanced<FImplicitConvex3>& Convex,
+				const FTriangle& Triangle,
+				const FReal CullDistance,
+				TCArray<FContactPoint, 4>& OutContactPoints);
+
+		template
+			void ConstructPlanarConvexTriangleOneShotManifold(
+				const TImplicitObjectScaled<FImplicitConvex3>& Convex,
+				const FTriangle& Triangle,
+				const FReal CullDistance,
+				TCArray<FContactPoint, 4>& OutContactPoints);
+
+		template
+			void ConstructPlanarConvexTriangleOneShotManifold(
+				const FImplicitBox3& Convex,
+				const FTriangle& Triangle,
+				const FReal CullDistance,
+				TCArray<FContactPoint, 4>& OutContactPoints);
+
+		template
+			void ConstructPlanarConvexTriangleOneShotManifold(
+				const TImplicitObjectScaled<FImplicitBox3>& Convex,
+				const FTriangle& Triangle,
+				const FReal CullDistance,
+				TCArray<FContactPoint, 4>& OutContactPoints);
+
+		template
+			void ConstructPlanarConvexTriangleOneShotManifold(
+				const TImplicitObjectInstanced<FImplicitBox3>& Convex,
+				const FTriangle& Triangle,
+				const FReal CullDistance,
+				TCArray<FContactPoint, 4>& OutContactPoints);
 	}
 }
 

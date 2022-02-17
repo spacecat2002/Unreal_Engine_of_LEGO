@@ -42,7 +42,7 @@
 
 namespace Chaos
 {
-	extern int32 UseLevelsetCollision;
+	extern FRealSingle Chaos_Collision_EdgePrunePlaneDistance;
 
 	int32 CollisionParticlesBVHDepth = 4;
 	FAutoConsoleVariableRef CVarCollisionParticlesBVHDepth(TEXT("p.CollisionParticlesBVHDepth"), CollisionParticlesBVHDepth, TEXT("The maximum depth for collision particles bvh"));
@@ -83,12 +83,6 @@ namespace Chaos
 	bool CollisionsAllowParticleTracking = true;
 	FAutoConsoleVariableRef CVarCollisionsAllowParticleTracking(TEXT("p.Chaos.Collision.AllowParticleTracking"), CollisionsAllowParticleTracking, TEXT("Allow particles to track their collisions constraints when their DoBufferCollisions flag is enable [def:true]"));
 
-#if INTEL_ISPC
-	bool bChaos_Collision_ISPC_Enabled = false;
-	FAutoConsoleVariableRef CVarChaosCollisionISPCEnabled(TEXT("p.Chaos.Collision.ISPC"), bChaos_Collision_ISPC_Enabled, TEXT("Whether to use ISPC optimizations in the Collision Solver"));
-#endif
-
-
 	DECLARE_CYCLE_STAT(TEXT("Collisions::Reset"), STAT_Collisions_Reset, STATGROUP_ChaosCollision);
 	DECLARE_CYCLE_STAT(TEXT("Collisions::UpdatePointConstraints"), STAT_Collisions_UpdatePointConstraints, STATGROUP_ChaosCollision);
 	DECLARE_CYCLE_STAT(TEXT("Collisions::BeginDetect"), STAT_Collisions_BeginDetect, STATGROUP_ChaosCollision);
@@ -103,6 +97,7 @@ namespace Chaos
 		TArrayCollectionArray<bool>& Collided,
 		const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& InPhysicsMaterials,
 		const TArrayCollectionArray<TUniquePtr<FChaosPhysicsMaterial>>& InPerParticlePhysicsMaterials,
+		const THandleArray<FChaosPhysicsMaterial>* const InSimMaterials,
 		const int32 InApplyPairIterations /*= 1*/,
 		const int32 InApplyPushOutPairIterations /*= 1*/,
 		const FReal InRestitutionThreshold /*= (FReal)0*/)
@@ -112,12 +107,14 @@ namespace Chaos
 		, MCollided(Collided)
 		, MPhysicsMaterials(InPhysicsMaterials)
 		, MPerParticlePhysicsMaterials(InPerParticlePhysicsMaterials)
+		, SimMaterials(InSimMaterials)
 		, MApplyPairIterations(InApplyPairIterations)
 		, MApplyPushOutPairIterations(InApplyPushOutPairIterations)
 		, RestitutionThreshold(InRestitutionThreshold)	// @todo(chaos): expose as property
 		, bEnableCollisions(true)
 		, bEnableRestitution(true)
 		, bHandlesEnabled(true)
+		, bEnableEdgePruning(true)
 		, bIsDeterministic(false)
 		, bCanDisableContacts(true)
 		, GravityDirection(FVec3(0,0,-1))
@@ -125,12 +122,6 @@ namespace Chaos
 		, MaxPushOutVelocity(0)
 		, SolverType(EConstraintSolverType::QuasiPbd)
 	{
-#if INTEL_ISPC
-		if (bRealTypeCompatibleWithISPC && bChaos_Collision_ISPC_Enabled)
-		{
-			check(sizeof(FCollisionContact) == ispc::SizeofFCollisionContact());
-		}
-#endif
 	}
 
 	FPBDCollisionConstraints::~FPBDCollisionConstraints()
@@ -153,7 +144,7 @@ namespace Chaos
 		return ConstraintAllocator.GetConstConstraints();
 	}
 
-	const FChaosPhysicsMaterial* GetPhysicsMaterial(const TGeometryParticleHandle<FReal, 3>* Particle, const FImplicitObject* Geom, const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& PhysicsMaterials, const TArrayCollectionArray<TUniquePtr<FChaosPhysicsMaterial>>& PerParticlePhysicsMaterials)
+	const FChaosPhysicsMaterial* GetPhysicsMaterial(const TGeometryParticleHandle<FReal, 3>* Particle, const FImplicitObject* Geom, const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& PhysicsMaterials, const TArrayCollectionArray<TUniquePtr<FChaosPhysicsMaterial>>& PerParticlePhysicsMaterials, const THandleArray<FChaosPhysicsMaterial>* const SimMaterials)
 	{
 		// Use the per-particle material if it exists
 		const FChaosPhysicsMaterial* UniquePhysicsMaterial = Particle->AuxilaryValue(PerParticlePhysicsMaterials).Get();
@@ -177,7 +168,14 @@ namespace Chaos
 			{
 				if (ShapeData->GetMaterials().Num() > 0)
 				{
-					return ShapeData->GetMaterials()[0].Get();
+					if(SimMaterials)
+					{
+						return SimMaterials->Get(ShapeData->GetMaterials()[0].InnerHandle);
+					}
+					else
+					{
+						UE_LOG(LogChaos, Warning, TEXT("Attempted to resolve a material for a constraint but we do not have a sim material container."));
+					}
 				}
 				else
 				{
@@ -194,8 +192,8 @@ namespace Chaos
 
 	void FPBDCollisionConstraints::UpdateConstraintMaterialProperties(FPBDCollisionConstraint& Constraint)
 	{
-		const FChaosPhysicsMaterial* PhysicsMaterial0 = GetPhysicsMaterial(Constraint.Particle[0], Constraint.Manifold.Implicit[0], MPhysicsMaterials, MPerParticlePhysicsMaterials);
-		const FChaosPhysicsMaterial* PhysicsMaterial1 = GetPhysicsMaterial(Constraint.Particle[1], Constraint.Manifold.Implicit[1], MPhysicsMaterials, MPerParticlePhysicsMaterials);
+		const FChaosPhysicsMaterial* PhysicsMaterial0 = GetPhysicsMaterial(Constraint.Particle[0], Constraint.Implicit[0], MPhysicsMaterials, MPerParticlePhysicsMaterials, SimMaterials);
+		const FChaosPhysicsMaterial* PhysicsMaterial1 = GetPhysicsMaterial(Constraint.Particle[1], Constraint.Implicit[1], MPhysicsMaterials, MPerParticlePhysicsMaterials, SimMaterials);
 
 		FCollisionContact& Contact = Constraint.Manifold;
 		if (PhysicsMaterial0 && PhysicsMaterial1)
@@ -282,6 +280,9 @@ namespace Chaos
 
 		// Prune the unused contacts
 		ConstraintAllocator.EndDetectCollisions();
+
+		// Disable any edge collisions that are hidden by face collisions
+		PruneEdgeCollisions();
 
 		if (bIsDeterministic)
 		{
@@ -654,4 +655,92 @@ namespace Chaos
 
 		return *GetConstraints()[Index];
 	}
+
+	void FPBDCollisionConstraints::PruneEdgeCollisions()
+	{
+		if (bEnableEdgePruning)
+		{
+			for (auto& ParticleHandle : Particles.GetNonDisabledDynamicView())
+			{
+				if ((ParticleHandle.CollisionConstraintFlags() & (uint32)ECollisionConstraintFlags::CCF_SmoothEdgeCollisions) != 0)
+				{
+					PruneParticleEdgeCollisions(ParticleHandle.Handle());
+				}
+			}
+		}
+	}
+
+	void FPBDCollisionConstraints::PruneParticleEdgeCollisions(FGeometryParticleHandle* Particle)
+	{
+		FParticleCollisions& ParticleCollision = Particle->ParticleCollisions();
+
+		const FReal EdgePlaneTolerance = Chaos_Collision_EdgePrunePlaneDistance;
+
+		// Loop over edge collisions, then all plane collisions and remove the edge collision if it is hidden by a plane collision
+		// NOTE: We only look at plane collisions where the other shape owns the plane.
+		// @todo(chaos): this should probably only disable individual manifold points
+		// @todo(chaos): we should probably only reject edges if the plane contact is also close to the edge contact
+		// @todo(chaos): we should also try to eliminate face contacts from sub-surface faces
+		// @todo(chaos): perf issue: this processes contacts in world space, but we don't calculated that data until Gather. Fix this.
+		ParticleCollision.VisitCollisions(
+			[Particle, &ParticleCollision, EdgePlaneTolerance](FPBDCollisionConstraint& EdgeCollision)
+			{
+				if (EdgeCollision.IsEnabled())
+				{
+					const int32 EdgeOtherShapeIndex = (EdgeCollision.GetParticle0() == Particle) ? 1 : 0;
+					const EContactPointType VertexContactType = (EdgeOtherShapeIndex == 0) ? EContactPointType::VertexPlane : EContactPointType::PlaneVertex;
+
+					for (const FManifoldPoint& EdgeManifoldPoint : EdgeCollision.GetManifoldPoints())
+					{
+						const bool bIsEdgeContact = (EdgeManifoldPoint.ContactPoint.ContactType == EContactPointType::EdgeEdge);
+
+						if (bIsEdgeContact)
+						{
+							const FRigidTransform3& EdgeTransform = (EdgeOtherShapeIndex == 0) ? EdgeCollision.GetShapeWorldTransform0() : EdgeCollision.GetShapeWorldTransform1();
+							const FVec3 EdgePos = EdgeTransform.TransformPositionNoScale(EdgeManifoldPoint.ContactPoint.ShapeContactPoints[EdgeOtherShapeIndex]);
+
+							// Loop over plane collisions
+							ECollisionVisitorResult PlaneResult = ParticleCollision.VisitConstCollisions(
+								[Particle, &EdgeCollision, &EdgePos, EdgePlaneTolerance](const FPBDCollisionConstraint& PlaneCollision)
+								{
+									if ((&PlaneCollision != &EdgeCollision) && PlaneCollision.IsEnabled())
+									{
+										const int32 PlaneOtherShapeIndex = (PlaneCollision.GetParticle0() == Particle) ? 1 : 0;
+										const EContactPointType PlaneContactType = (PlaneOtherShapeIndex == 0) ? EContactPointType::PlaneVertex : EContactPointType::VertexPlane;
+										const FRigidTransform3& PlaneTransform = (PlaneOtherShapeIndex == 0) ? PlaneCollision.GetShapeWorldTransform0() : PlaneCollision.GetShapeWorldTransform1();
+
+										for (const FManifoldPoint& PlaneManifoldPoint : PlaneCollision.GetManifoldPoints())
+										{
+											if (PlaneManifoldPoint.ContactPoint.ContactType == PlaneContactType)
+											{
+												// If the edge position is in the plane, disable it
+												const FVec3 PlanePos = PlaneTransform.TransformPositionNoScale(PlaneManifoldPoint.ContactPoint.ShapeContactPoints[PlaneOtherShapeIndex]);
+												const FVec3 PlaneNormal = PlaneCollision.GetShapeWorldTransform1().TransformVectorNoScale(PlaneManifoldPoint.ContactPoint.ShapeContactNormal);
+
+												const FVec3 EdgePlaneDelta = EdgePos - PlanePos;
+												const FReal EdgePlaneDistance = FVec3::DotProduct(EdgePlaneDelta, PlaneNormal);
+												if (FMath::Abs(EdgePlaneDistance) < EdgePlaneTolerance)
+												{
+													// The edge contact is hidden by a plane contact so disable it and stop the inner loop
+													EdgeCollision.SetDisabled(true);
+													return ECollisionVisitorResult::Stop;
+												}
+											}
+										}
+									}
+									return ECollisionVisitorResult::Continue;
+								});
+
+							// If we disabled this constraint, move to the next one and ignore remaining manifold points
+							if (PlaneResult == ECollisionVisitorResult::Stop)
+							{
+								break;
+							}
+						}
+					}
+				}
+				return ECollisionVisitorResult::Continue;
+			});
+	}
+
 }

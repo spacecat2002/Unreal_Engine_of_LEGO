@@ -177,6 +177,15 @@ public:
 		return MObject->SupportCore(Direction, InMargin, OutSupportDelta, VertexIndex);
 	}
 
+	FORCEINLINE VectorRegister4Float SupportCoreSimd(const VectorRegister4Float& Direction, const FReal InMargin) const
+	{
+		FVec3 DirectionVec3;
+		VectorStoreFloat3(Direction, &DirectionVec3);
+		int32 VertexIndex = INDEX_NONE;
+		FVec3 SupportVert = MObject->SupportCore(DirectionVec3, InMargin, nullptr, VertexIndex);
+		return MakeVectorRegisterFloatFromDouble(MakeVectorRegister(SupportVert.X, SupportVert.Y, SupportVert.Z, 0.0));
+	}
+
 	virtual const FAABB3 BoundingBox() const override 
 	{ 
 		return MObject->BoundingBox();
@@ -221,6 +230,18 @@ public:
 		return MObject->OverlapGeom(B,BToATM,Thickness, OutMTD);
 	}
 
+	template <typename QueryGeomType>
+	bool GJKContactPoint(const QueryGeomType& A, const FRigidTransform3& AToBTM, const FReal Thickness, FVec3& Location, FVec3& Normal, FReal& Penetration) const
+	{
+		return MObject->GJKContactPoint(A, AToBTM, Thickness, Location, Normal, Penetration);
+	}
+
+	template <typename QueryGeomType>
+	bool ContactManifold(const QueryGeomType& A, const FRigidTransform3& AToBTM, const FReal Thickness, TArray<FContactPoint>& ContactPoints) const
+	{
+		return MObject->ContactManifold(A, AToBTM, Thickness, ContactPoints);
+	}
+
 	virtual uint16 GetMaterialIndex(uint32 HintIndex) const
 	{
 		return MObject->GetMaterialIndex(HintIndex);
@@ -230,6 +251,12 @@ public:
 	int32 GetMostOpposingPlane(const FVec3& Normal) const
 	{
 		return MObject->GetMostOpposingPlane(Normal);
+	}
+
+	// Get the nearest point on an edge of the specified face
+	FVec3 GetClosestEdge(int32 PlaneIndex, const FVec3& Position, FVec3& OutEdgePos0, FVec3& OutEdgePos1) const
+	{
+		return MObject->GetClosestEdge(PlaneIndex, Position, OutEdgePos0, OutEdgePos1);
 	}
 
 	// Get the nearest point on an edge of the specified face
@@ -298,6 +325,11 @@ public:
 	const TPlaneConcrete<FReal, 3> GetPlane(int32 FaceIndex) const
 	{
 		return MObject->GetPlane(FaceIndex);
+	}
+
+	void GetPlaneNX(const int32 FaceIndex, FVec3& OutN, FVec3& OutX) const
+	{
+		MObject->GetPlaneNX(FaceIndex, OutN, OutX);
 	}
 
 	// Get the vertex at the specified index (e.g., indices from GetPlaneVertexs)
@@ -618,11 +650,9 @@ public:
 			TVector<T, d> UnscaledNormal;
 			T UnscaledTime;
 
-			auto ScaledB = MakeScaledHelper(B, MInvScale);
-
 			TRigidTransform<T, d> BToATMNoScale(BToATM.GetLocation() * MInvScale, BToATM.GetRotation());
 			
-			if (MObject->SweepGeom(ScaledB, BToATMNoScale, UnscaledDir, UnscaledLength, UnscaledTime, UnscaledPosition, UnscaledNormal, OutFaceIndex, Thickness, bComputeMTD, MScale))
+			if (MObject->SweepGeom(B, BToATMNoScale, UnscaledDir, UnscaledLength, UnscaledTime, UnscaledPosition, UnscaledNormal, OutFaceIndex, Thickness, bComputeMTD, MScale))
 			{
 				const T NewTime = LengthScaleInv * UnscaledTime;
 				//We double check that NewTime < Length because of potential precision issues. When that happens we always keep the shortest hit first
@@ -682,6 +712,15 @@ public:
 	int32 GetMostOpposingPlane(const FVec3& Normal) const
 	{
 		return MObject->GetMostOpposingPlaneScaled(Normal, MScale);
+	}
+
+	// Get the nearest point on an edge of the specified face
+	FVec3 GetClosestEdge(int32 PlaneIndex, const FVec3& Position, FVec3& OutEdgePos0, FVec3& OutEdgePos1) const
+	{
+		FVec3 EdgePos = MObject->GetClosestEdge(PlaneIndex, MInvScale * Position, OutEdgePos0, OutEdgePos1);
+		OutEdgePos0 = OutEdgePos0 * MScale;
+		OutEdgePos1 = OutEdgePos1 * MScale;
+		return EdgePos * MScale;
 	}
 
 	// Get the nearest point on an edge of the specified face
@@ -750,7 +789,14 @@ public:
 	const TPlaneConcrete<FReal, 3> GetPlane(int32 FaceIndex) const
 	{
 		const TPlaneConcrete<FReal, 3> InnerPlane = MObject->GetPlane(FaceIndex);
-		return TPlaneConcrete<FReal, 3>::MakeScaledUnsafe(InnerPlane, MScale);	// "Unsafe" means scale has no zeros
+		return TPlaneConcrete<FReal, 3>::MakeScaledUnsafe(InnerPlane, MScale, MInvScale);	// "Unsafe" means scale must have no zeros
+	}
+
+	void GetPlaneNX(const int32 FaceIndex, FVec3& OutN, FVec3& OutX) const
+	{
+		FVec3 InnerN, InnerX;
+		MObject->GetPlaneNX(FaceIndex, InnerN, InnerX);
+		TPlaneConcrete<FReal>::MakeScaledUnsafe(InnerN, InnerX, MScale, MInvScale, OutN, OutX);	// "Unsafe" means scale must have no zeros
 	}
 
 	// Get the vertex at the specified index (e.g., indices from GetPlaneVertex)
@@ -849,6 +895,15 @@ public:
 	FORCEINLINE_DEBUGGABLE FVec3 SupportCore(const FVec3& Direction, const FReal InMargin, FReal* OutSupportDelta, int32& VertexIndex) const
 	{
 		return MObject->SupportCoreScaled(Direction, InMargin, MScale, OutSupportDelta, VertexIndex);
+	}
+
+	FORCEINLINE_DEBUGGABLE VectorRegister4Float SupportCoreSimd(const VectorRegister4Float& Direction, const FReal InMargin) const
+	{
+		FVec3 DirectionVec3;
+		VectorStoreFloat3(Direction, &DirectionVec3);
+		int32 VertexIndex = INDEX_NONE;
+		FVec3 SupportVert = MObject->SupportCoreScaled(DirectionVec3, InMargin, MScale, nullptr, VertexIndex);
+		return MakeVectorRegisterFloatFromDouble(MakeVectorRegister(SupportVert.X, SupportVert.Y, SupportVert.Z, 0.0));
 	}
 
 	void SetScale(const FVec3& Scale)
@@ -980,5 +1035,38 @@ using TImplicitObjectScaledNonSerializable = TImplicitObjectScaled<TConcrete, fa
 
 template <typename T, int d>
 using TImplicitObjectScaledGeneric = TImplicitObjectScaled<FImplicitObject>;
+
+
+/**
+ * @brief Remove the Instanced or Scaled wrapper from an ImplicitObject of a known inner type and extract the instance properties
+ * @return the inner implicit object or null if the wrong type
+*/
+template<typename T>
+const T* UnwrapImplicit(const FImplicitObject& Implicit, FVec3& OutScale, FReal &OutMargin)
+{
+	OutScale = FVec3(1);
+	OutMargin = FReal(0);
+
+	if (const TImplicitObjectScaled<T>* ScaledImplicit = Implicit.template GetObject<TImplicitObjectScaled<T>>())
+	{
+		OutScale = ScaledImplicit->GetScale();
+		OutMargin = ScaledImplicit->GetMargin();
+		return ScaledImplicit->GetUnscaledObject();
+	}
+	else if (const TImplicitObjectInstanced<T>* InstancedImplicit = Implicit.template GetObject<TImplicitObjectInstanced<T>>())
+	{
+		OutMargin = InstancedImplicit->GetMargin();
+		return InstancedImplicit->GetInstancedObject();
+	}
+	else if (const T* RawImplicit = Implicit.template GetObject<T>())
+	{
+		OutMargin = RawImplicit->GetMargin();
+		return RawImplicit;
+	}
+	else
+	{
+		return nullptr;
+	}
+}
 
 }
