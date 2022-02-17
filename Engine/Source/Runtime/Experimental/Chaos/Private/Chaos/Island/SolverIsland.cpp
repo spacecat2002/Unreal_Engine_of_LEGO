@@ -63,7 +63,10 @@ void FPBDIslandSolver::AddConstraint(FConstraintHandle* ConstraintHandle)
 		IslandConstraints.Add(ConstraintHandle);
 
 		const int32 ContainerId = ConstraintHandle->GetContainerId();
-		ConstraintCounts[ConstraintHandle->GetContainerId()]++;
+		if(ConstraintCounts.IsValidIndex(ContainerId))
+		{
+			ConstraintCounts[ContainerId]++;
+		}
 	}
 }
 
@@ -111,8 +114,8 @@ inline bool ConstraintSortPredicate(const FConstraintHandle& L, const FConstrain
 			return CollisionConstraintL->GetCCDType() < CollisionConstraintR->GetCCDType();
 		}
 
-		const FParticleID ParticleIdxsL[] = { CollisionConstraintL->Particle[0]->ParticleID(), CollisionConstraintL->Particle[1]->ParticleID() };
-		const FParticleID ParticleIdxsR[] = { CollisionConstraintR->Particle[0]->ParticleID(), CollisionConstraintL->Particle[1]->ParticleID() };
+		const FParticleID ParticleIdxsL[] = { CollisionConstraintL->GetParticle0()->ParticleID(), CollisionConstraintL->GetParticle1()->ParticleID() };
+		const FParticleID ParticleIdxsR[] = { CollisionConstraintR->GetParticle0()->ParticleID(), CollisionConstraintL->GetParticle1()->ParticleID() };
 
 		const int32 MinIdxL = ParticleIdxsL[0] < ParticleIdxsL[1] ? 0 : 1;
 		const int32 MinIdxR = ParticleIdxsR[0] < ParticleIdxsR[1] ? 0 : 1;

@@ -90,8 +90,8 @@ namespace Chaos
 				FRigidTransform3 Transform;
 				Ar << Transform << KinematicTarget.Mode;
 
-				KinematicTarget.Position = Transform.GetLocation();
-				KinematicTarget.Rotation = Transform.GetRotation();			
+				KinematicTarget.Position = TVec3<T>(Transform.GetLocation());
+				KinematicTarget.Rotation = TRotation3<T>(Transform.GetRotation());
 			}
 
 			return Ar;

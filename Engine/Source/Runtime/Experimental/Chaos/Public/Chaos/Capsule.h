@@ -10,6 +10,8 @@
 #include "Chaos/Segment.h"
 #include "ChaosArchive.h"
 
+#include "Math/VectorRegister.h"
+
 #include "UObject/ReleaseObjectVersion.h"
 
 namespace Chaos
@@ -361,6 +363,17 @@ namespace Chaos
 			return MSegment.SupportCore(Direction, VertexIndex);
 		}
 
+		FORCEINLINE VectorRegister4Float SupportCoreSimd(const VectorRegister4Float& Direction, const FReal InMargin) const
+		{
+			// NOTE: Ignores InMargin, assumes Radius
+			FVec3 DirectionVec3;
+			VectorStoreFloat3(Direction, &DirectionVec3);
+			int32 VertexIndex = INDEX_NONE;
+			FVec3 SupportVert =  MSegment.SupportCore(DirectionVec3, VertexIndex);
+			return MakeVectorRegisterFloatFromDouble(MakeVectorRegister(SupportVert.X, SupportVert.Y, SupportVert.Z, 0.0));
+		}
+
+
 		FORCEINLINE FVec3 SupportCoreScaled(const FVec3& Direction, const FReal InMargin, const FVec3& Scale, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
 			// NOTE: Ignores InMargin, assumes Radius
@@ -527,6 +540,12 @@ namespace Chaos
 		const TPlaneConcrete<FReal, 3> GetPlane(int32 FaceIndex) const
 		{
 			return TPlaneConcrete<FReal, 3>(FVec3(0), FVec3(0));
+		}
+
+		void GetPlaneNX(const int32 FaceIndex, FVec3& OutN, FVec3& OutX) const
+		{
+			OutN = FVec3(0);
+			OutX = FVec3(0);
 		}
 
 		// Get an array of all the plane indices that belong to a vertex (up to MaxVertexPlanes).

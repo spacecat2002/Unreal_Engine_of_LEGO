@@ -46,7 +46,7 @@ namespace Chaos
 
 	const FImplicitObject* FContactPairModifier::GetContactGeometry(int32 ParticleIdx)
 	{
-		return Constraint->Manifold.Implicit[ParticleIdx];
+		return Constraint->GetImplicit(ParticleIdx);
 	}
 
 	FRigidTransform3 FContactPairModifier::GetShapeToWorld(int32 ParticleIdx) const
@@ -57,10 +57,10 @@ namespace Chaos
 		if (FPBDRigidParticleHandle* Rigid = Particle->CastToRigidParticle())
 		{
 			// Use PQ for rigids.
-			return Constraint->ImplicitTransform[ParticleIdx] * FParticleUtilitiesPQ::GetActorWorldTransform(Rigid);
+			return Constraint->GetShapeRelativeTransform(ParticleIdx) * FParticleUtilitiesPQ::GetActorWorldTransform(Rigid);
 		}
 
-		return Constraint->ImplicitTransform[ParticleIdx] * FParticleUtilitiesXR::GetActorWorldTransform(Particle);
+		return Constraint->GetShapeRelativeTransform(ParticleIdx) * FParticleUtilitiesXR::GetActorWorldTransform(Particle);
 	}
 
 	FReal FContactPairModifier::GetSeparation(int32 ContactPointIdx) const
@@ -73,45 +73,54 @@ namespace Chaos
 		return FVec3::DotProduct(Normal, (WorldPos0 - WorldPos1));
 	}
 
-	void FContactPairModifier::ModifySeparation(FReal Separation, int32 ContactPointIdx)
+	FReal FContactPairModifier::GetTargetSeparation(int32 ContactPointIdx) const
+	{
+		FManifoldPoint& ManifoldPoint = Constraint->GetManifoldPoint(ContactPointIdx);
+		return ManifoldPoint.TargetPhi;
+	}
+
+	void FContactPairModifier::ModifyTargetSeparation(FReal TargetSeparation, int32 ContactPointIdx)
 	{	
-		FVec3 WorldPos0, WorldPos1;
-		GetWorldContactLocations(ContactPointIdx, WorldPos0, WorldPos1);
-
-		const FVec3 Normal = GetWorldNormal(ContactPointIdx);
-		const FReal CurrentSeparation = FVec3::DotProduct(Normal, (WorldPos0 - WorldPos1));
-		const FReal DeltaSeparation = Separation - CurrentSeparation;
-		
-		// Adjust contact locations to match desired separation
-		WorldPos0 += 0.5f * DeltaSeparation * Normal;
-		WorldPos1 -= 0.5f * DeltaSeparation * Normal;
-		ModifyWorldContactLocations(WorldPos0, WorldPos1, ContactPointIdx);
-
-		Modifier->MarkConstraintForManifoldUpdate(*Constraint);
+		FManifoldPoint& ManifoldPoint = Constraint->GetManifoldPoint(ContactPointIdx);
+		ManifoldPoint.TargetPhi = TargetSeparation;
 	}
 
 	FVec3 FContactPairModifier::GetWorldNormal(int32 ContactPointIdx) const
 	{
-		return Constraint->GetManifoldPoints()[ContactPointIdx].ContactPoint.Normal;
+		const FRigidTransform3& ShapeTransform1 = Constraint->GetShapeWorldTransform1();
+
+		TArrayView<FManifoldPoint> ManifoldPoints = Constraint->GetManifoldPoints();
+		FManifoldPoint& ManifoldPoint = ManifoldPoints[ContactPointIdx];
+
+		return ShapeTransform1.TransformVectorNoScale(ManifoldPoint.ContactPoint.ShapeContactNormal);
 	}
 
 	void FContactPairModifier::ModifyWorldNormal(const FVec3& Normal, int32 ContactPointIdx)
 	{
+		FVec3 WorldContactPoint0, WorldContactPoint1;
+		GetWorldContactLocations(ContactPointIdx, WorldContactPoint0, WorldContactPoint1);
+
 		TArrayView<FManifoldPoint> ManifoldPoints = Constraint->GetManifoldPoints();
 		FManifoldPoint& ManifoldPoint = ManifoldPoints[ContactPointIdx];
 
-		ManifoldPoint.ContactPoint.Normal = Normal;
-		ManifoldPoint.ContactPoint.Phi = FVec3::DotProduct(ManifoldPoint.WorldContactPoints[0] - ManifoldPoint.WorldContactPoints[1], ManifoldPoint.ContactPoint.Normal);
+		const FRigidTransform3& ShapeTransform1 = Constraint->GetShapeWorldTransform1();
+		const FVec3 ShapeNormal = ShapeTransform1.InverseTransformVectorNoScale(Normal);
+
+		ManifoldPoint.ContactPoint.ShapeContactNormal = ShapeNormal;
+		ManifoldPoint.ContactPoint.Phi = FVec3::DotProduct(WorldContactPoint0 - WorldContactPoint1, Normal);
 
 		Modifier->MarkConstraintForManifoldUpdate(*Constraint);
 	}
 
 	void FContactPairModifier::GetWorldContactLocations(int32 ContactPointIdx, FVec3& OutLocation0, FVec3& OutLocation1) const
 	{
+		const FRigidTransform3& ShapeTransform0 = Constraint->GetShapeWorldTransform0();
+		const FRigidTransform3& ShapeTransform1 = Constraint->GetShapeWorldTransform1();
+
 		TArrayView<FManifoldPoint> ManifoldPoints = Constraint->GetManifoldPoints();
 		FManifoldPoint& ManifoldPoint = ManifoldPoints[ContactPointIdx];
-		OutLocation0 = ManifoldPoint.WorldContactPoints[0];
-		OutLocation1 = ManifoldPoint.WorldContactPoints[1];
+		OutLocation0 = ShapeTransform0.TransformPositionNoScale(ManifoldPoint.ContactPoint.ShapeContactPoints[0]);
+		OutLocation1 = ShapeTransform1.TransformPositionNoScale(ManifoldPoint.ContactPoint.ShapeContactPoints[1]);
 	}
 
 	FVec3 FContactPairModifier::GetWorldContactLocation(int32 ContactPointIdx) const
@@ -128,59 +137,57 @@ namespace Chaos
 
 		ManifoldPoint.ContactPoint.ShapeContactPoints[0] = Constraint->GetShapeWorldTransform0().InverseTransformPositionNoScale(Location0);
 		ManifoldPoint.ContactPoint.ShapeContactPoints[1] = Constraint->GetShapeWorldTransform1().InverseTransformPositionNoScale(Location1);
-		// @todo(chaos): Overwriting ShapeAnchorPoints disables static friction for this tick - we might want to do something better here
-		ManifoldPoint.ShapeAnchorPoints[0] = ManifoldPoint.ContactPoint.ShapeContactPoints[0];
-		ManifoldPoint.ShapeAnchorPoints[1] = ManifoldPoint.ContactPoint.ShapeContactPoints[1];
-		ManifoldPoint.WorldContactPoints[0] = Location0;
-		ManifoldPoint.WorldContactPoints[1] = Location1;
-		ManifoldPoint.ContactPoint.Location = 0.5 * (Location0 + Location1);
+
+		// Clear the friction data since it will now have the wrong contact positions
+		// @todo(chaos): maybe try to do something better here
+		Constraint->ResetSavedManifoldPoints();
 
 		Modifier->MarkConstraintForManifoldUpdate(*Constraint);
 	}
 
 	FReal FContactPairModifier::GetRestitution() const
 	{
-		return Constraint->GetManifold().Restitution;
+		return Constraint->GetRestitution();
 	}
 
 	void FContactPairModifier::ModifyRestitution(FReal Restitution)
 	{
-		Constraint->Manifold.Restitution = Restitution;
+		Constraint->SetRestitution(Restitution);
 	}
 
 	FReal FContactPairModifier::GetRestitutionThreshold() const
 	{
-		return Constraint->Manifold.RestitutionThreshold;
+		return Constraint->GetRestitutionThreshold();
 	}
 
 	void FContactPairModifier::ModifyRestitutionThreshold(FReal Threshold)
 	{
-		Constraint->Manifold.RestitutionThreshold = Threshold;
+		Constraint->SetRestitutionThreshold(Threshold);
 	}
 
 	FReal FContactPairModifier::GetDynamicFriction() const
 	{
-		return Constraint->Manifold.Friction;
+		return Constraint->GetDynamicFriction();
 	}
 
 	void FContactPairModifier::ModifyDynamicFriction(FReal DynamicFriction)
 	{
-		Constraint->Manifold.Friction = DynamicFriction;
+		Constraint->SetDynamicFriction(DynamicFriction);
 	}
 
 	FReal FContactPairModifier::GetStaticFriction() const
 	{
-		return Constraint->Manifold.AngularFriction;
+		return Constraint->GetStaticFriction();
 	}
 
 	void FContactPairModifier::ModifyStaticFriction(FReal StaticFriction)
 	{
-		Constraint->Manifold.AngularFriction = StaticFriction;
+		Constraint->SetStaticFriction(StaticFriction);
 	}
 
 	FVec3 FContactPairModifier::GetParticleVelocity(int32 ParticleIdx) const
 	{
-		const FGeometryParticleHandle* Particle = Constraint->Particle[ParticleIdx];
+		const FGeometryParticleHandle* Particle = Constraint->GetParticle(ParticleIdx);
 		const FKinematicGeometryParticleHandle* KinematicHandle = Particle->CastToKinematicParticle();
 		if (!ensure(KinematicHandle))
 		{
@@ -193,7 +200,7 @@ namespace Chaos
 
 	void FContactPairModifier::ModifyParticleVelocity(FVec3 Velocity, int32 ParticleIdx)
 	{
-		FGeometryParticleHandle* Particle = Constraint->Particle[ParticleIdx];
+		FGeometryParticleHandle* Particle = Constraint->GetParticle(ParticleIdx);
 		FKinematicGeometryParticleHandle* KinematicHandle = Particle->CastToKinematicParticle();
 		if (!ensure(KinematicHandle))
 		{
@@ -217,7 +224,7 @@ namespace Chaos
 
 	FVec3 FContactPairModifier::GetParticleAngularVelocity(int32 ParticleIdx) const
 	{
-		const FGeometryParticleHandle* Particle = Constraint->Particle[ParticleIdx];
+		const FGeometryParticleHandle* Particle = Constraint->GetParticle(ParticleIdx);
 		const FKinematicGeometryParticleHandle* KinematicHandle = Particle->CastToKinematicParticle();
 		if (!ensure(KinematicHandle))
 		{
@@ -230,7 +237,7 @@ namespace Chaos
 
 	void FContactPairModifier::ModifyParticleAngularVelocity(FVec3 AngularVelocity, int32 ParticleIdx)
 	{
-		FGeometryParticleHandle* Particle = Constraint->Particle[ParticleIdx];
+		FGeometryParticleHandle* Particle = Constraint->GetParticle(ParticleIdx);
 		FKinematicGeometryParticleHandle* KinematicHandle = Particle->CastToKinematicParticle();
 		if (!ensure(KinematicHandle))
 		{
@@ -252,7 +259,7 @@ namespace Chaos
 
 	FVec3 FContactPairModifier::GetParticlePosition(int32 ParticleIdx) const
 	{
-		const FGeometryParticleHandle* Particle = Constraint->Particle[ParticleIdx];
+		const FGeometryParticleHandle* Particle = Constraint->GetParticle(ParticleIdx);
 		const FPBDRigidParticleHandle* RigidHandle = Particle->CastToRigidParticle();
 
 		if (RigidHandle)
@@ -272,7 +279,7 @@ namespace Chaos
 
 	void FContactPairModifier::ModifyParticlePosition(FVec3 Position, bool bMaintainVelocity, int32 ParticleIdx)
 	{
-		FGeometryParticleHandle* Particle = Constraint->Particle[ParticleIdx];
+		FGeometryParticleHandle* Particle = Constraint->GetParticle(ParticleIdx);
 
 		Modifier->MarkConstraintForManifoldUpdate(*Constraint);
 
@@ -320,7 +327,7 @@ namespace Chaos
 
 	FRotation3 FContactPairModifier::GetParticleRotation(int32 ParticleIdx) const
 	{
-		const FGeometryParticleHandle* Particle = Constraint->Particle[ParticleIdx];
+		const FGeometryParticleHandle* Particle = Constraint->GetParticle(ParticleIdx);
 		const FPBDRigidParticleHandle* RigidHandle = Particle->CastToRigidParticle();
 
 
@@ -335,7 +342,7 @@ namespace Chaos
 
 	void FContactPairModifier::ModifyParticleRotation(FRotation3 Rotation, bool bMaintainVelocity, int32 ParticleIdx)
 	{
-		FGeometryParticleHandle* Particle = Constraint->Particle[ParticleIdx];
+		FGeometryParticleHandle* Particle = Constraint->GetParticle(ParticleIdx);
 
 		Modifier->MarkConstraintForManifoldUpdate(*Constraint);
 
@@ -382,29 +389,41 @@ namespace Chaos
 
 	FReal FContactPairModifier::GetInvInertiaScale(int32 ParticleIdx) const
 	{
-		return ParticleIdx == 0 ? Constraint->Manifold.InvInertiaScale0 : Constraint->Manifold.InvInertiaScale1;
+		return ParticleIdx == 0 ? Constraint->GetInvInertiaScale0() : Constraint->GetInvInertiaScale1();
 	}
 
 	void FContactPairModifier::ModifyInvInertiaScale(FReal InInvInertiaScale, int32 ParticleIdx)
 	{
-		FReal& InvInertiaScale = ParticleIdx == 0 ? Constraint->Manifold.InvInertiaScale0 : Constraint->Manifold.InvInertiaScale1;
-		InvInertiaScale = InInvInertiaScale;
+		if (ParticleIdx == 0)
+		{
+			Constraint->SetInvInertiaScale0(InInvInertiaScale);
+		}
+		else
+		{
+			Constraint->SetInvInertiaScale1(InInvInertiaScale);
+		}
 	}
 
 	FReal FContactPairModifier::GetInvMassScale(int32 ParticleIdx) const
 	{
-		return ParticleIdx == 0 ? Constraint->Manifold.InvMassScale0 : Constraint->Manifold.InvMassScale1;
+		return ParticleIdx == 0 ? Constraint->GetInvMassScale0() : Constraint->GetInvMassScale1();
 	}
 
 	void FContactPairModifier::ModifyInvMassScale(FReal InInvMassScale, int32 ParticleIdx)
 	{
-		FReal& InvMassScale = ParticleIdx == 0 ? Constraint->Manifold.InvMassScale0 : Constraint->Manifold.InvMassScale1;
-		InvMassScale = InInvMassScale;
+		if (ParticleIdx == 0)
+		{
+			Constraint->SetInvMassScale0(InInvMassScale);
+		}
+		else
+		{
+			Constraint->SetInvMassScale1(InInvMassScale);
+		}
 	}
 
 	TVec2<FGeometryParticleHandle*> FContactPairModifier::GetParticlePair() const
 	{
-		return { Constraint->Particle[0], Constraint->Particle[1] };
+		return { Constraint->GetParticle0(), Constraint->GetParticle1() };
 	}
 
 	void FContactPairModifierIterator::SeekValidContact()
@@ -459,6 +478,7 @@ namespace Chaos
 
 	void FCollisionContactModifier::UpdateConstraintManifolds()
 	{
+		// Update derived state that depends on transforms etc
 		for (FPBDCollisionConstraint* Constraint : NeedsManifoldUpdate)
 		{
 			Constraint->UpdateManifoldContacts();

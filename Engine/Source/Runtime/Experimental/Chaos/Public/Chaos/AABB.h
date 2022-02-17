@@ -3,6 +3,7 @@
 
 #include "Chaos/Core.h"
 #include "ChaosArchive.h"
+#include "Chaos/VectorUtility.h"
 
 namespace Chaos
 { 
@@ -41,6 +42,13 @@ namespace Chaos
 		FORCEINLINE TAABB(const TAABB<T, d>& Other)
 			: MMin(Other.MMin)
 			, MMax(Other.MMax)
+		{
+		}
+
+		template<typename OtherType> 
+		explicit TAABB(const TAABB<OtherType, d>& Other)
+			: MMin(TVector<T, d>(Other.Min()))
+			, MMax(TVector<T, d>(Other.Max()))
 		{
 		}
 
@@ -364,6 +372,15 @@ namespace Chaos
 			return ChosenPt;
 		}
 
+		FORCEINLINE_DEBUGGABLE VectorRegister4Float SupportCoreSimd(const VectorRegister4Float& Direction, const FReal InMargin) const
+		{
+			FVec3 DirectionVec3;
+			VectorStoreFloat3(Direction, &DirectionVec3);
+			int32 VertexIndex = INDEX_NONE;
+			FVec3 SupportVert = SupportCore(DirectionVec3, InMargin, nullptr, VertexIndex);
+			return MakeVectorRegisterFloatFromDouble(MakeVectorRegister(SupportVert.X, SupportVert.Y, SupportVert.Z, 0.0));
+		}
+
 		FORCEINLINE_DEBUGGABLE TVector<T, d> SupportCoreScaled(const TVector<T, d>& Direction, const T InMargin, const TVector<T, d>& Scale, T* OutSupportDelta, int32& VertexIndex) const
 		{
 			const TVector<T, d> ScaledDirection = Direction * Scale;
@@ -459,6 +476,12 @@ namespace Chaos
 			}
 		}
 
+		FORCEINLINE TAABB<T, d>& ScaleWithNegative(const TVector<T, d>& InScale)
+		{
+			*this = FromPoints(MMin * InScale, MMax * InScale);
+			return *this;
+		}
+
 		/**
 		* Scale the AABB relative to the origin
 		* IMPORTANT : this does not support negative scale
@@ -545,18 +568,47 @@ namespace Chaos
 
 		FORCEINLINE constexpr bool IsConvex() const { return true; }
 
+		/**
+		 * Given a set of points, wrap an AABB around them
+		 */
+		template<typename... Points>
+		static TAABB<T, d> FromPoints(const TVector<T, d>& P0, const TVector<T, d>& P1)
+		{
+			TAABB<T, d> Result(P0, P0);
+			Result.GrowToInclude(P1);
+			return Result;
+		}
+		template<typename... Points>
+		static TAABB<T, d> FromPoints(const TVector<T, d>& P0, const TVector<T, d>& P1, const TVector<T, d>& P2)
+		{
+			TAABB<T, d> Result(P0, P0);
+			Result.GrowToInclude(P1);
+			Result.GrowToInclude(P2);
+			return Result;
+		}
+		template<typename... Points>
+		static TAABB<T, d> FromPoints(const TVector<T, d>& P0, const TVector<T, d>& P1, const TVector<T, d>& P2, const TVector<T, d>& P3)
+		{
+			TAABB<T, d> Result(P0, P0);
+			Result.GrowToInclude(P1);
+			Result.GrowToInclude(P2);
+			Result.GrowToInclude(P3);
+			return Result;
+		}
+
 	private:
 		TVector<T, d> MMin, MMax;
 	};
 
-
-	FORCEINLINE FChaosArchive& operator<<(FChaosArchive& Ar, TAABB<FReal, 3>& AABB)
+	template<class T, int d>
+	FORCEINLINE FChaosArchive& operator<<(FChaosArchive& Ar, TAABB<T, d>& AABB)
 	{
 		AABB.Serialize(Ar);
 		return Ar;
 	}
 
-	FORCEINLINE FArchive& operator<<(FArchive& Ar, TAABB<FReal, 3>& AABB)
+	template<class T, int d>
+	FORCEINLINE FArchive& operator<<(FArchive& Ar, TAABB<T, d>& AABB)
 	{
 		AABB.Serialize(Ar);
 		return Ar;
@@ -653,3 +705,12 @@ namespace Chaos
 
 	using FAABB3 = TAABB<FReal, 3>;
 }
+
+// Support ISPC enable/disable in non-shipping builds
+#if !INTEL_ISPC
+const bool bChaos_AABBTransform_ISPC_Enabled = false;
+#elif UE_BUILD_SHIPPING
+const bool bChaos_AABBTransform_ISPC_Enabled = true;
+#else
+extern bool bChaos_AABBTransform_ISPC_Enabled;
+#endif

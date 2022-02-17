@@ -7,6 +7,8 @@
 #include "Chaos/ImplicitObject.h"
 #include "ChaosArchive.h"
 
+#include "Math/VectorRegister.h"
+
 #include "UObject/ReleaseObjectVersion.h"
 
 namespace Chaos
@@ -209,6 +211,10 @@ namespace Chaos
 			return Center;
 		}
 
+		FORCEINLINE VectorRegister4Float SupportCoreSimd(const VectorRegister4Float& Direction, const FReal InMargin) const
+		{
+			return MakeVectorRegisterFloatFromDouble(MakeVectorRegister(Center[0], Center[1], Center[2], 0.0));
+		}
 		FORCEINLINE TVector<T, d> SupportCoreScaled(const TVector<T, d>& Direction, const FReal InMargin, const TVector<T, d>& Scale, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
 			VertexIndex = 0;

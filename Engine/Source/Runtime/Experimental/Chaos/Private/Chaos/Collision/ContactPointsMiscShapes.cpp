@@ -45,9 +45,8 @@ namespace Chaos
 					Contact.ShapeContactPoints[0] = AToBTM.InverseTransformPosition(Location);
 					Contact.ShapeContactPoints[1] = Location;
 					Contact.ShapeContactNormal = Normal;
-					Contact.Location = BTransform.TransformPosition(Location);
-					Contact.Normal = BTransform.TransformVectorNoScale(Normal);
-					ComputeSweptContactPhiAndTOIHelper(Contact.Normal, Dir, Length, OutTime, TOI, Contact.Phi);
+					const FVec3 ContactNormal = BTransform.TransformVectorNoScale(Normal);
+					ComputeSweptContactPhiAndTOIHelper(ContactNormal, Dir, Length, OutTime, TOI, Contact.Phi);
 				}
 			});
 
@@ -92,8 +91,6 @@ namespace Chaos
 				Contact.ShapeContactPoints[1] = Location - ContactPhi * Normal;
 				Contact.ShapeContactNormal = Normal;
 				Contact.Phi = ContactPhi;
-				Contact.Location = BTransform.TransformPosition(Location);
-				Contact.Normal = BTransform.TransformVectorNoScale(Normal);
 			}
 		}
 		else if (const TImplicitObjectInstanced<GeometryA>* InstancedConvexImplicit = A.template GetObject<const TImplicitObjectInstanced<GeometryA> >())
@@ -106,8 +103,6 @@ namespace Chaos
 					Contact.ShapeContactPoints[1] = Location - ContactPhi * Normal;
 					Contact.ShapeContactNormal = Normal;
 					Contact.Phi = ContactPhi;
-					Contact.Location = BTransform.TransformPosition(Location);
-					Contact.Normal = BTransform.TransformVectorNoScale(Normal);
 				}
 			}
 		}
@@ -119,8 +114,6 @@ namespace Chaos
 				Contact.ShapeContactPoints[1] = Location - ContactPhi * Normal;
 				Contact.ShapeContactNormal = Normal;
 				Contact.Phi = ContactPhi;
-				Contact.Location = BTransform.TransformPosition(Location);
-				Contact.Normal = BTransform.TransformVectorNoScale(Normal);
 			}
 		}
 
@@ -147,17 +140,6 @@ namespace Chaos
 		{
 			B.ContactManifold(*ConvexImplicit, AToBTM, CullDistance, ContactPoints);
 		}
-
-		// Note: All results we got are in ShapeB's local space
-		for (FContactPoint& ContactPoint : ContactPoints)
-		{
-			// Calculate the shape contact points
-			ContactPoint.ShapeContactPoints[0] = AToBTM.InverseTransformPosition(ContactPoint.Location);
-			ContactPoint.ShapeContactPoints[1] = ContactPoint.Location - ContactPoint.Phi * ContactPoint.ShapeContactNormal;
-			ContactPoint.Normal = BTransform.TransformVectorNoScale(ContactPoint.ShapeContactNormal);
-			// Get the Location in world space
-			ContactPoint.Location = BTransform.TransformPosition(ContactPoint.Location);
-		}
 	}
 
 	// A is the implicit here, we want to return a contact point on B (trimesh)
@@ -182,9 +164,11 @@ namespace Chaos
 				// @todo(chaos): handle Instanced with margin
 				if (B.LowLevelSweepGeom(ADowncast, AToBTM, LocalDir, Length, OutTime, Location, Normal, FaceIndex, 0.0f, true))
 				{
-					Contact.Location = BTransform.TransformPosition(Location);
-					Contact.Normal = BTransform.TransformVectorNoScale(Normal);
-					ComputeSweptContactPhiAndTOIHelper(Contact.Normal, Dir, Length, OutTime, TOI, Contact.Phi);
+					Contact.ShapeContactPoints[1] = Location;
+					Contact.ShapeContactNormal = Normal;
+
+					const FVec3& ContactNormal = BTransform.TransformVectorNoScale(Normal);
+					ComputeSweptContactPhiAndTOIHelper(ContactNormal, Dir, Length, OutTime, TOI, Contact.Phi);
 				}
 			});
 
@@ -215,8 +199,6 @@ namespace Chaos
 			Result.ShapeContactPoints[1] = Sphere2.GetCenter() + Sphere2Transform.InverseTransformVector(R2 * Normal);
 			Result.ShapeContactNormal = Sphere2Transform.InverseTransformVector(Normal);
 			Result.Phi = NewPhi;
-			Result.Normal = Normal;
-			Result.Location = Center2 + R2 * Result.Normal;
 		}
 		return Result;
 	}
@@ -239,8 +221,6 @@ namespace Chaos
 		Result.ShapeContactPoints[1] = PlaneTransform.InverseTransformPosition(Location - Phi * NormalWorld);
 		Result.ShapeContactNormal = PlaneTransform.InverseTransformVector(NormalWorld);
 		Result.Phi = Phi;
-		Result.Normal = NormalWorld;
-		Result.Location = Location;
 
 		return Result;
 	}
@@ -263,8 +243,6 @@ namespace Chaos
 		Result.ShapeContactPoints[1] = BoxTransform.InverseTransformPosition(LocationWorld - Phi * NormalWorld);
 		Result.ShapeContactNormal = NormalBox;
 		Result.Phi = Phi;
-		Result.Normal = NormalWorld;
-		Result.Location = LocationWorld;
 		return Result;
 	}
 
@@ -291,8 +269,6 @@ namespace Chaos
 			Result.ShapeContactPoints[1] = BTransform.InverseTransformPosition(LocationB);
 			Result.ShapeContactNormal = BTransform.InverseTransformVector(Normal);
 			Result.Phi = NewPhi;
-			Result.Normal = Normal;
-			Result.Location = FReal(0.5) * (LocationA + LocationB);
 		}
 
 		return Result;
@@ -372,11 +348,17 @@ namespace Chaos
 		return GJKImplicitContactPoint<FConvex>(A, ATransform, B, BTransform, CullDistance, ShapePadding);
 	}
 
-	template <typename TriMeshType>
-	FContactPoint ConvexTriangleMeshContactPoint(const FImplicitObject& A, const FRigidTransform3& ATransform, const TriMeshType& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding)
+	FContactPoint ConvexTriangleMeshContactPoint(const FImplicitObject& A, const FRigidTransform3& ATransform, const FImplicitObject& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding)
 	{
 		CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_ConvexTriangleMeshContactPoint, ConstraintsDetailedStats);
-		return GJKImplicitContactPoint<FConvex>(A, ATransform, B, BTransform, CullDistance, ShapePadding);
+
+		// Call GJK with the concrete trimesh type (scaled, instanced, raw)
+		return Utilities::CastWrapped<FTriangleMeshImplicitObject>(B, 
+			[&](auto BConcretePtr)
+			{
+				check(BConcretePtr != nullptr);
+				return GJKImplicitContactPoint<FConvex>(A, ATransform, *BConcretePtr, BTransform, CullDistance, ShapePadding);
+			});
 	}
 
 	template <typename TriMeshType>
@@ -421,8 +403,6 @@ namespace Chaos
 			Result.ShapeContactPoints[1] = BTransform.InverseTransformPosition(LocationB);
 			Result.ShapeContactNormal = BTransform.InverseTransformVector(Normal);
 			Result.Phi = NewPhi;
-			Result.Normal = Normal;
-			Result.Location = FReal(0.5) * (LocationA + LocationB);
 		}
 
 		return Result;
@@ -449,8 +429,6 @@ namespace Chaos
 	template FContactPoint SphereTriangleMeshContactPoint<FTriangleMeshImplicitObject>(const TSphere<FReal, 3>& A, const FRigidTransform3& ATransform, const FTriangleMeshImplicitObject& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding);
 	template FContactPoint CapsuleTriangleMeshContactPoint<TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>>(const FCapsule& A, const FRigidTransform3& ATransform, const TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding);
 	template FContactPoint CapsuleTriangleMeshContactPoint<FTriangleMeshImplicitObject>(const FCapsule& A, const FRigidTransform3& ATransform, const FTriangleMeshImplicitObject& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding);
-	template FContactPoint ConvexTriangleMeshContactPoint<TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>>(const FImplicitObject& A, const FRigidTransform3& ATransform, const TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding);
-	template FContactPoint ConvexTriangleMeshContactPoint<FTriangleMeshImplicitObject>(const FImplicitObject& A, const FRigidTransform3& ATransform, const FTriangleMeshImplicitObject& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding);
 
 	template void GJKImplicitManifold<FConvex, FHeightField>(const FImplicitObject& A, const FRigidTransform3& ATransform, const FHeightField& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding, TArray<FContactPoint>& ContactPoints);
 	template void GJKImplicitManifold<FCapsule, FHeightField>(const FImplicitObject& A, const FRigidTransform3& ATransform, const FHeightField& B, const FRigidTransform3& BTransform, const FReal CullDistance, const FReal ShapePadding, TArray<FContactPoint>& ContactPoints);

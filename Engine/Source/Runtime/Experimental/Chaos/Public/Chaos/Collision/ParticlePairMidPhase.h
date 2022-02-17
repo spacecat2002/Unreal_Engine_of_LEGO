@@ -22,21 +22,6 @@ namespace Chaos
 	class FSingleShapePairCollisionDetector;
 
 	/**
-	 * @brief The result of the test to see whether we can reuse a manifold (when the bodies have not moved much)
-	*/
-	enum class ECollisionRestoreType
-	{
-		// Do not retore the manifold - bodies have moved beyond the threshold
-		None,
-
-		// Restore the manifold exactly as-is - the bodies have barely moved
-		Reuse,
-
-		// Restore the manifold, but the bodies have moved a bit so reproject the contacts
-		Reproject,
-	};
-
-	/**
 	 * @brief Handles collision detection for a pair of simple shapes (i.e., not compound shapes)
 	 * 
 	 * @note this is not used for collisions involving Unions that require a recursive collision test.
@@ -71,7 +56,10 @@ namespace Chaos
 		/**
 		 * @brief Have we run collision detection since this Epoch (inclusive)
 		*/
-		bool IsUsedSince(const int32 CurrentEpoch) const;
+		inline bool IsUsedSince(const int32 Epoch) const
+		{
+			return (Constraint != nullptr) && (LastUsedEpoch >= Epoch);
+		}
 
 		/**
 		 * @brief Perform a bounds check and run the narrow phase if necessary
@@ -79,17 +67,20 @@ namespace Chaos
 		*/
 		int32 GenerateCollision(
 			const FReal CullDistance,
-			const bool bUseCCD,
+			const bool bUseManifold,
 			const FReal Dt);
 
 		/**
-		 * @brief Reactivate the collision exactly as it was last frame
-		 * @return The number of collisions constraints that were restored
+		 * @brief Generate a SweptConstraint as long as AABBs overlap
+		 * @return The number of collisions constraints that were activated
 		*/
-		int32 RestoreCollision(const FReal CullDistance, const bool bReproject);
+		int32 GenerateCollisionCCD(
+			const FReal CullDistance,
+			const bool bUseManifold,
+			const FReal Dt);
 
 		/**
-		 * @brief Reactivate the constraint (essentially the same as Restore but slightly optimized)
+		 * @brief Reactivate the constraint
 		 * @parame SleepEpoch The tick on which the particle went to sleep.
 		 * Only constraints that were active when the particle went to sleep should be reactivated.
 		*/
@@ -101,17 +92,16 @@ namespace Chaos
 		*/
 		void SetCollision(const FPBDCollisionConstraint& Constraint);
 
-		/**
-		 * @brief Whether we want to use manifold restore for this shape type
-		 * @see FParticlePairMidPhase::ShouldRestoreConstraints
-		*/
-		bool EnableManifoldRestore() const
-		{
-			return Flags.bEnableManifoldCheck;
-		}
-
 	private:
-		int32 GenerateCollisionImpl(const FReal CullDistance, const bool bUseCCD, const FReal Dt);
+		int32 GenerateCollisionImpl(
+			const FReal CullDistance, 
+			const bool bUseManifold,
+			const FReal Dt);
+			
+		int32 GenerateCollisionCCDImpl(
+			const FReal CullDistance, 
+			const bool bUseManifold,
+			const FReal Dt);
 
 		/**
 		 * @brief Whether the two shapes are separated by less than CullDistance (i.e., we should run the narrow phase).
@@ -122,7 +112,7 @@ namespace Chaos
 		/**
 		 * @brief Create a constraint
 		*/
-		void CreateConstraint(const FReal CullDistance);
+		void CreateConstraint(const FReal CullDistance, const bool bUseManifold);
 
 		FParticlePairMidPhase& MidPhase;
 		TUniquePtr<FPBDCollisionConstraint> Constraint;
@@ -141,7 +131,7 @@ namespace Chaos
 				uint32 bEnableAABBCheck : 1;
 				uint32 bEnableOBBCheck0 : 1;
 				uint32 bEnableOBBCheck1 : 1;
-				uint32 bEnableManifoldCheck : 1;
+				uint32 bEnableManifoldUpdate : 1;
 			};
 			uint32 Bits;
 		} Flags;
@@ -173,7 +163,7 @@ namespace Chaos
 		*/
 		int32 GenerateCollisions(
 			const FReal CullDistance,
-			const bool bUseCCD,
+			const bool bUseManifold,
 			const FReal Dt,
 			FCollisionContext& Context);
 
@@ -211,19 +201,23 @@ namespace Chaos
 			EContactShapesType ShapePairType);
 
 		/**
-		 * @brief Reactivate the collision exactly as it was last frame
-		 * @return The number of collisions constraints that were restored
-		*/
-		int32 RestoreCollisions(const FReal CullDistance, const bool bReproject);
-
-		/**
-		 * @brief Reactivate the constraint (essentially the same as Restore but slightly optimized)
+		 * @brief Reactivate the constraint
 		 * @parame SleepEpoch The tick on which the particle went to sleep.
 		 * Only constraints that were active when the particle went to sleep should be reactivated.
 		*/
 		void WakeCollisions(const int32 SleepEpoch);
 
-		void VisitCollisions(const int32 LastEpoch, const FPBDCollisionVisitor& Visitor) const;
+		/**
+		 * @brief Visit all the collisions
+		*/
+		template<typename TLambda>
+		ECollisionVisitorResult VisitCollisions(const int32 LastEpoch, const TLambda& Visitor);
+
+		/**
+		 * @brief Visit all the collisions
+		*/
+		template<typename TLambda>
+		ECollisionVisitorResult VisitConstCollisions(const int32 LastEpoch, const TLambda& Visitor) const;
 
 	private:
 		FPBDCollisionConstraint* FindConstraint(const FCollisionParticlePairConstraintKey& Key);
@@ -252,20 +246,6 @@ namespace Chaos
 		FGeometryParticleHandle* Particle1;
 		const FPerShapeData* Shape0;
 		const FPerShapeData* Shape1;
-	};
-
-
-	class FMidPhaseRestoreThresholds
-	{
-	public:
-		FMidPhaseRestoreThresholds()
-			: PositionThreshold(0)
-			, RotationThreshold(0)
-		{
-		}
-
-		FReal PositionThreshold;	// cm
-		FReal RotationThreshold;	// rad
 	};
 
 	/**
@@ -317,6 +297,12 @@ namespace Chaos
 
 		inline bool IsValid() const { return (Particle0 != nullptr) && (Particle1 != nullptr); }
 
+		// Prefetch the memory in this class for later use
+		inline void CachePrefetch()
+		{
+			FPlatformMisc::PrefetchBlock(this, sizeof(*this));
+		}
+
 		/**
 		 * @brief Have we run collision detection since this Epoch (inclusive)
 		*/
@@ -365,12 +351,22 @@ namespace Chaos
 		*/
 		void InjectCollision(const FPBDCollisionConstraint& Constraint);
 
+		int32 GetCurrentEpoch() const;
+
 		/**
-		 * @brief Call a function on each active collision constraint
-		 * This including sleeping constraints, but not constraints that are were not used on the last awake tick
+		 * @brief Call a lambda on each active collision constraint
+		 * This includes sleeping constraints, but skips constraints that are were not used on the last awake tick
 		 * but are still kept around as an optimization.
 		*/
-		void VisitCollisions(const FPBDCollisionVisitor& Visitor) const;
+		template<typename TLambda>
+		ECollisionVisitorResult VisitCollisions(const TLambda& Visitor);
+
+
+		/**
+		 * @brief Call a lambda on each active collision constraint
+		 */
+		template<typename TLambda>
+		ECollisionVisitorResult VisitConstCollisions(const TLambda& Visitor) const;
 
 		/**
 		 * @brief Cookie for use by FParticleCollisions
@@ -427,26 +423,10 @@ namespace Chaos
 
 		void InitThresholds();
 
-		/**
-		 * @brief Whether we should reuse the constraint as-is and skip the narrow phase
-		 * This will be true if neither particle has moved much. 
-		 * This is non-const because it updates some position tracking data.
-		*/
-		ECollisionRestoreType ShouldRestoreConstraints(const FReal Dt);
-
-		/**
-		 * @brief If the particles have not moved muc, reactivate all the colisions and skip the narrow phase.
-		*/
-		bool TryRestoreConstraints(const FReal Dt, const FReal CullDistance);
-
-
-		FGeometryParticleHandle* Particle0;
-		FGeometryParticleHandle* Particle1;
-		FCollisionParticlePairKey Key;
-
-		TArray<FSingleShapePairCollisionDetector, TInlineAllocator<1>> ShapePairDetectors;
-		TArray<FMultiShapePairCollisionDetector> MultiShapePairDetectors;
-		FCollisionConstraintAllocator* CollisionAllocator;
+		FGeometryParticleHandle* Particle0; // 8 bytes
+		FGeometryParticleHandle* Particle1; // 8 bytes
+		// A number based on the size of the dynamic objects used to scale cull distance
+		FRealSingle CullDistanceScale; // 4 bytes
 
 		union FFlags
 		{
@@ -455,27 +435,22 @@ namespace Chaos
 			{
 				uint32 bIsCCD : 1;
 				uint32 bIsInitialized : 1;
-				uint32 bRestorable : 1;
 				uint32 bIsSleeping : 1;
 			};
 			uint32 Bits;
-		} Flags;
-		int32 LastUsedEpoch;
-		int32 NumActiveConstraints;
+		} Flags; // 4 bytes
+
+		FCollisionParticlePairKey Key; //8 bytes
+		FCollisionConstraintAllocator* CollisionAllocator; // 8 bytes
+
+		int32 LastUsedEpoch;  //4 bytes
+		int32 NumActiveConstraints; // 4 bytes
 
 		// Indices into the arrays of collisions on the particles. This is a cookie for use by FParticleCollisions
-		int32 ParticleCollisionsIndex0;
-		int32 ParticleCollisionsIndex1;
+		int32 ParticleCollisionsIndex0; // 4 bytes
+		int32 ParticleCollisionsIndex1; // 4 bytes
 
-		// The particle transforms the last time the collisions were updated (used to determine whether we can restore contacts)
-		FMidPhaseRestoreThresholds RestoreThresholdZeroContacts;
-		FMidPhaseRestoreThresholds RestoreThreshold;
-		FVec3 RestoreParticleP0;
-		FVec3 RestoreParticleP1;
-		FRotation3 RestoreParticleQ0;
-		FRotation3 RestoreParticleQ1;
-
-		// A number based on the size of the dynamic objects used to scale cull distance
-		FReal CullDistanceScale;
+		TArray<FMultiShapePairCollisionDetector> MultiShapePairDetectors; // 16 bytes
+		TArray<FSingleShapePairCollisionDetector, TInlineAllocator<1>> ShapePairDetectors; //88 bytes
 	};
 }

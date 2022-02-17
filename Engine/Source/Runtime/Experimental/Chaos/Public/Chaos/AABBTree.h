@@ -271,7 +271,7 @@ struct TAABBTreeLeafArray : public TBoundsWrapperHelper<TPayloadType, T, bComput
 	template <typename TSQVisitor, typename TQueryFastData>
 	FORCEINLINE_DEBUGGABLE bool RaycastFast(const TVec3<T>& Start, TQueryFastData& QueryFastData, TSQVisitor& Visitor, const TVec3<T>& Dir, const TVec3<T> InvDir, const bool bParallel[3]) const
 	{
-		return RaycastSweepImp</*bSweep=*/false>(Start, QueryFastData, TVec3<T>(), Visitor, Dir, InvDir, bParallel);
+		return RaycastSweepImp</*bSweep=*/false>(Start, QueryFastData, TVec3<T>((T)0), Visitor, Dir, InvDir, bParallel);
 	}
 
 	template <typename TSQVisitor, typename TQueryFastData>
@@ -2636,8 +2636,8 @@ private:
 						WorkSnapshot.Bounds.GrowToInclude(ElemBounds);
 
 						// Include the current particle in the average and scaled variance of the particle centers using Welford's method.
-						FVec3 CenterDelta = ElemBounds.Center() - WorkSnapshot.AverageCenter;
-						WorkSnapshot.AverageCenter += CenterDelta / NumElems;
+						TVec3<T> CenterDelta = ElemBounds.Center() - WorkSnapshot.AverageCenter;
+						WorkSnapshot.AverageCenter += CenterDelta / (T)NumElems;
 						WorkSnapshot.ScaledCenterVariance += (ElemBounds.Center() - WorkSnapshot.AverageCenter) * CenterDelta;
 					}
 				}

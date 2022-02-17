@@ -153,7 +153,7 @@ namespace Chaos
 		FORCEINLINE const TAABB<FReal, 3> BoundingBox() const
 		{
 			// LWC - necessary if T is different from FReal
-			return TAABB<FReal, 3>(AABB.Min(), AABB.Max());
+			return TAABB<FReal, 3>(AABB);
 		}
 
 		// Apply a limit to the specified margin that prevents the box inverting
@@ -220,8 +220,9 @@ namespace Chaos
 			return GetMostOpposingPlane(Normal);
 		}
 
-		// Get the nearest point on an edge
-		TVector<T, d> GetClosestEdgePosition(int32 PlaneIndexHint, const TVector<T, d>& Position) const
+		// Get the nearest point on an edge and the edge vertices
+		// Used for manifold generation
+		FVec3 GetClosestEdge(int32 PlaneIndexHint, const FVec3& Position, FVec3& OutEdgePos0, FVec3& OutEdgePos1) const
 		{
 			TVector<T, d> ClosestEdgePosition = FVec3(0);
 			if (PlaneIndexHint >= 0)
@@ -244,6 +245,8 @@ namespace Chaos
 						{
 							ClosestDistanceSq = EdgeDistanceSq;
 							ClosestEdgePosition = EdgePosition;
+							OutEdgePos0 = P0;
+							OutEdgePos1 = P1;
 						}
 
 						P0 = P1;
@@ -256,6 +259,13 @@ namespace Chaos
 				check(false);
 			}
 			return ClosestEdgePosition;
+		}
+
+		// Get the nearest point on an edge
+		TVector<T, d> GetClosestEdgePosition(int32 PlaneIndexHint, const TVector<T, d>& Position) const
+		{
+			TVector<T, d> Unused0, Unused1;
+			return GetClosestEdge(PlaneIndexHint, Position, Unused0, Unused1);
 		}
 
 		bool GetClosestEdgeVertices(int32 PlaneIndexHint, const FVec3& Position, int32& OutVertexIndex0, int32& OutVertexIndex1) const
@@ -349,6 +359,12 @@ namespace Chaos
 			return TPlaneConcrete<FReal>(PlaneX, PlaneN);
 		}
 
+		void GetPlaneNX(const int32 FaceIndex, FVec3& OutN, FVec3& OutX) const
+		{
+			OutN = SNormals[FaceIndex];
+			OutX = AABB.Center() + 0.5f * (SNormals[FaceIndex] * AABB.Extents());
+		}
+
 		// Get the vertex at the specified index (e.g., indices from GetPlaneVertexs)
 		const FVec3 GetVertex(int32 VertexIndex) const
 		{
@@ -366,6 +382,16 @@ namespace Chaos
 		FORCEINLINE_DEBUGGABLE TVector<T, d> SupportCore(const TVector<T, d>& Direction, const FReal InMargin, FReal* OutSupportDelta, int32& VertexIndex) const
 		{
 			return AABB.SupportCore(Direction, InMargin, OutSupportDelta, VertexIndex);
+		}
+
+		// Returns a position on the core shape excluding the margin
+		FORCEINLINE_DEBUGGABLE VectorRegister4Float SupportCoreSimd(const VectorRegister4Float& Direction, const FReal InMargin) const
+		{
+			FVec3 DirectionVec3;
+			VectorStoreFloat3(Direction, &DirectionVec3);
+			int32 VertexIndex = INDEX_NONE;
+			FVec3 SupportVert = AABB.SupportCore(DirectionVec3, InMargin, nullptr, VertexIndex);
+			return MakeVectorRegisterFloatFromDouble(MakeVectorRegister(SupportVert.X, SupportVert.Y, SupportVert.Z, 0.0));
 		}
 
 		FORCEINLINE_DEBUGGABLE TVector<T, d> SupportCoreScaled(const TVector<T, d>& Direction, const FReal InMargin, const TVector<T, d>& Scale, T* OutSupportDelta, int32& VertexIndex) const
@@ -456,22 +482,45 @@ namespace Chaos
 		}
 
 		// See comments on SerializeAsAABB
-		static void SerializeAsAABBs(FArchive& Ar, TArray<TAABB<T, d>>& AABBs)
+		template<typename OtherType>
+		static void SerializeAsAABBs(FArchive& Ar, TArray<TAABB<OtherType, d>>& AABBs)
 		{
 			Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
 			if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::TBoxReplacedWithTAABB)
 			{
 				TArray<TBox<T, d>> Tmp;
 				Ar << Tmp;
-				AABBs.Reserve(Tmp.Num());
+				AABBs.Reset(Tmp.Num());
 				for (const TBox<T, d>& Box : Tmp)
 				{
-					AABBs.Add(Box.AABB);
+					AABBs.Emplace(TAABB<OtherType, d>(Box.AABB));
+				}
+			}
+			else if (TAreTypesEqual<T, OtherType>::Value)
+			{
+				Ar << AABBs;
+			}
+			else if (Ar.IsLoading())
+			{
+				// Reload to a different floating point type
+				TArray<TAABB<T, d>> TmpAABBs;
+				Ar << TmpAABBs;
+				AABBs.Reset(TmpAABBs.Num());
+				for (const TAABB<T, d>& TmpAABB : TmpAABBs)
+				{
+					AABBs.Emplace(TAABB<OtherType, d>(TmpAABB));
 				}
 			}
 			else
 			{
-				Ar << AABBs;
+				// Serialize from a different floating point type
+				TArray<TAABB<T, d>> TmpAABBs;
+				TmpAABBs.Reserve(AABBs.Num());
+				for (const TAABB<OtherType, d>& AABB : AABBs)
+				{
+					TmpAABBs.Emplace(TAABB<T, d>(AABB));
+				}
+				Ar << TmpAABBs;
 			}
 		}
 

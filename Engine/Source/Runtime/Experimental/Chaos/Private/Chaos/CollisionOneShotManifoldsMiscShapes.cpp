@@ -10,9 +10,11 @@
 #include "Chaos/Collision/PBDCollisionConstraint.h"
 #include "Chaos/Convex.h"
 #include "Chaos/Defines.h"
+#include "Chaos/Framework/UncheckedArray.h"
 #include "Chaos/GJK.h"
 #include "Chaos/ImplicitObjectScaled.h"
 #include "Chaos/Transform.h"
+#include "Chaos/Triangle.h"
 #include "Chaos/Utilities.h"
 #include "ChaosStats.h"
 
@@ -22,6 +24,8 @@
 
 namespace Chaos
 {
+	extern FRealSingle Chaos_Collision_EdgePrunePlaneDistance;
+	extern FRealSingle Chaos_Collision_Manifold_SphereCapsuleSizeThreshold;
 
 	namespace Collisions
 	{
@@ -43,7 +47,7 @@ namespace Chaos
 			// @todo(chaos): support manifold maintenance
 			Constraint.ResetActiveManifoldContacts();
 
-			FContactPoint ContactPoint = SphereSphereContactPoint(SphereA, SphereATransform, SphereB, SphereBTransform, Constraint.GetCullDistance(), Constraint.Manifold.RestitutionPadding);
+			FContactPoint ContactPoint = SphereSphereContactPoint(SphereA, SphereATransform, SphereB, SphereBTransform, Constraint.GetCullDistance(), Constraint.GetRestitutionPadding());
 			if (ContactPoint.Phi < Constraint.GetCullDistance())
 			{
 				Constraint.AddOneshotManifoldContact(ContactPoint);
@@ -66,7 +70,7 @@ namespace Chaos
 			// @todo(chaos): support manifold maintenance
 			Constraint.ResetActiveManifoldContacts();
 
-			FContactPoint ContactPoint = SpherePlaneContactPoint(Sphere, SphereTransform, Plane, PlaneTransform, Constraint.Manifold.RestitutionPadding);
+			FContactPoint ContactPoint = SpherePlaneContactPoint(Sphere, SphereTransform, Plane, PlaneTransform, Constraint.GetRestitutionPadding());
 			if (ContactPoint.Phi < Constraint.GetCullDistance())
 			{
 				Constraint.AddOneshotManifoldContact(ContactPoint);
@@ -83,13 +87,19 @@ namespace Chaos
 			// @todo(chaos): support manifold maintenance
 			Constraint.ResetActiveManifoldContacts();
 
-			FContactPoint ContactPoint = SphereBoxContactPoint(Sphere, SphereTransform, Box, BoxTransform, Constraint.Manifold.RestitutionPadding);
+			FContactPoint ContactPoint = SphereBoxContactPoint(Sphere, SphereTransform, Box, BoxTransform, Constraint.GetRestitutionPadding());
 			if (ContactPoint.Phi < Constraint.GetCullDistance())
 			{
 				Constraint.AddOneshotManifoldContact(ContactPoint);
 			}
 		}
 
+		// Build a sphere-Capsule manifold.
+		// When the sphere and capsule are of similar size, we usually only need a 1-point manifold.
+		// If the sphere is larger than the capsule, we need to generate a multi-point manifold so that
+		// we don't end up jittering between collisions on each end cap. E.g., consider a small capsule
+		// lying horizontally on a very large sphere (almost flat) - we need at least 2 contact points to 
+		// make this stable.
 		void ConstructSphereCapsuleOneShotManifold(const TSphere<FReal, 3>& Sphere, const FRigidTransform3& SphereTransform, const FCapsule& Capsule, const FRigidTransform3& CapsuleTransform, const FReal Dt, FPBDCollisionConstraint& Constraint)
 		{
 			// We only build one shot manifolds once
@@ -97,13 +107,115 @@ namespace Chaos
 			ensure(SphereTransform.GetScale3D() == FVec3(1.0f, 1.0f, 1.0f));
 			ensure(CapsuleTransform.GetScale3D() == FVec3(1.0f, 1.0f, 1.0f));
 
-			// @todo(chaos): support manifold maintenance
 			Constraint.ResetActiveManifoldContacts();
 
-			FContactPoint ContactPoint = SphereCapsuleContactPoint(Sphere, SphereTransform, Capsule, CapsuleTransform, Constraint.Manifold.RestitutionPadding);
-			if (ContactPoint.Phi < Constraint.GetCullDistance())
+			// Build a multi-point manifold
+			const FReal NetCullDistance = Sphere.GetRadius() + Capsule.GetRadius() + Constraint.GetCullDistance() + Constraint.GetRestitutionPadding();
+			const FReal NetCullDistanceSq = FMath::Square(NetCullDistance);
+
+			// Transform the sphere into capsule space and find the closest point on the capsule line segment
+			// @todo(chaos) this would be much simpler if the sphere's were always at the origin and capsules were at the origin and axis aligned
+			const FRigidTransform3 SphereToCapsuleTransform = SphereTransform.GetRelativeTransformNoScale(CapsuleTransform);
+			const FVec3 SpherePos = SphereToCapsuleTransform.TransformPositionNoScale(Sphere.GetCenter());
+			const FReal NearPosT = Utilities::ClosestTimeOnLineSegment(SpherePos, Capsule.GetX1(), Capsule.GetX2());
+
+			// Add the closest contact point to the manifold
+			const FVec3 NearPos = FMath::Lerp(Capsule.GetX1(), Capsule.GetX2(), NearPosT);
+			const FVec3 NearPosDelta = SpherePos - NearPos;
+			const FReal NearPosDistanceSq = NearPosDelta.SizeSquared();
+			if (NearPosDistanceSq > SMALL_NUMBER)
 			{
-				Constraint.AddOneshotManifoldContact(ContactPoint);
+				if (NearPosDistanceSq < NetCullDistanceSq)
+				{
+					const FReal NearPosDistance = FMath::Sqrt(NearPosDistanceSq);
+					const FVec3 NearPosDir = NearPosDelta / NearPosDistance;
+					const FReal NearPhi = NearPosDistance - Sphere.GetRadius() - Capsule.GetRadius() - Constraint.GetRestitutionPadding();
+
+					FContactPoint NearContactPoint;
+					NearContactPoint.ShapeContactPoints[0] = SphereToCapsuleTransform.InverseTransformPositionNoScale(SpherePos - Sphere.GetRadius() * NearPosDir);
+					NearContactPoint.ShapeContactPoints[1] = NearPos + Capsule.GetRadius() * NearPosDir;
+					NearContactPoint.ShapeContactNormal = NearPosDir;
+					NearContactPoint.Phi = NearPhi;
+					NearContactPoint.FaceIndex = INDEX_NONE;
+					NearContactPoint.ContactType = EContactPointType::VertexPlane;
+					Constraint.AddOneshotManifoldContact(NearContactPoint);
+
+					// If we have a small sphere, just stick with the 1-point manifold
+					const FReal SphereCapsuleSizeThreshold = FReal(Chaos_Collision_Manifold_SphereCapsuleSizeThreshold);
+					if (Sphere.GetRadius() < SphereCapsuleSizeThreshold * (Capsule.GetHeight() + Capsule.GetRadius()))
+					{
+						return;
+					}
+
+					// If the capsule is non-dynamic there's no point in creating the multipoint manifold
+					if (!FConstGenericParticleHandle(Constraint.GetParticle1())->IsDynamic())
+					{
+						return;
+					}
+
+					// Now add the two end caps
+					// Calculate the vector orthogonal to the capsule axis that gives the nearest points on the capsule cyclinder to the sphere
+					// The initial length will be proportional to the sine of the angle between the axis and the delta position and will approach
+					// zero when the capsule is end-on to the sphere, in which case we won't add the end caps.
+					constexpr FReal EndCapSinAngleThreshold = FReal(0.35);	// about 20deg
+					constexpr FReal EndCapDistanceThreshold = FReal(0.2);	// fraction
+					FVec3 CapsuleOrthogonal = FVec3::CrossProduct(Capsule.GetAxis(), FVec3::CrossProduct(Capsule.GetAxis(), SpherePos - Capsule.GetCenter()));
+					const FReal CapsuleOrthogonalLenSq = CapsuleOrthogonal.SizeSquared();
+					if (CapsuleOrthogonalLenSq > FMath::Square(EndCapSinAngleThreshold))
+					{
+						// Orthogonal must point towards the sphere, but currently depends on the relative axis orientation
+						const FReal CapsuleOrthogonalLen = FMath::Sqrt(CapsuleOrthogonalLenSq);
+						CapsuleOrthogonal = CapsuleOrthogonal / CapsuleOrthogonalLen;
+						if (FVec3::DotProduct(CapsuleOrthogonal, SpherePos - Capsule.GetCenter()) < FReal(0))
+						{
+							CapsuleOrthogonal = -CapsuleOrthogonal;
+						}
+
+						if (NearPosT > EndCapDistanceThreshold)
+						{
+							const FVec3 EndCapPos0 = Capsule.GetX1() + CapsuleOrthogonal * Capsule.GetRadius();
+							const FReal EndCapDistance0 = (SpherePos - EndCapPos0).Size();
+							const FReal EndCapPhi0 = EndCapDistance0 - Sphere.GetRadius() - Constraint.GetRestitutionPadding();
+							
+							if (EndCapPhi0 < Constraint.GetCullDistance())
+							{
+								const FVec3 EndCapPosDir0 = (SpherePos - EndCapPos0) / EndCapDistance0;
+								const FVec3 SpherePos0 = SpherePos - EndCapPosDir0 * Sphere.GetRadius();
+						
+								FContactPoint EndCapContactPoint0;
+								EndCapContactPoint0.ShapeContactPoints[0] = SphereToCapsuleTransform.InverseTransformPositionNoScale(SpherePos0);
+								EndCapContactPoint0.ShapeContactPoints[1] = EndCapPos0;
+								EndCapContactPoint0.ShapeContactNormal = EndCapPosDir0;
+								EndCapContactPoint0.Phi = EndCapPhi0;
+								EndCapContactPoint0.FaceIndex = INDEX_NONE;
+								EndCapContactPoint0.ContactType = EContactPointType::VertexPlane;
+								Constraint.AddOneshotManifoldContact(EndCapContactPoint0);
+							}
+						}
+
+						if (NearPosT < FReal(1) - EndCapDistanceThreshold)
+						{
+							const FVec3 EndCapPos1 = Capsule.GetX2() + CapsuleOrthogonal * Capsule.GetRadius();
+							const FReal EndCapDistance1 = (SpherePos - EndCapPos1).Size();
+							const FReal EndCapPhi1 = EndCapDistance1 - Sphere.GetRadius() - Constraint.GetRestitutionPadding();
+
+							if (EndCapPhi1 < Constraint.GetCullDistance())
+							{
+								const FVec3 EndCapPosDir1 = (SpherePos - EndCapPos1) / EndCapDistance1;
+								const FVec3 SpherePos1 = SpherePos - EndCapPosDir1 * Sphere.GetRadius();
+
+								FContactPoint EndCapContactPoint0;
+								EndCapContactPoint0.ShapeContactPoints[0] = SphereToCapsuleTransform.InverseTransformPositionNoScale(SpherePos1);
+								EndCapContactPoint0.ShapeContactPoints[1] = EndCapPos1;
+								EndCapContactPoint0.ShapeContactNormal = EndCapPosDir1;
+								EndCapContactPoint0.Phi = EndCapPhi1;
+								EndCapContactPoint0.FaceIndex = INDEX_NONE;
+								EndCapContactPoint0.ContactType = EContactPointType::VertexPlane;
+								Constraint.AddOneshotManifoldContact(EndCapContactPoint0);
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -239,7 +351,6 @@ namespace Chaos
 
 			FContactPoint ContactPoint;
 			ContactPoint.ShapeContactNormal = CapsuleBTransform.InverseTransformVector(Normal);
-			ContactPoint.Normal = Normal;
 
 			auto AddManifoldPoint = [&](FReal ClippedCoord)
 			{
@@ -253,7 +364,6 @@ namespace Chaos
 				{
 					ContactPoint.ShapeContactPoints[0] = CapsuleATransform.InverseTransformPosition(LocationA);
 					ContactPoint.ShapeContactPoints[1] = CapsuleBTransform.InverseTransformPosition(LocationB);
-					ContactPoint.Location = 0.5f * (LocationA + LocationB);
 					ContactPoint.Phi = Phi;
 					Constraint.AddOneshotManifoldContact(ContactPoint);
 				}
@@ -330,21 +440,99 @@ namespace Chaos
 			}
 		}
 
-		template <typename ConvexType, typename TriMeshType>
-		void ConstructConvexTriMeshOneShotManifold(const FImplicitObject& Convex, const FRigidTransform3& ConvexTransform, const TriMeshType& TriangleMesh, const FRigidTransform3& TriMeshTransform, const FReal Dt, FPBDCollisionConstraint& Constraint)
+		template<typename ConvexType>
+		void ConstructPlanarConvexTriMeshOneShotManifoldImp(const ConvexType& Convex, const FRigidTransform3& ConvexTransform, const FImplicitObject& TriMesh, const FRigidTransform3& TriMeshTransform, FPBDCollisionConstraint& Constraint)
 		{
-			// We only build one shot manifolds once
 			// All convexes are pre-scaled, or wrapped in TImplicitObjectScaled
 			ensure(ConvexTransform.GetScale3D() == FVec3(1.0f, 1.0f, 1.0f));
 			ensure(TriMeshTransform.GetScale3D() == FVec3(1.0f, 1.0f, 1.0f));
 
-			// @todo(chaos): support manifold maintenance
-			Constraint.ResetActiveManifoldContacts();
+			// Unwrap the tri mesh (remove Scaled or Instanced) and get the scale
+			FVec3 TriMeshScale;
+			FReal TriMeshMargin;	// Not used - will be zero
+			const FTriangleMeshImplicitObject* UnscaledTriMesh = UnwrapImplicit<FTriangleMeshImplicitObject>(TriMesh, TriMeshScale, TriMeshMargin);
+			check(UnscaledTriMesh != nullptr);
 
+			const FRigidTransform3 TriangleMeshToConvexTransform = TriMeshTransform.GetRelativeTransformNoScale(ConvexTransform);
+
+			// Calculate the query bounds in trimesh space
+			// NOTE: to handle negative scales, we need to include it in the AABB transform (cannot use FAABB3::Scale)
+			const FRigidTransform3 QueryTransform = FRigidTransform3(TriangleMeshToConvexTransform.GetTranslation(), TriangleMeshToConvexTransform.GetRotation(), TriMeshScale);
+			const FAABB3 TriMeshQueryBounds = Convex.BoundingBox().InverseTransformedAABB(QueryTransform);
+			const FReal CullDistance = Constraint.GetCullDistance();
+
+			// A set of contact points which contains points from all triangle-convex manifolds
 			TArray<FContactPoint> ContactPoints;
-			GJKImplicitManifold<ConvexType, TriMeshType>(Convex, ConvexTransform, TriangleMesh, TriMeshTransform, Constraint.GetCullDistance(), 0.0f, ContactPoints);
+
+			// Prime the triangle producer with overlappig indices
+			FTriangleMeshTriangleProducer TriangleProducer;
+			int32 TriangleIndex;
+			FTriangle Triangle;
+			TCArray<FContactPoint, 4> TriangleManifoldPoints;
+			TriangleProducer.Reset(*UnscaledTriMesh, TriMeshQueryBounds);
+
+			// Loop over all the triangles, build a manifold and add the points to the total manifold
+			while (TriangleProducer.NextTriangle(*UnscaledTriMesh, QueryTransform, Triangle, TriangleIndex))
+			{
+				TriangleManifoldPoints.Reset();
+				ConstructPlanarConvexTriangleOneShotManifold(Convex, Triangle, CullDistance, TriangleManifoldPoints);
+					
+				for (int32 TriangleContactIndex = 0; TriangleContactIndex < TriangleManifoldPoints.Num(); ++TriangleContactIndex)
+				{
+					FContactPoint& ContactPoint = ContactPoints[ContactPoints.AddUninitialized()];
+					ContactPoint.ShapeContactPoints[0] = TriangleManifoldPoints[TriangleContactIndex].ShapeContactPoints[0];
+					ContactPoint.ShapeContactPoints[1] = TriangleMeshToConvexTransform.InverseTransformPositionNoScale(TriangleManifoldPoints[TriangleContactIndex].ShapeContactPoints[1]);
+					ContactPoint.ShapeContactNormal = TriangleMeshToConvexTransform.InverseTransformVectorNoScale(TriangleManifoldPoints[TriangleContactIndex].ShapeContactNormal);
+					ContactPoint.Phi = TriangleManifoldPoints[TriangleContactIndex].Phi;
+					ContactPoint.FaceIndex = TriangleIndex;
+					ContactPoint.ContactType = TriangleManifoldPoints[TriangleContactIndex].ContactType;
+				}
+			}
+
+			// Remove edge contacts that are "hidden" by face contacts
+			// @todo(chaos): EdgePruneDistance should be some fraction of the convex margin...
+			if (ContactPoints.Num() > 0)
+			{
+				const FReal EdgePruneDistance = Chaos_Collision_EdgePrunePlaneDistance;
+				Collisions::PruneEdgeContactPointsUnordered(ContactPoints, EdgePruneDistance);
+			}
+
+			// Whittle the manifold down to 4 points
+			if (ContactPoints.Num() > 4)
+			{
+				std::sort(&ContactPoints[0], &ContactPoints[0] + ContactPoints.Num(), [](const FContactPoint& L, const FContactPoint& R) { return L.Phi < R.Phi; });
+
+				// Remove all points (except for the deepest one, and ones with phis similar to it)
+				// NOTE: relies on the sort above
+				const FReal CullMargin = 0.1f;
+				int32 NewContactPointCount = ContactPoints.Num() > 0 ? 1 : 0;
+				for (int32 Index = 1; Index < ContactPoints.Num(); Index++)
+				{
+					if (ContactPoints[Index].Phi < 0 || ContactPoints[Index].Phi - ContactPoints[0].Phi < CullMargin)
+					{
+						NewContactPointCount++;
+					}
+					else
+					{
+						break;
+					}
+				}
+				ContactPoints.SetNum(NewContactPointCount, false);
+			}
+
+			if (ContactPoints.Num() > 4)
+			{
+				// Reduce to only 4 contact points from here
+				// NOTE: relies on the sort above
+				Collisions::ReduceManifoldContactPointsTriangeMesh(ContactPoints);
+			}
+
+			// Add the manifold points to the constraint
+			Constraint.ResetActiveManifoldContacts();
 			for (FContactPoint& ContactPoint : ContactPoints)
 			{
+				// NOTE: We don't reuse manifolds between frames for Convex-TriMesh so it's not too bad to
+				// skip manifold points that are beyond the cull distance
 				if (ContactPoint.Phi < Constraint.GetCullDistance())
 				{
 					Constraint.AddOneshotManifoldContact(ContactPoint);
@@ -352,16 +540,36 @@ namespace Chaos
 			}
 		}
 
+		void ConstructPlanarConvexTriMeshOneShotManifold(const FImplicitObject& Convex, const FRigidTransform3& ConvexTransform, const FImplicitObject& TriangleMesh, const FRigidTransform3& TriangleMeshTransform, FPBDCollisionConstraint& Constraint)
+		{
+			if (const FImplicitBox3* RawBox = Convex.template GetObject<FImplicitBox3>())
+			{
+				ConstructPlanarConvexTriMeshOneShotManifoldImp(*RawBox, ConvexTransform, TriangleMesh, TriangleMeshTransform, Constraint);
+			}
+			else if (const TImplicitObjectScaled<FImplicitConvex3>* ScaledConvex = Convex.template GetObject<TImplicitObjectScaled<FImplicitConvex3>>())
+			{
+				ConstructPlanarConvexTriMeshOneShotManifoldImp(*ScaledConvex, ConvexTransform, TriangleMesh, TriangleMeshTransform, Constraint);
+			}
+			else if (const TImplicitObjectInstanced<FImplicitConvex3>* InstancedConvex = Convex.template GetObject<TImplicitObjectInstanced<FImplicitConvex3>>())
+			{
+				ConstructPlanarConvexTriMeshOneShotManifoldImp(*InstancedConvex, ConvexTransform, TriangleMesh, TriangleMeshTransform, Constraint);
+			}
+			else if (const FImplicitConvex3* RawConvex = Convex.template GetObject<FImplicitConvex3>())
+			{
+				ConstructPlanarConvexTriMeshOneShotManifoldImp(*RawConvex, ConvexTransform, TriangleMesh, TriangleMeshTransform, Constraint);
+			}
+			else
+			{
+				check(false);
+			}
+		}
+
+
 		template void ConstructSphereTriangleMeshOneShotManifold<TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>>(const TSphere<FReal, 3>& Sphere, const FRigidTransform3& SphereWorldTransform, const TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>& TriangleMesh, const FRigidTransform3& TriMeshWorldTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
 		template void ConstructSphereTriangleMeshOneShotManifold<FTriangleMeshImplicitObject>(const TSphere<FReal, 3>& Sphere, const FRigidTransform3& SphereWorldTransform, const FTriangleMeshImplicitObject& TriangleMesh, const FRigidTransform3& TriMeshWorldTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
 
 		template void ConstructCapsuleTriMeshOneShotManifold<TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>>(const FCapsule& Capsule, const FRigidTransform3& CapsuleWorldTransform, const TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>& TriangleMesh, const FRigidTransform3& TriMeshWorldTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
 		template void ConstructCapsuleTriMeshOneShotManifold<FTriangleMeshImplicitObject>(const FCapsule& Capsule, const FRigidTransform3& CapsuleWorldTransform, const FTriangleMeshImplicitObject& TriangleMesh, const FRigidTransform3& TriMeshWorldTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
-
-		template void ConstructConvexTriMeshOneShotManifold<FConvex, TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>>(const FImplicitObject& Convex, const FRigidTransform3& ConvexTransform, const TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>& TriangleMesh, const FRigidTransform3& TriMeshTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
-		template void ConstructConvexTriMeshOneShotManifold<FConvex, FTriangleMeshImplicitObject>(const FImplicitObject& Convex, const FRigidTransform3& ConvexTransform, const FTriangleMeshImplicitObject& TriangleMesh, const FRigidTransform3& TriMeshTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
-		template void ConstructConvexTriMeshOneShotManifold<FImplicitBox3, TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>>(const FImplicitObject& Convex, const FRigidTransform3& ConvexTransform, const TImplicitObjectScaled<class Chaos::FTriangleMeshImplicitObject, 1>& TriangleMesh, const FRigidTransform3& TriMeshTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
-		template void ConstructConvexTriMeshOneShotManifold<FImplicitBox3, FTriangleMeshImplicitObject>(const FImplicitObject& Convex, const FRigidTransform3& ConvexTransform, const FTriangleMeshImplicitObject& TriangleMesh, const FRigidTransform3& TriMeshTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
 
 		template void ConstructConvexHeightFieldOneShotManifold<FConvex>(const FImplicitObject& Convex, const FRigidTransform3& ConvexTransform, const FHeightField& HeightField, const FRigidTransform3& HeightFieldTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
 		template void ConstructConvexHeightFieldOneShotManifold<FImplicitBox3>(const FImplicitObject& Convex, const FRigidTransform3& ConvexTransform, const FHeightField& HeightField, const FRigidTransform3& HeightFieldTransform, const FReal Dt, FPBDCollisionConstraint& Constraint);
