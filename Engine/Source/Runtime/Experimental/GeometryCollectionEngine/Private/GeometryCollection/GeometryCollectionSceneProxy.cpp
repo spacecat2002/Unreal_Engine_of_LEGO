@@ -167,7 +167,8 @@ FGeometryCollectionSceneProxy::~FGeometryCollectionSceneProxy()
 
 	if (DynamicData != nullptr)
 	{
-		delete DynamicData;
+		GDynamicDataPool.Release(DynamicData);
+		DynamicData = nullptr;
 	}
 
 	if (ConstantData != nullptr)
@@ -487,7 +488,7 @@ void FGeometryCollectionSceneProxy::SetDynamicData_RenderThread(FGeometryCollect
 	{
 		if (DynamicData)
 		{
-			delete DynamicData;
+			GDynamicDataPool.Release(DynamicData);
 			DynamicData = nullptr;
 		}
 		DynamicData = NewDynamicData;
