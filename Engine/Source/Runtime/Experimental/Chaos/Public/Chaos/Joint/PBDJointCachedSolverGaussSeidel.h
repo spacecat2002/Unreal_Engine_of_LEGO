@@ -573,7 +573,7 @@ struct FPointConstraintDatas
 		// World-space constraint settings
 		FVec3 ConnectorXs[MaxConstrainedBodies];			// World-space joint connector positions
 		FRotation3 ConnectorRs[MaxConstrainedBodies];		// World-space joint connector rotations
-		FVec3 ConnectorWs[MaxConstrainedBodies];			// World-space joint connector angular velocities * dt
+		FVec3 ConnectorWDts[MaxConstrainedBodies];			// World-space joint connector angular velocities * dt
 
 		// XPBD Initial iteration world-space body state
 		FVec3 InitConnectorXs[MaxConstrainedBodies];		// World-space joint connector positions

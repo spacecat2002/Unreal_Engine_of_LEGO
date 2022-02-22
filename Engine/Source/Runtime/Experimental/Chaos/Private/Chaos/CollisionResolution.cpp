@@ -1077,7 +1077,14 @@ namespace Chaos
 		{
 			if (Constraint.GetUseManifold())
 			{
-				ConstructConvexConvexOneShotManifold<FCapsule, FImplicitBox3>(A, ATransform, B, BTransform, Dt, Constraint);
+				TCArray<FContactPoint, 4> ContactPoints;
+				ConstructCapsuleConvexOneShotManifold<FImplicitBox3>(A, ATransform, B, BTransform, Constraint.GetCullDistance(), ContactPoints);
+
+				Constraint.ResetActiveManifoldContacts();
+				for (const FContactPoint& ContactPoint : ContactPoints)
+				{
+					Constraint.AddOneshotManifoldContact(ContactPoint);
+				}
 			}
 			else
 			{
@@ -1130,7 +1137,14 @@ namespace Chaos
 			{
 				if (Constraint.GetUseManifold())
 				{
-					ConstructConvexConvexOneShotManifold<FCapsule, ConvexType>(A, ATransform, B, BTransform, Dt, Constraint);
+					TCArray<FContactPoint, 4> ContactPoints;
+					ConstructCapsuleConvexOneShotManifold<ConvexType>(A, ATransform, B, BTransform, Constraint.GetCullDistance(), ContactPoints);
+
+					Constraint.ResetActiveManifoldContacts();
+					for (const FContactPoint& ContactPoint : ContactPoints)
+					{
+						Constraint.AddOneshotManifoldContact(ContactPoint);
+					}
 				}
 				else
 				{
@@ -1622,8 +1636,9 @@ namespace Chaos
 		template<ECollisionUpdateType UpdateType>
 		inline void UpdateConstraintFromGeometryImpl(FPBDCollisionConstraint& Constraint, const FRigidTransform3& WorldTransform0, const FRigidTransform3& WorldTransform1, const FReal Dt)
 		{
-			CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_UpdateConstraintFromGeometryInternal, ConstraintsDetailedStats);
-			INC_DWORD_STAT(STAT_ChaosCollisionCounter_NumContactUpdates);
+			// These add an extra 2% overhead in the simple shape cases
+			//CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_Collisions_UpdateConstraintFromGeometryInternal, ConstraintsDetailedStats);
+			//INC_DWORD_STAT(STAT_ChaosCollisionCounter_NumContactUpdates);
 
 			// @todo(chaos): remove
 			//const FVec3 OriginalContactPositionLocal0 = WorldTransform0.InverseTransformPosition(Constraint.Manifold.Location);
