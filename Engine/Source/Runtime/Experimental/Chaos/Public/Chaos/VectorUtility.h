@@ -8,9 +8,11 @@ using VectorRegister4Int = VectorRegisterInt;
 
 FORCEINLINE VectorRegister4Float VectorZeroFloat() { return VectorZero(); }
 FORCEINLINE VectorRegister4Float MakeVectorRegisterFloat( float X, float Y, float Z, float W ) { return MakeVectorRegister(X, Y, Z, W); }
+FORCEINLINE VectorRegister4Float MakeVectorRegisterDouble( float X, float Y, float Z, float W ) { return MakeVectorRegister(X, Y, Z, W); }
 FORCEINLINE VectorRegister4Int MakeVectorRegisterIntConstant(int32 X, int32 Y, int32 Z, int32 W) { return MakeVectorRegisterInt(X, Y, Z, W); }
 #define MakeVectorRegisterFloatConstant(x,y,z,w) VectorRegister{ x, y, z, w }
 #define MakeVectorRegisterFloatFromDouble(x) (x)
+#define VectorLoadDouble1(x) VectorLoadFloat1(x)
 
 /**
  * Cast VectorRegister4Int in VectorRegister4Float

@@ -28,8 +28,8 @@ void FPBDJointCachedSolver::InitDerivedState()
 
 	ConnectorRs[1].EnforceShortestArcWith(ConnectorRs[0]);
 
-	ConnectorWs[0] = FRotation3::CalculateAngularVelocity(InitConnectorRs[0], ConnectorRs[0], 1.0f);
-	ConnectorWs[1] = FRotation3::CalculateAngularVelocity(InitConnectorRs[1], ConnectorRs[1], 1.0f);
+	ConnectorWDts[0] = FRotation3::CalculateAngularVelocity(InitConnectorRs[0], ConnectorRs[0], 1.0f);
+	ConnectorWDts[1] = FRotation3::CalculateAngularVelocity(InitConnectorRs[1], ConnectorRs[1], 1.0f);
 }
 
 void FPBDJointCachedSolver::ComputeBodyState(const int32 BodyIndex)
@@ -463,11 +463,11 @@ void FPBDJointCachedSolver::InitPositionConstraintDatas(
 void FPBDJointCachedSolver::InitPointPositionMass()
 {
 	FMatrix33 IM = FMatrix33::Zero;
-	if(Body(0).IsDynamic() && InvM(0) > 0.0)
+	if(InvM(0) > 0.0)
 	{
 		IM += Utilities::ComputeJointFactorMatrix(PointConstraints.ConstraintArms[0], InvI(0), InvM(0));
 	}
-	if(Body(1).IsDynamic() && InvM(1) > 0.0)
+	if(InvM(1) > 0.0)
 	{
 		IM += Utilities::ComputeJointFactorMatrix(PointConstraints.ConstraintArms[1], InvI(1), InvM(1));
 	}
@@ -1176,8 +1176,8 @@ void FPBDJointCachedSolver::SolveRotationConstraintSoft(
 	FReal AngVelDt = 0;
 	if (RotationConstraints.ConstraintSoftDamping[ConstraintIndex] > KINDA_SMALL_NUMBER)
 	{
-		const FVec3 W0Dt = FVec3(Body(0).DQ()) + ConnectorWs[0];
-		const FVec3 W1Dt = FVec3(Body(1).DQ()) + ConnectorWs[1];
+		const FVec3 W0Dt = FVec3(Body(0).DQ()) + ConnectorWDts[0];
+		const FVec3 W1Dt = FVec3(Body(1).DQ()) + ConnectorWDts[1];
 		AngVelDt = TargetVel * Dt + FVec3::DotProduct(RotationConstraints.ConstraintAxis[ConstraintIndex] , W0Dt - W1Dt);
 	}
 
@@ -1609,8 +1609,8 @@ void FPBDJointCachedSolver::ApplyAxisRotationDrive(
 	FReal AngVelDt = 0;
 	if (RotationDrives.ConstraintSoftDamping[ConstraintIndex] > KINDA_SMALL_NUMBER)
 	{
-		const FVec3 W0Dt = FVec3(Body(0).DQ()) + ConnectorWs[0];
-		const FVec3 W1Dt = FVec3(Body(1).DQ()) + ConnectorWs[1];
+		const FVec3 W0Dt = FVec3(Body(0).DQ()) + ConnectorWDts[0];
+		const FVec3 W1Dt = FVec3(Body(1).DQ()) + ConnectorWDts[1];
 		AngVelDt = RotationDrives.ConstraintVX[ConstraintIndex] * Dt + FVec3::DotProduct(RotationDrives.ConstraintAxis[ConstraintIndex] , W0Dt - W1Dt);
 	}
 
@@ -1694,8 +1694,8 @@ void FPBDJointCachedSolver::CalculateAngularConstraintPadding(
 		SetAngularConstraintPadding(ConstraintIndex, 0.0f);
 
 		// Calculate the velocity we want to match
-		const FVec3 W0Dt = FVec3(Body(0).DQ()) + ConnectorWs[0];
-		const FVec3 W1Dt = FVec3(Body(1).DQ()) + ConnectorWs[1];
+		const FVec3 W0Dt = FVec3(Body(0).DQ()) + ConnectorWDts[0];
+		const FVec3 W1Dt = FVec3(Body(1).DQ()) + ConnectorWDts[1];
 		const FReal AxisWDt = FVec3::DotProduct(W1Dt - W0Dt, RotationConstraints.ConstraintAxis[(int32)ConstraintIndex]);
 
 		// Calculate the padding to apply to the constraint that will result in the
