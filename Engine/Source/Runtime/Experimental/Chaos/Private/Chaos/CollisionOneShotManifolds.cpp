@@ -1823,20 +1823,6 @@ namespace Chaos
 			const FRigidTransform3& Convex2Transform, //world
 			const FReal Dt,
 			FPBDCollisionConstraint& Constraint);
-
-		template
-			void ConstructPlanarConvexTriangleOneShotManifold(
-				const TImplicitObjectScaled<FImplicitBox3>& Convex,
-				const FTriangle& Triangle,
-				const FReal CullDistance,
-				TCArray<FContactPoint, 4>& OutContactPoints);
-
-		template
-			void ConstructPlanarConvexTriangleOneShotManifold(
-				const TImplicitObjectInstanced<FImplicitBox3>& Convex,
-				const FTriangle& Triangle,
-				const FReal CullDistance,
-				TCArray<FContactPoint, 4>& OutContactPoints);
 	}
 }
 
