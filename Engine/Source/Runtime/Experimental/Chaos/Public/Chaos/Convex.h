@@ -41,7 +41,6 @@ namespace Chaos
 			, Volume(0.f)
 			, CenterOfMass(FVec3Type(0.f))
 		{}
-		FConvex(const FConvex&) = delete;
 		FConvex(FConvex&& Other)
 		    : FImplicitObject(EImplicitObject::IsConvex | EImplicitObject::HasBoundingBox, ImplicitObjectType::Convex)
 			, Planes(MoveTemp(Other.Planes))
@@ -144,7 +143,7 @@ namespace Chaos
 
 		virtual TUniquePtr<FImplicitObject> Copy() const
 		{
-			return TUniquePtr<FImplicitObject>(new FConvex(GetVertices(), GetMargin()));
+			return TUniquePtr<FImplicitObject>(new FConvex(*this));
 		}
 
 		virtual TUniquePtr<FImplicitObject> CopyWithScale(const FVec3& Scale) const override;
@@ -907,6 +906,20 @@ namespace Chaos
 		FVec3 GetCenter() const
 		{
 			return FVec3(0);
+		}
+
+	private:
+		// IMPORTANT to keep this copy constructor private to avoid unintented expensive copies 
+		FConvex(const FConvex& Other)
+			: FImplicitObject(EImplicitObject::IsConvex | EImplicitObject::HasBoundingBox, ImplicitObjectType::Convex)
+			, Planes(Other.Planes)
+			, Vertices(Other.Vertices)
+			, LocalBoundingBox(Other.LocalBoundingBox)
+			, Volume(Other.Volume)
+			, CenterOfMass(Other.CenterOfMass)
+		{
+			StructureData.CopyFrom(Other.StructureData);
+			SetMargin(Other.Margin);
 		}
 
 	private:
