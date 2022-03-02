@@ -90,13 +90,249 @@ FGeometryCollectionConvexUtility::FGeometryCollectionConvexData FGeometryCollect
 namespace
 {
 
+// Minimal adaptation of TExtremePoints3 from ConvexHull3.cpp, from the GeometryProcessing plugin, because plugin code cannot be used here (for backported code)
+// (which was in turn was adapted from GteVector3.h's IntrinsicsVector3)
+// Tries to find 4 points that cover the extents of the point set reasonably well; falls back to fewer points if the point set doesn't span 3 dimensions
+struct FExtremePoints3_Local
+{
+	// number of extreme points found (0 to 4)
+	int NumFound = 0;
+	// indices of extreme points in original point array
+	int Extreme[4]{ 0, 0, 0, 0 };
+
+	FExtremePoints3_Local(const TArray<Chaos::FConvex::FVec3Type>& InPts)
+	{
+		int32 NumPoints = InPts.Num();
+		if (NumPoints == 0)
+		{
+			NumFound = 0;
+			return;
+		}
+
+		Chaos::FConvex::FVec3Type FirstPoint = InPts[0];
+		int FirstPtIdx = 0;
+
+		Chaos::FConvex::FVec3Type Min = FirstPoint, Max = FirstPoint;
+		FIntVector IndexMin(FirstPtIdx, FirstPtIdx, FirstPtIdx), IndexMax(FirstPtIdx, FirstPtIdx, FirstPtIdx);
+		for (int Idx = FirstPtIdx + 1; Idx < NumPoints; Idx++)
+		{
+			for (int Dim = 0; Dim < 3; Dim++)
+			{
+				Chaos::FReal Val = InPts[Idx][Dim];
+				if (Val < Min[Dim])
+				{
+					Min[Dim] = Val;
+					IndexMin[Dim] = Idx;
+				}
+				else if (Val > Max[Dim])
+				{
+					Max[Dim] = Val;
+					IndexMax[Dim] = Idx;
+				}
+			}
+		}
+
+		Chaos::FReal MaxRange = Max[0] - Min[0];
+		int MaxRangeDim = 0;
+		for (int Dim = 1; Dim < 3; Dim++)
+		{
+			Chaos::FReal Range = Max[Dim] - Min[Dim];
+			if (Range > MaxRange)
+			{
+				MaxRange = Range;
+				MaxRangeDim = Dim;
+			}
+		}
+		Extreme[0] = IndexMin[MaxRangeDim];
+		Extreme[1] = IndexMax[MaxRangeDim];
+
+		Chaos::FConvex::FVec3Type Origin = InPts[Extreme[0]];
+		Chaos::FConvex::FVec3Type LineDir = InPts[Extreme[1]] - Origin;
+		if (!LineDir.Normalize())
+		{
+			NumFound = 1;
+			Extreme[3] = Extreme[2] = Extreme[1] = Extreme[0];
+			return;
+		}
+
+		// find point furthest from the line formed by the first two extreme points
+		{
+			Chaos::FReal MaxDistSq = 0;
+			for (int Idx = FirstPtIdx; Idx < NumPoints; Idx++)
+			{
+				Chaos::FReal T = (InPts[Idx] - Origin).Dot(LineDir);
+				Chaos::FConvex::FVec3Type Proj = Origin + T * LineDir;
+				Chaos::FReal DistSq = Chaos::FConvex::FVec3Type::DistSquared(Proj, InPts[Idx]);
+				if (DistSq > MaxDistSq)
+				{
+					MaxDistSq = DistSq;
+					Extreme[2] = Idx;
+				}
+			}
+		}
+
+		Chaos::FConvex::FVec3Type PlaneNormal = LineDir ^ (InPts[Extreme[2]] - Origin);
+		if (!PlaneNormal.Normalize())
+		{
+			NumFound = 2;
+			Extreme[3] = Extreme[2] = Extreme[1];
+			return;
+		}
+
+		{
+			Chaos::FReal MaxDist = 0, MaxSign = 0;
+			for (int Idx = FirstPtIdx; Idx < NumPoints; Idx++)
+			{
+				Chaos::FReal DistSigned = PlaneNormal.Dot(InPts[Idx] - Origin);
+				Chaos::FReal Dist = FMath::Abs(DistSigned);
+				if (Dist > MaxDist)
+				{
+					MaxDist = Dist;
+					MaxSign = FMath::Sign(DistSigned);
+					Extreme[3] = Idx;
+				}
+			}
+
+			// Nearly coplanar points
+			if (MaxDist <= SMALL_NUMBER)
+			{
+				NumFound = 3;
+				return;
+			}
+		}
+
+		NumFound = 4;
+	}
+
+};
+
+// Minimal adaptation of TScaleGridIndexer3 from the GeometryProcessing plugin, because plugin code cannot be used here (for backported code)
+template<typename RealType>
+struct TScaleGridIndexer3_Local
+{
+	/** Real-valued size of an integer grid cell */
+	RealType CellSize;
+
+	TScaleGridIndexer3_Local() : CellSize((RealType)1)
+	{
+	}
+
+	TScaleGridIndexer3_Local(RealType CellSize) : CellSize(CellSize)
+	{
+		ensure(CellSize > 0);
+	}
+
+	/** Convert real-valued point to integer grid coordinates */
+	inline FIntVector ToGrid(const Chaos::FConvex::FVec3Type& P) const
+	{
+		return FIntVector(
+			(int)FMath::Floor(P.X / CellSize),
+			(int)FMath::Floor(P.Y / CellSize),
+			(int)FMath::Floor(P.Z / CellSize));
+	}
+};
+
+// Minimal adaptation of TPointHashGrid3 from the GeometryProcessing plugin, because plugin code cannot be used here (for backported code)
+template<typename PointDataType, typename RealType>
+class TPointHashGrid3_Local
+{
+private:
+	TMultiMap<FIntVector, PointDataType> Hash;
+	TScaleGridIndexer3_Local<RealType> Indexer;
+	PointDataType InvalidValue;
+
+public:
+
+	/**
+	 * Construct 3D hash grid
+	 * @param cellSize size of grid cells
+	 * @param InvalidValue this value will be returned by queries if no valid result is found (e.g. bounded-distance query)
+	 */
+	TPointHashGrid3_Local(RealType cellSize, PointDataType InvalidValue) : Indexer(cellSize), InvalidValue(InvalidValue)
+	{
+	}
+
+	/** Invalid grid value */
+	PointDataType GetInvalidValue() const
+	{
+		return InvalidValue;
+	}
+
+	/**
+	 * Insert at given position, without locking / thread-safety
+	 * @param Value the point/value to insert
+	 * @param Position the position associated with this value
+	 */
+	void InsertPointUnsafe(const PointDataType& Value, const Chaos::FConvex::FVec3Type& Position)
+	{
+		FIntVector idx = Indexer.ToGrid(Position);
+		Hash.Add(idx, Value);
+	}
+
+	/**
+	 * Find nearest point in grid, within a given sphere, without locking / thread-safety.
+	 * @param QueryPoint the center of the query sphere
+	 * @param Radius the radius of the query sphere
+	 * @param DistanceSqFunc Function you provide which measures the squared distance between QueryPoint and a Value
+	 * @param IgnoreFunc optional Function you may provide which will result in a Value being ignored if IgnoreFunc(Value) returns true
+	 * @return the found pair (Value,DistanceSqFunc(Value)), or (InvalidValue,MaxDouble) if not found
+	 */
+	TPair<PointDataType, RealType> FindNearestInRadius(
+		const Chaos::FConvex::FVec3Type& QueryPoint, RealType Radius,
+		TFunctionRef<RealType(const PointDataType&)> DistanceSqFunc,
+		TFunctionRef<bool(const PointDataType&)> IgnoreFunc = [](const PointDataType& data) { return false; }) const
+	{
+		if (!Hash.Num())
+		{
+			return TPair<PointDataType, RealType>(GetInvalidValue(), TNumericLimits<RealType>::Max());
+		}
+
+		FIntVector min_idx = Indexer.ToGrid(QueryPoint - Radius * Chaos::FConvex::FVec3Type(1,1,1));
+		FIntVector max_idx = Indexer.ToGrid(QueryPoint + Radius * Chaos::FConvex::FVec3Type(1,1,1));
+
+		RealType min_distsq = TNumericLimits<RealType>::Max();
+		PointDataType nearest = GetInvalidValue();
+		RealType RadiusSquared = Radius * Radius;
+
+		TArray<PointDataType> Values;
+		for (int zi = min_idx.Z; zi <= max_idx.Z; zi++)
+		{
+			for (int yi = min_idx.Y; yi <= max_idx.Y; yi++)
+			{
+				for (int xi = min_idx.X; xi <= max_idx.X; xi++)
+				{
+					FIntVector idx(xi, yi, zi);
+					Values.Reset();
+					Hash.MultiFind(idx, Values);
+					for (PointDataType Value : Values)
+					{
+						if (IgnoreFunc(Value))
+						{
+							continue;
+						}
+						RealType distsq = DistanceSqFunc(Value);
+						if (distsq < RadiusSquared && distsq < min_distsq)
+						{
+							nearest = Value;
+							min_distsq = distsq;
+						}
+					}
+				}
+			}
+		}
+
+		return TPair<PointDataType, RealType>(nearest, min_distsq);
+	}
+
+
+};
+
+
 typedef Chaos::TPlaneConcrete<Chaos::FReal, 3> FChaosPlane;
 
 // filter points s.t. they are spaced at least more than SimplificationDistanceThreshold apart (after starting with the 4 'extreme' points to ensure we cover a volume)
 void FilterHullPoints(const TArray<Chaos::FConvex::FVec3Type>& InPts, TArray<Chaos::FConvex::FVec3Type>& OutPts, double SimplificationDistanceThreshold)
 {
-	// todo(chaos) : re-enable this if we find a way to access the geometric object headers from there (see PointHashGrid3)
-#if 0
 	if (SimplificationDistanceThreshold > 0)
 	{
 		OutPts.Reset();
@@ -106,7 +342,7 @@ void FilterHullPoints(const TArray<Chaos::FConvex::FVec3Type>& InPts, TArray<Cha
 		DistSq.SetNumUninitialized(NumPts);
 		TArray<int32> PointOrder;
 		PointOrder.SetNumUninitialized(NumPts);
-		UE::Geometry::TPointHashGrid3<int32, Chaos::FReal> Spatial((Chaos::FReal)SimplificationDistanceThreshold, INDEX_NONE);
+		TPointHashGrid3_Local<int32, Chaos::FReal> Spatial((Chaos::FReal)SimplificationDistanceThreshold, INDEX_NONE);
 		Chaos::FAABB3 Bounds;
 		for (int32 VIdx = 0; VIdx < NumPts; VIdx++)
 		{
@@ -122,12 +358,8 @@ void FilterHullPoints(const TArray<Chaos::FConvex::FVec3Type>& InPts, TArray<Cha
 		}
 
 		// Start by picking the 'extreme' points to ensure we cover the volume reasonably (otherwise it's too easy to end up with a degenerate hull pieces)
-		UE::Geometry::TExtremePoints3<Chaos::FReal> ExtremePoints(NumPts,
-			[&InPts](int32 Idx)->UE::Math::TVector<Chaos::FReal> 
-			{ 
-				return (UE::Math::TVector<Chaos::FReal>)InPts[Idx];
-			});
-		for (int32 ExtremeIdx = 0; ExtremeIdx < ExtremePoints.Dimension + 1; ExtremeIdx++)
+		FExtremePoints3_Local ExtremePoints(InPts);
+		for (int32 ExtremeIdx = 0; ExtremeIdx < ExtremePoints.NumFound; ExtremeIdx++)
 		{
 			int32 ExtremePtIdx = ExtremePoints.Extreme[ExtremeIdx];
 			Chaos::FVec3 ExtremePt = InPts[ExtremePtIdx];
@@ -164,7 +396,6 @@ void FilterHullPoints(const TArray<Chaos::FConvex::FVec3Type>& InPts, TArray<Cha
 		}
 	}
 	else
-#endif		
 	{
 		// No filtering requested -- in practice, we don't call this function in these cases below
 		OutPts = InPts;
