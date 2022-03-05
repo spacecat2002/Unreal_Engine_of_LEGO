@@ -1094,7 +1094,8 @@ public:
 		Nodes[AllocatedNodeIdx].ParentNode = INDEX_NONE;
 		FAABBTreePayloadInfo* PayloadInfo = PayloadToInfo.Find(Payload);
 		check(PayloadInfo);
-		*PayloadInfo = FAABBTreePayloadInfo{ INDEX_NONE, INDEX_NONE, LeafIndex, INDEX_NONE, AllocatedNodeIdx };
+		PayloadInfo->LeafIdx = LeafIndex;
+		PayloadInfo->NodeIdx = AllocatedNodeIdx;
 
 		return AllocatedNodeIdx;
 	}
@@ -1323,7 +1324,8 @@ public:
 			Nodes[BestSibling].ChildrenBounds[0] = ExpandedBounds;
 			UpdateAncestorBounds(BestSibling, true);
 			FAABBTreePayloadInfo* PayloadInfo = PayloadToInfo.Find(Payload);
-			*PayloadInfo = FAABBTreePayloadInfo{ INDEX_NONE, INDEX_NONE, LeafIdx, INDEX_NONE, BestSibling };
+			PayloadInfo->LeafIdx = LeafIdx;
+			PayloadInfo->NodeIdx = BestSibling;
 			return;
 		}
 
