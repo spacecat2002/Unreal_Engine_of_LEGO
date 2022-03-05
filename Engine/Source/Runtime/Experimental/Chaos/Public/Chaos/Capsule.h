@@ -285,8 +285,15 @@ namespace Chaos
 					const FReal PositionLengthOnCoreCylinder = FVec3::DotProduct(CylinderToSpherePosition, MVector);
 					if (PositionLengthOnCoreCylinder >= 0 && PositionLengthOnCoreCylinder < MHeight)
 					{
+						const FVec3 SegmentToPosition = (CylinderToSpherePosition - MVector * PositionLengthOnCoreCylinder);
+						if (SegmentToPosition.SquaredLength() > ( R2 + KINDA_SMALL_NUMBER))
+						{
+							// the contact point is actually outside of the cylinder
+							// this can happen if the ray starts within the cylinder bounds but do not intersect with the cylinder
+							return false;
+						}
 						OutTime = Time + RemovedLength; // Account for ray clipped against bounds
-						OutNormal = (CylinderToSpherePosition - MVector * PositionLengthOnCoreCylinder) / R;
+						OutNormal = SegmentToPosition / R;
 						OutPosition = SpherePosition - OutNormal * Thickness;
 						return true;
 					}
