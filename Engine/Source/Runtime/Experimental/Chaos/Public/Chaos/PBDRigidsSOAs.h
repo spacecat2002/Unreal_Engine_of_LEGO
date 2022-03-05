@@ -208,10 +208,8 @@ public:
 		DynamicKinematicParticles = MakeUnique<FPBDRigidParticles>();
 
 		ClusteredParticles = MakeUnique< FPBDRigidClusteredParticles>();
-		ClusteredParticles->RemoveParticleBehavior() = ERemoveParticleBehavior::Remove;	//clustered particles maintain relative ordering
 
 		GeometryCollectionParticles = MakeUnique<TPBDGeometryCollectionParticles<FReal, 3>>();
-		GeometryCollectionParticles->RemoveParticleBehavior() = ERemoveParticleBehavior::Remove;	//clustered particles maintain relative ordering
 		bGeometryCollectionDirty = false;
 
 		UpdateViews();
@@ -634,8 +632,21 @@ public:
 
 	void SetClusteredParticleSOA(FPBDRigidClusteredParticleHandle* ClusteredParticle)
 	{
-		RemoveClusteredParticle(ClusteredParticle);
-		InsertClusteredParticle(ClusteredParticle);
+		if (ClusteredParticle->GetParticleType() != Chaos::EParticleType::GeometryCollection)
+		{ 
+			RemoveClusteredParticle(ClusteredParticle);
+			InsertClusteredParticle(ClusteredParticle);
+		}
+
+		if (ClusteredParticle->ObjectState() != EObjectStateType::Dynamic)
+		{
+			RemoveFromActiveArray(ClusteredParticle->CastToRigidParticle(), /*bStillDirty=*/true);
+		}
+		else
+		{
+			AddToActiveArray(ClusteredParticle->CastToRigidParticle());
+		}
+		
 		UpdateViews();
 	}
 
@@ -1064,7 +1075,6 @@ private:
 			{
 				{&ActiveParticlesMapArray.GetArray()},
 				//	{&DynamicClusteredMapArray.GetArray()},  Cluster particles appear in the ActiveParticlesArray
-				{&StaticGeometryCollectionArray},
 				{&KinematicGeometryCollectionArray},
 				{&DynamicGeometryCollectionArray},
 				{&FellAsleepGeometryCollectionArray.GetArray()},
