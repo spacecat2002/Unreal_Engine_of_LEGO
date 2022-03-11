@@ -2863,17 +2863,15 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		// Convert screen area to screen size
 		ConvertLegacyLODScreenSize();
 	}
-#endif
 
-#if WITH_EDITOR
 	// If inverse masses have never been cached, invalidate data so it will be recalculated
 	if(GetLinkerCustomVersion(FSkeletalMeshCustomVersion::GUID) < FSkeletalMeshCustomVersion::CachedClothInverseMasses)
 	{
 		for(UClothingAssetBase* ClothingAsset : GetMeshClothingAssets())
 		{
-			if(ClothingAsset) 
+			if (ClothingAsset) 
 			{
-				ClothingAsset->InvalidateCachedData();
+				ClothingAsset->InvalidateAllCachedData();
 			}
 		}
 	}
