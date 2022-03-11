@@ -13,29 +13,27 @@ class CHAOS_API FPBDLongRangeConstraints final : public FPBDLongRangeConstraints
 public:
 	typedef FPBDLongRangeConstraintsBase Base;
 	typedef typename Base::FTether FTether;
-	typedef typename Base::EMode EMode;
 
 	FPBDLongRangeConstraints(
 		const FPBDParticles& Particles,
 		const int32 InParticleOffset,
 		const int32 InParticleCount,
-		const TMap<int32, TSet<int32>>& PointToNeighbors,
-		const TConstArrayView<FReal>& StiffnessMultipliers,
-		const int32 MaxNumTetherIslands = 4,
-		const FVec2& InStiffness = FVec2((FReal)1., (FReal)1.),
-		const FReal LimitScale = (FReal)1.,
-		const EMode InMode = EMode::Geodesic)
-		: FPBDLongRangeConstraintsBase(Particles, InParticleOffset, InParticleCount, PointToNeighbors, StiffnessMultipliers, MaxNumTetherIslands, InStiffness, LimitScale, InMode) {}
+		const TArray<TConstArrayView<TTuple<int32, int32, FRealSingle>>>& InTethers,
+		const TConstArrayView<FRealSingle>& StiffnessMultipliers,
+		const TConstArrayView<FRealSingle>& ScaleMultipliers,
+		const FVec2& InStiffness = FVec2::UnitVector,
+		const FVec2& InScale = FVec2::UnitVector)
+		: FPBDLongRangeConstraintsBase(Particles, InParticleOffset, InParticleCount, InTethers, StiffnessMultipliers, ScaleMultipliers, InStiffness, InScale) {}
 	virtual ~FPBDLongRangeConstraints() {}
 
-	void Apply(FPBDParticles& Particles, const FReal Dt, const TArray<int32>& ConstraintIndices) const;
 	void Apply(FPBDParticles& Particles, const FReal Dt) const;
 
 private:
 	using Base::Tethers;
-	using Base::TethersView;
 	using Base::Stiffness;
 	using Base::ParticleOffset;
+	using Base::ScaleTable;
+	using Base::ScaleIndices;
 };
 }
 
