@@ -23,13 +23,16 @@ public:
 	FClothingSimulationContextCommon();
 	virtual ~FClothingSimulationContextCommon() override;
 
-	// Fill this context using the given skeletal mesh component
+	UE_DEPRECATED(4.27, "Use the version with bIsInitialization instead.")
 	virtual void Fill(const USkeletalMeshComponent* InComponent, float InDeltaSeconds, float InMaxPhysicsDelta);
+
+	// Fill this context using the given skeletal mesh component
+	virtual void Fill(const USkeletalMeshComponent* InComponent, float InDeltaSeconds, float InMaxPhysicsDelta, bool bIsInitialization);
 
 protected:
 	// Default fill behavior as expected to be used by every simulation
 	virtual void FillBoneTransforms(const USkeletalMeshComponent* InComponent);
-	virtual void FillRefToLocals(const USkeletalMeshComponent* InComponent);
+	virtual void FillRefToLocals(const USkeletalMeshComponent* InComponent, bool bIsInitialization);
 	virtual void FillComponentToWorld(const USkeletalMeshComponent* InComponent);
 	virtual void FillWorldGravity(const USkeletalMeshComponent* InComponent);
 	virtual void FillWindVelocity(const USkeletalMeshComponent* InComponent);
@@ -79,7 +82,13 @@ public:
 
 protected:
 	/** Fills in the base data for a clothing simulation */
+	UE_DEPRECATED(4.27, "Use the version with bIsInitialization instead.")
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	virtual void FillContext(USkeletalMeshComponent* InComponent, float InDeltaTime, IClothingSimulationContext* InOutContext) override;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+	/** Fills in the base data for a clothing simulation */
+	virtual void FillContext(USkeletalMeshComponent* InComponent, float InDeltaTime, IClothingSimulationContext* InOutContext, bool bIsInitialization) override;
 
 protected:
 	/** Maximum physics time, incoming deltas will be clamped down to this value on long frames */

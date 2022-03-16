@@ -241,6 +241,7 @@ USkeletalMeshComponent::USkeletalMeshComponent(const FObjectInitializer& ObjectI
 	ClothingSimulationContext = nullptr;
 	ClothingInteractor = nullptr;
 
+	bAllowClothActors = true;
 	bPostEvaluatingAnimation = false;
 	bAllowAnimCurveEvaluation = true;
 	bDisablePostProcessBlueprint = false;
@@ -422,9 +423,11 @@ bool USkeletalMeshComponent::ShouldRunClothTick() const
 	return	false;
 }
 
+extern TAutoConsoleVariable<int32> CVarEnableClothPhysics;
+
 bool USkeletalMeshComponent::CanSimulateClothing() const
 {
-	if(!SkeletalMesh)
+	if(!SkeletalMesh || !bAllowClothActors || !CVarEnableClothPhysics.GetValueOnAnyThread())
 	{
 		return false;
 	}
@@ -1351,9 +1354,14 @@ void USkeletalMeshComponent::TickComponent(float DeltaTime, enum ELevelTick Tick
 
 	// If we are suspended, we will not simulate clothing, but as clothing is simulated in local space
 	// relative to a root bone we need to extract simulation positions as this bone could be animated.
-	if(bClothingSimulationSuspended && ClothingSimulation && ClothingSimulation->ShouldSimulate())
+	if((!CVarEnableClothPhysics.GetValueOnGameThread() || bClothingSimulationSuspended) && ClothingSimulation)
 	{
 		CSV_SCOPED_TIMING_STAT(Animation, Cloth);
+
+		// First update the simulation context, since the simulation isn't ticking
+		// and it is still required to get the correct simulation data and bounds.
+		constexpr bool bIsInitialization = false;
+		ClothingSimulation->FillContext(this, DeltaTime, ClothingSimulationContext, bIsInitialization);
 
 		ClothingSimulation->GetSimulationData(CurrentSimulationData, this, Cast<USkeletalMeshComponent>(MasterPoseComponent.Get()));
 	}
@@ -2054,7 +2062,8 @@ void USkeletalMeshComponent::UpdateClothSimulationContext(float InDeltaTime)
 	// Fill the context for the next simulation
 	if(ClothingSimulation)
 	{
-		ClothingSimulation->FillContext(this, InDeltaTime, ClothingSimulationContext);
+		const bool bIsInitialization = false;
+		ClothingSimulation->FillContext(this, InDeltaTime, ClothingSimulationContext, bIsInitialization);
 
 		if(ClothingInteractor)
 		{
@@ -3931,6 +3940,11 @@ void USkeletalMeshComponent::SetAllowRigidBodyAnimNode(bool bInAllow, bool bRein
 			}
 		}
 	}
+}
+
+void USkeletalMeshComponent::SetAllowClothActors(bool bInAllow)
+{
+	bAllowClothActors = bInAllow;
 }
 
 bool USkeletalMeshComponent::DoCustomNavigableGeometryExport(FNavigableGeometryExport& GeomExport) const
