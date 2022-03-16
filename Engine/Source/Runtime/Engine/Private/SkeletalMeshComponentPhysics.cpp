@@ -2566,12 +2566,12 @@ void USkeletalMeshComponent::RecreateClothingActors()
 
 	ReleaseAllClothingResources();
 
-	if(SkeletalMesh == nullptr || !IsRegistered())
+	if(!bAllowClothActors || SkeletalMesh == nullptr || !IsRegistered())
 	{
 		return;
 	}
 
-	if(SkeletalMesh->GetMeshClothingAssets().Num() > 0)
+	if(CVarEnableClothPhysics.GetValueOnGameThread() && (SkeletalMesh->GetMeshClothingAssets().Num() > 0))
 	{
 		UClass* SimFactoryClass = *ClothingSimulationFactory;
 		if (SimFactoryClass)
@@ -2607,7 +2607,8 @@ void USkeletalMeshComponent::RecreateClothingActors()
 				TArray<UClothingAssetBase*> AssetsInUse;
 				SkeletalMesh->GetClothingAssetsInUse(AssetsInUse);
 
-				ClothingSimulation->FillContext(this, 0.f, ClothingSimulationContext);
+				const bool bIsInitialization = true;
+				ClothingSimulation->FillContext(this, 0.f, ClothingSimulationContext, bIsInitialization);
 
 				const int32 NumMeshAssets = SkeletalMesh->GetMeshClothingAssets().Num();
 				for (int32 BaseAssetIndex = 0; BaseAssetIndex < NumMeshAssets; ++BaseAssetIndex)

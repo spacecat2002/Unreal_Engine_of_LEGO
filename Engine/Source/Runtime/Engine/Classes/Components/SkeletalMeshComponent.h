@@ -578,6 +578,13 @@ public:
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, Category=SkeletalMesh)
 	uint8 bUpdateJointsFromAnimation:1;
 
+	/**
+	 * Toggles creation of cloth simulation. Distinct from the simulation toggle below in that, if off, avoids allocating
+	 * the actors entirely instead of just skipping the simulation step.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	uint8 bAllowClothActors:1;
+
 	/** Disable cloth simulation and play original animation without simulation */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Clothing)
 	uint8 bDisableClothSimulation:1;
@@ -1088,6 +1095,17 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Pose")
 	void SnapshotPose(UPARAM(ref) FPoseSnapshot& Snapshot);
+
+	/**
+	 * Sets whether cloth assets should be created/simulated in this component.
+	 * This will update the conditional flag and you will want to call RecreateClothingActors for it to take effect.
+	 * @param bInAllow Whether to allow the creation of cloth assets and simulation.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Components|SkeletalMesh")
+	void SetAllowClothActors(bool bInAllow);
+
+	UFUNCTION(BlueprintCallable, Category="Components|SkeletalMesh")
+	bool GetAllowClothActors() const { return bAllowClothActors; }
 
 	/**
 	 * Get/Set the max distance scale of clothing mesh vertices
