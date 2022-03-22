@@ -128,14 +128,18 @@ FConstraintProfileProperties::FConstraintProfileProperties()
 	, ProjectionAngularTolerance(180.f)
 	, ProjectionLinearAlpha(1.0f)
 	, ProjectionAngularAlpha(0.0f)
+	, ShockPropagationAlpha(0.3f)
 	, LinearBreakThreshold(300.f)
 	, LinearPlasticityThreshold(10.f)
 	, AngularBreakThreshold(500.f)
 	, AngularPlasticityThreshold(10.f)
 	, bDisableCollision(false)
 	, bParentDominates(false)
-	, bEnableProjection(true)
-	, bEnableSoftProjection(false)
+	, bEnableLinearProjection(false)
+	, bEnableAngularProjection(false)
+	, bEnableShockPropagation(false)
+	, bEnableProjection(true)		// to be deprecated
+	, bEnableSoftProjection(false)	// to be deprecated
 	, bAngularBreakable(false)
 	, bAngularPlasticity(false)
 	, bLinearBreakable(false)
@@ -435,7 +439,8 @@ void FConstraintProfileProperties::UpdateConstraintFlags_AssumesLocked(const FPh
 
 	FPhysicsInterface::SetCollisionEnabled(InConstraintRef, !bDisableCollision);
 #if WITH_CHAOS
-	FPhysicsInterface::SetProjectionEnabled_AssumesLocked(InConstraintRef, bEnableProjection, ProjectionLinearAlpha, ProjectionAngularAlpha);
+	FPhysicsInterface::SetProjectionEnabled_AssumesLocked(InConstraintRef, bEnableLinearProjection || bEnableAngularProjection, ProjectionLinearAlpha, ProjectionAngularAlpha);
+	FPhysicsInterface::SetShockPropagationEnabled_AssumesLocked(InConstraintRef, bEnableShockPropagation, ShockPropagationAlpha);
 #else
 	FPhysicsInterface::SetProjectionEnabled_AssumesLocked(InConstraintRef, bEnableProjection, ProjectionLinearTolerance, ProjectionAngularTolerance);
 #endif
@@ -1092,24 +1097,87 @@ FConstraintInstance * FConstraintInstance::Alloc()
 	return new (Memory)FConstraintInstance();
 }
 
+void FConstraintInstance::GetProjectionAlphasOrTolerances(float& ProjectionLinearAlphaOrTolerance, float& ProjectionAngularAlphaOrTolerance) const
+{
+#if WITH_CHAOS
+	ProjectionLinearAlphaOrTolerance = ProfileInstance.ProjectionLinearAlpha;
+	ProjectionAngularAlphaOrTolerance = ProfileInstance.ProjectionAngularAlpha;
+#else
+	ProjectionLinearAlphaOrTolerance = ProfileInstance.ProjectionLinearTolerance;
+	ProjectionAngularAlphaOrTolerance = ProfileInstance.ProjectionAngularTolerance;
+
+#endif
+}
+
+void FConstraintInstance::SetProjectionParams(bool bEnableLinearProjection, bool bEnableAngularProjection, float ProjectionLinearAlphaOrTolerance, float ProjectionAngularAlphaOrTolerance)
+{
+	ProfileInstance.bEnableLinearProjection = bEnableLinearProjection;
+	ProfileInstance.bEnableAngularProjection = bEnableAngularProjection;
+#if WITH_CHAOS
+	ProfileInstance.ProjectionLinearAlpha = ProjectionLinearAlphaOrTolerance;
+	ProfileInstance.ProjectionAngularAlpha = ProjectionAngularAlphaOrTolerance;
+#else
+	ProfileInstance.ProjectionLinearTolerance = ProjectionLinearAlphaOrTolerance;
+	ProfileInstance.ProjectionAngularTolerance = ProjectionAngularAlphaOrTolerance;
+#endif
+
+	FPhysicsCommand::ExecuteWrite(ConstraintHandle, [&](const FPhysicsConstraintHandle& Constraint)
+		{
+#if WITH_CHAOS
+			const bool bEnableProjection = bEnableAngularProjection || ProjectionLinearAlphaOrTolerance;
+			const float LinearAlpha = bEnableLinearProjection ? ProjectionLinearAlphaOrTolerance : 0.0f;
+			const float AngularAlpha = bEnableAngularProjection ? ProjectionAngularAlphaOrTolerance : 0.0f;
+			FPhysicsInterface::SetProjectionEnabled_AssumesLocked(Constraint, bEnableProjection, LinearAlpha, AngularAlpha);
+#else
+			if (bEnableLinearProjection)
+			{
+				FPhysicsInterface::SetProjectionEnabled_AssumesLocked(Constraint, true, ProjectionLinearAlphaOrTolerance, ProjectionAngularAlphaOrTolerance);
+			}
+			else
+			{
+				FPhysicsInterface::SetProjectionEnabled_AssumesLocked(Constraint, false);
+			}
+#endif
+		});
+}
+
+float FConstraintInstance::GetShockPropagationAlpha() const
+{
+#if WITH_CHAOS
+	return ProfileInstance.ShockPropagationAlpha;
+#else
+	return 0;
+#endif
+}
+
+void FConstraintInstance::SetShockPropagationParams(bool bEnableShockPropagation, float ShockPropagationAlpha)
+{
+#if WITH_CHAOS
+	ProfileInstance.bEnableShockPropagation = bEnableShockPropagation;
+	ProfileInstance.ShockPropagationAlpha = ShockPropagationAlpha;
+	FPhysicsCommand::ExecuteWrite(ConstraintHandle, [&](const FPhysicsConstraintHandle& Constraint)
+		{
+			FPhysicsInterface::SetShockPropagationEnabled_AssumesLocked(Constraint, bEnableShockPropagation, ShockPropagationAlpha);
+		});
+#endif
+}
+
 void FConstraintInstance::EnableProjection()
 {
-	ProfileInstance.bEnableProjection = true;
-	
-	FPhysicsCommand::ExecuteWrite(ConstraintHandle, [&](const FPhysicsConstraintHandle& Constraint)
-	{
-		FPhysicsInterface::SetProjectionEnabled_AssumesLocked(Constraint, true, ProfileInstance.ProjectionLinearTolerance, ProfileInstance.ProjectionAngularTolerance);
-	});
+#if WITH_CHAOS
+	SetProjectionParams(true, true, ProfileInstance.ProjectionLinearAlpha, ProfileInstance.ProjectionAngularAlpha);
+#else
+	SetProjectionParams(true, ProfileInstance.ProjectionLinearTolerance, ProfileInstance.ProjectionAngularTolerance);
+#endif
 }
 
 void FConstraintInstance::DisableProjection()
 {
-	ProfileInstance.bEnableProjection = false;
-	
-	FPhysicsCommand::ExecuteWrite(ConstraintHandle, [&](const FPhysicsConstraintHandle& Constraint)
-	{
-		FPhysicsInterface::SetProjectionEnabled_AssumesLocked(Constraint, false);
-	});
+#if WITH_CHAOS
+	SetProjectionParams(false, false, ProfileInstance.ProjectionLinearAlpha, ProfileInstance.ProjectionAngularAlpha);
+#else
+	SetProjectionParams(false, ProfileInstance.ProjectionLinearTolerance, ProfileInstance.ProjectionAngularTolerance);
+#endif
 }
 
 void FConstraintInstance::EnableParentDominates()
