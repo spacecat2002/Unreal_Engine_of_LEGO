@@ -758,8 +758,15 @@ void FAnimNode_RigidBody::EvaluateSkeletalControl_AnyThread(FComponentSpacePoseC
 				UseSimSpaceSettings->MasterAlpha, 
 				UseSimSpaceSettings->ExternalLinearDragV);
 
-			PhysicsSimulation->SetSolverIterations(
-				SolverIterations.FixedTimeStep,
+			PhysicsSimulation->SetSolverSettings(
+				SolverSettings.FixedTimeStep,
+				SolverSettings.CullDistance,
+				SolverSettings.MaxDepenetrationVelocity,
+				SolverSettings.PositionIterations,
+				SolverSettings.VelocityIterations,
+				SolverSettings.ProjectionIterations);
+
+			PhysicsSimulation->SetLegacySolverSettings(
 				SolverIterations.SolverIterations,
 				SolverIterations.JointIterations,
 				SolverIterations.CollisionIterations,
@@ -1169,16 +1176,23 @@ void FAnimNode_RigidBody::InitPhysics(const UAnimInstance* InAnimInstance)
 		PhysicsSimulation->SetIgnoreCollisionActors(IgnoreCollisionActors);
 
 #if WITH_CHAOS
+		SolverSettings = UsePhysicsAsset->SolverSettings;
+		PhysicsSimulation->SetSolverSettings(
+			SolverSettings.FixedTimeStep,
+			SolverSettings.CullDistance,
+			SolverSettings.MaxDepenetrationVelocity,
+			SolverSettings.PositionIterations,
+			SolverSettings.VelocityIterations,
+			SolverSettings.ProjectionIterations);
+
 		SolverIterations = UsePhysicsAsset->SolverIterations;
-		PhysicsSimulation->SetSolverIterations(
-			SolverIterations.FixedTimeStep,
+		PhysicsSimulation->SetLegacySolverSettings(
 			SolverIterations.SolverIterations,
 			SolverIterations.JointIterations,
 			SolverIterations.CollisionIterations,
 			SolverIterations.SolverPushOutIterations,
 			SolverIterations.JointPushOutIterations,
-			SolverIterations.CollisionPushOutIterations
-		);
+			SolverIterations.CollisionPushOutIterations);
 #endif
 	}
 }

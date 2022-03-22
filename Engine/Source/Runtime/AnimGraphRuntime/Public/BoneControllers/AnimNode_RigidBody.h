@@ -335,7 +335,8 @@ private:
 	TWeakObjectPtr<USkeletalMeshComponent> SkelMeshCompWeakPtr;
 
 	ImmediatePhysics::FSimulation* PhysicsSimulation;
-	FSolverIterations SolverIterations;
+	FPhysicsAssetSolverSettings SolverSettings;
+	FSolverIterations SolverIterations;	// to be deprecated
 
 	struct FOutputBoneData
 	{
