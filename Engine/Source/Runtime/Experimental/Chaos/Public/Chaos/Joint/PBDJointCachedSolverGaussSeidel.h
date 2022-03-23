@@ -66,6 +66,7 @@ struct FAxisConstraintDatas
 	bool bLimitsCheck[3];
 	bool bAccelerationMode;
 	bool bSoftLimit[3];
+	
 	EJointMotionType MotionType[3];
 };
 	
@@ -201,6 +202,11 @@ struct FAxisConstraintDatas
 			const FRigidTransform3& XL0,
 			const FRigidTransform3& XL1);
 
+		void InitProjection(
+			const FReal Dt,
+			const FPBDJointSolverSettings& SolverSettings,
+			const FPBDJointSettings& JointSettings);
+
 		void Deinit();
 
 		// @todo(chaos): this doesn't do much now we have SolverBodies - remove it
@@ -229,7 +235,18 @@ struct FAxisConstraintDatas
 			const FReal Dt,
 			const FReal InSolverStiffness,
 			const FPBDJointSolverSettings& SolverSettings,
-			const FPBDJointSettings& JointSettings){}
+			const FPBDJointSettings& JointSettings,
+			const bool bLastIteration);
+
+		void ApplyPositionProjection(
+			const FReal Dt,
+			const FPBDJointSolverSettings& SolverSettings,
+			const FPBDJointSettings& JointSettings);
+
+		void ApplyRotationProjection(
+			const FReal Dt,
+			const FPBDJointSolverSettings& SolverSettings,
+			const FPBDJointSettings& JointSettings);
 
 		void EnableProjection();
 
@@ -347,6 +364,12 @@ struct FAxisConstraintDatas
 			const FPBDJointSettings& JointSettings,
 			const FReal Dt);
 
+		void InitPyramidSwingConstraint(
+		   const FPBDJointSettings& JointSettings,
+		   const FReal Dt,
+		   const bool bApplySwing1,
+		   const bool bApplySwing2);
+
 		// One Swing axis is free, and the other locked. This applies the lock: Body1 Twist axis is confined to a plane.
 		void InitSingleLockedSwingConstraint(
 			const FPBDJointSettings& JointSettings,
@@ -370,7 +393,8 @@ struct FAxisConstraintDatas
 			const FPBDJointSettings& JointSettings,
 			const FReal Dt,
 			const bool bApplyTwist,
-			const bool bApplySwing);
+			const bool bApplySwing1,
+			const bool bApplySwing2);
 
 		/** Apply Rotation constraints */
 
