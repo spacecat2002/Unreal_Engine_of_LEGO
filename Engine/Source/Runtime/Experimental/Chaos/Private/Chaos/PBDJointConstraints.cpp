@@ -174,6 +174,11 @@ namespace Chaos
 		return ConcreteContainer()->SetConstraintEnabled(ConstraintIndex, bInEnabled);
 	}
 
+	void FPBDJointConstraintHandle::PreGatherInput(const FReal Dt, FPBDIslandSolverData& SolverData)
+	{
+		ConcreteContainer()->PreGatherInput(Dt, ConstraintIndex, SolverData);
+	}
+
 	void FPBDJointConstraintHandle::GatherInput(const FReal Dt, const int32 Particle0Level, const int32 Particle1Level, FPBDIslandSolverData& SolverData)
 	{
 		ConcreteContainer()->GatherInput(Dt, ConstraintIndex, Particle0Level, Particle1Level, SolverData);
@@ -813,6 +818,17 @@ namespace Chaos
 	//
 	//////////////////////////////////////////////////////////////////////////
 
+	void FPBDJointConstraints::PreGatherInput(const FReal Dt, FPBDIslandSolverData& SolverData)
+	{
+		for (int32 ConstraintIndex = 0; ConstraintIndex < NumConstraints(); ++ConstraintIndex)
+		{
+			if (!ConstraintStates[ConstraintIndex].bDisabled)
+			{
+				PreGatherInput(Dt, ConstraintIndex, SolverData);
+			}
+		}
+	}
+
 	void FPBDJointConstraints::GatherInput(const FReal Dt, FPBDIslandSolverData& SolverData)
 	{
 		for (int32 ConstraintIndex = 0; ConstraintIndex < NumConstraints(); ++ConstraintIndex)
@@ -856,12 +872,27 @@ namespace Chaos
 		SolverData.GetConstraintIndices(ContainerId).Reset(NumIslandConstraints);
 	}
 
+	void FPBDJointConstraints::PreGatherInput(const FReal Dt, const int32 ConstraintIndex, FPBDIslandSolverData& SolverData)
+	{
+		check(!ConstraintStates[ConstraintIndex].bDisabled);
+
+		SolverData.GetConstraintIndices(ContainerId).Add(ConstraintIndex);
+
+		int32 Index0, Index1;
+		GetConstrainedParticleIndices(ConstraintIndex, Index0, Index1);
+		FGenericParticleHandle Particle0 = FGenericParticleHandle(ConstraintParticles[ConstraintIndex][Index0]);
+		FGenericParticleHandle Particle1 = FGenericParticleHandle(ConstraintParticles[ConstraintIndex][Index1]);
+
+		// Find the solver bodies for the particles we constrain. This will add them to the container
+		// if they aren't there already, and ensure that they are populated with the latest data.
+		SolverData.GetBodyContainer().FindOrAdd(Particle0);
+		SolverData.GetBodyContainer().FindOrAdd(Particle1);
+	}
+
 	void FPBDJointConstraints::GatherInput(const FReal Dt, const int32 ConstraintIndex, const int32 Particle0Level, const int32 Particle1Level, FPBDIslandSolverData& SolverData)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Joints_Gather);
 		check(!ConstraintStates[ConstraintIndex].bDisabled);
-
-		SolverData.GetConstraintIndices(ContainerId).Add(ConstraintIndex);
 
 		const FPBDJointSettings& JointSettings = ConstraintSettings[ConstraintIndex];
 		const FTransformPair& JointFrames = JointSettings.ConnectorTransforms;
@@ -1024,11 +1055,38 @@ namespace Chaos
 		}
 		return (NumActive > 0);
 	}
+	
+	void FPBDJointConstraints::PreparePhase3Serial(const FReal Dt, const int32 It, FPBDIslandSolverData& SolverData)
+	{
+		CSV_SCOPED_TIMING_STAT(Chaos, ProjectJointConstraints);
+		SCOPE_CYCLE_COUNTER(STAT_Joints_ApplyProjection);
+
+		if(It == 0 && Settings.bUseLinearSolver)
+		{
+			for (int32 ConstraintIndex : SolverData.GetConstraintIndices(ContainerId))
+			{
+				const FPBDJointSettings& JointSettings = ConstraintSettings[ConstraintIndex];
+				FPBDJointCachedSolver& Solver = CachedConstraintSolvers[ConstraintIndex];
+				
+				if ((FMath::IsNearlyZero(Solver.InvM(0)) && FMath::IsNearlyZero(Solver.InvM(1))))
+				{
+					return;
+				}
+				Solver.InitProjection(
+					Dt,
+					Settings,
+					JointSettings);
+			}
+		}
+	}
 
 	bool FPBDJointConstraints::ApplyPhase3Serial(const FReal Dt, const int32 It, const int32 NumIts, FPBDIslandSolverData& SolverData)
 	{
 		CSV_SCOPED_TIMING_STAT(Chaos, ProjectJointConstraints);
 		SCOPE_CYCLE_COUNTER(STAT_Joints_ApplyProjection);
+
+		// Prepare phase 3 for the linear solver in order to partially re-init the solver
+		PreparePhase3Serial(Dt, It, SolverData);
 
 		// UpdateConstraintProjection(It, NumIts, SolverData);
 		for (int32 ConstraintIndex : SolverData.GetConstraintIndices(ContainerId))
@@ -1038,7 +1096,6 @@ namespace Chaos
 
 		return true;
 	}
-
 
 	void FPBDJointConstraints::UpdateConstraintProjection(const int32 It, const int32 NumIts, const FPBDIslandSolverData& SolverData)
 	{
@@ -1363,12 +1420,8 @@ namespace Chaos
 				return false;
 			}
 
-			// @todo(chaos): rebuild the joint state at the latest (post-solve) transforms
-			//Solver.Update(Dt, Settings, JointSettings);
-			//Solver.UpdateMasses(FReal(0), FReal(1));
-
 			const FReal IterationStiffness = CalculateIterationStiffness(It, NumIts);
-			Solver.ApplyProjections(Dt, IterationStiffness, Settings, JointSettings);
+			Solver.ApplyProjections(Dt, IterationStiffness, Settings, JointSettings, (It==(NumIts-1)));
 		}
 		else
 		{
