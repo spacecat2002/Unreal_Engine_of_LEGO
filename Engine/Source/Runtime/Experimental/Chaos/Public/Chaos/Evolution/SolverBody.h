@@ -17,13 +17,10 @@
 
 // Add some NaN checking when CHAOS_CONSTRAINTSOLVER_NAN_DIAGNOSTIC is defined
 #if CHAOS_CONSTRAINTSOLVER_NAN_DIAGNOSTIC
-inline void ChaosSolverCheckNaN(const Chaos::FRealSingle& V) { ensure(!FMath::IsNaN(V)); }
-inline void ChaosSolverCheckNaN(const Chaos::TVec3<Chaos::FRealSingle>& V) { ensure(!V.ContainsNaN()); }
-inline void ChaosSolverCheckNaN(const Chaos::TRotation3<Chaos::FRealSingle>& V) { ensure(!V.ContainsNaN()); }
+inline void ChaosSolverCheckNaN(const Chaos::FReal& V) { ensure(!FMath::IsNaN(V)); }
+inline void ChaosSolverCheckNaN(const Chaos::FVec3& V) { ensure(!V.ContainsNaN()); }
+inline void ChaosSolverCheckNaN(const Chaos::FRotation3& V) { ensure(!V.ContainsNaN()); }
 
-inline void ChaosSolverCheckNaN(const Chaos::FRealDouble& V) { ensure(!FMath::IsNaN(V)); }
-inline void ChaosSolverCheckNaN(const Chaos::TVec3<Chaos::FRealDouble>& V) { ensure(!V.ContainsNaN()); }
-inline void ChaosSolverCheckNaN(const Chaos::TRotation3<Chaos::FRealDouble>& V) { ensure(!V.ContainsNaN()); }
 #else
 #define ChaosSolverCheckNaN(...)
 #endif

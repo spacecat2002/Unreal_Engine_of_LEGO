@@ -5,6 +5,7 @@
 #include "CoreTypes.h"
 #include "Templates/IsEnum.h"
 #include "Misc/Crc.h"
+#include <cstdint>
 
 /**
  * Combines two hash values to get a third.
