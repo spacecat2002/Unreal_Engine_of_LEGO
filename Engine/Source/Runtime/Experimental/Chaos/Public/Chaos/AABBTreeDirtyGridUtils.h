@@ -443,7 +443,7 @@ namespace Chaos
 			{
 				for (int64 Y = CellStartY; Y <= CellEndY; Y++)
 				{
-					InFunction(X, Y);
+					InFunction((FReal)X * DirtyElementGridCellSize, (FReal)Y * DirtyElementGridCellSize);
 				}
 			}
 		}
