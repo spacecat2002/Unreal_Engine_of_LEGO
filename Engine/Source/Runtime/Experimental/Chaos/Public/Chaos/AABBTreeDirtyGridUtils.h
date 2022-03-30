@@ -421,7 +421,7 @@ namespace Chaos
 	}
 
 	template <typename FunctionType>
-	void DoForSweepIntersectCells(const FVec3 QueryHalfExtents, const FVec3& StartPoint, const FVec3& Dir, FReal Length, FReal DirtyElementGridCellSize, FReal DirtyElementGridCellSizeInv, FunctionType InFunction)
+	FORCEINLINE_DEBUGGABLE void DoForSweepIntersectCells(const FVec3 QueryHalfExtents, const FVec3& StartPoint, const FVec3& Dir, FReal Length, FReal DirtyElementGridCellSize, FReal DirtyElementGridCellSizeInv, FunctionType InFunction)
 	{
 		FReal AbsDx = FMath::Abs(Dir.X * Length);
 		FReal AbsDy = FMath::Abs(Dir.Y * Length);
