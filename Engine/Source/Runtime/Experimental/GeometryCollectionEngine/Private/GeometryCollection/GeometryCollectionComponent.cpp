@@ -13,6 +13,7 @@
 #include "GeometryCollection/GeometryCollectionUtility.h"
 #include "GeometryCollection/GeometryCollectionClusteringUtility.h"
 #include "GeometryCollection/GeometryCollectionProximityUtility.h"
+#include "GeometryCollection/GeometryCollectionSizeSpecificUtility.h"
 #include "GeometryCollection/GeometryCollectionCache.h"
 #include "GeometryCollection/GeometryCollectionActor.h"
 #include "GeometryCollection/GeometryCollectionDebugDrawComponent.h"
@@ -242,6 +243,7 @@ UGeometryCollectionComponent::UGeometryCollectionComponent(const FObjectInitiali
 	, bIsTransformSelectionModeEnabled(false)
 #endif  // #if GEOMETRYCOLLECTION_EDITOR_SELECTION
 	, bIsMoving(false)
+	, bNeedRemovalUpdate(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bTickInEditor = true;
@@ -1668,7 +1670,7 @@ void UGeometryCollectionComponent::TickComponent(float DeltaTime, enum ELevelTic
 		// In editor mode we have no DynamicCollection so this test is necessary
 		if(DynamicCollection) //, TEXT("No dynamic collection available for component %s during tick."), *GetName()))
 		{
-			if (RestCollection->bRemoveOnMaxSleep)
+			if (bNeedRemovalUpdate)
 			{ 
 				IncrementSleepTimer(DeltaTime);
 			}
@@ -1728,6 +1730,8 @@ void UGeometryCollectionComponent::ResetDynamicCollection()
 		}
 	}
 #endif
+
+	bNeedRemovalUpdate = false;
 	//UE_LOG(UGCC_LOG, Log, TEXT("GeometryCollectionComponent[%p]::ResetDynamicCollection()"), static_cast<const void*>(this));
 	if (bCreateDynamicCollection && RestCollection)
 	{
@@ -1745,47 +1749,50 @@ void UGeometryCollectionComponent::ResetDynamicCollection()
 
 		if (RestCollection->bRemoveOnMaxSleep)
 		{
-			if (!DynamicCollection->HasAttribute("SleepTimer", FGeometryCollection::TransformGroup))
-			{
-				TManagedArray<float>& SleepTimer = DynamicCollection->AddAttribute<float>("SleepTimer", FGeometryCollection::TransformGroup);
-				SleepTimer.Fill(0.f);
-			}
+			bNeedRemovalUpdate = true;
+			CreateRemovalAttributesIfMissing(true);
+		}
 
-			if (!DynamicCollection->HasAttribute("Decay", FGeometryCollection::TransformGroup))
+		// should be conditioned on having specific data set ?
+		if (RestCollection->GetGeometryCollection()->HasAttribute("Size", FTransformCollection::TransformGroup))
+		{
+			//better way of doing this ?
+			for (const auto& SizeSpecificData: RestCollection->SizeSpecificData)
 			{
-				TManagedArray<float>& Decay = DynamicCollection->AddAttribute<float>("Decay", FGeometryCollection::TransformGroup);
-				Decay.Fill(0);
-			}
-
-			if (!DynamicCollection->HasAttribute("UniformScale", FGeometryCollection::TransformGroup))
-			{
-				TManagedArray<FTransform>& UniformScale = DynamicCollection->AddAttribute<FTransform>("UniformScale", FGeometryCollection::TransformGroup);
-				UniformScale.Fill(FTransform::Identity);
-			}
-
-			if (!DynamicCollection->HasAttribute("MaxSleepTime", FGeometryCollection::TransformGroup))
-			{
-				float MinTime = FMath::Max(0.0f, RestCollection->MaximumSleepTime.X);
-				float MaxTime = FMath::Max(MinTime, RestCollection->MaximumSleepTime.Y);
-				TManagedArray<float>& MaxSleepTime = DynamicCollection->AddAttribute<float>("MaxSleepTime", FGeometryCollection::TransformGroup);
-				for (int32 Idx = 0; Idx < MaxSleepTime.Num(); ++Idx)
+				if (SizeSpecificData.Removal.bRemoveOnMaxSleep)
 				{
-					MaxSleepTime[Idx] = FMath::RandRange(MinTime, MaxTime);
+					bNeedRemovalUpdate = true;
+					break;
 				}
 			}
-
-			if (!DynamicCollection->HasAttribute("RemovalDuration", FGeometryCollection::TransformGroup))
+			if (bNeedRemovalUpdate)
 			{
-				float MinTime = FMath::Max(0.0f, RestCollection->RemovalDuration.X);
-				float MaxTime = FMath::Max(MinTime, RestCollection->RemovalDuration.Y);
-				TManagedArray<float>& RemovalDuration = DynamicCollection->AddAttribute<float>("RemovalDuration", FGeometryCollection::TransformGroup);
-				for (int32 Idx = 0; Idx < RemovalDuration.Num(); ++Idx)
+				CreateRemovalAttributesIfMissing(false);
+
+				TManagedArray<float>& MaxSleepTime = DynamicCollection->GetAttribute<float>("MaxSleepTime", FGeometryCollection::TransformGroup);
+				TManagedArray<float>& RemovalDuration = DynamicCollection->GetAttribute<float>("RemovalDuration", FGeometryCollection::TransformGroup);
+				TManagedArray<bool>& ShrinkEnabled = DynamicCollection->GetAttribute<bool>("ShrinkEnabled", FGeometryCollection::TransformGroup);
+			
+				const TManagedArray<float>& RelativeSize = RestCollection->GetGeometryCollection()->GetAttribute<float>("Size", FTransformCollection::TransformGroup);
+				for (int32 TransformIndex = 0; TransformIndex<RelativeSize.Num(); ++TransformIndex)
 				{
-					RemovalDuration[Idx] = FMath::RandRange(MinTime, MaxTime);
+					const FGeometryCollectionSizeSpecificData& SizeSpecificData = RestCollection->GetSizeSpecificDataByRelativeSize(RelativeSize[TransformIndex]);
+					if (SizeSpecificData.Removal.bRemoveOnMaxSleep)
+					{
+						const float SleepMinTime = FMath::Max(0.0f, SizeSpecificData.Removal.MaximumSleepTime.X);
+						const float SleepMaxTime = FMath::Max(SleepMinTime, SizeSpecificData.Removal.MaximumSleepTime.Y);
+						MaxSleepTime[TransformIndex] = FMath::RandRange(SleepMinTime, SleepMaxTime);
+
+						const float DurationMinTime = FMath::Max(0.0f, SizeSpecificData.Removal.RemovalDuration.X);
+						const float DurationMaxTime = FMath::Max(DurationMinTime, SizeSpecificData.Removal.RemovalDuration.Y);
+						RemovalDuration[TransformIndex] = FMath::RandRange(DurationMinTime, DurationMaxTime);
+
+						ShrinkEnabled[TransformIndex] = SizeSpecificData.Removal.bShrinkOnMaxSleep;
+					}
 				}
 			}
 		}
-
+		
 		SetRenderStateDirty();
 	}
 
@@ -1798,6 +1805,62 @@ void UGeometryCollectionComponent::ResetDynamicCollection()
 	{
 		CalculateGlobalMatrices();
 		CalculateLocalBounds();
+	}
+}
+
+void UGeometryCollectionComponent::CreateRemovalAttributesIfMissing(bool bAllActiveByDefault)
+{
+	if (!DynamicCollection->HasAttribute("SleepTimer", FGeometryCollection::TransformGroup))
+	{
+		TManagedArray<float>& SleepTimer = DynamicCollection->AddAttribute<float>("SleepTimer", FGeometryCollection::TransformGroup);
+		SleepTimer.Fill(0.f);
+	}
+
+	if (!DynamicCollection->HasAttribute("Decay", FGeometryCollection::TransformGroup))
+	{
+		TManagedArray<float>& Decay = DynamicCollection->AddAttribute<float>("Decay", FGeometryCollection::TransformGroup);
+		Decay.Fill(0);
+	}
+
+	if (!DynamicCollection->HasAttribute("UniformScale", FGeometryCollection::TransformGroup))
+	{
+		TManagedArray<FTransform>& UniformScale = DynamicCollection->AddAttribute<FTransform>("UniformScale", FGeometryCollection::TransformGroup);
+		UniformScale.Fill(FTransform::Identity);
+	}
+
+	if (!DynamicCollection->HasAttribute("ShrinkEnabled", FGeometryCollection::TransformGroup))
+	{
+		TManagedArray<bool>& ShrinkEnabled = DynamicCollection->AddAttribute<bool>("ShrinkEnabled", FGeometryCollection::TransformGroup);
+		ShrinkEnabled.Fill(RestCollection->bShrinkOnMaxSleep);
+	}
+
+	if (!DynamicCollection->HasAttribute("MaxSleepTime", FGeometryCollection::TransformGroup))
+	{
+		TManagedArray<float>& MaxSleepTime = DynamicCollection->AddAttribute<float>("MaxSleepTime", FGeometryCollection::TransformGroup);
+		if (bAllActiveByDefault)
+		{
+			const float MinTime = FMath::Max(0.0f, RestCollection->MaximumSleepTime.X);
+			const float MaxTime = FMath::Max(MinTime, RestCollection->MaximumSleepTime.Y);
+			for (int32 Idx = 0; Idx < MaxSleepTime.Num(); ++Idx)
+			{
+				MaxSleepTime[Idx] = FMath::RandRange(MinTime, MaxTime);
+			}
+		}
+		else
+		{
+			MaxSleepTime.Fill(-1.0); // negative value means inactive 
+		}
+	}
+
+	if (!DynamicCollection->HasAttribute("RemovalDuration", FGeometryCollection::TransformGroup))
+	{
+		const float MinTime = FMath::Max(0.0f, RestCollection->RemovalDuration.X);
+		const float MaxTime = FMath::Max(MinTime, RestCollection->RemovalDuration.Y);
+		TManagedArray<float>& RemovalDuration = DynamicCollection->AddAttribute<float>("RemovalDuration", FGeometryCollection::TransformGroup);
+		for (int32 Idx = 0; Idx < RemovalDuration.Num(); ++Idx)
+		{
+			RemovalDuration[Idx] = FMath::RandRange(MinTime, MaxTime);
+		}
 	}
 }
 
@@ -2775,11 +2838,13 @@ void UGeometryCollectionComponent::CalculateGlobalMatrices()
 		{
 			// Have to fully rebuild
 			if (DynamicCollection
-				&& RestCollection->bRemoveOnMaxSleep 
+				&& bNeedRemovalUpdate 
 				&& DynamicCollection->HasAttribute("UniformScale", FGeometryCollection::TransformGroup)
-				&& DynamicCollection->HasAttribute("Decay", FGeometryCollection::TransformGroup))
+				&& DynamicCollection->HasAttribute("Decay", FGeometryCollection::TransformGroup)
+				&& DynamicCollection->HasAttribute("ShrinkEnabled", FGeometryCollection::TransformGroup))
 			{
 				const TManagedArray<float>& Decay = DynamicCollection->GetAttribute<float>("Decay", FGeometryCollection::TransformGroup);
+				const TManagedArray<bool>& ShrinkEnabled = DynamicCollection->GetAttribute<bool>("ShrinkEnabled", FGeometryCollection::TransformGroup);
 				TManagedArray<FTransform>& UniformScale = DynamicCollection->GetAttribute<FTransform>("UniformScale", FGeometryCollection::TransformGroup);
 
 				for (int32 Idx = 0; Idx < GetTransformArray().Num(); ++Idx)
@@ -2787,8 +2852,7 @@ void UGeometryCollectionComponent::CalculateGlobalMatrices()
 					// only update values if the decay has changed 
 					if (Decay[Idx] > 0.f && Decay[Idx] < 1.f)
 					{
-						//const bool bUpdateUniformScale = (Decay[Idx] >= 1.f) || RestCollection->bShrinkOnMaxSleep;
-						const bool bUpdateUniformScale = RestCollection->bShrinkOnMaxSleep;
+						const bool bUpdateUniformScale = ShrinkEnabled[Idx];
 						if (bUpdateUniformScale)
 						{
 							const float Scale = 1.0 - Decay[Idx];
@@ -3041,26 +3105,30 @@ void UGeometryCollectionComponent::IncrementSleepTimer(float DeltaTime)
 		for (int32 TransformIdx = 0; TransformIdx < SleepTimer.Num(); ++TransformIdx)
 		{
 			// update the sleeping timer accordingly
-			const bool IsSleeping = (DynamicCollection->DynamicState[TransformIdx] == (int)EObjectStateTypeEnum::Chaos_Object_Sleeping);
-			const bool HasStartedDecaying = (Decay[TransformIdx] > 0); 
-			if (IsSleeping || HasStartedDecaying)
+			const bool IsRemovalActive = (MaxSleepTime[TransformIdx] >= 0);
+			if (IsRemovalActive)
 			{
-				SleepTimer[TransformIdx] += DeltaTime;
-			}
-
-			// update the decay and disable the particle when decay has completed 
-			const float UpdatedDecay = FMath::Clamp<float>((SleepTimer[TransformIdx] - MaxSleepTime[TransformIdx]) / RemovalDuration[TransformIdx], 0.f, 1.f);
-			if (UpdatedDecay != Decay[TransformIdx])
-			{
-				ensure(UpdatedDecay > Decay[TransformIdx]);
-				DynamicCollection->MakeDirty();
-				Decay[TransformIdx] = UpdatedDecay;
-
-				if (Decay[TransformIdx] >= 1.f)
+				const bool IsSleeping = (DynamicCollection->DynamicState[TransformIdx] == (int)EObjectStateTypeEnum::Chaos_Object_Sleeping);
+				const bool HasStartedDecaying = (Decay[TransformIdx] > 0); 
+				if (IsSleeping || HasStartedDecaying)
 				{
-					// Disable the particle if it has been asleep for the requisite time
-					Decay[TransformIdx] = 1.0f;
-					ToDisable.Add(TransformIdx);
+					SleepTimer[TransformIdx] += DeltaTime;
+				}
+
+				// update the decay and disable the particle when decay has completed 
+				const float UpdatedDecay = FMath::Clamp<float>((SleepTimer[TransformIdx] - MaxSleepTime[TransformIdx]) / RemovalDuration[TransformIdx], 0.f, 1.f);
+				if (UpdatedDecay != Decay[TransformIdx])
+				{
+					ensure(UpdatedDecay > Decay[TransformIdx]);
+					DynamicCollection->MakeDirty();
+					Decay[TransformIdx] = UpdatedDecay;
+
+					if (Decay[TransformIdx] >= 1.f)
+					{
+						// Disable the particle if it has been asleep for the requisite time
+						Decay[TransformIdx] = 1.0f;
+						ToDisable.Add(TransformIdx);
+					}
 				}
 			}
 		}
