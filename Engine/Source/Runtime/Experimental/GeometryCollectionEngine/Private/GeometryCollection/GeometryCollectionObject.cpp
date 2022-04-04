@@ -76,9 +76,9 @@ UGeometryCollection::UGeometryCollection(const FObjectInitializer& ObjectInitial
 	, bMassAsDensity(true)
 	, Mass(2500.0f)
 	, MinimumMassClamp(0.1f)
+	, bUpdateMaterialFadeAmount(false)
 	, bRemoveOnMaxSleep(false)
 	, bShrinkOnMaxSleep(true) // true to keep backward compatibility
-	, bUpdateMaterialFadeAmount(false)
 	, MaximumSleepTime(5.0, 10.0)
 	, RemovalDuration(2.5, 5.0)
 	, EnableRemovePiecesOnFracture(false)
@@ -114,6 +114,14 @@ FGeometryCollectionCollisionTypeData::FGeometryCollectionCollisionTypeData()
 	, CollisionParticles()
 	, CollisionObjectReductionPercentage(0.0f)
 	, CollisionMarginFraction(0.f)
+{
+}
+
+FGeometryCollectionRemovalData::FGeometryCollectionRemovalData()
+	: bRemoveOnMaxSleep(false)
+	, bShrinkOnMaxSleep(true)
+	, MaximumSleepTime(5.0, 10.0)
+	, RemovalDuration(2.5, 5.0)
 {
 }
 
@@ -169,8 +177,6 @@ void FGeometryCollectionSizeSpecificData::PostSerialize(const FArchive& Ar)
 }
 #endif
 
-
-
 void FillSharedSimulationSizeSpecificData(FSharedSimulationSizeSpecificData& ToData, const FGeometryCollectionSizeSpecificData& FromData)
 {
 	ToData.MaxSize = FromData.MaxSize;
@@ -218,14 +224,31 @@ FGeometryCollectionSizeSpecificData UGeometryCollection::GeometryCollectionSizeS
 	return Data;
 }
 
+const FGeometryCollectionSizeSpecificData& UGeometryCollection::GetSizeSpecificDataByRelativeSize(float RelativeSize) const
+{
+	check(SizeSpecificData.Num());
+	int32 UseIdx = 0;
+	float PreviousMaxSize = FLT_MAX;
+	for (int32 Idx = SizeSpecificData.Num() - 1; Idx >= 0; --Idx)
+	{
+		ensureMsgf(PreviousMaxSize >= SizeSpecificData[Idx].MaxSize, TEXT("SizeSpecificData is not sorted"));
+		PreviousMaxSize = SizeSpecificData[Idx].MaxSize;
+		if (RelativeSize < SizeSpecificData[Idx].MaxSize)
+			UseIdx = Idx;
+		else
+			break;
+	}
+	return SizeSpecificData[UseIdx];
+}
 
 void UGeometryCollection::ValidateSizeSpecificDataDefaults()
 {
 	auto HasDefault = [](const TArray<FGeometryCollectionSizeSpecificData>& DatasIn)
 	{
+		const float DefaultMaxSize = static_cast<float>(99999.9);
 		for (const FGeometryCollectionSizeSpecificData& Data : DatasIn)
 		{
-			if (Data.MaxSize >= 99999.9)
+			if (Data.MaxSize >= DefaultMaxSize)
 			{
 				return true;
 			}

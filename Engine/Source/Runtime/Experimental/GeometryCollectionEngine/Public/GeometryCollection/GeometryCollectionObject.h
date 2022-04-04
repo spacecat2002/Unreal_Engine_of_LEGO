@@ -163,9 +163,35 @@ struct GEOMETRYCOLLECTIONENGINE_API FGeometryCollectionCollisionTypeData
 	*/
 	UPROPERTY(EditAnywhere, Category = "Collisions", meta = (EditCondition = "ImplicitType == EImplicitTypeEnum::Chaos_Implicit_Convex || ImplicitType == EImplicitTypeEnum::Chaos_Implicit_Box", EditConditionHides))
 	float CollisionMarginFraction;
-
 };
 
+USTRUCT()
+struct GEOMETRYCOLLECTIONENGINE_API FGeometryCollectionRemovalData
+{
+	GENERATED_BODY()
+
+	FGeometryCollectionRemovalData();
+	
+	/** Remove particle from simulation and dissolve rendered geometry once sleep threshold has been exceeded. */
+	UPROPERTY(EditAnywhere, Category = Removal, meta = (DisplayName = "RemoveOnMaxSleep"))
+	bool bRemoveOnMaxSleep;
+
+	/** Scale the particle down until it is removed when bRemoveOnMaxSleep is enabled */
+	UPROPERTY(EditAnywhere, Category = Removal, meta = (DisplayName = "ShrinkOnMaxSleep", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
+	bool bShrinkOnMaxSleep;
+
+	/** Update the "Per Instance fade Amount" value in materials */
+	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "UpdateMaterialFadeAmount", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
+	// bool bUpdateMaterialFadeAmount;
+	
+	/** How long may the particle sleep before initiating removal (in seconds). */
+	UPROPERTY(EditAnywhere, Category = Removal, meta = (DisplayName = "SleepMinMax", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
+	FVector2D MaximumSleepTime;
+
+	/** How long does the removal process take (in seconds). */
+	UPROPERTY(EditAnywhere, Category = Removal, meta = (EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
+	FVector2D RemovalDuration;
+};
 
 USTRUCT()
 struct GEOMETRYCOLLECTIONENGINE_API FGeometryCollectionSizeSpecificData
@@ -245,6 +271,9 @@ struct GEOMETRYCOLLECTIONENGINE_API FGeometryCollectionSizeSpecificData
 	 */
 	UPROPERTY(EditAnywhere, Category = "Collisions")
 	int32 DamageThreshold;
+
+	UPROPERTY(EditAnywhere, Category = "Removal")
+	FGeometryCollectionRemovalData Removal;
 
 	bool Serialize(FArchive& Ar);
 #if WITH_EDITORONLY_DATA
@@ -461,6 +490,10 @@ public:
 	int32 MaximumCollisionParticles_DEPRECATED;
 #endif
 
+	/** Update the "Per Instance fade Amount" value in materials when removal is enabled ( at the rest collection level or per size ) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "UpdateMaterialFadeAmount", EditConditionHides))
+	bool bUpdateMaterialFadeAmount;
+	
 	/** Remove particle from simulation and dissolve rendered geometry once sleep threshold has been exceeded. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "RemoveOnMaxSleep"))
 	bool bRemoveOnMaxSleep;
@@ -469,10 +502,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "ShrinkOnMaxSleep", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
 	bool bShrinkOnMaxSleep;
 
-	/** Update the "Per Instance fade Amount" value in materials */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "UpdateMaterialFadeAmount", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
-	bool bUpdateMaterialFadeAmount;
-	
 	/** How long may the particle sleep before initiating removal (in seconds). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Removal, meta = (DisplayName = "SleepMinMax", EditCondition = "bRemoveOnMaxSleep", EditConditionHides))
 	FVector2D MaximumSleepTime;
@@ -493,6 +522,7 @@ public:
 	FGeometryCollectionSizeSpecificData& GetDefaultSizeSpecificData();
 	const FGeometryCollectionSizeSpecificData& GetDefaultSizeSpecificData() const;
 	static FGeometryCollectionSizeSpecificData GeometryCollectionSizeSpecificDataDefaults();
+	const FGeometryCollectionSizeSpecificData& GetSizeSpecificDataByRelativeSize(float RelativeSize) const;
 
 	/**
 	* Enable remove pieces on fracture

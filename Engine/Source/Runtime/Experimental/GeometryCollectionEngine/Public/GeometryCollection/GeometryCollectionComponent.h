@@ -751,7 +751,7 @@ protected:
 	void UpdateBreakEventRegistration();
 	void UpdateRemovalEventRegistration();
 
-
+	void CreateRemovalAttributesIfMissing(bool bAllActiveByDefault);
 
 	/* Per-instance override to enable/disable replication for the geometry collection */
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category=Network)
@@ -865,5 +865,8 @@ private:
 
 	/** True if GeometryCollection transforms have changed from previous tick. */
 	bool bIsMoving;
+
+	/** True if removal update code needs to be executed. */
+	bool bNeedRemovalUpdate;
 
 };
