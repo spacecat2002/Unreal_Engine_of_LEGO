@@ -583,6 +583,8 @@ public:
 	*/
 	/* ---------------------------------------------------------------------------------------- */
 	
+	bool GetNotifyTrailing() const { return bNotifyTrailing; }
+
 	void SetShowBoneColors(bool ShowBoneColorsIn) { bShowBoneColors = ShowBoneColorsIn; }
 	bool GetShowBoneColors() const { return bShowBoneColors; }
 	bool GetEnableBoneSelection() const { return bEnableBoneSelection; }
@@ -694,6 +696,8 @@ public:
 	/** Used by Niagara DI to query global matrices rather than recalculating them again */
 	const TArray<FMatrix>& GetGlobalMatrices() { return GlobalMatrices; }
 
+	const FGeometryDynamicCollection* GetDynamicCollection() const { return DynamicCollection.Get(); }
+	
 public:
 	UPROPERTY(BlueprintAssignable, Category = "Collision")
 	FOnChaosPhysicsCollision OnChaosPhysicsCollision;
@@ -719,6 +723,10 @@ public:
 	/** If true, this component will generate removal events that other systems may subscribe to. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ChaosPhysics|General")
 	bool bNotifyRemovals;
+
+	/** If true, this component will save linear and angular velocities on its DynamicCollection. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ChaosPhysics|General")
+	bool bStoreVelocities;
 
 protected:
 	/** Display Bone Colors instead of assigned materials */
