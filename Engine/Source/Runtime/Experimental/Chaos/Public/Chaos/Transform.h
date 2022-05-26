@@ -149,10 +149,6 @@ class TRigidTransform<FReal, 3> : public FTransform
 		return ToMatrixNoScale().Inverse();
 	}
 
-	// For low-level VectorRegister programming
-	const VectorRegister& GetTranslationRegister() const { return Translation; }
-	const VectorRegister& GetRotationRegister() const { return Rotation; }
-
 	// Get the transform which maps from Other to This, ignoring the scale on both.
 	TRigidTransform<float, 3> GetRelativeTransformNoScale(const TRigidTransform<float, 3>& Other) const
 	{
