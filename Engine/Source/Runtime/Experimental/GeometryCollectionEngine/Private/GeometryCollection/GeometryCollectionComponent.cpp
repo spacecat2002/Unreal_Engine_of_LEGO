@@ -5,6 +5,7 @@
 #include "Async/ParallelFor.h"
 #include "Components/BoxComponent.h"
 #include "ComponentRecreateRenderStateContext.h"
+#include "Engine/Engine.h"
 #include "GeometryCollection/GeometryCollectionObject.h"
 #include "GeometryCollection/GeometryCollectionAlgo.h"
 #include "GeometryCollection/GeometryCollectionComponentPluginPrivate.h"
