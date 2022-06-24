@@ -24,8 +24,38 @@
 #define GJK_VECTORIZED 0
 #endif
 
+// Enable some logging or ensures to trap issues in collision detection, usually related to degeneracies in GJK/EPA
+#define CHAOS_COLLISIONERROR_LOG_ENABLED		((!UE_BUILD_TEST && !UE_BUILD_SHIPPING) && 0)
+#define CHAOS_COLLISIONERROR_ENSURE_ENABLED		((!UE_BUILD_TEST && !UE_BUILD_SHIPPING) && 1)
+
+#if CHAOS_COLLISIONERROR_LOG_ENABLED
+#define CHAOS_COLLISIONERROR_CLOG(Condition, Fmt, ...) UE_CLOG((Condition), LogChaos, Error, Fmt, __VA_ARGS__)
+#else
+#define CHAOS_COLLISIONERROR_CLOG(Condition, Fmt, ...)
+#endif
+
+#if CHAOS_COLLISIONERROR_ENSURE_ENABLED
+#define CHAOS_COLLISIONERROR_ENSURE(X) ensure(X)
+#else
+#define CHAOS_COLLISIONERROR_ENSURE(X)
+#endif
+
 namespace Chaos
 {
+	// Check the GJK iteration count against a limit to prevent infinite loops. We should never really hit the limit but 
+	// we are seeing it happen in some cases and more often on some platforms than others so for now we have a warning when it hits.
+	// @todo(chaos): track this issue down (see UE-156361)
+	template<typename ConvexTypeA, typename ConvexTypeB>
+	inline bool CheckGJKIterationLimit(const int32 NumIterations, const ConvexTypeA& A, const ConvexTypeB& B)
+	{
+		const int32 MaxIterations = 32;
+		const bool bLimitExceeded = (NumIterations >= MaxIterations);
+
+		CHAOS_COLLISIONERROR_CLOG(bLimitExceeded, TEXT("GJK hit iteration limit with shapes:\n    A: %s\n    B: %s"), *A.ToString(), *B.ToString());
+		CHAOS_COLLISIONERROR_ENSURE(!bLimitExceeded);
+
+		return bLimitExceeded;
+	}
 
 	// Calculate the margins used for queries based on shape radius, shape margins and shape types
 	template <typename TGeometryA, typename TGeometryB, typename T>
@@ -1008,6 +1038,11 @@ namespace Chaos
 
 			V = SimplexFindClosestToOrigin2(Simplex, NumVerts, SimplexData.Barycentric, SimplexData.As, SimplexData.Bs);
 			T NewDistance = V.Size();
+
+			// If we hit this error, we probably have a degenerate simplex that is not being detected in SimplexFindClosestToOrigin2
+			CHAOS_COLLISIONERROR_CLOG(V.ContainsNaN(), TEXT("SimplexFindClosestToOrigin2 NaN, NumVerts: %d, Simplex: [[%f, %f, %f], [%f %f %f], [%f %f %f], [%f %f %f]]"), 
+				NumVerts, Simplex[0].X, Simplex[0].Y, Simplex[0].Z, Simplex[1].X, Simplex[1].Y, Simplex[1].Z, Simplex[2].X, Simplex[2].Y, Simplex[2].Z, Simplex[3].X, Simplex[3].Y, Simplex[3].Z);
+			CHAOS_COLLISIONERROR_ENSURE(!V.ContainsNaN());
 
 			// Are we overlapping or too close for GJK to get a good result?
 			bIsContact = (NewDistance < Epsilon);
