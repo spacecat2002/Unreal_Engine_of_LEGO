@@ -752,6 +752,14 @@ namespace Chaos
 				}
 			}
 		}
+		
+		// SelectContactPlane was failing. This issue was tracked down to a degenerate simplex in GJK, but we may need this again one day...
+		template<typename ConvexImplicitType>
+		void CheckPlaneIndex(const int32 PlaneIndex, const ConvexImplicitType& Convex, const FVec3 X, const FVec3 N, const FReal MaxDistance, const int32 VertexIndex)
+		{
+			CHAOS_COLLISIONERROR_CLOG(PlaneIndex == INDEX_NONE, TEXT("SelectContactPlane: Invalid PlaneIndex %d, X: [%f, %f, %f], N: [%f, %f, %f], MaxDistance: %f, VertexIndex: %d\n%s"), PlaneIndex, X.X, X.Y, X.Z, N.X, N.Y, N.Z, MaxDistance, VertexIndex, *Convex.ToString());
+			CHAOS_COLLISIONERROR_ENSURE(PlaneIndex != INDEX_NONE);
+		}
 
 		// Select one of the planes on the convex to use as the contact plane, given an estimated contact position and opposing 
 		// normal from GJK with margins (which gives the shapes rounded corners/edges).
@@ -802,7 +810,7 @@ namespace Chaos
 				BestPlaneIndex = Convex.GetMostOpposingPlane(N);
 			}
 
-			check(BestPlaneIndex != INDEX_NONE);
+			CheckPlaneIndex(BestPlaneIndex, Convex, X, N, InMaxDistance, VertexIndex);
 			return BestPlaneIndex;
 		}
 
@@ -867,10 +875,18 @@ namespace Chaos
 				BestPlaneIndex = ScaledConvex.GetMostOpposingPlane(N);
 			}
 
-			check(BestPlaneIndex != INDEX_NONE);
+			CheckPlaneIndex(BestPlaneIndex, ScaledConvex, X, N, InMaxDistance, VertexIndex);
 			return BestPlaneIndex;
 		}
 
+		// GJK was failing to generate vertex indices. This issue was tracked down to a degenerate simplex in GJK, but we may need this again one day...
+		template<typename ConvexImplicitType>
+		bool CheckVertexIndex(const ConvexImplicitType& Convex, const int32 VertexIndex)
+		{
+			CHAOS_COLLISIONERROR_CLOG(VertexIndex == INDEX_NONE, TEXT("GJKContactPointMargin invalid vertex index %d %s"), VertexIndex, *Convex.ToString());
+			CHAOS_COLLISIONERROR_ENSURE(VertexIndex != INDEX_NONE);
+			return VertexIndex != INDEX_NONE;
+		}
 
 		template <typename ConvexImplicitType1, typename ConvexImplicitType2>
 		void ConstructConvexConvexOneShotManifold(
@@ -928,6 +944,10 @@ namespace Chaos
 			// @todo(chaos): get the vertex index from GJK and use to to get the plane
 			const FVec3 SeparationDirectionLocalConvex1 = Convex2ToConvex1Transform.TransformVectorNoScale(GJKContactPoint.ShapeContactNormal);
 			const int32 MostOpposingPlaneIndexConvex1 = SelectContactPlane(Convex1, GJKContactPoint.ShapeContactPoints[0], SeparationDirectionLocalConvex1, Margin1, VertexIndexA);
+			if (MostOpposingPlaneIndexConvex1 == INDEX_NONE)
+			{
+				return;
+			}
 			FVec3 BestPlanePosition1, BestPlaneNormal1;
 			Convex1.GetPlaneNX(MostOpposingPlaneIndexConvex1, BestPlaneNormal1, BestPlanePosition1);
 			const FReal BestPlaneDotNormalConvex1 = !bConvex1IsCapsule ? FMath::Abs(FVec3::DotProduct(-SeparationDirectionLocalConvex1, BestPlaneNormal1)) : -FLT_MAX;
@@ -935,6 +955,10 @@ namespace Chaos
 			// Now for Convex2
 			const FVec3 SeparationDirectionLocalConvex2 = GJKContactPoint.ShapeContactNormal;
 			const int32 MostOpposingPlaneIndexConvex2 = SelectContactPlane(Convex2, GJKContactPoint.ShapeContactPoints[1], -SeparationDirectionLocalConvex2, Margin2, VertexIndexB);
+			if (MostOpposingPlaneIndexConvex2 == INDEX_NONE)
+			{
+				return;
+			}
 			FVec3 BestPlanePosition2, BestPlaneNormal2;
 			Convex2.GetPlaneNX(MostOpposingPlaneIndexConvex2, BestPlaneNormal2, BestPlanePosition2);
 			const FReal BestPlaneDotNormalConvex2 = FMath::Abs(FVec3::DotProduct(SeparationDirectionLocalConvex2, BestPlaneNormal2));
@@ -1163,6 +1187,10 @@ namespace Chaos
 			// Find the best plane on the convex (most opposing direction)
 			const FReal PlaneSearchDistance = FReal(0);	// use the miniumum (see SelectContactPlane)
 			const int32 ConvexPlaneIndex = SelectContactPlane(Convex, GJKContactPoint.ShapeContactPoints[0], GJKContactPoint.ShapeContactNormal, PlaneSearchDistance, VertexIndexA);
+			if (ConvexPlaneIndex == INDEX_NONE)
+			{
+				return;
+			}
 			FVec3 ConvexPlanePosition, ConvexPlaneNormal;
 			Convex.GetPlaneNX(ConvexPlaneIndex, ConvexPlaneNormal, ConvexPlanePosition);
 			const FReal ConvexPlaneNormalDotContactNormal = FVec3::DotProduct(ConvexPlaneNormal, GJKContactPoint.ShapeContactNormal);
@@ -1334,6 +1362,10 @@ namespace Chaos
 			// @todo(chaos): handle zero margins...
 			const FReal PlaneSearchDistance = ConvexMargin;
 			const int32 ConvexPlaneIndex = SelectContactPlane(Convex, GJKContactPoint.ShapeContactPoints[0], GJKContactPoint.ShapeContactNormal, PlaneSearchDistance, VertexIndexA);
+			if (ConvexPlaneIndex == INDEX_NONE)
+			{
+				return;
+			}
 			FVec3 ConvexPlanePosition, ConvexPlaneNormal;
 			Convex.GetPlaneNX(ConvexPlaneIndex, ConvexPlaneNormal, ConvexPlanePosition);
 			const FReal ConvexPlaneNormalDotContactNormal = FVec3::DotProduct(ConvexPlaneNormal, GJKContactPoint.ShapeContactNormal);
