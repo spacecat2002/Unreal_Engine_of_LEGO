@@ -33,7 +33,7 @@ template <typename T> struct TObjectPtr;
  *
  * Translators are filling this container and the Import/Export managers are reading it to execute the import/export process
  */
- UCLASS(BlueprintType, Experimental)
+ UCLASS(BlueprintType)
 class INTERCHANGECORE_API UInterchangeBaseNodeContainer : public UObject
 {
 	GENERATED_BODY()

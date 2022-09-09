@@ -21,7 +21,7 @@ struct FFrame;
 /**
  * UInterchangeAnimationAPI is used to store and retrieve animation data(i.e. DCC node attributes, pipelines will have access to those attributes)
  */
-UCLASS(BlueprintType, Experimental)
+UCLASS(BlueprintType)
 class INTERCHANGECORE_API UInterchangeAnimationAPI : public UObject
 {
 	GENERATED_BODY()

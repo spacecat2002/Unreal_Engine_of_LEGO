@@ -100,7 +100,7 @@ struct FInterchangePipelinePropertyStates
 	FInterchangePipelinePropertyStatePerContext ReimportStates;
 };
 
-UCLASS(BlueprintType, Blueprintable, editinlinenew, Experimental, Abstract)
+UCLASS(BlueprintType, Blueprintable, editinlinenew, Abstract)
 class INTERCHANGECORE_API UInterchangePipelineBase : public UObject
 {
 	GENERATED_BODY()

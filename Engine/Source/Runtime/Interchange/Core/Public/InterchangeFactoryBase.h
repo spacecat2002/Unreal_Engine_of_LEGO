@@ -17,7 +17,7 @@ class UInterchangePipelineBase;
 class UInterchangeSourceData;
 class UInterchangeTranslatorBase;
 
-UCLASS(BlueprintType, Blueprintable, Abstract, Experimental)
+UCLASS(BlueprintType, Blueprintable, Abstract)
 class INTERCHANGECORE_API UInterchangeFactoryBase : public UObject
 {
 	GENERATED_BODY()
