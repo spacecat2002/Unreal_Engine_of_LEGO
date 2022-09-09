@@ -27,7 +27,7 @@ struct FInterchangeFilePickerParameters
 	FString DefaultPath = TEXT("");
 };
 
-UCLASS(Abstract, BlueprintType, Blueprintable, Experimental)
+UCLASS(Abstract, BlueprintType, Blueprintable)
 class INTERCHANGEENGINE_API UInterchangeFilePickerBase : public UObject
 {
 	GENERATED_BODY()

@@ -40,7 +40,7 @@ enum class EInterchangeTranslatorAssetType : uint8
 };
 ENUM_CLASS_FLAGS(EInterchangeTranslatorAssetType);
 
-UCLASS(BlueprintType, Blueprintable, Abstract, Experimental)
+UCLASS(BlueprintType, Blueprintable, Abstract)
 class INTERCHANGECORE_API UInterchangeTranslatorBase : public UObject
 {
 	GENERATED_BODY()
