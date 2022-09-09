@@ -178,7 +178,7 @@ enum class EInterchangeNodeContainerType : uint8
  * See UE::Interchange::EAttributeTypes to know the supported template types
  * This is an abstract class. This is the base class of the interchange node graph format, all class in this format should derive from this class
  */
-UCLASS(BlueprintType, Experimental)
+UCLASS(BlueprintType)
 class INTERCHANGECORE_API UInterchangeBaseNode : public UObject
 {
 	GENERATED_BODY()
