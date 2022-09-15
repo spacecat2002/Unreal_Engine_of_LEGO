@@ -953,8 +953,8 @@ public:
 		FGPUSkinVertexFactoryShaderParameters::Bind(ParameterMap);
 		ClothSimulVertsPositionsNormalsParameter.Bind(ParameterMap,TEXT("ClothSimulVertsPositionsNormals"));
 		PreviousClothSimulVertsPositionsNormalsParameter.Bind(ParameterMap,TEXT("PreviousClothSimulVertsPositionsNormals"));
-		ClothLocalToWorldParameter.Bind(ParameterMap, TEXT("ClothLocalToWorld"));
-		PreviousClothLocalToWorldParameter.Bind(ParameterMap, TEXT("PreviousClothLocalToWorld"));
+		ClothToLocalParameter.Bind(ParameterMap, TEXT("ClothToLocal"));
+		PreviousClothToLocalParameter.Bind(ParameterMap, TEXT("PreviousClothToLocal"));
 		ClothBlendWeightParameter.Bind(ParameterMap, TEXT("ClothBlendWeight"));
 		GPUSkinApexClothParameter.Bind(ParameterMap, TEXT("GPUSkinApexCloth"));
 		GPUSkinApexClothStartIndexOffsetParameter.Bind(ParameterMap, TEXT("GPUSkinApexClothStartIndexOffset"));
@@ -986,8 +986,8 @@ public:
 
 		ShaderBindings.Add(ClothSimulVertsPositionsNormalsParameter, ClothShaderData.GetClothBufferForReading(false, FrameNumber).VertexBufferSRV);
 		ShaderBindings.Add(PreviousClothSimulVertsPositionsNormalsParameter, ClothShaderData.GetClothBufferForReading(true, FrameNumber).VertexBufferSRV);
-		ShaderBindings.Add(ClothLocalToWorldParameter, ClothShaderData.GetClothLocalToWorldForReading(false, FrameNumber));
-		ShaderBindings.Add(PreviousClothLocalToWorldParameter, ClothShaderData.GetClothLocalToWorldForReading(true, FrameNumber));
+		ShaderBindings.Add(ClothToLocalParameter, ClothShaderData.GetClothToLocalForReading(false, FrameNumber));
+		ShaderBindings.Add(PreviousClothToLocalParameter, ClothShaderData.GetClothToLocalForReading(true, FrameNumber));
 		ShaderBindings.Add(ClothBlendWeightParameter,ClothShaderData.ClothBlendWeight);
 
 		ShaderBindings.Add(GPUSkinApexClothParameter,
@@ -1006,8 +1006,8 @@ protected:
 	
 		LAYOUT_FIELD(FShaderResourceParameter, ClothSimulVertsPositionsNormalsParameter)
 		LAYOUT_FIELD(FShaderResourceParameter, PreviousClothSimulVertsPositionsNormalsParameter)
-		LAYOUT_FIELD(FShaderParameter, ClothLocalToWorldParameter)
-		LAYOUT_FIELD(FShaderParameter, PreviousClothLocalToWorldParameter)
+		LAYOUT_FIELD(FShaderParameter, ClothToLocalParameter)
+		LAYOUT_FIELD(FShaderParameter, PreviousClothToLocalParameter)
 		LAYOUT_FIELD(FShaderParameter, ClothBlendWeightParameter)
 		LAYOUT_FIELD(FShaderResourceParameter, GPUSkinApexClothParameter)
 		LAYOUT_FIELD(FShaderParameter, GPUSkinApexClothStartIndexOffsetParameter)
