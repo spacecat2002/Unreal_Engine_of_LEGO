@@ -637,6 +637,8 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 				ClothShaderData.ClothBlendWeight = DynamicData->ClothBlendWeight;
 
 				bNeedFence = ClothShaderData.UpdateClothSimulData(RHICmdList, SimData->Positions, SimData->Normals, FrameNumberToPrepare, FeatureLevel) || bNeedFence;
+				// Transform from cloth space to local space. Cloth space is relative to cloth root bone, local space is component space.
+				ClothShaderData.GetClothToLocalForWriting(FrameNumberToPrepare) = SimData->ComponentRelativeTransform.ToMatrixWithScale();
 				ClothShaderData.GetClothLocalToWorldForWriting(FrameNumberToPrepare) = SimData->ComponentRelativeTransform.ToMatrixWithScale() * DynamicData->ClothObjectLocalToWorld;
 			}
 #endif // WITH_APEX_CLOTHING || WITH_CHAOS_CLOTHING
@@ -644,10 +646,7 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 			// Try to use the GPU skinning cache if possible
 			if (bUseSkinCache)
 			{
-				// This takes the cloth positions from cloth space into world space
-				FMatrix ClothLocalToWorld = bClothFactory ? VertexFactoryData.ClothVertexFactories[SectionIdx]->GetClothShaderData().GetClothLocalToWorldForWriting(FrameNumberToPrepare) : FMatrix::Identity;
-				// Matrices are transposed in ue4 meaning matrix multiples need to happen in reverse ((AB)x = b becomes xTBTAT = b).
-				FMatrix LocalToCloth = DynamicData->ClothObjectLocalToWorld * ClothLocalToWorld.Inverse();
+				FMatrix ClothToLocal = bClothFactory ? VertexFactoryData.ClothVertexFactories[SectionIdx]->GetClothShaderData().GetClothToLocalForWriting(FrameNumberToPrepare) : FMatrix::Identity;
 
 				GPUSkinCache->ProcessEntry(
 					RHICmdList, 
@@ -659,7 +658,7 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 					bMorph ? &LOD.MorphVertexBuffer : 0, 
 					bClothFactory ? &LODData.ClothVertexBuffer : 0,
 					bClothFactory ? DynamicData->ClothingSimData.Find(Section.CorrespondClothAssetIndex) : 0, 
-					LocalToCloth, 
+					ClothToLocal, 
 					DynamicData->ClothBlendWeight, 
 					RevisionNumber, 
 					SectionIdx, 
@@ -1165,6 +1164,7 @@ void FSkeletalMeshObjectGPUSkin::RefreshClothingTransforms(const FMatrix& InNewL
 
 					if(FClothSimulData* SimData = DynamicData->ClothingSimData.Find(ActorIdx))
 					{
+						ClothShaderData.GetClothToLocalForWriting(FrameNumber) = SimData->ComponentRelativeTransform.ToMatrixWithScale();
 						ClothShaderData.GetClothLocalToWorldForWriting(FrameNumber) = SimData->ComponentRelativeTransform.ToMatrixWithScale() * InNewLocalToWorld;
 					}
 				}

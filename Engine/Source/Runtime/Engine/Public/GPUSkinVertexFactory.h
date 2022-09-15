@@ -717,6 +717,27 @@ public:
 			return ClothSimulPositionNormalBuffer[Index];
 		}
 		
+		FMatrix& GetClothToLocalForWriting(uint32 FrameNumber)
+		{
+			uint32 Index = GetOldestIndex(FrameNumber);
+			Index = (BufferFrameNumber[0] == FrameNumber) ? 0 : Index;
+			Index = (BufferFrameNumber[1] == FrameNumber) ? 1 : Index;
+
+			return ClothToLocal[Index];
+		}
+
+		const FMatrix& GetClothToLocalForReading(bool bPrevious, uint32 FrameNumber) const
+		{
+			int32 Index = GetMostRecentIndex(FrameNumber);
+
+			if(bPrevious && DoWeHavePreviousData())
+			{
+				Index = 1 - Index;
+			}
+
+			return ClothToLocal[Index];
+		}
+
 		FMatrix& GetClothLocalToWorldForWriting(uint32 FrameNumber)
 		{
 			uint32 Index = GetOldestIndex(FrameNumber);
@@ -756,6 +777,7 @@ public:
 		 * Matrix to apply to positions/normals
 		 */
 		FMatrix ClothLocalToWorld[2];
+		FMatrix ClothToLocal[2];
 
 		// @return 0 / 1, index into ClothSimulPositionNormalBuffer[]
 		uint32 GetMostRecentIndex(uint32 FrameNumber) const
@@ -822,6 +844,8 @@ public:
 
 			ClothLocalToWorld[0] = FMatrix::Identity;
 			ClothLocalToWorld[1] = FMatrix::Identity;
+			ClothToLocal[0] = FMatrix::Identity;
+			ClothToLocal[1] = FMatrix::Identity;
 		}
 	};
 

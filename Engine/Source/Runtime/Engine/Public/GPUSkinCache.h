@@ -163,7 +163,7 @@ public:
 		const FMorphVertexBuffer* MorphVertexBuffer, 
 		const FSkeletalMeshVertexClothBuffer* ClothVertexBuffer, 
 		const FClothSimulData* SimData,
-		const FMatrix& ClothLocalToWorld,
+		const FMatrix& ClothToLocal,
 		float ClothBlendWeight, 
 		uint32 RevisionNumber, 
 		int32 Section, 
