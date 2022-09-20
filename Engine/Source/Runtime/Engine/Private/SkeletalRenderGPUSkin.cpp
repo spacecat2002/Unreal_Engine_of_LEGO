@@ -639,7 +639,6 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 				bNeedFence = ClothShaderData.UpdateClothSimulData(RHICmdList, SimData->Positions, SimData->Normals, FrameNumberToPrepare, FeatureLevel) || bNeedFence;
 				// Transform from cloth space to local space. Cloth space is relative to cloth root bone, local space is component space.
 				ClothShaderData.GetClothToLocalForWriting(FrameNumberToPrepare) = SimData->ComponentRelativeTransform.ToMatrixWithScale();
-				ClothShaderData.GetClothLocalToWorldForWriting(FrameNumberToPrepare) = SimData->ComponentRelativeTransform.ToMatrixWithScale() * DynamicData->ClothObjectLocalToWorld;
 			}
 #endif // WITH_APEX_CLOTHING || WITH_CHAOS_CLOTHING
 
@@ -1165,7 +1164,6 @@ void FSkeletalMeshObjectGPUSkin::RefreshClothingTransforms(const FMatrix& InNewL
 					if(FClothSimulData* SimData = DynamicData->ClothingSimData.Find(ActorIdx))
 					{
 						ClothShaderData.GetClothToLocalForWriting(FrameNumber) = SimData->ComponentRelativeTransform.ToMatrixWithScale();
-						ClothShaderData.GetClothLocalToWorldForWriting(FrameNumber) = SimData->ComponentRelativeTransform.ToMatrixWithScale() * InNewLocalToWorld;
 					}
 				}
 			}

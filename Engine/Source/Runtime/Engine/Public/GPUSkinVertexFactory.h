@@ -738,27 +738,6 @@ public:
 			return ClothToLocal[Index];
 		}
 
-		FMatrix& GetClothLocalToWorldForWriting(uint32 FrameNumber)
-		{
-			uint32 Index = GetOldestIndex(FrameNumber);
-			Index = (BufferFrameNumber[0] == FrameNumber) ? 0 : Index;
-			Index = (BufferFrameNumber[1] == FrameNumber) ? 1 : Index;
-
-			return ClothLocalToWorld[Index];
-		}
-
-		const FMatrix& GetClothLocalToWorldForReading(bool bPrevious, uint32 FrameNumber) const
-		{
-			int32 Index = GetMostRecentIndex(FrameNumber);
-
-			if(bPrevious && DoWeHavePreviousData())
-			{
-				Index = 1 - Index;
-			}
-
-			return ClothLocalToWorld[Index];
-		}
-
 		/**
 		 * weight to blend between simulated positions and key-framed poses
 		 * if ClothBlendWeight is 1.0, it shows only simulated positions and if it is 0.0, it shows only key-framed animation
@@ -776,7 +755,6 @@ public:
 		/**
 		 * Matrix to apply to positions/normals
 		 */
-		FMatrix ClothLocalToWorld[2];
 		FMatrix ClothToLocal[2];
 
 		// @return 0 / 1, index into ClothSimulPositionNormalBuffer[]
@@ -842,8 +820,6 @@ public:
 			BufferFrameNumber[0] = -1;
 			BufferFrameNumber[1] = -1;
 
-			ClothLocalToWorld[0] = FMatrix::Identity;
-			ClothLocalToWorld[1] = FMatrix::Identity;
 			ClothToLocal[0] = FMatrix::Identity;
 			ClothToLocal[1] = FMatrix::Identity;
 		}
