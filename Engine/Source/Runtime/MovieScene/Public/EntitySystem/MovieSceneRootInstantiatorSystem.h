@@ -9,20 +9,20 @@
 #include "UObject/ObjectMacros.h"
 #include "UObject/UObjectGlobals.h"
 
-#include "MovieSceneMasterInstantiatorSystem.generated.h"
+#include "MovieSceneRootInstantiatorSystem.generated.h"
 
 class UObject;
 namespace UE { namespace MovieScene { struct FEntityAllocation; } }
 
 
 UCLASS()
-class MOVIESCENE_API UMovieSceneMasterInstantiatorSystem : public UMovieSceneEntityInstantiatorSystem
+class MOVIESCENE_API UMovieSceneRootInstantiatorSystem : public UMovieSceneEntityInstantiatorSystem
 {
 	GENERATED_BODY()
 
 public:
 
-	UMovieSceneMasterInstantiatorSystem(const FObjectInitializer& ObjInit);
+	UMovieSceneRootInstantiatorSystem(const FObjectInitializer& ObjInit);
 
 private:
 

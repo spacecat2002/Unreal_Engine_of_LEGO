@@ -1,33 +1,33 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "EntitySystem/MovieSceneMasterInstantiatorSystem.h"
+#include "EntitySystem/MovieSceneRootInstantiatorSystem.h"
 #include "EntitySystem/MovieSceneEntitySystemLinker.h"
 #include "EntitySystem/MovieSceneInstanceRegistry.h"
 #include "EntitySystem/MovieSceneComponentRegistry.h"
 #include "EntitySystem/BuiltInComponentTypes.h"
 #include "EntitySystem/MovieSceneEntitySystemTask.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(MovieSceneMasterInstantiatorSystem)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(MovieSceneRootInstantiatorSystem)
 
 
-UMovieSceneMasterInstantiatorSystem::UMovieSceneMasterInstantiatorSystem(const FObjectInitializer& ObjInit)
+UMovieSceneRootInstantiatorSystem::UMovieSceneRootInstantiatorSystem(const FObjectInitializer& ObjInit)
 	: Super(ObjInit)
 {
-	RelevantComponent = UE::MovieScene::FBuiltInComponentTypes::Get()->Tags.Master;
+	RelevantComponent = UE::MovieScene::FBuiltInComponentTypes::Get()->Tags.Root;
 	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
-		DefineComponentProducer(GetClass(), UE::MovieScene::FBuiltInComponentTypes::Get()->Tags.Master);
+		DefineComponentProducer(GetClass(), UE::MovieScene::FBuiltInComponentTypes::Get()->Tags.Root);
 	}
 }
 
-void UMovieSceneMasterInstantiatorSystem::OnRun(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents)
+void UMovieSceneRootInstantiatorSystem::OnRun(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents)
 {
 	using namespace UE::MovieScene;
 
 	FBuiltInComponentTypes* Components = FBuiltInComponentTypes::Get();
 
 	FEntityComponentFilter Filter;
-	Filter.All({Components->Tags.Master,Components->Tags.NeedsLink});
+	Filter.All({Components->Tags.Root,Components->Tags.NeedsLink});
 
 	TArray<const FEntityAllocation*> Allocations;
 	for (const FEntityAllocation* Allocation : Linker->EntityManager.Iterate(&Filter))
@@ -41,7 +41,7 @@ void UMovieSceneMasterInstantiatorSystem::OnRun(FSystemTaskPrerequisites& InPrer
 	}
 }
 
-void UMovieSceneMasterInstantiatorSystem::InstantiateAllocation(const UE::MovieScene::FEntityAllocation* ParentAllocation)
+void UMovieSceneRootInstantiatorSystem::InstantiateAllocation(const UE::MovieScene::FEntityAllocation* ParentAllocation)
 {
 	using namespace UE::MovieScene;
 
