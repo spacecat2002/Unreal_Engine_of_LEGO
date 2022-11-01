@@ -30,6 +30,16 @@ public:
 		return false;
 	}
 
+	/** Experimental struct */
+	struct FLayerRenderParams
+	{
+		FIntRect Viewport;
+		FMatrix RenderMatrices[3];
+	};
+
+	/** Experimental method */
+	static void StereoLayerRender(FRHICommandListImmediate& RHICmdList, const TArray<FLayerDesc>& LayersToRender, const FLayerRenderParams& RenderParams);
+
 protected:
 	
 	/**
@@ -40,20 +50,11 @@ protected:
 		HmdTransform = InHmdTransform;
 	}
 
-	struct FLayerRenderParams
-	{
-		FIntRect Viewport;
-		FMatrix RenderMatrices[3];
-	};
-
-	void StereoLayerRender(FRHICommandListImmediate& RHICmdList, const TArray<uint32> & LayersToRender, const FLayerRenderParams& RenderParams) const;
-
 	FHeadMountedDisplayBase* HMDDevice;
 	FTransform HmdTransform;
 
-	TArray<FLayerDesc> RenderThreadLayers;
-	TArray<uint32> SortedSceneLayers;
-	TArray<uint32> SortedOverlayLayers;
+	TArray<FLayerDesc> SortedSceneLayers;
+	TArray<FLayerDesc> SortedOverlayLayers;
 
 	friend class FHeadMountedDisplayBase;
 };
