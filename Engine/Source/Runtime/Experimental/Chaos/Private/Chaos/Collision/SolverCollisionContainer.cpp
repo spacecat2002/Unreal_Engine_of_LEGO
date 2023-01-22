@@ -3,7 +3,6 @@
 
 #include "Chaos/Collision/CollisionApplyType.h"
 #include "Chaos/Collision/PBDCollisionConstraint.h"
-#include "Chaos/Collision/PBDCollisionSolver.h"
 #include "Chaos/CollisionResolution.h"
 #include "Chaos/DebugDrawQueue.h"
 #include "Chaos/Evolution/SolverBodyContainer.h"
@@ -50,24 +49,6 @@ namespace Chaos
 		FAutoConsoleVariableRef CVarChaosPBDCollisionSolverJacobiRotationTolerance(TEXT("p.Chaos.PBDCollisionSolver.JacobiRotationTolerance"), Chaos_PBDCollisionSolver_JacobiRotationTolerance, TEXT(""));
 	}
 
-	using namespace CVars;
-	using namespace Private;
-
-	//////////////////////////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-	FPBDCollisionSolverSettings::FPBDCollisionSolverSettings()
-		: MaxPushOutVelocity(0)
-		, NumPositionFrictionIterations(4)
-		, NumVelocityFrictionIterations(1)
-		, NumPositionShockPropagationIterations(3)
-		, NumVelocityShockPropagationIterations(1)
-	{
-	}
-
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,7 +56,7 @@ namespace Chaos
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// Transform the Constraint's local-space data into world space for use by  the collision solver and also calculate tangents, errors, etc
-	FORCEINLINE_DEBUGGABLE void UpdateCollisionSolverContactPointFromConstraint(FPBDCollisionSolver& Solver, const int32 SolverPointIndex, const FPBDCollisionConstraint* Constraint, const int32 ConstraintPointIndex, const FRealSingle Dt, const FSolverBody& Body0, const FSolverBody& Body1)
+	FORCEINLINE_DEBUGGABLE void UpdateCollisionSolverContactPointFromConstraint(Private::FPBDCollisionSolver& Solver, const int32 SolverPointIndex, const FPBDCollisionConstraint* Constraint, const int32 ConstraintPointIndex, const FRealSingle Dt, const FSolverBody& Body0, const FSolverBody& Body1)
 	{
 		const FManifoldPoint& ManifoldPoint = Constraint->GetManifoldPoint(ConstraintPointIndex);
 
@@ -162,7 +143,7 @@ namespace Chaos
 		WorldContactPoint.ContactTargetVelocityNormal = WorldContactTargetVelocityNormal;
 	}
 
-	FORCEINLINE_DEBUGGABLE void UpdateCollisionSolverManifoldFromConstraint(FPBDCollisionSolver& Solver, const FPBDCollisionConstraint* Constraint, const FSolverReal Dt, const int32 ConstraintPointBeginIndex, const int32 ConstraintPointEndIndex)
+	FORCEINLINE_DEBUGGABLE void UpdateCollisionSolverManifoldFromConstraint(Private::FPBDCollisionSolver& Solver, const FPBDCollisionConstraint* Constraint, const FSolverReal Dt, const int32 ConstraintPointBeginIndex, const int32 ConstraintPointEndIndex)
 	{
 		const FSolverBody& Body0 = Solver.SolverBody0().SolverBody();
 		const FSolverBody& Body1 = Solver.SolverBody1().SolverBody();
@@ -185,7 +166,7 @@ namespace Chaos
 		}
 	}
 
-	FORCEINLINE_DEBUGGABLE void UpdateCollisionSolverFromConstraint(FPBDCollisionSolver& Solver, const FPBDCollisionConstraint* Constraint, const FSolverReal Dt, const FPBDCollisionSolverSettings& SolverSettings, bool& bOutPerIterationCollision)
+	FORCEINLINE_DEBUGGABLE void UpdateCollisionSolverFromConstraint(Private::FPBDCollisionSolver& Solver, const FPBDCollisionConstraint* Constraint, const FSolverReal Dt, const FPBDCollisionSolverSettings& SolverSettings, bool& bOutPerIterationCollision)
 	{
 		// Friction values. Static and Dynamic friction are applied in the position solve for most shapes.
 		// We can also run in a mode without static friction at all. This is faster but stacking is not possible.
@@ -231,7 +212,7 @@ namespace Chaos
 		UpdateCollisionSolverManifoldFromConstraint(Solver, Constraint, Dt, 0, Constraint->NumManifoldPoints());
 	}
 
-	FORCEINLINE_DEBUGGABLE void UpdateCollisionConstraintFromSolver(FPBDCollisionConstraint* Constraint, const FPBDCollisionSolver& Solver, const FSolverReal Dt)
+	FORCEINLINE_DEBUGGABLE void UpdateCollisionConstraintFromSolver(FPBDCollisionConstraint* Constraint, const Private::FPBDCollisionSolver& Solver, const FSolverReal Dt)
 	{
 		Constraint->ResetSolverResults();
 
@@ -244,7 +225,7 @@ namespace Chaos
 			FSolverVec3 NetImpulse = FSolverVec3(0);
 			FSolverReal StaticFrictionRatio = FSolverReal(0);
 
-			const FPBDCollisionSolverManifoldPoint& SolverManifoldPoint = Solver.GetManifoldPoint(SolverManifoldPointIndex);
+			const Private::FPBDCollisionSolverManifoldPoint& SolverManifoldPoint = Solver.GetManifoldPoint(SolverManifoldPointIndex);
 			if (!Constraint->GetManifoldPoint(ManifoldPointIndex).Flags.bDisabled)
 			{
 				NetPushOut =
@@ -305,7 +286,7 @@ namespace Chaos
 		CollisionSolvers.Reset(MaxCollisions);
 		CollisionConstraints.Reset(CollisionSolvers.Max());
 		bCollisionConstraintPerIterationCollisionDetection.Reset(CollisionSolvers.Max());
-		CollisionSolverManifoldPoints.Reset(CollisionSolvers.Max() * FPBDCollisionSolver::MaxPointsPerConstraint);
+		CollisionSolverManifoldPoints.Reset(CollisionSolvers.Max() * Private::FPBDCollisionSolver::MaxPointsPerConstraint);
 
 		// Just set the array size for these right away - all data will be initialized later and there is no constructor
 		// We use CollisionConstraints.Num() to track how many constraints we currently have
@@ -345,7 +326,7 @@ namespace Chaos
 		// NOTE: we don't know how many points we will create if collision detection is deferred or incrememntal, so just allocate space for the max allowed
 		// @todo(chaos): see if we can do better - we don't want to pay for this logic when it is only used rarely
 		const bool bDeferredCollisionDetection = ConstraintContainer.GetDetectorSettings().bDeferNarrowPhase;
-		const int32 ManifoldPointMax = (bDeferredCollisionDetection || Constraint.GetUseIncrementalManifold()) ? FPBDCollisionSolver::MaxPointsPerConstraint : Constraint.NumManifoldPoints();
+		const int32 ManifoldPointMax = (bDeferredCollisionDetection || Constraint.GetUseIncrementalManifold()) ? Private::FPBDCollisionSolver::MaxPointsPerConstraint : Constraint.NumManifoldPoints();
 		if (ManifoldPointMax > 0)
 		{
 			const int32 ManifoldPointStart = CollisionSolverManifoldPoints.Num();
@@ -367,7 +348,7 @@ namespace Chaos
 	{
 		for (int32 SolverIndex = 0, SolverEndIndex = NumSolvers(); SolverIndex < SolverEndIndex; ++SolverIndex)
 		{
-			FPBDCollisionSolver& CollisionSolver = CollisionSolvers[SolverIndex];
+			Private::FPBDCollisionSolver& CollisionSolver = CollisionSolvers[SolverIndex];
 			FPBDCollisionConstraint* Constraint = CollisionConstraints[SolverIndex];
 			check(Constraint != nullptr);
 
@@ -394,7 +375,7 @@ namespace Chaos
 			const int32 NumManifoldPoints = CollisionSolvers[ConstraintIndex].NumManifoldPoints();
 			if (NumManifoldPoints > 0)
 			{
-				FPlatformMisc::PrefetchBlock(&CollisionSolvers[ConstraintIndex].GetManifoldPoint(0), NumManifoldPoints * sizeof(FPBDCollisionSolverManifoldPoint));
+				FPlatformMisc::PrefetchBlock(&CollisionSolvers[ConstraintIndex].GetManifoldPoint(0), NumManifoldPoints * sizeof(Private::FPBDCollisionSolverManifoldPoint));
 			}
 			FPlatformMisc::PrefetchBlock(&CollisionSolvers[ConstraintIndex], sizeof(FPBDCollisionContainerSolver));
 		}
@@ -418,7 +399,7 @@ namespace Chaos
 		bool bWantPerIterationCollisionDetection = false;
 		for (int32 ConstraintIndex = BeginIndex; ConstraintIndex < EndIndex; ++ConstraintIndex)
 		{
-			FPBDCollisionSolver& CollisionSolver = CollisionSolvers[ConstraintIndex];
+			Private::FPBDCollisionSolver& CollisionSolver = CollisionSolvers[ConstraintIndex];
 			FPBDCollisionConstraint* Constraint = CollisionConstraints[ConstraintIndex];
 			bool& bPerIterationCollision = bCollisionConstraintPerIterationCollisionDetection[ConstraintIndex];
 
@@ -453,7 +434,7 @@ namespace Chaos
 
 		for (int32 ConstraintIndex = BeginIndex; ConstraintIndex < EndIndex; ++ConstraintIndex)
 		{
-			FPBDCollisionSolver& CollisionSolver = CollisionSolvers[ConstraintIndex];
+			Private::FPBDCollisionSolver& CollisionSolver = CollisionSolvers[ConstraintIndex];
 			FPBDCollisionConstraint* Constraint = CollisionConstraints[ConstraintIndex];
 
 			UpdateCollisionConstraintFromSolver(Constraint, CollisionSolver, Dt);
@@ -516,7 +497,7 @@ namespace Chaos
 	bool FPBDCollisionContainerSolver::SolvePositionImpl(const FReal InDt, const int32 It, const int32 NumIts, const int32 BeginIndex, const int32 EndIndex, const FPBDCollisionSolverSettings& SolverSettings)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Collisions_Apply);
-		if (!bChaos_PBDCollisionSolver_Position_SolveEnabled)
+		if (!CVars::bChaos_PBDCollisionSolver_Position_SolveEnabled)
 		{
 			return false;
 		}
@@ -559,7 +540,7 @@ namespace Chaos
 	bool FPBDCollisionContainerSolver::SolveVelocityImpl(const FReal InDt, const int32 It, const int32 NumIts, const int32 BeginIndex, const int32 EndIndex, const FPBDCollisionSolverSettings& SolverSettings)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Collisions_ApplyPushOut);
-		if (!bChaos_PBDCollisionSolver_Velocity_SolveEnabled)
+		if (!CVars::bChaos_PBDCollisionSolver_Velocity_SolveEnabled)
 		{
 			return false;
 		}
@@ -589,7 +570,7 @@ namespace Chaos
 		{
 			if (bDeferredCollisionDetection || bCollisionConstraintPerIterationCollisionDetection[SolverIndex])
 			{
-				FPBDCollisionSolver& CollisionSolver = CollisionSolvers[SolverIndex];
+				Private::FPBDCollisionSolver& CollisionSolver = CollisionSolvers[SolverIndex];
 				FPBDCollisionConstraint* Constraint = CollisionConstraints[SolverIndex];
 
 				// Run collision detection at the current transforms including any correction from previous iterations

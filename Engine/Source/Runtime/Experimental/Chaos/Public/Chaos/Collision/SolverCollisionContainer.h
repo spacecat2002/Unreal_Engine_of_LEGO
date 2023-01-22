@@ -1,10 +1,10 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Chaos/CollisionResolutionTypes.h"
 #include "Chaos/Collision/CollisionApplyType.h"
 #include "Chaos/Collision/PBDCollisionSolver.h"
+#include "Chaos/Collision/PBDCollisionSolverSettings.h"
 #include "Chaos/Evolution/SolverConstraintContainer.h"
 
 namespace Chaos
@@ -18,35 +18,6 @@ namespace Chaos
 	class FPBDCollisionConstraints;
 	class FSolverBody;
 	class FSolverBodyContainer;
-
-	/**
-	 * @brief Settings to control the low-level collision solver behaviour
-	*/
-	class FPBDCollisionSolverSettings
-	{
-	public:
-		UE_NONCOPYABLE(FPBDCollisionSolverSettings);
-
-		FPBDCollisionSolverSettings();
-
-		// Maximum speed at which two objects can depenetrate (actually, how much relative velocity can be added
-		// to a contact per frame when depentrating. Stacks and deep penetrations can lead to larger velocities)
-		FReal MaxPushOutVelocity;
-
-		// How many of the position iterations should run static/dynamic friction
-		int32 NumPositionFrictionIterations;
-
-		// How many of the velocity iterations should run dynamic friction
-		// @todo(chaos): if NumVelocityFrictionIterations > 1, then dynamic friction in the velocity phase will be iteration 
-		// count dependent (velocity-solve friction is currentlyused by quadratic shapes and RBAN)
-		int32 NumVelocityFrictionIterations;
-
-		// How many position iterations should have shock propagation enabled
-		int32 NumPositionShockPropagationIterations;
-
-		// How many velocity iterations should have shock propagation enabled
-		int32 NumVelocityShockPropagationIterations;
-	};
 
 	/**
 	 * The solver for a set of collision constraints. This collects all the data required to solve a set of collision
