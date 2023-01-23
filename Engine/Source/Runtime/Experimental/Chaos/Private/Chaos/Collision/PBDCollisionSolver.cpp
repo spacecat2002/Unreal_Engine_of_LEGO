@@ -3,7 +3,6 @@
 
 #include "Chaos/Collision/CollisionApplyType.h"
 #include "Chaos/Collision/PBDCollisionConstraint.h"
-#include "Chaos/Collision/SolverCollisionContainer.h"
 #include "Chaos/CollisionResolution.h"
 #include "Chaos/CollisionResolutionTypes.h"
 #include "Chaos/CollisionResolutionUtil.h"
@@ -27,16 +26,13 @@ namespace Chaos
 	namespace CVars
 	{
 		extern int32 Chaos_Collision_UseShockPropagation;
-		extern bool bChaos_PBDCollisionSolver_UseJacobiPairSolver;
 
 		//
 		// Solver Settings
 		//
 
 		bool bChaos_PBDCollisionSolver_ISPC = false;	// NOTE: WORK IN PROGRESS. Not ready to be enabled.
-		bool bChaos_PBDCollisionSolver_UseJacobiPairSolver = false;
 		FAutoConsoleVariableRef CVarChaos_PBDCollisionSolver_ISPC(TEXT("p.Chaos.PBDCollisionSolver.ISPC"), bChaos_PBDCollisionSolver_ISPC, TEXT("Use ISPC collision solver (WIP)"));
-		FAutoConsoleVariableRef CVarChaosPBDCollisionSolverUseJacobiPairSolver(TEXT("p.Chaos.PBDCollisionSolver.UseJacobi"), bChaos_PBDCollisionSolver_UseJacobiPairSolver, TEXT("Whether to use the Jacobi collision pair solver (as option in main collision solver)"));
 
 		//
 		// Position Solver Settings
@@ -259,76 +255,34 @@ namespace Chaos
 #if INTEL_ISPC
 			if (CVars::bChaos_PBDCollisionSolver_ISPC)
 			{
-				if (!CVars::bChaos_PBDCollisionSolver_UseJacobiPairSolver)
-				{
-					ispc::SolvePositionNoFriction(
-						(ispc::FPBDCollisionSolver*)CollisionSolvers.GetData(), 
-						CollisionSolvers.Num(), 
-						Dt, 
-						MaxPushOut);
-				}
-				else
-				{
-					ispc::SolvePositionNoFrictionJacobi(
-						(ispc::FPBDCollisionSolver*)CollisionSolvers.GetData(), 
-						CollisionSolvers.Num(), 
-						Dt, 
-						MaxPushOut, 
-						CVars::Chaos_PBDCollisionSolver_JacobiStiffness);
-				}
+				ispc::SolvePositionNoFriction(
+					(ispc::FPBDCollisionSolver*)CollisionSolvers.GetData(), 
+					CollisionSolvers.Num(), 
+					Dt, 
+					MaxPushOut);
 				return;
 			}
 #endif
 
-			if (!CVars::bChaos_PBDCollisionSolver_UseJacobiPairSolver)
+			for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
 			{
-				for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
-				{
-					CollisionSolver.SolvePositionNoFriction(Dt, MaxPushOut);
-				}
-			}
-			else
-			{
-				for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
-				{
-					CollisionSolver.SolvePositionNoFrictionJacobi(Dt, MaxPushOut);
-				}
+				CollisionSolver.SolvePositionNoFriction(Dt, MaxPushOut);
 			}
 		}
 
 		void FPBDCollisionSolverHelper::SolvePositionWithFriction(const TArrayView<FPBDCollisionSolver>& CollisionSolvers, const FSolverReal Dt, const FSolverReal MaxPushOut)
 		{
-			if (!CVars::bChaos_PBDCollisionSolver_UseJacobiPairSolver)
+			for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
 			{
-				for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
-				{
-					CollisionSolver.SolvePositionWithFriction(Dt, MaxPushOut);
-				}
-			}
-			else
-			{
-				for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
-				{
-					CollisionSolver.SolvePositionWithFrictionJacobi(Dt, MaxPushOut);
-				}
+				CollisionSolver.SolvePositionWithFriction(Dt, MaxPushOut);
 			}
 		}
 
 		void FPBDCollisionSolverHelper::SolveVelocity(const TArrayView<FPBDCollisionSolver>& CollisionSolvers, const FSolverReal Dt, const bool bApplyDynamicFriction)
 		{
-			if (!CVars::bChaos_PBDCollisionSolver_UseJacobiPairSolver)
+			for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
 			{
-				for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
-				{
-					CollisionSolver.SolveVelocity(Dt, bApplyDynamicFriction);
-				}
-			}
-			else
-			{
-				for (FPBDCollisionSolver& CollisionSolver : CollisionSolvers)
-				{
-					CollisionSolver.SolveVelocityJacobi(Dt, bApplyDynamicFriction);
-				}
+				CollisionSolver.SolveVelocity(Dt, bApplyDynamicFriction);
 			}
 		}
 
