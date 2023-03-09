@@ -4,9 +4,9 @@ using System;
 using System.IO;
 using UnrealBuildTool;
 
-public class DirectMLDefault : ModuleRules
+public class DirectML : ModuleRules
 {
-    public DirectMLDefault(ReadOnlyTargetRules Target) : base(Target)
+    public DirectML(ReadOnlyTargetRules Target) : base(Target)
     {
 		Type = ModuleType.External;
 
