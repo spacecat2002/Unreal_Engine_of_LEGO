@@ -4,9 +4,9 @@ using System;
 using System.IO;
 using UnrealBuildTool;
 
-public class DirectMLDefault : ModuleRules
+public class DirectML : ModuleRules
 {
-    public DirectMLDefault(ReadOnlyTargetRules Target) : base(Target)
+    public DirectML(ReadOnlyTargetRules Target) : base(Target)
     {
 		Type = ModuleType.External;
 
@@ -28,7 +28,7 @@ public class DirectMLDefault : ModuleRules
 			PublicDelayLoadDLLs.Add(DllFileName);
 			RuntimeDependencies.Add("$(TargetOutputDir)/DML/" + DllFileName, DllFullPath);
 
-			PublicDefinitions.Add("DML_TARGET_VERSION=0x5000");
+			PublicDefinitions.Add("DML_TARGET_VERSION=0x5100");
 			PublicDefinitions.Add("WITH_DIRECTML");
 			PublicDefinitions.Add("DIRECTML_PATH=DML");
 
