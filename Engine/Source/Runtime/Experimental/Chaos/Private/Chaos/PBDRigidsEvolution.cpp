@@ -494,7 +494,7 @@ namespace Chaos
 					ISpatialAcceleration<FAccelerationStructureHandle, FReal, 3>* AccelerationSUBStructureCopy = GetSubStructureCopy(SpatialAccIdx);
 					if (AccelerationSUBStructureCopy)
 					{
-						*AccelerationSUBStructureCopy = *NewStruct; // Normal copy
+						AccelerationSUBStructureCopy->DeepAssign(*NewStruct); // Normal copy
 					}
 					if (AccelerationStructure->IsBucketActive(SpatialAccIdx.Bucket))
 					{
@@ -865,7 +865,7 @@ namespace Chaos
 				}
 
 				check(ExternalAccelerationSubStructure->IsTreeDynamic());
-				*ExternalAccelerationSubStructure = *AsyncInternalAccelerationSubStructure;
+				ExternalAccelerationSubStructure->DeepAssign(*AsyncInternalAccelerationSubStructure);
 			}
 			
 			InternalAcceleration->SwapSubstructure(*AsyncInternalAcceleration, SpatialIdx);
@@ -893,11 +893,11 @@ namespace Chaos
 
 			if (!CheckPristine || (ToSubStructure->ShouldRebuild() && !FromSubStructure->ShouldRebuild()))
 			{
-				*ToSubStructure = *FromSubStructure;
+				ToSubStructure->DeepAssign(*FromSubStructure);
 			}
 		}
 		// This is a pretty shallow copy: It won't copy anything that we copied above
-		*ToStructure = *FromStructure;
+		ToStructure->DeepAssign(*FromStructure);
 	}
 
 	void FPBDRigidsEvolutionBase::UpdateExternalAccelerationStructure_External(
