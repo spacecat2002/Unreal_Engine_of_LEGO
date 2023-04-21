@@ -20,6 +20,7 @@
 #include "Engine/Font.h"
 #include "DataDrivenShaderPlatformInfo.h"
 #include "MaterialDomain.h"
+#include "MaterialShared.h"
 #include "Materials/HLSLMaterialTranslator.h"
 #include "Materials/MaterialAttributeDefinitionMap.h"
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
@@ -14990,8 +14991,7 @@ bool UMaterialFunction::IsUsingControlFlow() const
 {
 	if (bEnableExecWire)
 	{
-		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MaterialEnableControlFlow"));
-		return CVar->GetValueOnAnyThread() != 0;
+		return AllowMaterialControlFlow();
 	}
 	return false;
 }
