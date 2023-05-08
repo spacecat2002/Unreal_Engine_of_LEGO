@@ -275,12 +275,18 @@ void FTexture2DResource::GetData( uint32 MipIndex, void* Dest, uint32 DestPitch,
 
 	int64 DataSize = MipDataSize[MipIndex];
 
-	UE_LOG(LogTextureUpload,Verbose,TEXT("Size: %dx%d , EffectiveSize=%d BulkDataSize=%d , SrcPitch=%d DestPitch=%d Format=%d, DestSize=%lld"),
+	UE_LOG(LogTextureUpload,Verbose,TEXT("Size: %dx%d , EffectiveSize=%d DataSize=%lld , SrcPitch=%d DestPitch=%d Format=%d, DestSize=%lld"),
 		MipMap.SizeX,MipMap.SizeY,
-		EffectiveSize,(int)DataSize,
+		EffectiveSize,DataSize,
 		SrcPitch,DestPitch, PixelFormat, DestSize);
 
-	//check(DestSize >= (uint64)BulkDataSize);
+	if ((uint64)DataSize > DestSize)
+	{
+		UE_LOG(LogTextureUpload, Warning, TEXT("DestSize is reported smaller than BulkDataSize in upload! Either RHI is reporting wrong sizes or we are stomping memory! Size: %dx%d, EffectiveSize=%d, DataSize=%lld, SrcPitch=%d, DestPitch=%d, Format=%d, DestSize=%lld"),
+			MipMap.SizeX,MipMap.SizeY,
+			EffectiveSize,DataSize,
+			SrcPitch,DestPitch, PixelFormat, DestSize);
+	}
 
 	// for platforms that returned 0 pitch from Lock, we need to just use the bulk data directly, never do 
 	// runtime block size checking, conversion, or the like
