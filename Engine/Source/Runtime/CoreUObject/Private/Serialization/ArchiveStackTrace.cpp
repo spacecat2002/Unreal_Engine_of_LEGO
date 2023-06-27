@@ -111,6 +111,82 @@ FArchiveStackTraceDisabledScope::~FArchiveStackTraceDisabledScope()
 	GIgnoreDiffManager.PopDisabled();
 }
 
+namespace UE::ArchiveStackTrace
+{
+
+bool LoadPackageIntoMemory(const TCHAR* InFilename, UE::ArchiveStackTrace::FPackageData& OutPackageData,
+	TUniquePtr<uint8>& OutLoadedBytes)
+{
+	TUniquePtr<FArchive> UAssetFileArchive(IFileManager::Get().CreateFileReader(InFilename));
+	if (!UAssetFileArchive || UAssetFileArchive->TotalSize() == 0)
+	{
+		// The package doesn't exist on disk
+		OutLoadedBytes.Reset();
+		OutPackageData.Data = nullptr;
+		OutPackageData.Size = 0;
+		OutPackageData.HeaderSize = 0;
+		OutPackageData.StartOffset = 0;
+		return false;
+	}
+	else
+	{
+		// Handle EDL packages (uexp files)
+		TUniquePtr<FArchive> ExpFileArchive = nullptr;
+		OutPackageData.Size = UAssetFileArchive->TotalSize();
+		{
+			FString UExpFilename = FPaths::ChangeExtension(InFilename, TEXT("uexp"));
+			ExpFileArchive.Reset(IFileManager::Get().CreateFileReader(*UExpFilename));
+			if (ExpFileArchive)
+			{
+				// The header size is the current package size
+				OutPackageData.HeaderSize = OutPackageData.Size;
+				// Grow the buffer size to append the uexp file contents
+				OutPackageData.Size += ExpFileArchive->TotalSize();
+			}
+		}
+		OutLoadedBytes.Reset(new uint8[OutPackageData.Size]);
+		OutPackageData.Data = OutLoadedBytes.Get();
+		UAssetFileArchive->Serialize(OutPackageData.Data, UAssetFileArchive->TotalSize());
+
+		if (ExpFileArchive)
+		{
+			// If uexp file is present, append its contents at the end of the buffer
+			ExpFileArchive->Serialize(OutPackageData.Data + OutPackageData.HeaderSize, ExpFileArchive->TotalSize());
+		}
+	}
+
+	return true;
+}
+
+void ForceKillPackageAndLinker(FLinkerLoad* Linker)
+{
+	UPackage* Package = Linker->LinkerRoot;
+	Linker->Detach();
+	FLinkerManager::Get().RemoveLinker(Linker);
+	if (Package)
+	{
+		Package->ClearPackageFlags(PKG_ContainsMapData | PKG_ContainsMap);
+		Package->MarkAsGarbage();
+	}
+}
+
+} // namespace UE::ArchiveStackTrace
+
+PRAGMA_DISABLE_DEPRECATION_WARNINGS;
+
+bool FArchiveDiffMap::ContainsOffset(int64 Offset) const
+{
+	for (const FArchiveDiffInfo& Diff : *this)
+	{
+		if (Diff.Offset <= Offset && Offset < (Diff.Offset + Diff.Size))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 FArchiveCallstacks::FCallstackData::FCallstackData(TUniquePtr<ANSICHAR[]>&& InCallstack, UObject* InSerializedObject, FProperty* InSerializedProperty)
 	: Callstack(MoveTemp(InCallstack))
 	, SerializedProp(InSerializedProperty)
@@ -584,45 +660,13 @@ FUObjectSerializeContext* FArchiveStackTrace::GetSerializeContext()
 
 bool FArchiveStackTrace::LoadPackageIntoMemory(const TCHAR* InFilename, FPackageData& OutPackageData, TUniquePtr<uint8>& OutLoadedBytes)
 {
-	TUniquePtr<FArchive> UAssetFileArchive(IFileManager::Get().CreateFileReader(InFilename));
-	if (!UAssetFileArchive || UAssetFileArchive->TotalSize() == 0)
-	{
-		// The package doesn't exist on disk
-		OutLoadedBytes.Reset();
-		OutPackageData.Data = nullptr;
-		OutPackageData.Size = 0;
-		OutPackageData.HeaderSize = 0;
-		OutPackageData.StartOffset = 0;
-		return false;
-	}
-	else
-	{
-		// Handle EDL packages (uexp files)
-		TUniquePtr<FArchive> ExpFileArchive = nullptr;
-		OutPackageData.Size = UAssetFileArchive->TotalSize();
-		{
-			FString UExpFilename = FPaths::ChangeExtension(InFilename, TEXT("uexp"));
-			ExpFileArchive.Reset(IFileManager::Get().CreateFileReader(*UExpFilename));
-			if (ExpFileArchive)
-			{				
-				// The header size is the current package size
-				OutPackageData.HeaderSize = OutPackageData.Size;
-				// Grow the buffer size to append the uexp file contents
-				OutPackageData.Size += ExpFileArchive->TotalSize();
-			}
-		}
-		OutLoadedBytes.Reset(new uint8[OutPackageData.Size]);
-		OutPackageData.Data = OutLoadedBytes.Get();
-		UAssetFileArchive->Serialize(OutPackageData.Data, UAssetFileArchive->TotalSize());
-
-		if (ExpFileArchive)
-		{
-			// If uexp file is present, append its contents at the end of the buffer
-			ExpFileArchive->Serialize(OutPackageData.Data + OutPackageData.HeaderSize, ExpFileArchive->TotalSize());
-		}
-	}
-
-	return true;
+	UE::ArchiveStackTrace::FPackageData PackageData;
+	bool bResult = UE::ArchiveStackTrace::LoadPackageIntoMemory(InFilename, PackageData, OutLoadedBytes);
+	OutPackageData.Data = PackageData.Data;
+	OutPackageData.Size = PackageData.Size;
+	OutPackageData.HeaderSize = PackageData.HeaderSize;
+	OutPackageData.StartOffset = PackageData.StartOffset;
+	return bResult;
 }
 
 namespace
@@ -1234,29 +1278,29 @@ static inline FString GetTableKeyForIndex(const FLinkerLoad* Linker, FPackageInd
 	}
 }
 
-bool ComparePackageIndices(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FPackageIndex& SourceIndex, const FPackageIndex& DestIndex);
+static bool ComparePackageIndices(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FPackageIndex& SourceIndex, const FPackageIndex& DestIndex);
 
-bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FName& SourceName, const FName& DestName)
+static bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FName& SourceName, const FName& DestName)
 {
 	return SourceName == DestName;
 }
 
-bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, FNameEntryId SourceName, FNameEntryId DestName)
+static bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, FNameEntryId SourceName, FNameEntryId DestName)
 {
 	return SourceName == DestName;
 }
 
-FString ConvertItemToText(const FName& Name, FLinkerLoad* Linker)
+static FString ConvertItemToText(const FName& Name, FLinkerLoad* Linker)
 {
 	return Name.ToString();
 }
 
-FString ConvertItemToText(FNameEntryId Id, FLinkerLoad* Linker)
+static FString ConvertItemToText(FNameEntryId Id, FLinkerLoad* Linker)
 {
 	return FName::GetEntry(Id)->GetPlainNameString();
 }
 
-bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FObjectImport& SourceImport, const FObjectImport& DestImport)
+static bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FObjectImport& SourceImport, const FObjectImport& DestImport)
 {
 	if (SourceImport.ObjectName != DestImport.ObjectName ||
 		SourceImport.ClassName != DestImport.ClassName ||
@@ -1271,7 +1315,7 @@ bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const 
 	}
 }
 
-FString ConvertItemToText(const FObjectImport& Import, FLinkerLoad* Linker)
+static FString ConvertItemToText(const FObjectImport& Import, FLinkerLoad* Linker)
 {
 	return FString::Printf(
 		TEXT("%s ClassPackage: %s"),
@@ -1280,7 +1324,7 @@ FString ConvertItemToText(const FObjectImport& Import, FLinkerLoad* Linker)
 	);
 }
 
-bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FObjectExport& SourceExport, const FObjectExport& DestExport)
+static bool CompareTableItem(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FObjectExport& SourceExport, const FObjectExport& DestExport)
 {
 	if (SourceExport.ObjectName != DestExport.ObjectName ||
 		SourceExport.PackageFlags != DestExport.PackageFlags ||
@@ -1323,7 +1367,7 @@ static bool IsImportMapIdentical(FLinkerLoad* SourceLinker, FLinkerLoad* DestLin
 	return bIdentical;
 }
 
-bool ComparePackageIndices(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FPackageIndex& SourceIndex, const FPackageIndex& DestIndex)
+static bool ComparePackageIndices(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, const FPackageIndex& SourceIndex, const FPackageIndex& DestIndex)
 {
 	if (SourceIndex.IsNull() && DestIndex.IsNull())
 	{
@@ -1373,7 +1417,7 @@ bool ComparePackageIndices(FLinkerLoad* SourceLinker, FLinkerLoad* DestLinker, c
 	return false;
 }
 
-FString ConvertItemToText(const FObjectExport& Export, FLinkerLoad* Linker)
+static FString ConvertItemToText(const FObjectExport& Export, FLinkerLoad* Linker)
 {
 	FName ClassName = Export.ClassIndex.IsNull() ? FName(NAME_Class) : Linker->ImpExp(Export.ClassIndex).ObjectName;
 	return FString::Printf(TEXT("%s Super: %s, Template: %s, Flags: %d, Size: %lld, PackageFlags: %d, ForcedExport: %d, NotForClient: %d, NotForServer: %d, NotAlwaysLoadedForEditorGame: %d, IsAsset: %d, IsInheritedInstance: %d, GeneratePublicHash: %d"),
@@ -1407,18 +1451,6 @@ static bool IsExportMapIdentical(FLinkerLoad* SourceLinker, FLinkerLoad* DestLin
 		}
 	}
 	return bIdentical;
-}
-
-static void ForceKillPackageAndLinker(FLinkerLoad* Linker)
-{
-	UPackage* Package = Linker->LinkerRoot;
-	Linker->Detach();
-	FLinkerManager::Get().RemoveLinker(Linker);
-	if (Package)
-	{
-		Package->ClearPackageFlags(PKG_ContainsMapData | PKG_ContainsMap);
-		Package->MarkAsGarbage();
-	}
 }
 
 /** Structure that holds an item from the NameMap/ImportMap/ExportMap in a TSet for diffing */
@@ -1607,11 +1639,11 @@ static void DumpPackageHeaderDiffs_LinkerLoad(
 
 	if (SourceLinker)
 	{
-		ForceKillPackageAndLinker(SourceLinker);
+		UE::ArchiveStackTrace::ForceKillPackageAndLinker(SourceLinker);
 	}
 	if (DestLinker)
 	{
-		ForceKillPackageAndLinker(DestLinker);
+		UE::ArchiveStackTrace::ForceKillPackageAndLinker(DestLinker);
 	}
 #endif // !NO_LOGGING
 }
@@ -1648,6 +1680,8 @@ void FArchiveStackTraceWriter::DumpPackageHeaderDiffs(
 	}
 #endif // !NO_LOGGING
 }
+
+PRAGMA_ENABLE_DEPRECATION_WARNINGS;
 
 FArchiveStackTraceReader::FSerializeData::FSerializeData(int64 InOffset, int64 InSize, UObject* InObject, FProperty* InProperty)
 : Offset(InOffset)
@@ -1693,8 +1727,8 @@ FArchiveStackTraceReader* FArchiveStackTraceReader::CreateFromFile(const TCHAR* 
 {
 	FArchiveStackTraceReader* Reader = nullptr;
 	TUniquePtr<uint8> PackageBytes;
-	FArchiveStackTrace::FPackageData PackageData;
-	if (FArchiveStackTrace::LoadPackageIntoMemory(InFilename, PackageData, PackageBytes))
+	UE::ArchiveStackTrace::FPackageData PackageData;
+	if (UE::ArchiveStackTrace::LoadPackageIntoMemory(InFilename, PackageData, PackageBytes))
 	{
 		Reader = new FArchiveStackTraceReader(InFilename, PackageBytes.Release(), PackageData.Size);
 	}
