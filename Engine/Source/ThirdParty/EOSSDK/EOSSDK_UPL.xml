@@ -19,6 +19,14 @@
     </if>
   </init>
 
+	<resourceCopies>
+		<if condition="bSupported">
+			<true>
+				<copyFile src="$S(PluginDir)/EOSSDK_strings.xml" dst="$S(BuildDir)/res/values/EOSSDK_strings.xml" />
+			</true>
+		</if>
+	</resourceCopies>
+	
   <baseBuildGradleAdditions>
     <if condition="bSupported">
       <true>
@@ -44,12 +52,16 @@
     <if condition="bSupported">
       <true>
         <insert>
-          dependencies.implementation(name: 'eos-sdk', ext: 'aar')
+			dependencies.implementation(name: 'eos-sdk', ext: 'aar')
 
-          dependencies {
-            implementation 'androidx.constraintlayout:constraintlayout:1.1.3'
-          }
-        </insert>
+			dependencies {
+			implementation 'androidx.constraintlayout:constraintlayout:1.1.3'
+			implementation 'androidx.appcompat:appcompat:1.2.0'
+			implementation 'com.google.android.material:material:1.2.1'
+			implementation 'androidx.security:security-crypto:1.0.0'
+			implementation 'androidx.browser:browser:1.0.0'
+			}
+		</insert>
       </true>
     </if>
   </buildGradleAdditions>
@@ -71,7 +83,7 @@
     <if condition="bSupported">
       <true>
         <insert>
-          EOSSDK.init(getApplicationContext());
+          EOSSDK.init(this);
         </insert>
       </true>
     </if>
