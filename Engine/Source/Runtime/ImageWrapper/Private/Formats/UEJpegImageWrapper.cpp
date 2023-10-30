@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Formats/OOJpegImageWrapper.h"
+#include "Formats/UEJpegImageWrapper.h"
 
 #include "Async/ParallelFor.h"
 #include "Math/Color.h"
@@ -8,9 +8,9 @@
 #include "ImageWrapperPrivate.h"
 #include "ImageCoreUtils.h"
 
-#if WITH_OOJPEG
+#if WITH_UEJPEG
 
-#include "oojpeg.h"
+#include "uejpeg.h"
 
 static void* ue_malloc(size_t size) 
 { 
@@ -28,24 +28,24 @@ static void* ue_realloc(void* ptr, size_t size)
 }
 
 
-FOOJpegImageWrapper::FOOJpegImageWrapper(int32 InNumComponents /* = 4 */)
+FUEJpegImageWrapper::FUEJpegImageWrapper(int32 InNumComponents /* = 4 */)
 	: FImageWrapperBase()
 	, NumComponents(InNumComponents)
 { 
 	// NumComponents == 1 for GrayscaleJPEG
-	static oojpeg_alloc_t UeAlloc = { ue_malloc, ue_free, ue_realloc };
-	oojpeg_set_alloc(&UeAlloc);
+	static uejpeg_alloc_t UeAlloc = { ue_malloc, ue_free, ue_realloc };
+	uejpeg_set_alloc(&UeAlloc);
 }
 
 
-FOOJpegImageWrapper::~FOOJpegImageWrapper()
+FUEJpegImageWrapper::~FUEJpegImageWrapper()
 {
 }
 
 /* FImageWrapperBase interface
  *****************************************************************************/
 
-bool FOOJpegImageWrapper::SetCompressed(const void* InCompressedData, int64 InCompressedSize)
+bool FUEJpegImageWrapper::SetCompressed(const void* InCompressedData, int64 InCompressedSize)
 {
 	// jpgd doesn't support 64-bit sizes.
 	if (InCompressedSize < 0 || InCompressedSize > MAX_uint32)
@@ -59,19 +59,19 @@ bool FOOJpegImageWrapper::SetCompressed(const void* InCompressedData, int64 InCo
 	// Is it a JPEG?
 	if (!FMemory::Memcmp(InCompressedData, "\xFF\xD8\xFF", 3)) 
 	{
-		// First encode it to a OOJPEG format
-		unsigned char* OojData = 0;
-		int OojDataSize = 0;
+		// First encode it to a UEJPEG format
+		unsigned char* UEJData = 0;
+		int UEJDataSize = 0;
 		{
-			oojpeg_encode_context_t ctx = oojpeg_encode_jpeg_mem_threaded_start((uint8*)InCompressedData, InCompressedSize, 0);	
+			uejpeg_encode_context_t ctx = uejpeg_encode_jpeg_mem_threaded_start((uint8*)InCompressedData, InCompressedSize, 0);	
 			if (ctx.error) 
 			{
 				return false;
 			}
 			ParallelFor(ctx.jobs_to_run, [&](int idx) {
-				oojpeg_encode_jpeg_thread_run(&ctx, idx);
+				uejpeg_encode_jpeg_thread_run(&ctx, idx);
 			});
-			int err = oojpeg_encode_jpeg_mem_threaded_finish(&ctx, &OojData, &OojDataSize);
+			int err = uejpeg_encode_jpeg_mem_threaded_finish(&ctx, &UEJData, &UEJDataSize);
 			if (err) 
 			{
 				return false;
@@ -80,43 +80,43 @@ bool FOOJpegImageWrapper::SetCompressed(const void* InCompressedData, int64 InCo
 
 		// Then decode to a raw image
 		{
-			oojpeg_decode_context_t ctx = oojpeg_decode_mem_threaded_start(OojData, OojDataSize, OOJPEG_FLAG_FASTDCT);
+			uejpeg_decode_context_t ctx = uejpeg_decode_mem_threaded_start(UEJData, UEJDataSize, UEJPEG_FLAG_FASTDCT);
 			if (ctx.error)
 			{
-				FMemory::Free(OojData);
+				FMemory::Free(UEJData);
 				return false;
 			}
 			ParallelFor(ctx.jobs_to_run, [&](int idx) {
-				oojpeg_decode_thread_run(&ctx, idx);
+				uejpeg_decode_thread_run(&ctx, idx);
 			});
-			d = oojpeg_decode_threaded_finish(&ctx, &x, &y, &n);
+			d = uejpeg_decode_threaded_finish(&ctx, &x, &y, &n);
 		}
 		if (!d)
 		{
-			FMemory::Free(OojData);
+			FMemory::Free(UEJData);
 			return false;
 		}
 		FMemory::Free(d);
 
-		if (!FImageWrapperBase::SetCompressed(OojData, OojDataSize))
+		if (!FImageWrapperBase::SetCompressed(UEJData, UEJDataSize))
 		{
-			FMemory::Free(OojData);
+			FMemory::Free(UEJData);
 			return false;
 		}
 
-		FMemory::Free(OojData);
+		FMemory::Free(UEJData);
 	}
 	else 
 	{
-		oojpeg_decode_context_t ctx = oojpeg_decode_mem_threaded_start((uint8*)InCompressedData, (uint32)InCompressedSize, OOJPEG_FLAG_FASTDCT);
+		uejpeg_decode_context_t ctx = uejpeg_decode_mem_threaded_start((uint8*)InCompressedData, (uint32)InCompressedSize, UEJPEG_FLAG_FASTDCT);
 		if (ctx.error)
 		{
 			return false;
 		}
 		ParallelFor(ctx.jobs_to_run, [&](int idx) {
-			oojpeg_decode_thread_run(&ctx, idx);
+			uejpeg_decode_thread_run(&ctx, idx);
 		});
-		d = oojpeg_decode_threaded_finish(&ctx, &x, &y, &n);
+		d = uejpeg_decode_threaded_finish(&ctx, &x, &y, &n);
 		if (!d)
 		{
 			return false;
@@ -159,13 +159,13 @@ bool FOOJpegImageWrapper::SetCompressed(const void* InCompressedData, int64 InCo
 
 
 // CanSetRawFormat returns true if SetRaw will accept this format
-bool FOOJpegImageWrapper::CanSetRawFormat(const ERGBFormat InFormat, const int32 InBitDepth) const
+bool FUEJpegImageWrapper::CanSetRawFormat(const ERGBFormat InFormat, const int32 InBitDepth) const
 {
 	return ((InFormat == ERGBFormat::RGBA || InFormat == ERGBFormat::BGRA || InFormat == ERGBFormat::Gray) && InBitDepth == 8);
 }
 
 // returns InFormat if supported, else maps to something supported
-ERawImageFormat::Type FOOJpegImageWrapper::GetSupportedRawFormat(const ERawImageFormat::Type InFormat) const
+ERawImageFormat::Type FUEJpegImageWrapper::GetSupportedRawFormat(const ERawImageFormat::Type InFormat) const
 {
 	switch(InFormat)
 	{
@@ -186,7 +186,7 @@ ERawImageFormat::Type FOOJpegImageWrapper::GetSupportedRawFormat(const ERawImage
 	};
 }
 
-void FOOJpegImageWrapper::Compress(int32 Quality)
+void FUEJpegImageWrapper::Compress(int32 Quality)
 {
 	if (Quality == 0)
 	{
@@ -229,12 +229,12 @@ void FOOJpegImageWrapper::Compress(int32 Quality)
 
 		int data_size;
 		unsigned char* data;
-		oojpeg_encode_image_context_t ctx = oojpeg_encode_image_mem_threaded_start(Width, Height, NumComponents, RawData.GetData(), Quality, 0);
+		uejpeg_encode_image_context_t ctx = uejpeg_encode_image_mem_threaded_start(Width, Height, NumComponents, RawData.GetData(), Quality, 0);
 		check(!ctx.error);
 		ParallelFor(ctx.jobs_to_run, [&](int idx) {
-			oojpeg_encode_image_thread_run(&ctx, idx);
+			uejpeg_encode_image_thread_run(&ctx, idx);
 		});
-		int error = oojpeg_encode_image_mem_threaded_finish(&ctx, &data, &data_size);
+		int error = uejpeg_encode_image_mem_threaded_finish(&ctx, &data, &data_size);
 		check(!error);
 
 		CompressedData.Reset(data_size);
@@ -245,7 +245,7 @@ void FOOJpegImageWrapper::Compress(int32 Quality)
 }
 
 
-void FOOJpegImageWrapper::Uncompress(const ERGBFormat InFormat, int32 InBitDepth)
+void FUEJpegImageWrapper::Uncompress(const ERGBFormat InFormat, int32 InBitDepth)
 {
 	// Ensure we haven't already uncompressed the file.
 	if (RawData.Num() != 0)
@@ -258,15 +258,15 @@ void FOOJpegImageWrapper::Uncompress(const ERGBFormat InFormat, int32 InBitDepth
 	int32 NumColors;
 	int32 jpegWidth,jpegHeight;
 	uint8* OutData;
-	oojpeg_decode_context_t ctx = oojpeg_decode_mem_threaded_start(CompressedData.GetData(), CompressedData.Num(), OOJPEG_FLAG_FASTDCT);
+	uejpeg_decode_context_t ctx = uejpeg_decode_mem_threaded_start(CompressedData.GetData(), CompressedData.Num(), UEJPEG_FLAG_FASTDCT);
 	if (ctx.error)
 	{
 		return;
 	}
 	ParallelFor(ctx.jobs_to_run, [&](int idx) {
-		oojpeg_decode_thread_run(&ctx, idx);
+		uejpeg_decode_thread_run(&ctx, idx);
 	});
-	OutData = oojpeg_decode_threaded_finish(&ctx, &jpegWidth, &jpegHeight, &NumColors);
+	OutData = uejpeg_decode_threaded_finish(&ctx, &jpegWidth, &jpegHeight, &NumColors);
 
 	if (OutData)
 	{
@@ -279,16 +279,16 @@ void FOOJpegImageWrapper::Uncompress(const ERGBFormat InFormat, int32 InBitDepth
 	}
 	else
 	{
-		UE_LOG(LogImageWrapper, Error, TEXT("OOJPEG Decompress Error"));
+		UE_LOG(LogImageWrapper, Error, TEXT("UEJPEG Decompress Error"));
 		RawData.Empty();
 	}
 }
 
-TArray64<uint8> FOOJpegImageWrapper::GetExportData(int32 Quality)
+TArray64<uint8> FUEJpegImageWrapper::GetExportData(int32 Quality)
 {
 	uint8* Data;
 	int Size;
-	oojpeg_decode_mem_to_jpeg(CompressedData.GetData(), CompressedData.Num(), &Data, &Size, 0);
+	uejpeg_decode_mem_to_jpeg(CompressedData.GetData(), CompressedData.Num(), &Data, &Size, 0);
 
 	TArray64<uint8> ExportData;
 	ExportData.Reset();
@@ -298,4 +298,4 @@ TArray64<uint8> FOOJpegImageWrapper::GetExportData(int32 Quality)
 	return ExportData;
 }
 
-#endif //WITH_OOJPEG
+#endif //WITH_UEJPEG

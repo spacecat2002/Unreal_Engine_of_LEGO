@@ -5,18 +5,18 @@
 #include "CoreTypes.h"
 #include "ImageWrapperBase.h"
 
-#if WITH_OOJPEG
+#if WITH_UEJPEG
 
-class FOOJpegImageWrapper
+class FUEJpegImageWrapper
 	: public FImageWrapperBase
 {
 public:
 
 	/** Default constructor. */
 	// NumComponents == 1 for GrayscaleJPEG
-	FOOJpegImageWrapper(int32 InNumComponents = 4);
+	FUEJpegImageWrapper(int32 InNumComponents = 4);
 
-	virtual ~FOOJpegImageWrapper();
+	virtual ~FUEJpegImageWrapper();
 
 public:
 
@@ -36,4 +36,4 @@ private:
 };
 
 
-#endif //WITH_OOJPEG
+#endif //WITH_UEJPEG

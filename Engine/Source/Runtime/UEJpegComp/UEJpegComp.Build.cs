@@ -2,9 +2,9 @@
 using UnrealBuildTool;
 using System.IO;
 
-public class OodleJPEG : ModuleRules
+public class UEJpegComp : ModuleRules
 {
-	public OodleJPEG(ReadOnlyTargetRules Target) : base(Target)
+	public UEJpegComp(ReadOnlyTargetRules Target) : base(Target)
 	{
 		Type = ModuleType.External;
 
@@ -12,19 +12,19 @@ public class OodleJPEG : ModuleRules
 		if (Target.Platform == UnrealTargetPlatform.Win64 && Target.WindowsPlatform.Architecture != UnrealArch.Arm64)
 		{
 			string LibPath = Path.Combine(ModuleDirectory, "Lib");
-			PublicAdditionalLibraries.Add(Path.Combine(LibPath, "oojpeg_w64.lib"));
+			PublicAdditionalLibraries.Add(Path.Combine(LibPath, "uejpeg_w64.lib"));
 			bWithLib = true;
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			string LibPath = Path.Combine(ModuleDirectory, "Lib");
-			PublicAdditionalLibraries.Add(Path.Combine(LibPath, "oojpeg_mac.a"));
+			PublicAdditionalLibraries.Add(Path.Combine(LibPath, "uejpeg_mac.a"));
 			bWithLib = true;
 		}
 		else if (Target.IsInPlatformGroup(UnrealPlatformGroup.Unix))
 		{
 			string LibPath = Path.Combine(ModuleDirectory, "Lib/Unix", Target.Architecture.LinuxName);
-			PublicAdditionalLibraries.Add(Path.Combine(LibPath, "oojpeg_linux.a"));
+			PublicAdditionalLibraries.Add(Path.Combine(LibPath, "uejpeg_linux.a"));
 			bWithLib = true;
 		}
 
@@ -33,6 +33,6 @@ public class OodleJPEG : ModuleRules
 			PublicSystemIncludePaths.Add(Path.Combine(ModuleDirectory, "Source"));
 		}
 
-		PublicDefinitions.Add("WITH_OOJPEG=" + (bWithLib ? '1' : '0'));
+		PublicDefinitions.Add("WITH_UEJPEG=" + (bWithLib ? '1' : '0'));
 	}
 }
