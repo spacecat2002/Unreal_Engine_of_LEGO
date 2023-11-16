@@ -294,7 +294,10 @@ void FMacPlatformApplicationMisc::PostInit()
 	if(PostInitMacMenuStartupCb != nullptr)
 	{
 		// Initial menu bar setup
-		PostInitMacMenuStartupCb();
+		MainThreadCall(
+		^{
+			PostInitMacMenuStartupCb();
+		}, NSDefaultRunLoopMode, true);
 	}
 
 	if (!MacApplication)
