@@ -352,7 +352,7 @@ void UKismetSystemLibrary::SetWindowTitle(const FText& Title)
 
 void UKismetSystemLibrary::ExecuteConsoleCommand(const UObject* WorldContextObject, const FString& Command, APlayerController* Player)
 {
-	// First, try routing through the primary player
+	// First outing through the primary player
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull);
 	APlayerController* TargetPC = Player || !World ? Player : World->GetFirstPlayerController();
 	if (TargetPC)

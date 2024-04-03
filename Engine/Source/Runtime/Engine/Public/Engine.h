@@ -321,6 +321,7 @@ MONOLITHIC_HEADER_BOILERPLATE()
 #include "GameFramework/TouchInterface.h"
 #include "Engine/UserDefinedEnum.h"
 #include "Engine/UserDefinedStruct.h"
+#include "Engine/UserDefinedStruct.h"
 #include "Animation/MorphTarget.h"
 #include "Animation/AnimInstance.h"
 

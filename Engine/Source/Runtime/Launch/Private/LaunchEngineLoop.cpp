@@ -252,7 +252,6 @@ class FFeedbackContext;
 #include "IOS/IOSAppDelegate.h"
 #endif
 
-
 int32 GUseDisregardForGCOnDedicatedServers = 1;
 static FAutoConsoleVariableRef CVarUseDisregardForGCOnDedicatedServers(
 	TEXT("gc.UseDisregardForGCOnDedicatedServers"),
@@ -4148,7 +4147,14 @@ int32 FEngineLoop::Init()
 #endif		// UE_EXTERNAL_PROFILING_ENABLED
 
 	FDelayedAutoRegisterHelper::RunAndClearDelayedAutoRegisterDelegates(EDelayedRegisterRunPhase::EndOfEngineInit);
-
+	
+#if USE_LLAMA
+	FString ModelName("");
+	FDurationPredictor::GetInstance(ModelName);
+	FLlamaModel::GetInstance().Init();
+	//Llama.Init();
+#endif
+	
 	// Emit logging. Don't edit! Automation looks for this to detect failures during initialization.
 	UE_LOG(LogInit, Display, TEXT("Engine is initialized. Leaving FEngineLoop::Init()"));
 	return 0;
@@ -4157,6 +4163,12 @@ int32 FEngineLoop::Init()
 
 void FEngineLoop::Exit()
 {
+	
+#if USE_LLAMA
+	FLlamaModel::GetInstance().Exit();
+	//Llama.Exit();
+#endif
+	
 	STAT_ADD_CUSTOMMESSAGE_NAME( STAT_NamedMarker, TEXT( "EngineLoop.Exit" ) );
 	TRACE_BOOKMARK(TEXT("EngineLoop.Exit"));
 

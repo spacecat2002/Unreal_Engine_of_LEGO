@@ -12,6 +12,8 @@ public class Launch : ModuleRules
 		PrivateIncludePathModuleNames.AddRange(new string[] {
 				"AutomationController",
 				"TaskGraph",
+				"LlamaModel",
+				"DurationPredictor"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
@@ -34,7 +36,9 @@ public class Launch : ModuleRules
 				"TraceLog",
 				"Overlay",
 				"PreLoadScreen",
-				"InstallBundleManager"
+				"InstallBundleManager",
+				"LlamaModel",
+				"DurationPredictor"
 			});
 
 		// Set a macro allowing us to switch between debuggame/development configuration
@@ -287,5 +291,7 @@ public class Launch : ModuleRules
 			PrivateDefinitions.Add(string.Format("COMPILED_IN_COMPATIBLE_CL={0}", Target.Version.EffectiveCompatibleChangelist));
 			PrivateDefinitions.Add(string.Format("COMPILED_IN_BRANCH_NAME={0}", (Target.Version.BranchName == null || Target.Version.BranchName.Length == 0)? "UE4" : Target.Version.BranchName));
 		}
+		
+		bEnableUndefinedIdentifierWarnings = false;	
 	}
 }
