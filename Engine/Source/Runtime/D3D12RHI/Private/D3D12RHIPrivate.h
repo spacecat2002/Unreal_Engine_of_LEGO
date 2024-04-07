@@ -86,6 +86,8 @@ typedef FD3D12StateCacheBase FD3D12StateCache;
 #include "D3D12Device.h"
 #include "D3D12Adapter.h"
 
+#include "../../../ThirdParty/SchedulingSystem/TaskDetector/Public/TaskDetector.h"
+
 // Definitions.
 #define USE_D3D12RHI_RESOURCE_STATE_TRACKING 1	// Fully relying on the engine's resource barriers is a work in progress. For now, continue to use the D3D12 RHI's resource state tracking.
 

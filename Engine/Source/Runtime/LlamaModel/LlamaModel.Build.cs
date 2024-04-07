@@ -5,7 +5,7 @@ public class LlamaModel: ModuleRules
 	public LlamaModel(ReadOnlyTargetRules Target) : base(Target)
 	{
 	
-		PrivateDependencyModuleNames.AddRange(new string[] { "Core", "Engine", "DurationPredictor", "PerformanceDetector"});
+		PrivateDependencyModuleNames.AddRange(new string[] { "Core", "Engine", "DurationPredictor", "PerformanceDetector", "TaskDetector"});
 
 		PublicDefinitions.Add("GGML_USE_CUBLAS=1");
 		

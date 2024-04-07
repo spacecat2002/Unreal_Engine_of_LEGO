@@ -163,6 +163,9 @@ void FLlamaModel::Inference(std::string input_prompt, FString* content)
 
 	llama_print_timings(ctx);
 
+	tokens_list.clear();
+	tokens_list.shrink_to_fit();
+
 	fprintf(stderr, "\n");
 }
 
