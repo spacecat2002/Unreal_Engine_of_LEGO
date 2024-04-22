@@ -20,6 +20,7 @@ void FD3D12Fence::InternalSignal(ED3D12CommandQueueType InQueueType, uint64 Fenc
 		UE_LOG(LogD3D12RHI, Log, TEXT("*** [tid:%08x] GPU SIGNAL (CmdQueueType: %u) GPUIndex: %u, Fence: %016llX (%s), Value: %u ***"), FPlatformTLS::GetCurrentThreadId(), InQueueType, GPUIndex, FenceCore->GetFence(), *Name.ToString(), FenceToSignal);
 	#endif
 		VERIFYD3D12RESULT(CommandQueue->Signal(FenceCore->GetFence(), FenceToSignal));
+		FTaskDetector::GetInstance().PushEventsQueue(FenceCore->GetCompletionEvent());
 	}
 	LastSignaledFence = FenceToSignal;
 }
