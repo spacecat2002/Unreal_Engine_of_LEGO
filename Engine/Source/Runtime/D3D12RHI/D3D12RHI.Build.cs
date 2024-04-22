@@ -19,6 +19,9 @@ public class D3D12RHI : ModuleRules
 				"Engine",
 				"RHI",
 				"RenderCore",
+				"TaskDetector",
+				"PerformanceDetector",
+				"TaskScheduler"
 				}
 			);
 

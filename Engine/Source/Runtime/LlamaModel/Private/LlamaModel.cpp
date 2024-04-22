@@ -1,6 +1,20 @@
 ﻿#include "../Public/LlamaModel.h"
 #include "llama.cpp/ggml-cuda.h"
 
+std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token) {
+	std::vector<char> result(8, 0);
+	const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
+	if (n_tokens < 0) {
+		result.resize(-n_tokens);
+		int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
+		GGML_ASSERT(check == -n_tokens);
+	}
+	else {
+		result.resize(n_tokens);
+	}
+
+	return std::string(result.data(), result.size());
+}
 
 FLlamaModel& FLlamaModel::GetInstance()
 {
@@ -13,9 +27,9 @@ void FLlamaModel::Init()
 {
 	register_ggml_cuda_compute_forward(ggml_cuda_compute_forward_scheduled);
 
-	params.model = "C:\\Projects\\UnrealEngine\\Engine\\Source\\Runtime\\LlamaModel\\Private\\Model\\llama-2-7b-chat.Q8_0.gguf";
+	params.model = "E:\\Llama2\\llama-2-7b-chat.Q8_0.gguf";
 	
-	n_len = 200;
+	n_len = 500;
 	
 	llama_backend_init(params.numa);
 	
@@ -43,6 +57,8 @@ void FLlamaModel::Exit()
 
 void FLlamaModel::Inference(std::string input_prompt, FString* content)
 {
+	if (FTaskScheduler::GetInstance().GetSchedulerState())
+		FTaskDetector::GetInstance().SetIsInInferring(true);
 	params.prompt = input_prompt;
 	std::vector<llama_token> tokens_list;
     tokens_list = ::llama_tokenize(ctx, params.prompt, true);
@@ -141,15 +157,18 @@ void FLlamaModel::Inference(std::string input_prompt, FString* content)
 
             n_decode += 1;
         	FPerformanceDetector::GetInstance().SetDecodedTokensNum(n_decode);
+        	FPerformanceDetector::GetInstance().ComputeInferenceSpeed();
         }
 
         n_cur += 1;
 
+    	FTaskScheduler::GetInstance().ComparePerformance();
         // evaluate the current batch with the transformer model
         if (llama_decode(ctx, batch)) {
             fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
         }
     }
+	FTaskDetector::GetInstance().SetIsInInferring(false);
 
 	llama_batch_free(batch);
 	llama_kv_cache_clear(ctx);
@@ -163,6 +182,13 @@ void FLlamaModel::Inference(std::string input_prompt, FString* content)
 
 	llama_print_timings(ctx);
 
+	InferenceSpeed = n_decode / ((t_main_end - t_main_start) / 1000000.0f);
+
 	fprintf(stderr, "\n");
+}
+
+float FLlamaModel::GetInferenceSpeed()
+{
+	return InferenceSpeed;
 }
 

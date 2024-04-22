@@ -1,10 +1,14 @@
 ﻿#include "PerformanceDetector.h"
-#include "Engine/Public/UnrealEngine.h"
+#include "Windows.h"
 
 FPerformanceDetector::FPerformanceDetector()
+	: StartInferenceTime(0)
+	, DecodedTokensNum(0)
+	, FrameBeginTime(0)
+	, FrameEndTime(0)
+	, FrameTime(0)
+	, TimeSlice(0)
 {
-	StartInferenceTime = 0;
-	DecodedTokensNum = 0;
 }
 
 FPerformanceDetector& FPerformanceDetector::GetInstance()
@@ -19,20 +23,68 @@ float FPerformanceDetector::GetAverageFPS()
 	return GAverageFPS;
 }
 
-double FPerformanceDetector::GetInferenceSpeed()
+// float FPerformanceDetector::GetMaxFPS()
+// {
+// 	return MaxFPS;
+// }
+
+float FPerformanceDetector::GetInferenceSpeed()
 {
-	double NowTime = FDateTime::Now().GetTimeOfDay().GetTotalSeconds();
-	return (double)DecodedTokensNum / (NowTime - StartInferenceTime);
+	return InferenceSpeed;
 }
 
-void FPerformanceDetector::SetStartInferenceTime(double Time)
+float FPerformanceDetector::GetFrameTime()
+{
+	return FrameTime;
+}
+
+TAtomic<float>& FPerformanceDetector::GetTimeSlice()
+{
+	return TimeSlice;
+}
+
+void FPerformanceDetector::ComputeInferenceSpeed()
+{
+	const float NowTime = FDateTime::Now().GetTimeOfDay().GetTotalSeconds();
+	InferenceSpeed = 1.0 * DecodedTokensNum / (NowTime - StartInferenceTime);
+}
+
+
+void FPerformanceDetector::SetStartInferenceTime(const float Time)
 {
 	StartInferenceTime = Time;
 }
 
-void FPerformanceDetector::SetDecodedTokensNum(int Num)
+void FPerformanceDetector::SetDecodedTokensNum(const int Num)
 {
 	DecodedTokensNum = Num;
+}
+
+void FPerformanceDetector::SetFrameBeginTime(const float Time)
+{
+	FrameBeginTime = Time;
+}
+
+void FPerformanceDetector::SetFrameEndTime(const float Time)
+{
+	FrameEndTime = Time;
+}
+
+void FPerformanceDetector::SetTimeSlice(const float Time)
+{
+	TimeSlice = Time;
+}
+
+void FPerformanceDetector::ChangeTimeSlice(const float Time)
+{
+	TimeSlice = TimeSlice + Time;
+}
+
+void FPerformanceDetector::ComputeFrameTime()
+{
+	LARGE_INTEGER Freq;
+	QueryPerformanceFrequency(&Freq);
+	FrameTime = (FrameEndTime - FrameBeginTime) * 1000.0 / (float)Freq.QuadPart;
 }
 
 

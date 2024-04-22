@@ -4,6 +4,7 @@
 #include "../Private/llama.cpp/common/common.h"
 #include "../Private/llama.cpp/llama.h"
 #include "../../SchedulingSystem/PerformanceDetector/Public/PerformanceDetector.h"
+#include "../../SchedulingSystem/TaskDetector/Public/TaskDetector.h"
 
 class DLLEXPORT FLlamaModel
 {
@@ -12,6 +13,7 @@ public:
 	void Init();
 	void Exit();
 	void Inference(std::string prompt, FString* content);
+	float GetInferenceSpeed();
 	std::string prompt;
 
 private:
@@ -25,6 +27,7 @@ private:
 	llama_context_params ctx_params;
 	llama_context* ctx;
 	int n_len;
+	float InferenceSpeed;
 };
 
 

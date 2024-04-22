@@ -7,6 +7,7 @@
 #include "D3D12RHIPrivate.h"
 #include "RenderCore.h"
 #include "Engine/RendererSettings.h"
+#include "PerformanceDetector/Public/PerformanceDetector.h"
 
 namespace D3D12RHI
 {
@@ -830,6 +831,15 @@ bool FD3D12Viewport::Present(bool bLockToVsync)
 
 		DefaultContext.GetCommandListManager().WaitOnExecuteTask();
 	}
+
+	FTaskDetector::GetInstance().SetIsInRHITask(false);
+	FTaskDetector::GetInstance().SetIsInFrameRendering(false);
+	FPerformanceDetector::GetInstance().SetFrameEndTime(FPlatformTime::Cycles64());
+	FPerformanceDetector::GetInstance().ComputeFrameTime();
+	const float MaxFPS = FPerformanceDetector::GetInstance().GetAverageFPS();
+	const float FrameTime = FPerformanceDetector::GetInstance().GetFrameTime();
+	const float TimeSlice = 1000.0/MaxFPS - FrameTime;
+	FPerformanceDetector::GetInstance().SetTimeSlice(FMath::Max(TimeSlice, 0.0f));
 
 #if WITH_MGPU
 	if (GNumAlternateFrameRenderingGroups > 1)

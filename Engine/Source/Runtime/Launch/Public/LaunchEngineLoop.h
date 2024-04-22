@@ -6,11 +6,6 @@
 
 #define USE_LLAMA 1
 
-#if USE_LLAMA
-#include "../../../Runtime/LlamaModel/Public/LlamaModel.h"
-#include "../../../Runtime/SchedulingSystem/DurationPredictor/Public/DurationPredictor.h"
-#endif
-
 #if WITH_ENGINE
 	#include "UnrealEngine.h"
 #endif

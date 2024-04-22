@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "D3D12RHIPrivate.h"
+#include "TaskScheduler.h"
 #include "Windows.h"
 
 
@@ -495,6 +496,12 @@ FGPUTimingCalibrationTimestamp FD3D12CommandListManager::GetCalibrationTimestamp
 	Result.GPUMicroseconds = uint64(GPUTimestamp * (1e6 / GPUTimestampFrequency));
 	Result.CPUMicroseconds = uint64(CPUTimestamp * (1e6 / CPUTimestempFrequency.QuadPart));
 
+	FTaskDetector::GetInstance().SetIsInRHITask(false);
+	FTaskDetector::GetInstance().SetIsRenderingEnd(true);
+	FTaskDetector::GetInstance().SetIsInFrameRendering(true);
+	FTaskScheduler::GetInstance().ComparePerformance();
+	FPerformanceDetector::GetInstance().SetFrameBeginTime(FPlatformTime::Cycles64());
+
 	return Result;
 }
 
@@ -631,6 +638,32 @@ void FD3D12CommandListManager::ExecuteCommandLists(TArray<FD3D12CommandListHandl
 	}
 }
 
+class FWaitForRenderingCompletionTask
+{
+public:
+	FWaitForRenderingCompletionTask(TRefCountPtr<FD3D12CommandListFence>* Fence, const uint64_t FenceValue)
+		: Fence(Fence), FenceValue(FenceValue) {}
+	
+	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+	{
+		while(!FTaskDetector::GetInstance().GetIsRenderingEnd())
+			;
+		FTaskDetector::GetInstance().SetIsRenderingEnd(false);
+		(*Fence)->WaitForFence(FenceValue);
+		FTaskDetector::GetInstance().SetIsRenderingEnd(true);
+	}
+	
+	static ENamedThreads::Type GetDesiredThread() { return ENamedThreads::AnyThread; }
+	static ESubsequentsMode::Type GetSubsequentsMode() { return ESubsequentsMode::TrackSubsequents; }
+	
+	FORCEINLINE TStatId GetStatId() const
+	{
+		RETURN_QUICK_DECLARE_CYCLE_STAT(FWaitForRenderingCompletionTask, STATGROUP_ThreadPoolAsyncTasks);
+	}
+private:
+	TRefCountPtr<FD3D12CommandListFence>* Fence;
+	uint64_t FenceValue;
+};
 
 void FD3D12CommandListManager::ExecuteCommandListInteral(TArray<FD3D12CommandListHandle>& Lists, bool WaitForCompletion)
 {
@@ -776,6 +809,11 @@ void FD3D12CommandListManager::ExecuteCommandListInteral(TArray<FD3D12CommandLis
 	{
 		CommandListFence->WaitForFence(SignaledFenceValue);
 		check(SyncPoint.IsComplete());
+	}
+	
+	if (FTaskDetector::GetInstance().GetIsInInferring())
+	{
+		TGraphTask<FWaitForRenderingCompletionTask>::CreateTask().ConstructAndDispatchWhenReady(&CommandListFence, SignaledFenceValue);
 	}
 }
 

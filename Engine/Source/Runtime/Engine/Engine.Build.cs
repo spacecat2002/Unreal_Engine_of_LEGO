@@ -95,6 +95,7 @@ public class Engine : ModuleRules
                 "AudioExtensions",
 				"DeveloperSettings",
 				"PropertyAccess",
+				"TaskScheduler"
 			}
 		);
 

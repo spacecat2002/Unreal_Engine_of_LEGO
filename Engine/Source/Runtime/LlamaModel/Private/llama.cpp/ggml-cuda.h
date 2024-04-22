@@ -2,7 +2,7 @@
 
 #include "ggml.h"
 #include "ggml-backend.h"
-
+#include "TaskScheduler/Public/TaskScheduler.h"
 
 #ifdef GGML_USE_HIPBLAS
 #define GGML_CUDA_NAME "ROCm"

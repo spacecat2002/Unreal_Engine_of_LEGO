@@ -11,6 +11,7 @@ public class RHI : ModuleRules
 		PrivateDependencyModuleNames.Add("TraceLog");
 		PrivateDependencyModuleNames.Add("ApplicationCore");
 		PrivateDependencyModuleNames.Add("GeForceNOWWrapper");
+		PrivateDependencyModuleNames.Add("TaskDetector");
 
 		if (Target.bCompileAgainstEngine)
 		{

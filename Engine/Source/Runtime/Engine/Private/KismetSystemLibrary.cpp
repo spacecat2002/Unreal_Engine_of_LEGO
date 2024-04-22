@@ -39,6 +39,7 @@
 #include "UObject/FieldPathProperty.h"
 #include "Commandlets/Commandlet.h"
 #include "PlatformFeatures.h"
+#include "SchedulingSystem/TaskScheduler/Public/TaskScheduler.h"
 
 //////////////////////////////////////////////////////////////////////////
 // UKismetSystemLibrary
@@ -362,6 +363,15 @@ void UKismetSystemLibrary::ExecuteConsoleCommand(const UObject* WorldContextObje
 	else
 	{
 		GEngine->Exec(World, *Command);
+	}
+
+	FString TmpCmd = Command;
+	TArray<FString> SubStrings;
+	TmpCmd.ParseIntoArray(SubStrings, TEXT(" "), true);
+	if (SubStrings[0] == FString("t.maxFPS") || SubStrings[0] == FString("t.MaxFPS"))
+	{
+		const float FPS = FCString::Atof(*SubStrings[1]);
+		FTaskScheduler::GetInstance().SetTargetMaxFPS(FPS);
 	}
 }
 

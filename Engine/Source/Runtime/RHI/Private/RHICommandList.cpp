@@ -386,6 +386,7 @@ static FAutoConsoleTaskPriority CPrio_RHIThreadOnTaskThreads(
 
 static FCriticalSection GRHIThreadOnTasksCritical;
 
+#include "../../SchedulingSystem/TaskDetector/Public/TaskDetector.h"
 
 class FExecuteRHIThreadTask
 {
@@ -413,6 +414,7 @@ public:
 
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
+		FTaskDetector::GetInstance().SetIsInRHITask(true);
 		SCOPE_CYCLE_COUNTER(STAT_RHIThreadExecute);
 		if (IsRunningRHIInTaskThread())
 		{
@@ -428,6 +430,8 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			delete RHICmdList;
 
 			GWorkingRHIThreadTime += (FPlatformTime::Cycles() - GWorkingRHIThreadStartCycles); // this subtraction often wraps and the math stuff works
+			
+			FTaskDetector::GetInstance().SetIsInRHITask(false);
 		}
 		if (IsRunningRHIInTaskThread())
 		{

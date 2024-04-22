@@ -38,7 +38,9 @@ public class Launch : ModuleRules
 				"PreLoadScreen",
 				"InstallBundleManager",
 				"LlamaModel",
-				"DurationPredictor"
+				"DurationPredictor",
+				"TaskDetector",
+				"TaskScheduler"
 			});
 
 		// Set a macro allowing us to switch between debuggame/development configuration

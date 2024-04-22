@@ -4,12 +4,30 @@ class DLLEXPORT FPerformanceDetector
 {
 public:
 	float GetAverageFPS();
-	double GetInferenceSpeed();
-	void SetStartInferenceTime(double Time);
-	void SetDecodedTokensNum(int Num);
+	float GetInferenceSpeed();
+
+	float GetFrameTime();
+	TAtomic<float>& GetTimeSlice();
+
 	static FPerformanceDetector& GetInstance();
+
+	void SetFrameBeginTime(const float Time);
+	void SetFrameEndTime(const float Time);
+	void SetTimeSlice(const float Time);
+
+	void ChangeTimeSlice(const float Time);
+	void ComputeFrameTime();
+	void ComputeInferenceSpeed();
+	void SetStartInferenceTime(const float Time);
+	void SetDecodedTokensNum(const int Num);
+
 private:
 	FPerformanceDetector();
-	double StartInferenceTime;
+	float StartInferenceTime;
+	float InferenceSpeed;
 	int DecodedTokensNum;
+	float FrameBeginTime;
+	float FrameEndTime;
+	float FrameTime;
+	TAtomic<float> TimeSlice;
 };
