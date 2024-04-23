@@ -6,6 +6,7 @@
 
 #include "D3D12RHIPrivate.h"
 #include "RenderCore.h"
+#include "TaskDetector.h"
 #include "Engine/RendererSettings.h"
 #include "PerformanceDetector/Public/PerformanceDetector.h"
 

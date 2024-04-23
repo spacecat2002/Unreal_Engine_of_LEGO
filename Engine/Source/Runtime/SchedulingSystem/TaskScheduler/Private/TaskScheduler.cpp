@@ -61,12 +61,6 @@ void FTaskScheduler::ComparePerformance()
 	else Performance = 0;
 }
 
-void FTaskScheduler::CanRender()
-{
-	// float SleepTime = ComparePerformance();
-	// if (SleepTime < 0) FPlatformProcess::Sleep(SleepTime);
-}
-
 void FTaskScheduler::CanInfer(TArray<int>& Input, FString& Name)
 {
     bool bIsInFrameRendering = FTaskDetector::GetInstance().GetIsInFrameRendering(); //当前帧的所有渲染工作是否完成
@@ -104,29 +98,5 @@ void FTaskScheduler::CanInfer(TArray<int>& Input, FString& Name)
 		}
 	}
 }
-
-
-/*CanDoInfer(InputDim, InputType)
-{
-	while (true)
-		IsInFrameRendering = GetIsInFrameRendering(); // 是否在一帧的渲染过程中
-		if (IsInFrameRendering)
-			while (true)
-				IsRenderingEnd = GetIsRenderingEnd(); // 是否在执行单次渲染任务
-				if (!IsRenderingEnd) // 没有执行渲染任务，返回
-					return;
-				IsInFrameRendering = GetIsInFrameRendering();
-				if (!IsInFrameRendering) // 当前帧渲染结束，退出当前循环
-					break;
-		else
-			TimeSlice = GetTimeSlice(); // 计算GPU Stall时间
-			Duration = GetDuration(InputDim, InputType); // 预测算子执行时间
-			if (TimeSlice >= Duration) // 可以执行，返回
-				UpdateTimeSlice(TimeSlice - Duration);
-				return;
-			IsInFrameRendering = GetIsInFrameRendering(); // 下一帧渲染开始，退出当前循环
-			if (IsInFrameRendering)
-				break;
-}*/
 
 
