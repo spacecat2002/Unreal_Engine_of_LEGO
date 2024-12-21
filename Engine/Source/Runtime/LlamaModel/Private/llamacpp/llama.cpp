@@ -4606,7 +4606,7 @@ static struct ggml_tensor * llm_build_kqv(
 
     if (model.arch == LLM_ARCH_PHI2) {
         // for this arch, we need to perform the KQ multiplication with F32 precision, otherwise we get NaNs
-        // ref: https://github.com/ggerganov/llama.cpp/pull/4490#issuecomment-1859055847
+        // ref: https://github.com/ggerganov/llamacpp/pull/4490#issuecomment-1859055847
         ggml_mul_mat_set_prec(kq, GGML_PREC_F32);
     }
 
@@ -7351,7 +7351,7 @@ static_assert(std::is_trivially_copyable<llm_symbol>::value, "llm_symbol is not 
 
 // SPM tokenizer
 // original implementation:
-// https://github.com/ggerganov/llama.cpp/commit/074bea2eb1f1349a0118239c4152914aecaa1be4
+// https://github.com/ggerganov/llamacpp/commit/074bea2eb1f1349a0118239c4152914aecaa1be4
 
 struct llm_bigram_spm {
     struct comparator {
@@ -10385,7 +10385,7 @@ bool llama_supports_mlock(void) {
 bool llama_supports_gpu_offload(void) {
 #if defined(GGML_USE_CUBLAS) || defined(GGML_USE_CLBLAST) || defined(GGML_USE_METAL) || defined(GGML_USE_VULKAN) || \
     defined(GGML_USE_SYCL)   || defined(GGML_USE_KOMPUTE)
-    // Defined when llama.cpp is compiled with support for offloading model layers to GPU.
+    // Defined when llamacpp is compiled with support for offloading model layers to GPU.
     return true;
 #else
     return false;

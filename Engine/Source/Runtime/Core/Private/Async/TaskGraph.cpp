@@ -32,6 +32,7 @@
 #include "ProfilingDebugging/MiscTrace.h"
 #include "ProfilingDebugging/ScopedTimers.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Async/RHIThreadWaiting.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogTaskGraph, Log, All);
 
@@ -41,6 +42,8 @@ DEFINE_STAT(STAT_ParallelFor);
 DEFINE_STAT(STAT_ParallelForTask);
 
 static int32 GNumWorkerThreadsToIgnore = 0;
+
+CORE_API TAtomic<bool> bRHIThreadIsWaiting(false);
 
 #if PLATFORM_USE_FULL_TASK_GRAPH && !IS_PROGRAM && WITH_ENGINE && !UE_SERVER
 	#define CREATE_HIPRI_TASK_THREADS (1)
@@ -684,7 +687,9 @@ public:
 				{
 					{
 						FScopeCycleCounter Scope(StallStatId);
+						if (ThreadId == ENamedThreads::RHIThread) bRHIThreadIsWaiting = true;
 						Queue(QueueIndex).StallRestartEvent->Wait(bIsRenderThreadAndPolling ? GRenderThreadPollPeriodMs : MAX_uint32, bCountAsStall);
+						if (ThreadId == ENamedThreads::RHIThread) bRHIThreadIsWaiting = false;
 						if (Queue(QueueIndex).QuitForShutdown)
 						{
 							return ProcessedTasks;

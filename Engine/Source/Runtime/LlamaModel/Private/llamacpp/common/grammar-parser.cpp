@@ -9,7 +9,7 @@
 
 namespace grammar_parser {
     // NOTE: assumes valid utf8 (but checks for overrun)
-    // copied from llama.cpp
+    // copied from llamacpp
     static std::pair<uint32_t, const char *> decode_utf8(const char * src) {
         static const int lookup[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 4 };
         uint8_t  first_byte = static_cast<uint8_t>(*src);

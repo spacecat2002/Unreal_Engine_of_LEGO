@@ -1,12 +1,10 @@
-﻿#include "CoreMinimal.h"
+﻿#pragma once
+#include "CoreMinimal.h"
 #include "ggml-cuda.h"
 #include "../../../SchedulingSystem/TaskScheduler/Public/TaskScheduler.h"
 
-DECLARE_STATS_GROUP(TEXT("Inference"), STATGROUP_LLAMA, STATCAT_Advanced);
-DECLARE_CYCLE_STAT_EXTERN(TEXT("Inference Task time"), STAT_Inference, STATGROUP_LLAMA, );
-DEFINE_STAT(STAT_Inference);
-
 GGML_CALL bool ggml_cuda_compute_forward_scheduled(ggml_compute_params * params, ggml_tensor * tensor) {
+	
 	//printf("register succeeded\n");
     if (!ggml_cublas_loaded()) return false;
 
@@ -216,12 +214,13 @@ GGML_CALL bool ggml_cuda_compute_forward_scheduled(ggml_compute_params * params,
 	for (int i = 0; i < 4; ++i) Input.Push(tensor->src[0]->ne[i]);
 	if (tensor->src[1] != nullptr) for (int i = 0; i < 4; ++i) Input.Push(tensor->src[1]->ne[i]);
 	for (int i = 0; i < 4; ++i) Input.Push(tensor->ne[i]);
-
-	if (FTaskScheduler::GetInstance().GetSchedulerState())
-		FTaskScheduler::GetInstance().CanInfer(Input, Name);
-	SCOPE_CYCLE_COUNTER(STAT_Inference);
 	
-    func(tensor->src[0], tensor->src[1], tensor);
+	
+	FTaskScheduler::GetInstance().CanInfer();
+	
+	func(tensor->src[0], tensor->src[1], tensor);
+	
+	//FTaskDetector::GetInstance().UpdateGgmlCount();
 	
     return true;
 }

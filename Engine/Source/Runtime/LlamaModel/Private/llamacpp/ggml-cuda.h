@@ -48,6 +48,7 @@ extern "C" {
 	GGML_API GGML_CALL int  ggml_backend_cuda_get_device_count(void);
 	GGML_API GGML_CALL void ggml_backend_cuda_get_device_description(int device, char * description, size_t description_size);
 	GGML_API GGML_CALL void ggml_backend_cuda_get_device_memory(int device, size_t * free, size_t * total);
+	
 	GGML_API GGML_CALL void ggml_cuda_set_peer_access(const int n_tokens);
 	GGML_API GGML_CALL void ggml_cuda_repeat(const struct ggml_tensor * src0, const struct ggml_tensor * src1, struct ggml_tensor * dst);
 	GGML_API GGML_CALL void ggml_cuda_get_rows(const struct ggml_tensor * src0, const struct ggml_tensor * src1, struct ggml_tensor * dst);

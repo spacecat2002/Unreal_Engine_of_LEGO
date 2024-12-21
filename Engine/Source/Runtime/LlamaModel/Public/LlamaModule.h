@@ -10,7 +10,7 @@
 class IRendererModule;
 
 /** Implements the engine module. */
-class FLlamaModelModule : public FDefaultModuleImpl
+class FLlamaModule : public FDefaultModuleImpl
 {
 public:
 

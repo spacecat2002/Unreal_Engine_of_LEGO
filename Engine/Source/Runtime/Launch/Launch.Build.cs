@@ -13,7 +13,8 @@ public class Launch : ModuleRules
 				"AutomationController",
 				"TaskGraph",
 				"LlamaModel",
-				"DurationPredictor"
+				"DurationPredictor",
+				"NewLlamaModel"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
@@ -40,8 +41,9 @@ public class Launch : ModuleRules
 				"LlamaModel",
 				"DurationPredictor",
 				"TaskDetector",
-				"TaskScheduler"
-			});
+				"TaskScheduler", 
+				"NewLlamaModel"
+		});
 
 		// Set a macro allowing us to switch between debuggame/development configuration
 		if (Target.Configuration == UnrealTargetConfiguration.DebugGame)

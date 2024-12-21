@@ -5,6 +5,7 @@ D3D12CommandContext.cpp: RHI  Command Context implementation.
 =============================================================================*/
 
 #include "D3D12RHIPrivate.h"
+#include "TaskDetector.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -652,6 +653,7 @@ void FD3D12CommandContextBase::RHIEndFrame()
 	// Only use this code if running on a multi GPU configuration.
 	GGPUFrameTime = GPUProfiler.GetGPUFrameCycles(0);
 #endif
+	FTaskDetector::GetInstance().SetIsInFrameRendering(false);
 }
 
 void FD3D12CommandContextBase::SignalTransitionFences(TArrayView<const FRHITransition*> Transitions)

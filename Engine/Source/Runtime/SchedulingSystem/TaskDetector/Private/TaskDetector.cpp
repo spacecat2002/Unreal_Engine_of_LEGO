@@ -1,11 +1,32 @@
 ﻿#include "..\Public\TaskDetector.h"
+#include "HAL/RunnableThread.h"
+#include "Windows.h"
+
+DECLARE_STATS_GROUP(TEXT("Rendering"), STATGROUP_LLAMA, STATCAT_Advanced);
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Rendering Task time"), STAT_Rendering, STATGROUP_LLAMA, );
+DEFINE_STAT(STAT_Rendering);
+
+uint32 FRenderTaskDetector::Run()
+{
+	while (true)
+	{
+		if (!FTaskDetector::GetInstance().GetRenderingTaskIsRunning())
+		{
+			SCOPE_CYCLE_COUNTER(STAT_Rendering);
+			while (!FTaskDetector::GetInstance().GetRenderingTaskIsRunning());
+		}
+	}
+	return 0;
+}
 
 FTaskDetector::FTaskDetector()
-	: bIsRenderingEnd(true)
+	: bRenderingTaskIsRunning(false)
 	, bIsInFrameRendering(false)
 	, bIsInInferring(false)
-	, bIsInRHITask(false)
+	, bRHITaskIsRunning(false)
 {
+	Detector = new FRenderTaskDetector();
+	//FRunnableThread::Create(Detector, TEXT("RenderingTask"), 0, TPri_Normal);
 }
 
 FTaskDetector& FTaskDetector::GetInstance()
@@ -14,9 +35,9 @@ FTaskDetector& FTaskDetector::GetInstance()
 	return Instance;
 }
 
-TAtomic<bool>& FTaskDetector::GetIsRenderingEnd()
+TAtomic<bool>& FTaskDetector::GetRenderingTaskIsRunning()
 {
-	return bIsRenderingEnd;
+	return bRenderingTaskIsRunning;
 }
 
 TAtomic<bool>& FTaskDetector::GetIsInFrameRendering()
@@ -29,14 +50,14 @@ TAtomic<bool>& FTaskDetector::GetIsInInferring()
 	return bIsInInferring;
 }
 
-TAtomic<bool>& FTaskDetector::GetIsInRHITask()
+TAtomic<bool>& FTaskDetector::GetRHITaskIsRunning()
 {
-	return bIsInRHITask;
+	return bRHITaskIsRunning;
 }
 
-void FTaskDetector::SetIsRenderingEnd(const bool State)
+void FTaskDetector::SetRenderingTaskIsRunning(const bool State)
 {
-	bIsRenderingEnd = State;
+	bRenderingTaskIsRunning = State;
 }
 
 void FTaskDetector::SetIsInFrameRendering(const bool State)
@@ -49,10 +70,16 @@ void FTaskDetector::SetIsInInferring(const bool State)
 	bIsInInferring = State;
 }
 
-void FTaskDetector::SetIsInRHITask(const bool State)
+void FTaskDetector::SetRHITaskIsRunning(const bool State)
 {
-	bIsInRHITask = State;
+	bRHITaskIsRunning = State;
 }
+
+
+
+
+
+
 
 
 

@@ -216,7 +216,7 @@ extern "C" {
         uint32_t n_threads_batch;   // number of threads to use for batch processing
         int8_t   rope_scaling_type; // RoPE scaling type, from `enum llama_rope_scaling_type`
 
-        // ref: https://github.com/ggerganov/llama.cpp/pull/2054
+        // ref: https://github.com/ggerganov/llamacpp/pull/2054
         float    rope_freq_base;   // RoPE base frequency, 0 = from model
         float    rope_freq_scale;  // RoPE frequency scaling factor, 0 = from model
         float    yarn_ext_factor;  // YaRN extrapolation mix factor, negative = from model
@@ -751,7 +751,7 @@ extern "C" {
                            float   p,
                           size_t   min_keep);
 
-    /// @details Minimum P sampling as described in https://github.com/ggerganov/llama.cpp/pull/3841
+    /// @details Minimum P sampling as described in https://github.com/ggerganov/llamacpp/pull/3841
     LLAMA_API void llama_sample_min_p(
             struct llama_context * ctx,
           llama_token_data_array * candidates,
@@ -903,7 +903,7 @@ extern "C" {
 }
 #endif
 
-// Internal API to be implemented by llama.cpp and used by tests/benchmarks only
+// Internal API to be implemented by llamacpp and used by tests/benchmarks only
 #ifdef LLAMA_API_INTERNAL
 
 #include <vector>

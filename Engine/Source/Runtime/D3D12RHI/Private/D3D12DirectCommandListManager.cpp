@@ -1,5 +1,5 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
-
+#pragma once
 #include "D3D12RHIPrivate.h"
 #include "TaskScheduler.h"
 #include "Windows.h"
@@ -478,6 +478,10 @@ void FD3D12CommandListManager::Create(const TCHAR* Name, uint32 NumCommandLists,
 
 FGPUTimingCalibrationTimestamp FD3D12CommandListManager::GetCalibrationTimestamp()
 {
+	FTaskDetector::GetInstance().SetIsInFrameRendering(true);
+	FPerformanceDetector::GetInstance().SetFrameBeginTime(FPlatformTime::Cycles64());
+	FPerformanceDetector::GetInstance().SetFrameTime(0);
+	
 	TRACE_CPUPROFILER_EVENT_SCOPE(D3D12GetCalibrationTimestamp);
 
 	check(CommandListType == D3D12_COMMAND_LIST_TYPE_DIRECT || CommandListType == D3D12_COMMAND_LIST_TYPE_COMPUTE);
@@ -496,12 +500,19 @@ FGPUTimingCalibrationTimestamp FD3D12CommandListManager::GetCalibrationTimestamp
 	Result.GPUMicroseconds = uint64(GPUTimestamp * (1e6 / GPUTimestampFrequency));
 	Result.CPUMicroseconds = uint64(CPUTimestamp * (1e6 / CPUTimestempFrequency.QuadPart));
 
-	FTaskDetector::GetInstance().SetIsInRHITask(false);
-	FTaskDetector::GetInstance().SetIsRenderingEnd(true);
-	FTaskDetector::GetInstance().SetIsInFrameRendering(true);
-	FTaskScheduler::GetInstance().ComparePerformance();
-	FPerformanceDetector::GetInstance().SetFrameBeginTime(FPlatformTime::Cycles64());
+	// FPerformanceDetector::GetInstance().SetFrameEndTime(FPlatformTime::Cycles64());
+	// if (FPerformanceDetector::GetInstance().GetFrameBeginTime())
+	// {
+	// 	FPerformanceDetector::GetInstance().ComputeFrameTime();
+	// 	if (FTaskDetector::GetInstance().GetIsInInferring())
+	// 	{
+	// 		FPerformanceDetector::GetInstance().InsertFrameTimes(
+	// 			FPerformanceDetector::GetInstance().GetFrameTime());
+	// 	}
+	// }
 
+	// count += 1;
+	
 	return Result;
 }
 
@@ -638,19 +649,26 @@ void FD3D12CommandListManager::ExecuteCommandLists(TArray<FD3D12CommandListHandl
 	}
 }
 
-class FWaitForRenderingCompletionTask
+class FWaitForRenderingCompletionTask1
 {
 public:
-	FWaitForRenderingCompletionTask(TRefCountPtr<FD3D12CommandListFence>* Fence, const uint64_t FenceValue)
+	FWaitForRenderingCompletionTask1(TRefCountPtr<FD3D12CommandListFence>* Fence, const uint64_t FenceValue)
 		: Fence(Fence), FenceValue(FenceValue) {}
 	
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
-		while(!FTaskDetector::GetInstance().GetIsRenderingEnd())
+		while(FTaskDetector::GetInstance().GetRenderingTaskIsRunning())
 			;
-		FTaskDetector::GetInstance().SetIsRenderingEnd(false);
+		
+		FTaskDetector::GetInstance().SetRenderingTaskIsRunning(true);
+		//uint64 Start = FPlatformTime::Cycles64();
 		(*Fence)->WaitForFence(FenceValue);
-		FTaskDetector::GetInstance().SetIsRenderingEnd(true);
+		//uint64 End = FPlatformTime::Cycles64();
+		FTaskDetector::GetInstance().SetRenderingTaskIsRunning(false);
+		//
+		// FTaskDetector::GetInstance().UpdateRenderingTaskInfo(End - Start);
+		//
+		// FTaskDetector::GetInstance().UpdateGgmlTime(End - Start);
 	}
 	
 	static ENamedThreads::Type GetDesiredThread() { return ENamedThreads::AnyThread; }
@@ -664,6 +682,36 @@ private:
 	TRefCountPtr<FD3D12CommandListFence>* Fence;
 	uint64_t FenceValue;
 };
+
+class FWaitForRenderingCompletionTask2 : public FNonAbandonableTask
+{
+	friend class FAutoDeleteAsyncTask<FWaitForRenderingCompletionTask2>;
+	
+	TRefCountPtr<FD3D12CommandListFence>* Fence;
+	uint64_t FenceValue;
+public:
+	FWaitForRenderingCompletionTask2(TRefCountPtr<FD3D12CommandListFence>* Fence, const uint64_t FenceValue)
+		: Fence(Fence), FenceValue(FenceValue) {}
+	
+	void DoWork()
+	{
+		
+		while(FTaskDetector::GetInstance().GetRenderingTaskIsRunning())
+			;
+		
+		FTaskDetector::GetInstance().SetRenderingTaskIsRunning(true);
+		uint64 Start = FPlatformTime::Cycles64();
+		(*Fence)->WaitForFence(FenceValue);
+		uint64 End = FPlatformTime::Cycles64();
+		FTaskDetector::GetInstance().SetRenderingTaskIsRunning(false);
+	}
+	
+	FORCEINLINE TStatId GetStatId() const
+	{
+		RETURN_QUICK_DECLARE_CYCLE_STAT(FWaitForRenderingCompletionTask2, STATGROUP_ThreadPoolAsyncTasks);
+	}
+};
+
 
 void FD3D12CommandListManager::ExecuteCommandListInteral(TArray<FD3D12CommandListHandle>& Lists, bool WaitForCompletion)
 {
@@ -784,7 +832,7 @@ void FD3D12CommandListManager::ExecuteCommandListInteral(TArray<FD3D12CommandLis
 		SyncPoint = FD3D12SyncPoint(CommandListFence, SignaledFenceValue);
 		BarrierSyncPoint = SyncPoint;
 	}
-
+	
 	for (int32 i = 0; i < Lists.Num(); i++)
 	{
 		FD3D12CommandListHandle& commandList = Lists[i];
@@ -811,9 +859,12 @@ void FD3D12CommandListManager::ExecuteCommandListInteral(TArray<FD3D12CommandLis
 		check(SyncPoint.IsComplete());
 	}
 	
-	if (FTaskDetector::GetInstance().GetIsInInferring())
+	//if (FTaskDetector::GetInstance().GetIsInInferring())
 	{
-		TGraphTask<FWaitForRenderingCompletionTask>::CreateTask().ConstructAndDispatchWhenReady(&CommandListFence, SignaledFenceValue);
+		//TGraphTask<FWaitForRenderingCompletionTask1>::CreateTask().ConstructAndDispatchWhenReady(&CommandListFence, SignaledFenceValue);
+		(new FAutoDeleteAsyncTask<FWaitForRenderingCompletionTask2>(&CommandListFence, SignaledFenceValue))->StartBackgroundTask();
+		
+		//FRunnableThread::Create(new FWaitForRenderingCompletionTask3(&CommandListFence, SignaledFenceValue), TEXT("RenderingTask"), 0, TPri_Normal);
 	}
 }
 

@@ -40,13 +40,13 @@ extern char const *LLAMA_BUILD_TARGET;
 //
 // CLI argument parsing
 //
-//extern int32_t __declspec(dllexport) get_num_physical_cores();
+
 
 struct gpt_params {
 	unsigned int threads = std::thread::hardware_concurrency();
     uint32_t seed                 = -1;    // RNG seed
 
-    int32_t n_threads             = threads > 0 ? (threads <= 4 ? threads : threads / 2) : 4;
+    int32_t n_threads             = threads;
     int32_t n_threads_draft       = -1;
     int32_t n_threads_batch       = -1;    // number of threads to use for batch processing (-1 = use n_threads)
     int32_t n_threads_batch_draft = -1;

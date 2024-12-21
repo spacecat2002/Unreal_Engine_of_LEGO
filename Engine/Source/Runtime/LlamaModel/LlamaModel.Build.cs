@@ -13,7 +13,7 @@ public class LlamaModel: ModuleRules
 				"DurationPredictor", 
 				"PerformanceDetector", 
 				"TaskDetector", 
-				"TaskScheduler"
+				"TaskScheduler",
 			});
 
 		PublicDefinitions.Add("GGML_USE_CUBLAS=1");
@@ -22,9 +22,9 @@ public class LlamaModel: ModuleRules
 		
 		PrivateIncludePaths.Add("Runtime\\LlamaModel\\Private");
 
-		PrivateIncludePaths.Add("Runtime\\LlamaModel\\Private\\llama.cpp");
+		PrivateIncludePaths.Add("Runtime\\LlamaModel\\Private\\llamacpp");
 
-		PrivateIncludePaths.Add("Runtime\\LlamaModel\\Private\\llama.cpp\\common");
+		PrivateIncludePaths.Add("Runtime\\LlamaModel\\Private\\llamacpp\\common");
 		
 		PrivateIncludePaths.Add("C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.1\\include");
 		

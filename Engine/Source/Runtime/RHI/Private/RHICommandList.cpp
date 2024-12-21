@@ -414,7 +414,7 @@ public:
 
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
-		FTaskDetector::GetInstance().SetIsInRHITask(true);
+		FTaskDetector::GetInstance().SetRHITaskIsRunning(true);
 		SCOPE_CYCLE_COUNTER(STAT_RHIThreadExecute);
 		if (IsRunningRHIInTaskThread())
 		{
@@ -431,7 +431,6 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			GWorkingRHIThreadTime += (FPlatformTime::Cycles() - GWorkingRHIThreadStartCycles); // this subtraction often wraps and the math stuff works
 			
-			FTaskDetector::GetInstance().SetIsInRHITask(false);
 		}
 		if (IsRunningRHIInTaskThread())
 		{
@@ -439,6 +438,8 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			GRHIThreadId = 0;
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
+		
+		FTaskDetector::GetInstance().SetRHITaskIsRunning(false);
 	}
 };
 

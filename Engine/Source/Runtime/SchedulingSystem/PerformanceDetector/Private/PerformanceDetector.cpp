@@ -5,9 +5,11 @@ FPerformanceDetector::FPerformanceDetector()
 	: StartInferenceTime(0)
 	, DecodedTokensNum(0)
 	, FrameBeginTime(0)
-	, FrameEndTime(0)
+	, FrameRenderingEndTime(0)
 	, FrameTime(0)
 	, TimeSlice(0)
+	, TargetFPS(0)
+	, TargetInferenceSpeed(0)
 {
 }
 
@@ -23,23 +25,33 @@ float FPerformanceDetector::GetAverageFPS()
 	return GAverageFPS;
 }
 
-// float FPerformanceDetector::GetMaxFPS()
-// {
-// 	return MaxFPS;
-// }
-
 float FPerformanceDetector::GetInferenceSpeed()
 {
 	return InferenceSpeed;
 }
 
-float FPerformanceDetector::GetFrameTime()
+int FPerformanceDetector::GetFrameBeginTime()
 {
-	return FrameTime;
+	return FrameBeginTime;
+}
+
+float FPerformanceDetector::GetDecodeTime()
+{
+	return DecodeTime;
 }
 
 TAtomic<float>& FPerformanceDetector::GetTimeSlice()
 {
+	if (FrameTime == 0)
+	{
+		FrameRenderingEndTime = FPlatformTime::Cycles64();
+		
+		LARGE_INTEGER Freq;
+		QueryPerformanceFrequency(&Freq);
+		FrameTime = (FrameRenderingEndTime - FrameBeginTime) * 1000.0f / (float)Freq.QuadPart;
+		const float nTimeSlice = 1000.0/GetAverageFPS() - FrameTime;
+		TimeSlice = FMath::Max(nTimeSlice, 0.0f);
+	}
 	return TimeSlice;
 }
 
@@ -60,14 +72,9 @@ void FPerformanceDetector::SetDecodedTokensNum(const int Num)
 	DecodedTokensNum = Num;
 }
 
-void FPerformanceDetector::SetFrameBeginTime(const float Time)
+void FPerformanceDetector::SetFrameBeginTime(const int Time)
 {
 	FrameBeginTime = Time;
-}
-
-void FPerformanceDetector::SetFrameEndTime(const float Time)
-{
-	FrameEndTime = Time;
 }
 
 void FPerformanceDetector::SetTimeSlice(const float Time)
@@ -80,12 +87,56 @@ void FPerformanceDetector::ChangeTimeSlice(const float Time)
 	TimeSlice = TimeSlice + Time;
 }
 
-void FPerformanceDetector::ComputeFrameTime()
+void FPerformanceDetector::SetFrameTime(const int Time)
 {
-	LARGE_INTEGER Freq;
-	QueryPerformanceFrequency(&Freq);
-	FrameTime = (FrameEndTime - FrameBeginTime) * 1000.0 / (float)Freq.QuadPart;
+	FrameTime = Time;
 }
+
+float FPerformanceDetector::GetFrameTime()
+{
+	return FrameTime;
+}
+
+float FPerformanceDetector::GetTargetFPS()
+{
+	return TargetFPS;
+}
+
+float FPerformanceDetector::GetTargetInferenceSpeed()
+{
+	return TargetInferenceSpeed;
+}
+
+void FPerformanceDetector::SetTargetFPS(const float FPS)
+{
+	TargetFPS = FPS;
+}
+
+void FPerformanceDetector::SetTargetInferenceSpeed(const float Speed)
+{
+	TargetInferenceSpeed = Speed;
+}
+
+void FPerformanceDetector::SetInferenceSpeed(const float Speed)
+{
+	InferenceSpeed = Speed;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

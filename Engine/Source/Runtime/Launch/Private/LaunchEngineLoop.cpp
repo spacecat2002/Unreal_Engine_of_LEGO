@@ -1,5 +1,5 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
-
+#pragma once
 #include "LaunchEngineLoop.h"
 
 #include "HAL/PlatformStackWalk.h"
@@ -252,8 +252,9 @@ class FFeedbackContext;
 #include "IOS/IOSAppDelegate.h"
 #endif
 
-#if USE_LLAMA
-#include "LlamaModel/Public/LlamaModel.h"
+#if USE_LLAMA                                 
+#include "..\..\LlamaModel\Public\Llama.h"
+#include "NewLlamaModel/Public/NewLlama.h"
 #include "SchedulingSystem/DurationPredictor/Public/DurationPredictor.h"
 #include "SchedulingSystem/TaskScheduler/Public/TaskScheduler.h"
 #endif
@@ -4001,8 +4002,8 @@ int32 FEngineLoop::Init()
 #if USE_LLAMA
 	FString ModelName("");
 	FDurationPredictor::GetInstance(ModelName);
-	FTaskScheduler::GetInstance().SetTargetMaxFPS(GEngine->GetMaxFPS());
-	FLlamaModel::GetInstance().Init();
+	FNewLlamaModel::GetInstance().Init();
+	
 #endif
 
 	GetMoviePlayer()->PassLoadingScreenWindowBackToGame();
@@ -4171,7 +4172,7 @@ void FEngineLoop::Exit()
 {
 	
 #if USE_LLAMA
-	FLlamaModel::GetInstance().Exit();
+	FNewLlamaModel::GetInstance().Exit();
 #endif
 	
 	STAT_ADD_CUSTOMMESSAGE_NAME( STAT_NamedMarker, TEXT( "EngineLoop.Exit" ) );

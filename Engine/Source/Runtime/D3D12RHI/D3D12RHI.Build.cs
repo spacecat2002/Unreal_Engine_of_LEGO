@@ -21,7 +21,7 @@ public class D3D12RHI : ModuleRules
 				"RenderCore",
 				"TaskDetector",
 				"TaskScheduler",
-				"PerformanceDetector"
+				"PerformanceDetector",
 				}
 			);
 
