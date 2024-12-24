@@ -481,6 +481,7 @@ FGPUTimingCalibrationTimestamp FD3D12CommandListManager::GetCalibrationTimestamp
 	FTaskDetector::GetInstance().SetIsInFrameRendering(true);
 	FPerformanceDetector::GetInstance().SetFrameBeginTime(FPlatformTime::Cycles64());
 	FPerformanceDetector::GetInstance().SetFrameTime(0);
+	FTaskScheduler::GetInstance().SetBeginInFrameEnd();
 	
 	TRACE_CPUPROFILER_EVENT_SCOPE(D3D12GetCalibrationTimestamp);
 

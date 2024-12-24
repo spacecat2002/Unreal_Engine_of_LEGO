@@ -163,13 +163,6 @@ void FLlamaModel::Inference(std::string input_prompt, FString* content, bool Aut
 
         n_cur += 1;
     	
-    	if (AutoSchedule)
-    	{
-    		//printf("here\n");
-    		FTaskScheduler::GetInstance().CheckPerformance();
-    	}
-    		
-    	
         // evaluate the current batch with the transformer model
         if (llama_decode(ctx, batch)) {
             fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);

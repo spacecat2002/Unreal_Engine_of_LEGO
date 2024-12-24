@@ -9,12 +9,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-DECLARE_STATS_GROUP(TEXT("Inference"), STATGROUP_LLAMA, STATCAT_Advanced);
-DECLARE_CYCLE_STAT_EXTERN(TEXT("Inference Task time"), STAT_Inference, STATGROUP_LLAMA, );
-DECLARE_CYCLE_STAT_EXTERN(TEXT("Build Graph time"), STAT_BUILD_GRAPH, STATGROUP_LLAMA, );
-DEFINE_STAT(STAT_Inference);
-DEFINE_STAT(STAT_BUILD_GRAPH);
-
 #ifdef __cplusplus
 extern "C" {
 #endif

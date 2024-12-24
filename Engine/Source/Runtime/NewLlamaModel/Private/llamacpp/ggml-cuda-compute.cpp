@@ -41,7 +41,9 @@
 #include "ggml-cuda/upscale.cuh"
 #include "ggml-cuda/rwkv-wkv.cuh"
 
-
+DECLARE_STATS_GROUP(TEXT("Inference"), STATGROUP_LLAMA, STATCAT_Advanced);
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Inference Task time"), STAT_Inference, STATGROUP_LLAMA, );
+DEFINE_STAT(STAT_Inference);
 
 bool ggml_cuda_compute_forward_scheduled(ggml_backend_cuda_context & ctx, struct ggml_tensor * dst) {
 	
@@ -257,13 +259,223 @@ bool ggml_cuda_compute_forward_scheduled(ggml_backend_cuda_context & ctx, struct
     return true;
 }
 
+bool ggml_cuda_compute_forward_default(ggml_backend_cuda_context & ctx, struct ggml_tensor * dst) {
+	
+	fprintf(stderr, "register ggml_cuda_compute_forward succeeded\n");
+	if (dst->src[0] != nullptr && ggml_backend_buft_is_cuda_split(dst->src[0]->buffer->buft)) {
+		ggml_cuda_set_peer_access(dst->src[1]->ne[1], ctx.device);
+	}
+	
+	TArray<int> Input;
+    FString Name;
+	
+	SCOPE_CYCLE_COUNTER(STAT_Inference);
+
+	switch (dst->op) {
+        case GGML_OP_ARGMAX:
+            ggml_cuda_argmax(ctx, dst);
+            break;
+        case GGML_OP_COUNT_EQUAL:
+            ggml_cuda_count_equal(ctx, dst);
+            break;
+        case GGML_OP_REPEAT:
+            ggml_cuda_op_repeat(ctx, dst);
+            break;
+        case GGML_OP_REPEAT_BACK:
+            ggml_cuda_op_repeat_back(ctx, dst);
+            break;
+        case GGML_OP_GET_ROWS:
+            ggml_cuda_op_get_rows(ctx, dst);
+            break;
+        case GGML_OP_DUP:
+            ggml_cuda_dup(ctx, dst);
+            break;
+        case GGML_OP_CPY:
+            ggml_cuda_cpy(ctx, dst->src[0], dst->src[1]);
+            break;
+        case GGML_OP_CONT:
+            ggml_cuda_dup(ctx, dst);
+            break;
+        case GGML_OP_ADD:
+        case GGML_OP_ADD1: // TODO: more efficient implementation
+            ggml_cuda_op_add(ctx, dst);
+            break;
+        case GGML_OP_SUB:
+            ggml_cuda_op_sub(ctx, dst);
+            break;
+        case GGML_OP_ACC:
+            ggml_cuda_op_acc(ctx, dst);
+            break;
+        case GGML_OP_MUL:
+            ggml_cuda_op_mul(ctx, dst);
+            break;
+        case GGML_OP_DIV:
+            ggml_cuda_op_div(ctx, dst);
+            break;
+        case GGML_OP_UNARY:
+            switch (ggml_get_unary_op(dst)) {
+                case GGML_UNARY_OP_NEG:
+                    ggml_cuda_op_neg(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_STEP:
+                    ggml_cuda_op_step(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_GELU:
+                    ggml_cuda_op_gelu(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_SILU:
+                    ggml_cuda_op_silu(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_GELU_QUICK:
+                    ggml_cuda_op_gelu_quick(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_TANH:
+                    ggml_cuda_op_tanh(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_RELU:
+                    ggml_cuda_op_relu(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_SIGMOID:
+                    ggml_cuda_op_sigmoid(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_HARDSIGMOID:
+                    ggml_cuda_op_hardsigmoid(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_HARDSWISH:
+                    ggml_cuda_op_hardswish(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_EXP:
+                    ggml_cuda_op_exp(ctx, dst);
+                    break;
+                default:
+                    return false;
+            }
+            break;
+        case GGML_OP_NORM:
+            ggml_cuda_op_norm(ctx, dst);
+            break;
+        case GGML_OP_GROUP_NORM:
+            ggml_cuda_op_group_norm(ctx, dst);
+            break;
+        case GGML_OP_CONCAT:
+            ggml_cuda_op_concat(ctx, dst);
+            break;
+        case GGML_OP_UPSCALE:
+            ggml_cuda_op_upscale(ctx, dst);
+            break;
+        case GGML_OP_PAD:
+            ggml_cuda_op_pad(ctx, dst);
+            break;
+        case GGML_OP_ARANGE:
+            ggml_cuda_op_arange(ctx, dst);
+            break;
+        case GGML_OP_TIMESTEP_EMBEDDING:
+            ggml_cuda_op_timestep_embedding(ctx, dst);
+            break;
+        case GGML_OP_LEAKY_RELU:
+            ggml_cuda_op_leaky_relu(ctx, dst);
+            break;
+        case GGML_OP_RMS_NORM:
+            ggml_cuda_op_rms_norm(ctx, dst);
+            break;
+        case GGML_OP_MUL_MAT:
+            if (dst->src[0]->ne[3] != dst->src[1]->ne[3]) {
+                GGML_LOG_ERROR("%s: cannot compute %s: src0->ne[3] = %" PRId64 ", src1->ne[3] = %" PRId64 " - fallback to CPU\n", __func__, dst->name, dst->src[0]->ne[3], dst->src[1]->ne[3]);
+                return false;
+            } else {
+                ggml_cuda_mul_mat(ctx, dst->src[0], dst->src[1], dst);
+            }
+            break;
+        case GGML_OP_MUL_MAT_ID:
+            ggml_cuda_mul_mat_id(ctx, dst);
+            break;
+        case GGML_OP_OUT_PROD:
+            ggml_cuda_out_prod(ctx, dst);
+            break;
+        case GGML_OP_SCALE:
+            ggml_cuda_op_scale(ctx, dst);
+            break;
+        case GGML_OP_SQR:
+            ggml_cuda_op_sqr(ctx, dst);
+            break;
+        case GGML_OP_SQRT:
+            ggml_cuda_op_sqrt(ctx, dst);
+            break;
+        case GGML_OP_SIN:
+            ggml_cuda_op_sin(ctx, dst);
+            break;
+        case GGML_OP_COS:
+            ggml_cuda_op_cos(ctx, dst);
+            break;
+        case GGML_OP_CLAMP:
+            ggml_cuda_op_clamp(ctx, dst);
+            break;
+        case GGML_OP_NONE:
+        case GGML_OP_RESHAPE:
+        case GGML_OP_VIEW:
+        case GGML_OP_PERMUTE:
+        case GGML_OP_TRANSPOSE:
+                break;
+        case GGML_OP_DIAG_MASK_INF:
+            ggml_cuda_op_diag_mask_inf(ctx, dst);
+            break;
+        case GGML_OP_SOFT_MAX:
+            ggml_cuda_op_soft_max(ctx, dst);
+            break;
+        case GGML_OP_ROPE:
+            ggml_cuda_op_rope(ctx, dst);
+            break;
+        case GGML_OP_IM2COL:
+            ggml_cuda_op_im2col(ctx, dst);
+            break;
+        case GGML_OP_CONV_TRANSPOSE_1D:
+            ggml_cuda_op_conv_transpose_1d(ctx,dst);
+            break;
+        case GGML_OP_POOL_2D:
+            ggml_cuda_op_pool2d(ctx, dst);
+            break;
+        case GGML_OP_SUM:
+            ggml_cuda_op_sum(ctx, dst);
+            break;
+        case GGML_OP_SUM_ROWS:
+            ggml_cuda_op_sum_rows(ctx, dst);
+            break;
+        case GGML_OP_ARGSORT:
+            ggml_cuda_op_argsort(ctx, dst);
+            break;
+        case GGML_OP_FLASH_ATTN_EXT:
+            ggml_cuda_flash_attn_ext(ctx, dst);
+            break;
+        case GGML_OP_CROSS_ENTROPY_LOSS:
+            ggml_cuda_cross_entropy_loss(ctx, dst);
+            break;
+        case GGML_OP_RWKV_WKV:
+            ggml_cuda_op_rwkv_wkv(ctx, dst);
+            break;
+        case GGML_OP_CROSS_ENTROPY_LOSS_BACK:
+            ggml_cuda_cross_entropy_loss_back(ctx, dst);
+            break;
+        case GGML_OP_OPT_STEP_ADAMW:
+            ggml_cuda_opt_step_adamw(ctx, dst);
+            break;
+        default:
+            return false;
+    }
+
+	cudaError_t err = cudaGetLastError();
+	if (err != cudaSuccess) {
+		GGML_LOG_ERROR("%s: %s failed\n", __func__, ggml_op_desc(dst));
+		CUDA_CHECK(err);
+	}
+	
+    return true;
+}
+
 #define LLAMA_LAYERS           32
-#define LLAMA_NODES_LAYER_BEGIN    29
-#define LLAMA_NODES_LAYER_x    28
-#define LLAMA_NODES_OUT_BLOCKS 3
-#define LLAMA_NODES_EXTRA_BEGIN 1
+#define LLAMA_NODES_LAYER_x    32
+#define LLAMA_NODES_LM_HEAD     3
 #define LLAMA_NODES_EXTRA_END   2
-#define LLAMA_NODES            902
+#define LLAMA_NODES            1029
 
 uint32_t get_first_layer_num(ggml_cgraph * graph) {
     char * num = graph->nodes[0]->name + 5;
@@ -277,23 +489,21 @@ uint32_t get_first_layer_num(ggml_cgraph * graph) {
 
 uint32_t get_layer_cnt(uint32_t n_nodes)
 {
-    return (n_nodes - LLAMA_NODES_EXTRA_BEGIN) / LLAMA_NODES_LAYER_x;
+    return n_nodes / LLAMA_NODES_LAYER_x;
 }
 
-uint32_t get_layers_num(uint32_t n_nodes, uint32_t num_nodes, uint32_t first_layer_num) {
-	if (((n_nodes - LLAMA_NODES_EXTRA_BEGIN) / LLAMA_NODES_LAYER_x) * LLAMA_NODES_LAYER_x != n_nodes - LLAMA_NODES_EXTRA_BEGIN)
-	{
-		num_nodes -= LLAMA_NODES_OUT_BLOCKS;
-		if (num_nodes <= LLAMA_NODES_LAYER_BEGIN) return first_layer_num;
-		uint32_t temp = (num_nodes - LLAMA_NODES_EXTRA_BEGIN) / LLAMA_NODES_LAYER_x;
-		if (temp * LLAMA_NODES_LAYER_x + LLAMA_NODES_EXTRA_BEGIN < num_nodes && n_nodes - num_nodes > LLAMA_NODES_EXTRA_END) return first_layer_num + temp;
-		return first_layer_num + temp - 1;
-	}
-
-	if (num_nodes <= LLAMA_NODES_LAYER_BEGIN) return first_layer_num;
-	uint32_t temp = (num_nodes - LLAMA_NODES_EXTRA_BEGIN) / LLAMA_NODES_LAYER_x;
-	if (temp * LLAMA_NODES_LAYER_x + LLAMA_NODES_EXTRA_BEGIN < num_nodes) return first_layer_num + temp;
-	return first_layer_num + temp - 1;
+uint32_t get_layers_num(uint32_t idx_node, uint32_t n_nodes, uint32_t first_layer_num) {
+    if ((n_nodes / LLAMA_NODES_LAYER_x) * LLAMA_NODES_LAYER_x == n_nodes)
+    {
+        return idx_node / LLAMA_NODES_LAYER_x + first_layer_num;
+    }
+    else
+    {
+        n_nodes -= LLAMA_NODES_LM_HEAD;
+        int layer_num = idx_node / LLAMA_NODES_LAYER_x;
+        if (n_nodes - layer_num * LLAMA_NODES_LAYER_x <= 2) return first_layer_num + layer_num - 1;
+        else return first_layer_num + layer_num;
+    }
 }
 
 bool get_cgraph_type(uint32_t layer_cnt)
@@ -461,19 +671,27 @@ enum ggml_status ggml_backend_cuda_graph_compute_scheduled(ggml_backend_t backen
 
                 if (is_skip_computing && !skip_state)
                 {
-                    uint32_t now_layer_num = get_layers_num(cgraph->n_nodes, i + 1, first_layer_num);
+                    uint32_t now_layer_num = get_layers_num(i, cgraph->n_nodes, first_layer_num);
+                	FTaskScheduler::GetInstance().SetTokenNowLayer(now_layer_num);
                     if (now_layer_num != LLAMA_LAYERS - 1 && now_layer_num != LLAMA_LAYERS - 2) {
                         uint32_t skip_depth = FTaskScheduler::GetInstance().GetSkipDepth();
                         uint32_t skip_layer_num = skip_depth == 0 ? 0 : LLAMA_LAYERS - 2 - 1 - skip_depth;
                         std::string skip_begin_node_name = skip_begin_node_type + std::to_string(now_layer_num);
-                        if (skip_layer_num > 0 && skip_layer_num <= now_layer_num)
+                        if (skip_layer_num > 0)
                         {
-                            if (!strcmp(node->name, skip_begin_node_name.c_str()))
-                            {
-                                skip_state = true;
-                                cgraph->last_skip_layers_num = now_layer_num;
-                            	fprintf(stderr, "skip layer %d\n", now_layer_num);
-                            }
+                        	if (skip_layer_num < now_layer_num)
+                        	{
+                        		skip_state = true;
+                        		cgraph->last_skip_layers_num = now_layer_num - 1;
+                        	}
+                        	else if (skip_layer_num == now_layer_num)
+                        	{
+                        		if (!strcmp(node->name, skip_begin_node_name.c_str()))
+                        		{
+                        			skip_state = true;
+                        			cgraph->last_skip_layers_num = now_layer_num;
+                        		}
+                        	}
                         }
                     }
                 }
@@ -500,7 +718,7 @@ enum ggml_status ggml_backend_cuda_graph_compute_scheduled(ggml_backend_t backen
                 GGML_ASSERT(ok);
             }
             if (!skip_state) {
-                cgraph->last_skip_layers_num = get_layers_num(cgraph->n_nodes, cgraph->n_nodes, first_layer_num);
+                cgraph->last_skip_layers_num = get_layers_num(cgraph->n_nodes - 1, cgraph->n_nodes, first_layer_num);
             }
         }
 
@@ -605,7 +823,8 @@ enum ggml_status ggml_backend_cuda_graph_compute_scheduled(ggml_backend_t backen
     return GGML_STATUS_SUCCESS;
 }
 
-static enum ggml_status ggml_backend_cuda_graph_compute_default(ggml_backend_t backend, ggml_cgraph * cgraph) {
+enum ggml_status ggml_backend_cuda_graph_compute_default(ggml_backend_t backend, ggml_cgraph * cgraph) {
+    uint32_t first_layer_num = get_first_layer_num(cgraph);
     ggml_backend_cuda_context * cuda_ctx = (ggml_backend_cuda_context *)backend->context;
 
     ggml_cuda_set_device(cuda_ctx->device);
@@ -753,7 +972,6 @@ static enum ggml_status ggml_backend_cuda_graph_compute_default(ggml_backend_t b
         if (!use_cuda_graph || cuda_graph_update_required) {
             for (int i = 0; i < cgraph->n_nodes; i++) {
                 ggml_tensor * node = cgraph->nodes[i];
-
                 if (ggml_is_empty(node) || node->op == GGML_OP_RESHAPE || node->op == GGML_OP_TRANSPOSE || node->op == GGML_OP_VIEW || node->op == GGML_OP_PERMUTE || node->op == GGML_OP_NONE) {
                     continue;
                 }
@@ -769,12 +987,13 @@ static enum ggml_status ggml_backend_cuda_graph_compute_default(ggml_backend_t b
                 }
 #endif
 
-                bool ok = ggml_cuda_compute_forward_scheduled(*cuda_ctx, node);
+                bool ok = ggml_cuda_compute_forward_default(*cuda_ctx, node);
                 if (!ok) {
                     GGML_LOG_ERROR("%s: op not supported %s (%s)\n", __func__, node->name, ggml_op_name(node->op));
                 }
                 GGML_ASSERT(ok);
             }
+            cgraph->last_skip_layers_num = get_layers_num(cgraph->n_nodes - 1, cgraph->n_nodes, first_layer_num);
         }
 
 #ifdef USE_CUDA_GRAPH

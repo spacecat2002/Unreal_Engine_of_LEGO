@@ -26,7 +26,7 @@ public class NewLlamaModel: ModuleRules
 
 		PrivateIncludePaths.Add("Runtime\\NewLlamaModel\\Private\\llamacpp\\common");
 		
-		PrivateIncludePaths.Add("C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include");
+		PrivateIncludePaths.Add("E:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.1\\include");
 		
 		PublicAdditionalLibraries.Add("Runtime\\NewLlamaModel\\Private\\Libs\\cudart.lib");
 		

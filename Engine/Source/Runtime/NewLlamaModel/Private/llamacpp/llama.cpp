@@ -75,6 +75,7 @@
 #include <type_traits>
 #include <unordered_map>
 
+#include "ggml-cuda.h"
 #include "TaskScheduler.h"
 
 #if defined(_MSC_VER)
@@ -16907,8 +16908,6 @@ static struct ggml_cgraph * llama_build_graph_partial(
                   bool   lm_head) {
     const auto & model = lctx.model;
 
-	SCOPE_CYCLE_COUNTER(STAT_BUILD_GRAPH);
-
     // this callback allows us to apply custom logic to each tensor (e.g. ggml-alloc, offloading, etc.)
     llm_build_cb cb = [&](struct ggml_tensor * cur, const char * name, int il) {
         if (il >= 0) {
@@ -17564,6 +17563,8 @@ static void llama_graph_compute(
 static int llama_decode_internal(
          llama_context & lctx,
            llama_batch   inp_batch) {
+	register_ggml_cuda_compute_forward(ggml_cuda_compute_forward_scheduled);
+	register_ggml_backend_cuda_graph_compute(ggml_backend_cuda_graph_compute_default);
 
     lctx.is_encoding = false;
 
@@ -17873,6 +17874,8 @@ static int llama_decode_internal(
 static int llama_decode_skip_layers_internal(
         llama_context & lctx,
         llama_batch   inp_batch) {
+	register_ggml_cuda_compute_forward(ggml_cuda_compute_forward_scheduled);
+	register_ggml_backend_cuda_graph_compute(ggml_backend_cuda_graph_compute_scheduled);
 
     lctx.is_encoding = false;
 
@@ -20784,6 +20787,8 @@ int32_t llama_get_kv_cache_used_cells(const struct llama_context * ctx) {
 
 void llama_kv_cache_clear(struct llama_context * ctx) {
     llama_kv_cache_clear(ctx->kv_self);
+	ctx->ectx.depth.clear();
+	ctx->ectx.end_depth_to_begin_pos.clear();
 }
 
 bool llama_kv_cache_seq_rm(struct llama_context * ctx, llama_seq_id seq_id, llama_pos p0, llama_pos p1) {

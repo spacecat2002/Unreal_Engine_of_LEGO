@@ -13,12 +13,10 @@ FNewLlamaModel& FNewLlamaModel::GetInstance()
 void FNewLlamaModel::Init()
 {
 	fprintf(stderr, "FNewLlamaModel::Init()\n");	
-	register_ggml_cuda_compute_forward(ggml_cuda_compute_forward_scheduled);
-	register_ggml_backend_cuda_graph_compute(ggml_backend_cuda_graph_compute_scheduled);
 
 	std::string model_path;
 	
-	model_path = "E:\\llama-3.2-8B-Instruct.Q8_0.gguf";
+	model_path = "E:\\Program Files\\Llama-3.2-8B-Instruct.Q8_0.gguf";
 	
 	n_len = 250;
 	
@@ -32,18 +30,24 @@ void FNewLlamaModel::Init()
 	ctx_params.n_ctx = 2048;
 	ctx_params.no_perf = false;
 	ctx_params.flash_attn = true;
+
+	auto sparams = llama_sampler_chain_default_params();
+	sparams.no_perf = false;
+	smpl = llama_sampler_chain_init(sparams);
+	llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
 }
 
 void FNewLlamaModel::Exit()
 {
 	llama_free(ctx);
 	llama_free_model(model);
+	llama_sampler_free(smpl);
 
 	fprintf(stderr, "Llama has exited.\n");
 }
 
 
-void FNewLlamaModel::Inference(std::string prompt, FString* content, bool AutoSchedule)
+void FNewLlamaModel::Inference(std::string prompt, FString* content)
 {
 	
 	FTaskDetector::GetInstance().SetIsInInferring(true);
@@ -58,15 +62,6 @@ void FNewLlamaModel::Inference(std::string prompt, FString* content, bool AutoSc
 	
 	ctx_params.n_batch = n_prompt;
 	ctx = llama_new_context_with_model(model, ctx_params);
-
-	auto sparams = llama_sampler_chain_default_params();
-	sparams.no_perf = false;
-	
-	llama_sampler * smpl = llama_sampler_chain_init(sparams);
-
-	llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
-
-
 	
     // print the prompt token-by-token
 
@@ -92,7 +87,6 @@ void FNewLlamaModel::Inference(std::string prompt, FString* content, bool AutoSc
 	
 	int n_decode = 0;
 	llama_token new_token_id;
-	int skip_depth = 32;
 	
     // main loop
 	
@@ -100,17 +94,25 @@ void FNewLlamaModel::Inference(std::string prompt, FString* content, bool AutoSc
 	
     for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + n_len; ) {
     	//if (AutoSchedule) FTaskScheduler::GetInstance().CheckPerformance();
-    	
-    	// if (llama_decode_skip_layers(ctx, batch, 12)) {
-    	// 	fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
-    	// 	return;
-    	// }
-    	
-    	if (llama_decode_skip_layers(ctx, batch)) {
-			fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
-			return;
-		}
 
+    	if (n_pos == 0)
+    	{
+    		if (llama_decode(ctx, batch)) {
+    		 	fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
+    		 	return;
+    		}
+    	}
+    	else
+    	{
+    		double token_start_time = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
+    		FTaskScheduler::GetInstance().SetTokenBeginTime(token_start_time);
+    	
+    		if (llama_decode_skip_layers(ctx, batch)) {
+    			fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
+    			return;
+    		}
+    	}
+    	
     	n_pos += batch.n_tokens;
 
     	// sample the next token
@@ -159,17 +161,16 @@ void FNewLlamaModel::Inference(std::string prompt, FString* content, bool AutoSc
 	llama_perf_sampler_print(smpl);
 	llama_perf_context_print(ctx);
 	fprintf(stderr, "\n");
-
-	llama_sampler_free(smpl);
+	
 	llama_free(ctx);
 
-	InferenceSpeed = n_decode / ((t_main_end - t_main_start) / 1000000.0f);
+	AvgInferenceTime = (t_main_end - t_main_start) / 1000.0f / n_decode;
 
 	fprintf(stderr, "\n");
 }
 
-float FNewLlamaModel::GetInferenceSpeed()
+float FNewLlamaModel::GetInferenceTime()
 {
-	return InferenceSpeed;
+	return AvgInferenceTime;
 }
 

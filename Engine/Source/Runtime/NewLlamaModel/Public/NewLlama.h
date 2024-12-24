@@ -6,14 +6,16 @@
 #include "../../SchedulingSystem/PerformanceDetector/Public/PerformanceDetector.h"
 #include "../../SchedulingSystem/TaskDetector/Public/TaskDetector.h"
 
+struct llama_sampler;
+
 class DLLEXPORT FNewLlamaModel
 {
 public:
 	static FNewLlamaModel& GetInstance();
 	void Init();
 	void Exit();
-	void Inference(std::string prompt, FString* content, bool AutoSchedule);
-	float GetInferenceSpeed();
+	void Inference(std::string prompt, FString* content);
+	float GetInferenceTime();
 	std::string prompt;
 
 private:
@@ -25,8 +27,9 @@ private:
 	llama_model* model;
 	llama_context_params ctx_params;
 	llama_context* ctx;
+	llama_sampler* smpl;
 	int n_len;
-	float InferenceSpeed;
+	float AvgInferenceTime;
 };
 
 
