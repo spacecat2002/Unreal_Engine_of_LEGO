@@ -3962,7 +3962,7 @@ int32 FEngineLoop::Init()
 	SlowTask.EnterProgressFrame(10);
 
 	FEmbeddedCommunication::ForceTick(10);
-
+	
 	// Figure out which UEngine variant to use.
 	UClass* EngineClass = nullptr;
 	if( !GIsEditor )
@@ -4003,6 +4003,7 @@ int32 FEngineLoop::Init()
 	FString ModelName("");
 	FDurationPredictor::GetInstance(ModelName);
 	FNewLlamaModel::GetInstance().Init();
+	FTaskScheduler::GetInstance();
 	
 #endif
 

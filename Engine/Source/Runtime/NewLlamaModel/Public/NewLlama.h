@@ -14,8 +14,10 @@ public:
 	static FNewLlamaModel& GetInstance();
 	void Init();
 	void Exit();
-	void Inference(std::string prompt, FString* content);
+	void Inference(std::string prompt, FString* content, int time_per_action);
 	float GetInferenceTime();
+	float GetTotalInferenceTime();
+	bool CheckAutoUpdateSkipLayers();
 	std::string prompt;
 
 private:
@@ -30,6 +32,12 @@ private:
 	llama_sampler* smpl;
 	int n_len;
 	float AvgInferenceTime;
+	float TotalInferenceTime;
+	int model_type;
+	double decode_time_per_token;
+	double decode_time_per_layer;
+	double prefill_time_per_token;
+	double prefill_time_per_layer;
 };
 
 

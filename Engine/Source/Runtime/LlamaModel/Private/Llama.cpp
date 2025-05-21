@@ -111,7 +111,6 @@ void FLlamaModel::Inference(std::string input_prompt, FString* content, bool Aut
 
     const auto t_main_start = ggml_time_us();
 	double start_time = FDateTime::Now().GetTimeOfDay().GetTotalSeconds();
-	FPerformanceDetector::GetInstance().SetStartInferenceTime(start_time);
 
 	std::string response = "";
 
@@ -169,8 +168,6 @@ void FLlamaModel::Inference(std::string input_prompt, FString* content, bool Aut
         }
 
     	n_decode += 1;
-    	FPerformanceDetector::GetInstance().SetDecodedTokensNum(n_decode);
-    	FPerformanceDetector::GetInstance().ComputeInferenceSpeed();
     }
 	FTaskDetector::GetInstance().SetIsInInferring(false);
 	

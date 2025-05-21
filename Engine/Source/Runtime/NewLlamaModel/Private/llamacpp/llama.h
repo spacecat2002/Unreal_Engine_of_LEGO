@@ -813,6 +813,11 @@ extern "C" {
             struct llama_context * ctx,
               struct llama_batch   batch);
 
+	LLAMA_API int32_t llama_decode_skip_layers_v2(
+		struct llama_context * ctx,
+		  struct llama_batch   batch,
+		          int skip_layers);
+
     // Set the number of threads used for decoding
     // n_threads is the number of threads used for generation (single token)
     // n_threads_batch is the number of threads used for prompt and batch processing (multiple tokens)

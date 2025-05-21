@@ -12,6 +12,7 @@
 #include "ggml-backend.h"
 #include "ggml-impl.h"
 
+
 // TODO: replace with ggml API call
 #define QK_K 256
 
@@ -16946,7 +16947,13 @@ static struct ggml_cgraph * llama_build_graph_partial(
 
     llm.init();
 
-    result = llm.build_llama_partial(lm_head);
+    switch (model.arch)
+    {
+    case LLM_ARCH_LLAMA:
+        {
+            result = llm.build_llama_partial(lm_head);
+        }break;
+    }
 
     // add on pooling layer
     if (lctx.cparams.embeddings) {
@@ -17560,12 +17567,322 @@ static void llama_graph_compute(
 // return positive int on warning
 // return negative int on error
 //
+static int llama_decode_skip_layers_internal_v2(
+         llama_context & lctx,
+           llama_batch   inp_batch,
+           int skip_depth) {
+	
+    lctx.is_encoding = false;
+	
+    if (inp_batch.n_tokens == 0) {
+        LLAMA_LOG_ERROR("%s: n_tokens == 0\n", __func__);
+        return -1;
+    }
+
+    // temporary allocate memory for the input batch if needed
+    llama_batch_allocr batch_allocr(lctx, inp_batch);
+    const llama_batch & batch = batch_allocr.batch;
+    const uint32_t n_tokens_all = batch.n_tokens;
+	uint32_t now_pos = batch.pos[0];
+
+    const auto & model   = lctx.model;
+    const auto & hparams = model.hparams;
+    const auto & cparams = lctx.cparams;
+
+    GGML_ASSERT((!batch.token && batch.embd) || (batch.token && !batch.embd)); // NOLINT
+
+    if (batch.token) {
+        for (uint32_t i = 0; i < n_tokens_all; ++i) {
+            if (batch.token[i] < 0 || (uint32_t)batch.token[i] >= model.vocab.n_vocab) {
+                LLAMA_LOG_ERROR("%s: invalid token[%d] = %d\n", __func__, i, batch.token[i]);
+                return -1;
+            }
+        }
+    }
+
+    GGML_ASSERT(n_tokens_all <= cparams.n_batch);
+
+    GGML_ASSERT((cparams.causal_attn || cparams.n_ubatch >= n_tokens_all) && "non-causal attention requires n_ubatch >= n_tokens");
+
+    if (lctx.t_compute_start_us == 0) {
+        lctx.t_compute_start_us = ggml_time_us();
+    }
+    lctx.n_queued_tokens += n_tokens_all;
+
+    auto & kv_self = lctx.kv_self;
+
+    const int64_t n_embd  = hparams.n_embd;
+    const int64_t n_vocab = hparams.n_vocab;
+
+    uint32_t n_outputs = 0;
+    uint32_t n_outputs_prev = 0;
+
+    const auto n_ubatch = cparams.n_ubatch;
+
+    // this indicates we are doing pooled embedding, so we ignore batch.logits and output all tokens
+    const bool embd_pooled = cparams.embeddings && cparams.pooling_type != LLAMA_POOLING_TYPE_NONE;
+
+    lctx.embd_seq.clear();
+
+    // count outputs
+    if (batch.logits && !embd_pooled) {
+        for (uint32_t i = 0; i < n_tokens_all; ++i) {
+            n_outputs += batch.logits[i] != 0;
+        }
+    } else if (lctx.logits_all || embd_pooled) {
+        n_outputs = n_tokens_all;
+    } else {
+        // keep last output only
+        n_outputs = 1;
+    }
+
+    lctx.sbatch.from_batch(batch, n_embd,
+        /* simple_split */ !kv_self.recurrent,
+        /* logits_all   */ n_outputs == n_tokens_all);
+
+    // reserve output buffer
+    if (llama_output_reserve(lctx, n_outputs) < n_outputs) {
+        LLAMA_LOG_ERROR("%s: could not reserve space for batch with %u outputs\n", __func__, n_outputs);
+        return -2;
+    };
+
+    while (lctx.sbatch.n_tokens > 0) {
+        llama_ubatch ubatch;
+        if (kv_self.recurrent) {
+            if (embd_pooled) {
+                // Pooled embeddings cannot be split across ubatches (yet)
+                ubatch = lctx.sbatch.split_seq(n_ubatch);
+            } else {
+                // recurrent model architectures are easier to implement
+                // with equal-length sequences
+                ubatch = lctx.sbatch.split_equal(n_ubatch);
+            }
+        } else {
+            ubatch = lctx.sbatch.split_simple(n_ubatch);
+        }
+        const uint32_t n_tokens = ubatch.n_tokens;
+
+        // count the outputs in this u_batch
+        {
+            int32_t n_outputs_new = 0;
+
+            if (n_outputs == n_tokens_all) {
+                n_outputs_new = n_tokens;
+            } else {
+                GGML_ASSERT(ubatch.output);
+                for (uint32_t i = 0; i < n_tokens; i++) {
+                    n_outputs_new += (int32_t) (ubatch.output[i] != 0);
+                }
+            }
+
+            // needs to happen before the graph is built
+            lctx.n_outputs = n_outputs_new;
+        }
+
+        int n_threads = n_tokens == 1 ? cparams.n_threads : cparams.n_threads_batch;
+        ggml_threadpool_t threadpool = n_tokens == 1 ? lctx.threadpool : lctx.threadpool_batch;
+
+        GGML_ASSERT(n_threads > 0);
+
+        // non-causal masks do not use the KV cache
+        if (hparams.causal_attn) {
+            llama_kv_cache_update(&lctx);
+
+            // if we have enough unused cells before the current head ->
+            //   better to start searching from the beginning of the cache, hoping to fill it
+            if (kv_self.head > kv_self.used + 2*n_tokens) {
+                kv_self.head = 0;
+            }
+
+            if (!llama_kv_cache_find_slot(kv_self, ubatch)) {
+                return 1;
+            }
+
+            if (!kv_self.recurrent) {
+                // a heuristic, to avoid attending the full cache if it is not yet utilized
+                // after enough generations, the benefit from this heuristic disappears
+                // if we start defragmenting the cache, the benefit from this will be more important
+                const uint32_t pad = llama_kv_cache_get_padding(cparams);
+                kv_self.n = std::min(kv_self.size, std::max(pad, GGML_PAD(llama_kv_cache_cell_max(kv_self), pad)));
+                //kv_self.n = llama_kv_cache_cell_max(kv_self);
+            }
+        }
+
+        //printf("kv_self.n = %5d, kv_self.used = %5d, kv_self.head = %5d\n", kv_self.n, kv_self.used, kv_self.head);
+
+        ggml_backend_sched_reset(lctx.sched);
+        ggml_backend_sched_set_eval_callback(lctx.sched, lctx.cparams.cb_eval, lctx.cparams.cb_eval_user_data);
+
+    	int skip_begin_layer = lctx.model.hparams.n_layer - 2 - 1 - skip_depth;
+        ggml_cgraph * gf = llama_build_graph_partial(lctx, ubatch, false, now_pos, 0, skip_begin_layer, true);
+
+        // the output is always the last tensor in the graph
+        struct ggml_tensor * res  = ggml_graph_node(gf, -1);
+        struct ggml_tensor * embd = ggml_graph_node(gf, -2);
+
+        if (lctx.n_outputs == 0) {
+            // no output
+            res  = nullptr;
+            embd = nullptr;
+        } else if (cparams.embeddings) {
+            res  = nullptr; // do not extract logits for embedding case
+            embd = nullptr;
+            for (int i = ggml_graph_n_nodes(gf) - 1; i >= 0; --i) {
+                if (strcmp(ggml_graph_node(gf, i)->name, "result_embd_pooled") == 0) {
+                    embd = ggml_graph_node(gf, i);
+                    break;
+                }
+            }
+            GGML_ASSERT(embd != nullptr && "missing embeddings tensor");
+        } else {
+            embd = nullptr; // do not extract embeddings when not needed
+            GGML_ASSERT(strcmp(res->name, "result_output") == 0 && "missing result_output tensor");
+        }
+        // LLAMA_LOG_INFO("graph build time: %.3f ms (%d nodes, %d leafs)\n", (ggml_time_us() - t_start_us)/1000.0, gf->n_nodes, gf->n_leafs);
+
+        ggml_backend_sched_alloc_graph(lctx.sched, gf);
+
+        llama_set_inputs(lctx, ubatch, true);
+
+        llama_graph_compute(lctx, gf, n_threads, threadpool);
+
+        // update the kv ring buffer
+        {
+            kv_self.head += n_tokens;
+
+            // Ensure kv cache head points to a valid index.
+            if (kv_self.head >= kv_self.size) {
+                kv_self.head = 0;
+            }
+        }
+
+        // plot the computation graph in dot format (for debugging purposes)
+        // if (n_past%100 == 0) {
+            //ggml_graph_dump_dot(gf, NULL, "llama.dot");
+        // }
+
+        // extract logits
+        if (res) {
+            ggml_backend_t backend_res = ggml_backend_sched_get_tensor_backend(lctx.sched, res);
+            GGML_ASSERT(backend_res != nullptr);
+            GGML_ASSERT(lctx.logits != nullptr);
+
+            float * logits_out = lctx.logits + n_outputs_prev*n_vocab;
+            const int32_t n_outputs_new = lctx.n_outputs;
+
+            if (n_outputs_new) {
+                GGML_ASSERT( n_outputs_prev + n_outputs_new <= n_outputs);
+                GGML_ASSERT((n_outputs_prev + n_outputs_new)*n_vocab <= (int64_t) lctx.logits_size);
+                ggml_backend_tensor_get_async(backend_res, res, logits_out, 0, n_outputs_new*n_vocab*sizeof(float));
+            }
+        }
+
+        // extract embeddings
+        if (embd) {
+            ggml_backend_t backend_embd = ggml_backend_sched_get_tensor_backend(lctx.sched, embd);
+            GGML_ASSERT(backend_embd != nullptr);
+
+            switch (cparams.pooling_type) {
+                case LLAMA_POOLING_TYPE_NONE:
+                    {
+                        // extract token embeddings
+                        GGML_ASSERT(lctx.embd != nullptr);
+                        float * embd_out = lctx.embd + n_outputs_prev*n_embd;
+                        const int32_t n_outputs_new = lctx.n_outputs;
+
+                        if (n_outputs_new) {
+                            GGML_ASSERT( n_outputs_prev + n_outputs_new <= n_outputs);
+                            GGML_ASSERT((n_outputs_prev + n_outputs_new)*n_embd <= (int64_t) lctx.embd_size);
+                            ggml_backend_tensor_get_async(backend_embd, embd, embd_out, 0, n_outputs_new*n_embd*sizeof(float));
+                        }
+                    } break;
+                case LLAMA_POOLING_TYPE_MEAN:
+                case LLAMA_POOLING_TYPE_CLS:
+                case LLAMA_POOLING_TYPE_LAST:
+                    {
+                        // extract sequence embeddings (cleared before processing each batch)
+                        auto & embd_seq_out = lctx.embd_seq;
+
+                        for (uint32_t s = 0; s < ubatch.n_seqs; ++s) {
+                            const llama_seq_id seq_id = ubatch.seq_id[s][0];
+                            if (embd_seq_out.find(seq_id) != embd_seq_out.end()) {
+                                continue;
+                            }
+                            embd_seq_out[seq_id].resize(n_embd);
+                            ggml_backend_tensor_get_async(backend_embd, embd, embd_seq_out[seq_id].data(), (n_embd*seq_id)*sizeof(float), n_embd*sizeof(float));
+                        }
+                    } break;
+                case LLAMA_POOLING_TYPE_RANK:
+                    {
+                        // extract the rerank score - a single float per sequence
+                        auto & embd_seq_out = lctx.embd_seq;
+
+                        for (uint32_t s = 0; s < ubatch.n_seqs; ++s) {
+                            const llama_seq_id seq_id = ubatch.seq_id[s][0];
+                            if (embd_seq_out.find(seq_id) != embd_seq_out.end()) {
+                                continue;
+                            }
+                            embd_seq_out[seq_id].resize(1);
+                            ggml_backend_tensor_get_async(backend_embd, embd, embd_seq_out[seq_id].data(), (seq_id)*sizeof(float), sizeof(float));
+                        }
+                    } break;
+                case LLAMA_POOLING_TYPE_UNSPECIFIED:
+                    {
+                        GGML_ABORT("unknown pooling type");
+                    }
+            }
+        }
+        n_outputs_prev += lctx.n_outputs;
+    }
+
+    // set output mappings
+    {
+        bool sorted_output = true;
+
+        GGML_ASSERT(lctx.sbatch.out_ids.size() == n_outputs);
+
+        for (size_t i = 0; i < n_outputs; ++i) {
+            size_t out_id = lctx.sbatch.out_ids[i];
+            lctx.output_ids[out_id] = i;
+            if (out_id != i) {
+                sorted_output = false;
+            }
+        }
+
+        if (sorted_output) {
+            lctx.sbatch.out_ids.clear();
+        }
+    }
+
+    // set to total number of outputs in the batch, for use in llama_get_logits_ith
+    lctx.n_outputs = n_outputs;
+
+    // wait for the computation to finish (automatically done when obtaining the model output)
+    //llama_synchronize(&lctx);
+
+    // decide if we need to defrag the kv cache
+    if (cparams.causal_attn && cparams.defrag_thold >= 0.0f) {
+        const float fragmentation = kv_self.n >= 128 ? 1.0f - float(kv_self.used)/float(kv_self.n) : 0.0f;
+
+        // queue defragmentation for next llama_kv_cache_update
+        if (fragmentation > cparams.defrag_thold) {
+            //LLAMA_LOG_INFO("fragmentation: %.2f\n", fragmentation);
+
+            llama_kv_cache_defrag(kv_self);
+        }
+    }
+
+    // Reset state for the next token before backend sync, to allow the CPU activities in the reset to
+    // overlap with device computation.
+    ggml_backend_sched_reset(lctx.sched);
+	
+    return 0;
+}
+
 static int llama_decode_internal(
          llama_context & lctx,
            llama_batch   inp_batch) {
-	register_ggml_cuda_compute_forward(ggml_cuda_compute_forward_scheduled);
-	register_ggml_backend_cuda_graph_compute(ggml_backend_cuda_graph_compute_default);
-
+	
     lctx.is_encoding = false;
 
     if (inp_batch.n_tokens == 0) {
@@ -17874,11 +18191,8 @@ static int llama_decode_internal(
 static int llama_decode_skip_layers_internal(
         llama_context & lctx,
         llama_batch   inp_batch) {
-	register_ggml_cuda_compute_forward(ggml_cuda_compute_forward_scheduled);
-	register_ggml_backend_cuda_graph_compute(ggml_backend_cuda_graph_compute_scheduled);
 
     lctx.is_encoding = false;
-
     if (inp_batch.n_tokens == 0) {
         LLAMA_LOG_ERROR("%s: n_tokens == 0\n", __func__);
         return -1;
@@ -18014,14 +18328,23 @@ static int llama_decode_skip_layers_internal(
         }
 
         //printf("kv_self.n = %5d, kv_self.used = %5d, kv_self.head = %5d, pos = %5d\n", kv_self.n, kv_self.used, kv_self.head, now_pos);
-
+    	
+    	
     	FTaskScheduler::GetInstance().SetDecodePhase(0);
+    	FTaskScheduler::GetInstance().SetAllGraphNodes(0);
+    	FTaskScheduler::GetInstance().SetExeGraphNodes(0);
+    	FTaskScheduler::GetInstance().SetFirstLayerNum(0);
+    	FTaskScheduler::GetInstance().SetNowLayerNum(0);
+    	FTaskScheduler::GetInstance().SetUpdateInPhase2(true);
+
+    	/*auto time1 = ggml_time_us();*/
 
         uint32_t align_begin_pos, align_begin_depth,  align_end_depth, prev_align_end_depth, now_end_depth;
-        uint32_t skip_layers_cnt = FTaskScheduler::GetInstance().GetSkipDepth();
     	uint32_t max_skip_end_depth = lctx.model.hparams.n_layer - 1 - 2;
-        now_end_depth = max_skip_end_depth - skip_layers_cnt;
+    	now_end_depth = FTaskScheduler::GetInstance().GetExitLayerNum();
         align_end_depth = lctx.ectx.depth.empty() ? now_end_depth : std::min(lctx.ectx.depth.back(), now_end_depth);
+
+    	//std::ofstream("layer.txt", std::ios::app) << "end_depth" << align_end_depth << std::endl;
 
         ggml_backend_sched_reset(lctx.sched);
         llama_output_reserve(lctx, 1);
@@ -18032,11 +18355,22 @@ static int llama_decode_skip_layers_internal(
 
         ggml_backend_sched_alloc_graph(lctx.sched, gf);
         llama_set_inputs(lctx, ubatch, false);
+    	
+
+    	FTaskScheduler::GetInstance().SetDecodePhase(1);
+    	
+    	
         llama_graph_compute(lctx, gf, n_threads, threadpool);
 
         align_end_depth = gf->last_skip_layers_num;
 
-        if (batch.n_tokens == 1 && align_end_depth != max_skip_end_depth) {
+
+    	FTaskScheduler::GetInstance().SetDecodePhase(0);
+    	FTaskScheduler::GetInstance().SetAllGraphNodes(0);
+    	FTaskScheduler::GetInstance().SetExeGraphNodes(0);
+    	
+
+        if (batch.n_tokens == 1) {
             if (lctx.ectx.depth.empty() || lctx.ectx.depth.back() != align_end_depth) {
                 lctx.ectx.depth.push_back(align_end_depth);
                 lctx.ectx.end_depth_to_begin_pos[align_end_depth] = now_pos;
@@ -18049,15 +18383,13 @@ static int llama_decode_skip_layers_internal(
         ggml_backend_t backend_activation = ggml_backend_sched_get_tensor_backend(lctx.sched, activation);
         ggml_backend_tensor_get_async(backend_activation, activation, lctx.ectx.pos_to_activation[now_pos], 0, n_embd*sizeof(float));
 
-    	FTaskScheduler::GetInstance().SetDecodePhase(1);
+    	/*auto time2 = ggml_time_us();*/
+
+    	FTaskScheduler::GetInstance().UpdateSkipDepth2();
     	
         bool flag = false;
-        uint32_t now_skip_layers_cnt;
         while (!flag) {
-            if (align_end_depth != max_skip_end_depth) {
-                now_skip_layers_cnt = FTaskScheduler::GetInstance().GetSkipDepth();
-                now_end_depth = (max_skip_end_depth) - now_skip_layers_cnt;
-            }
+        	now_end_depth = FTaskScheduler::GetInstance().GetExitLayerNum();
             prev_align_end_depth = align_end_depth;
             align_begin_pos = lctx.ectx.end_depth_to_begin_pos[align_end_depth];
             align_begin_depth = align_end_depth + 1;
@@ -18084,14 +18416,25 @@ static int llama_decode_skip_layers_internal(
                                                          align_begin_depth, align_end_depth, align_end_depth == now_end_depth);
             ggml_backend_sched_alloc_graph(lctx.sched, gf);
             llama_set_inputs(lctx, lctx.activation_ubatch, align_end_depth == now_end_depth);
-            llama_graph_compute(lctx, gf, n_threads, threadpool);
 
-            if (lctx.ectx.depth.size()) {
+
+        	FTaskScheduler::GetInstance().SetDecodePhase(2);
+        	
+        	
+        	llama_graph_compute(lctx, gf, n_threads, threadpool);
+
+
+        	FTaskScheduler::GetInstance().SetDecodePhase(0);
+        	FTaskScheduler::GetInstance().SetAllGraphNodes(0);
+        	FTaskScheduler::GetInstance().SetExeGraphNodes(0);
+        	
+
+            if (lctx.ectx.depth.size() && align_end_depth != prev_align_end_depth) {
                 lctx.ectx.depth.pop_back();
                 lctx.ectx.end_depth_to_begin_pos.erase(prev_align_end_depth);
             }
             
-            if (align_end_depth != now_end_depth) {
+            if (align_begin_depth <= align_end_depth && align_end_depth != now_end_depth) {
                 std::string l_out_name = "l_out-";
                 l_out_name += std::to_string(align_end_depth);
                 ggml_tensor * activation = ggml_graph_get_tensor(gf, l_out_name.c_str());
@@ -18108,7 +18451,7 @@ static int llama_decode_skip_layers_internal(
                 ggml_backend_t backend_res = ggml_backend_sched_get_tensor_backend(lctx.sched, res);
                 ggml_backend_tensor_get_async(backend_res, res, lctx.logits, 0, n_vocab*sizeof(float));
 
-                if (now_end_depth != max_skip_end_depth && (lctx.ectx.depth.empty() || lctx.ectx.depth.back() != now_end_depth)) {
+                if (lctx.ectx.depth.empty() || lctx.ectx.depth.back() != now_end_depth) {
                     lctx.ectx.depth.push_back(now_end_depth);
                     lctx.ectx.end_depth_to_begin_pos[now_end_depth] = align_begin_pos;
                 }
@@ -18117,6 +18460,10 @@ static int llama_decode_skip_layers_internal(
             
         	align_end_depth = std::min(gf->last_skip_layers_num, max_skip_end_depth);
         }
+
+    	/*auto time3 = ggml_time_us();
+
+    	std::ofstream("debug.txt", std::ios::app) << "phase1:" << time2-time1 << " phase2:" << time3-time2 << std::endl;*/
 
         // plot the computation graph in dot format (for debugging purposes)
         //if (n_past%100 == 0) {
@@ -21917,6 +22264,19 @@ int32_t llama_decode_skip_layers(
     }
 
     return ret;
+}
+
+int32_t llama_decode_skip_layers_v2(
+		struct llama_context * ctx,
+		  struct llama_batch   batch,
+			int skip_depth) {
+	const int ret = llama_decode_skip_layers_internal_v2(*ctx, batch, skip_depth);
+	if (ret != 0) {
+		LLAMA_LOG_ERROR("%s: failed to decode, ret = %d\n", __func__, ret);
+	}
+	llama_synchronize(ctx);
+
+	return ret;
 }
 
 void llama_synchronize(struct llama_context * ctx) {

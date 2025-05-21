@@ -1,9 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
+#include <chrono>
+
 #include "D3D12RHIPrivate.h"
 #include "TaskScheduler.h"
 #include "Windows.h"
 
+DECLARE_STATS_GROUP(TEXT("GPU Rendering"), STATGROUP_Rendering, STATCAT_Advanced);
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Rendering Task time"), STAT_Rendering, STATGROUP_Rendering, );
+DEFINE_STAT(STAT_Rendering);
 
 static TAutoConsoleVariable<int32> CVarD3D12GPUTimeout(
 	TEXT("r.D3D12.GPUTimeout"),
@@ -478,10 +483,14 @@ void FD3D12CommandListManager::Create(const TCHAR* Name, uint32 NumCommandLists,
 
 FGPUTimingCalibrationTimestamp FD3D12CommandListManager::GetCalibrationTimestamp()
 {
+	// 等到下一帧开始再更新碎片时间以及推理所用到的时间，因为有可能在两帧之间的空闲时间内，推理任务并不是完全利用，所以必须等到空闲时间结束，才能获得最准确的推理所用到的时间
+	FPerformanceDetector::GetInstance().WriteStallTimeInfo();
+	FPerformanceDetector::GetInstance().UpdateFrameStallTime();
+	FTaskDetector::GetInstance().SetFirstDrawTask(true);
 	FTaskDetector::GetInstance().SetIsInFrameRendering(true);
-	FPerformanceDetector::GetInstance().SetFrameBeginTime(FPlatformTime::Cycles64());
+	FPerformanceDetector::GetInstance().SetFrameBeginTime(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 	FPerformanceDetector::GetInstance().SetFrameTime(0);
-	FTaskScheduler::GetInstance().SetBeginInFrameEnd();
+	FTaskScheduler::GetInstance().SetIsRenderingEnd(false);
 	
 	TRACE_CPUPROFILER_EVENT_SCOPE(D3D12GetCalibrationTimestamp);
 
@@ -500,19 +509,6 @@ FGPUTimingCalibrationTimestamp FD3D12CommandListManager::GetCalibrationTimestamp
 
 	Result.GPUMicroseconds = uint64(GPUTimestamp * (1e6 / GPUTimestampFrequency));
 	Result.CPUMicroseconds = uint64(CPUTimestamp * (1e6 / CPUTimestempFrequency.QuadPart));
-
-	// FPerformanceDetector::GetInstance().SetFrameEndTime(FPlatformTime::Cycles64());
-	// if (FPerformanceDetector::GetInstance().GetFrameBeginTime())
-	// {
-	// 	FPerformanceDetector::GetInstance().ComputeFrameTime();
-	// 	if (FTaskDetector::GetInstance().GetIsInInferring())
-	// 	{
-	// 		FPerformanceDetector::GetInstance().InsertFrameTimes(
-	// 			FPerformanceDetector::GetInstance().GetFrameTime());
-	// 	}
-	// }
-
-	// count += 1;
 	
 	return Result;
 }
@@ -650,6 +646,8 @@ void FD3D12CommandListManager::ExecuteCommandLists(TArray<FD3D12CommandListHandl
 	}
 }
 
+FThreadSafeCounter WaitForRenderingCompletionTaskCount = 0;
+
 class FWaitForRenderingCompletionTask1
 {
 public:
@@ -658,6 +656,7 @@ public:
 	
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
+		SCOPE_CYCLE_COUNTER(STAT_Rendering)
 		while(FTaskDetector::GetInstance().GetRenderingTaskIsRunning())
 			;
 		
@@ -696,15 +695,23 @@ public:
 	
 	void DoWork()
 	{
+		SCOPE_CYCLE_COUNTER(STAT_Rendering)
+
+		{
+			std::lock_guard<std::mutex> lock(FTaskDetector::GetInstance().MutexForWaitForRenderingCompletionTaskCount);
+            FTaskDetector::GetInstance().WaitForRenderingCompletionTaskCount++;
+			FTaskDetector::GetInstance().SetRenderingTaskIsRunning(true);
+		}
 		
-		while(FTaskDetector::GetInstance().GetRenderingTaskIsRunning())
-			;
-		
-		FTaskDetector::GetInstance().SetRenderingTaskIsRunning(true);
-		uint64 Start = FPlatformTime::Cycles64();
 		(*Fence)->WaitForFence(FenceValue);
-		uint64 End = FPlatformTime::Cycles64();
-		FTaskDetector::GetInstance().SetRenderingTaskIsRunning(false);
+
+		{
+			std::lock_guard<std::mutex> lock(FTaskDetector::GetInstance().MutexForWaitForRenderingCompletionTaskCount);
+			if (--FTaskDetector::GetInstance().WaitForRenderingCompletionTaskCount == 0)
+			{
+				FTaskDetector::GetInstance().SetRenderingTaskIsRunning(false);
+			}
+		}
 	}
 	
 	FORCEINLINE TStatId GetStatId() const
@@ -713,9 +720,58 @@ public:
 	}
 };
 
+class FWaitForRenderingCompletionTask3 : public FRunnable
+{
+	
+	TRefCountPtr<FD3D12CommandListFence>* Fence;
+	uint64_t FenceValue;
+public:
+	FWaitForRenderingCompletionTask3(TRefCountPtr<FD3D12CommandListFence>* Fence, const uint64_t FenceValue)
+		: Fence(Fence), FenceValue(FenceValue) {}
+	
+	bool Init()
+	{
+		return true;
+	}
+
+	uint32_t Run()
+	{
+		SCOPE_CYCLE_COUNTER(STAT_Rendering)
+		while(FTaskDetector::GetInstance().GetRenderingTaskIsRunning())
+			;
+		
+		FTaskDetector::GetInstance().SetRenderingTaskIsRunning(true);
+		(*Fence)->WaitForFence(FenceValue);
+		FTaskDetector::GetInstance().SetRenderingTaskIsRunning(false);
+		return 0;
+	}
+
+	void Exit()
+	{
+		return;
+	}
+};
+
 
 void FD3D12CommandListManager::ExecuteCommandListInteral(TArray<FD3D12CommandListHandle>& Lists, bool WaitForCompletion)
 {
+	/*if (FTaskScheduler::GetInstance().GetOpPolicy() == 1 && FTaskDetector::GetInstance().GetFirstDrawTask() /*&& FPerformanceDetector::GetInstance().GetTargetAPM() == 300#1#)
+	{
+		int NodeCount = FTaskDetector::GetInstance().GetNodeCount();
+		if (NodeCount > 0 && FTaskDetector::GetInstance().GetIsInGraphComputing() && FTaskDetector::GetInstance().GetActionCount() > 5)
+		{
+			double BeginTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+			while (FTaskDetector::GetInstance().GetNodeCount() != 0) {}
+			double EndTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+			std::ofstream("debug.txt", std::ios::app) << "sleep time: " << (EndTime - BeginTime) * 1.0f / 1000.0f << " ms" << std::endl;
+		}
+	}*/
+
+	if (FTaskDetector::GetInstance().GetFirstDrawTask())
+	{
+		FTaskDetector::GetInstance().SetFirstDrawTask(false);
+	}
+	
 	SCOPE_CYCLE_COUNTER(STAT_D3D12ExecuteCommandListTime);
 	check(CommandListFence);
 

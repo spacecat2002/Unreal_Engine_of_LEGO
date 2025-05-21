@@ -3,37 +3,68 @@
 #include "SchedulingSystem/DurationPredictor/Public/DurationPredictor.h"
 #include "SchedulingSystem/TaskDetector/Public/TaskDetector.h"
 #include "SchedulingSystem/PerformanceDetector/Public/PerformanceDetector.h"
+#include "CoreMinimal.h"
 
 class DLLEXPORT FTaskScheduler
 {
 public:
-	std::fstream f1, f2;
 	static FTaskScheduler& GetInstance();
-    void CanInfer();
+	void WaitForRenderingTaskCompletion();
+	
+	int GetExitLayerNum();
+	int GetDecodePhase();
 	int GetSkipDepth();
 	void SetSkipDepth(const int SkipDepth);
 	void SetDecodePhase(const int Phase);
-	void SetMaxFPS(const int FPS);
-	void SetSLOTime(const float Time);
-	void SetTokenBeginTime(const float Time);
-	void SetTokenEndTime(const float Time);
-	void SetTokenNowLayer(const int Layer);
-	void SetBeginInFrameEnd();
-	void UpdateTokenDecodeTime();
-	void UpdateSkipDepth();
+	void SetSLOTime(const int Time);
+	void SetTokenBeginTime(const double Time);
+	void SetAllGraphNodes(const int Nodes);
+	void SetExeGraphNodes(const int Nodes);
+	void SetFirstLayerNum(const int Num);
+	void SetNowLayerNum(const int Num);
+	void SetIsRenderingEnd(const bool flag);
+	void SetUpdateInPhase2(const bool flag);
+	
+	int GetSkipPolicy();
+	void SetSkipPolicy(const int Policy);
+
+	int GetOpPolicy();
+	void SetOpPolicy(const int Policy);
+	
+	void UpdateSkipDepth1();
+	void UpdateSkipDepth2();
+
+	void UpdateSkipDepthAfterPrefilling(const double StallTimeForAction, const double DecodeTimePerLayer, const double DecodeTimePerToken, const double PrefillTimePerLayer, const double PrefillTimePerToken);
+	
 	~FTaskScheduler();
 private:
 	FTaskScheduler();
 	TAtomic<int> Performance;
-	TAtomic<int> SkipDepth;
-	TAtomic<int> DecodePhase;
-	TAtomic<float> MaxFPS;
+	TAtomic<int> ExitLayerNum;
+	TAtomic<int> TokenDecodePhase;
 	TAtomic<double> TokenBeginTime;
-	TAtomic<double> TokenEndTime;
-	TAtomic<double> TokenDecodeTime;
-	TAtomic<int> TokenNowLayer;
-	bool TokenBeginInFrameEnd;
-	TAtomic<int> AllGraphNodes;
-	TAtomic<int> NowGraphNodes;
-	float SLOTime;
+	TAtomic<double> TokenDecodingTime;
+	TAtomic<bool> IsRenderingEnd; 
+	TAtomic<int>  AllGraphNodes;
+	TAtomic<int>  ExeGraphNodes;
+	TAtomic<int> FirstLayerNum;
+	int NowLayerNum;
+	TAtomic<int> SLOTime;
+	bool UpdateInPhase2;
+
+	TAtomic<int> OpPolicy;
+	TAtomic<int> SkipPolicy;
+	TAtomic<int> SkipDepth;
+
+	
 };
+
+class HighPrecisionTimer {
+public:
+	void SpinSleepMicroseconds(int64_t microseconds);
+	static HighPrecisionTimer& GetInstance();
+private:
+	HighPrecisionTimer();
+};
+
+

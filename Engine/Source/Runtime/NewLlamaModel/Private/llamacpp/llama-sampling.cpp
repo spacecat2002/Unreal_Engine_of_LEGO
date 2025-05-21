@@ -15,6 +15,8 @@
 #include <random>
 #include <unordered_map>
 
+#include "TaskDetector.h"
+
 static int llama_sample_dist(llama_token_data_array * cur_p, std::mt19937 & rng) {
     // iterator for the probabilities
 #ifdef __GNUC__
@@ -257,7 +259,7 @@ void llama_sampler_free(struct llama_sampler * smpl) {
 
 llama_token llama_sampler_sample(struct llama_sampler * smpl, struct llama_context * ctx, int32_t idx) {
     const auto * logits = llama_get_logits_ith(ctx, idx);
-
+	
     const int n_vocab = llama_n_vocab(llama_get_model(ctx));
 
     // TODO: do not allocate each time

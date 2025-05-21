@@ -41,8 +41,8 @@ public class Launch : ModuleRules
 				"LlamaModel",
 				"DurationPredictor",
 				"TaskDetector",
-				"TaskScheduler", 
-				"NewLlamaModel"
+				"TaskScheduler",
+				"NewLlamaModel",
 		});
 
 		// Set a macro allowing us to switch between debuggame/development configuration

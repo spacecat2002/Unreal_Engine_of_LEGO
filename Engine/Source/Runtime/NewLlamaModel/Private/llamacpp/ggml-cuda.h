@@ -42,10 +42,6 @@ extern "C" {
 	GGML_API void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
 	GGML_API void ggml_cuda_mul_mat(ggml_backend_cuda_context & ctx, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst);
 
-	GGML_API void register_ggml_cuda_compute_forward(ggml_cuda_compute_forward_t func);
-	GGML_API bool ggml_cuda_compute_forward_scheduled(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
-	GGML_API bool ggml_cuda_compute_forward_default(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
-
 	GGML_API void register_ggml_backend_cuda_graph_compute(ggml_backend_cuda_graph_compute_t func);
 	GGML_API enum ggml_status ggml_backend_cuda_graph_compute_scheduled(ggml_backend_t backend, ggml_cgraph * cgraph);
 	GGML_API enum ggml_status ggml_backend_cuda_graph_compute_default(ggml_backend_t backend, ggml_cgraph * cgraph);

@@ -6,6 +6,7 @@ D3D12CommandContext.cpp: RHI  Command Context implementation.
 
 #include "D3D12RHIPrivate.h"
 #include "TaskDetector.h"
+#include "TaskScheduler.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -654,6 +655,18 @@ void FD3D12CommandContextBase::RHIEndFrame()
 	GGPUFrameTime = GPUProfiler.GetGPUFrameCycles(0);
 #endif
 	FTaskDetector::GetInstance().SetIsInFrameRendering(false);
+	FTaskScheduler::GetInstance().SetIsRenderingEnd(true);
+	int Count = FTaskDetector::GetInstance().GetScheduledCount();
+	FTaskDetector::GetInstance().SetScheduledCount(Count + 1);
+	int TokenDecodePhase = FTaskScheduler::GetInstance().GetDecodePhase();
+	if (TokenDecodePhase == 1)
+	{
+		FTaskScheduler::GetInstance().UpdateSkipDepth1();
+	}
+	else if (TokenDecodePhase == 2)
+	{
+		FTaskScheduler::GetInstance().UpdateSkipDepth2();
+	}
 }
 
 void FD3D12CommandContextBase::SignalTransitionFences(TArrayView<const FRHITransition*> Transitions)

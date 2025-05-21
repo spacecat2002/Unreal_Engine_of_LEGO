@@ -216,7 +216,7 @@ GGML_CALL bool ggml_cuda_compute_forward_scheduled(ggml_compute_params * params,
 	for (int i = 0; i < 4; ++i) Input.Push(tensor->ne[i]);
 	
 	
-	FTaskScheduler::GetInstance().CanInfer();
+	FTaskScheduler::GetInstance().WaitForRenderingTaskCompletion();
 	
 	func(tensor->src[0], tensor->src[1], tensor);
 	

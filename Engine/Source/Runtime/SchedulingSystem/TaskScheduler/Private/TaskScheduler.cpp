@@ -1,17 +1,53 @@
 #pragma once
 #include "../Public/TaskScheduler.h"
-#include "Async/RHIThreadWaiting.h"
+#include "HAL/RunnableThread.h"
+
+#include <chrono>
+#include <msctf.h>
+
+#include "Windows.h"
+
+#define LastTwoLayersTime 1.5f
+#define OneLayerNodes 32
+#define OneLayerTime 0.4f
+#define MaxExitLayerNum 29
+#define MinExitLayerNum 13
+
+HighPrecisionTimer::HighPrecisionTimer()
+{
+}
+
+void HighPrecisionTimer::SpinSleepMicroseconds(int64_t microseconds)
+{
+	LARGE_INTEGER start, current, frequency;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&start);
+        
+	// 计算需要等待的计数值
+	int64_t counts = (microseconds * frequency.QuadPart) / 1000000;
+        
+	do {
+		QueryPerformanceCounter(&current);
+	} while (current.QuadPart - start.QuadPart < counts);
+}
+
+
+HighPrecisionTimer& HighPrecisionTimer::GetInstance()
+{
+	static HighPrecisionTimer Instance;
+	return Instance;
+}
 
 FTaskScheduler::FTaskScheduler()
 	: Performance(0)
-	, SkipDepth(0)
-	, DecodePhase(0)
-	, TokenBeginTime(0)
-	, TokenEndTime(0)
-	, TokenDecodeTime(0)
-	, TokenBeginInFrameEnd(0)
-	, TokenNowLayer(0)
+	, ExitLayerNum(MaxExitLayerNum)
+	, TokenDecodePhase(0)
+	, FirstLayerNum(0)
 	, SLOTime(50)
+	, UpdateInPhase2(true)
+	, SkipPolicy(0)
+	, SkipDepth(0)
+	, OpPolicy(0)
 {
 }
 
@@ -25,9 +61,19 @@ FTaskScheduler& FTaskScheduler::GetInstance()
     return Instance;
 }
 
+int FTaskScheduler::GetExitLayerNum()
+{
+	return ExitLayerNum;
+}
+
 int FTaskScheduler::GetSkipDepth()
 {
 	return SkipDepth;
+}
+
+int FTaskScheduler::GetDecodePhase()
+{
+	return TokenDecodePhase;
 }
 
 void FTaskScheduler::SetSkipDepth(const int nSkipDepth)
@@ -37,78 +83,250 @@ void FTaskScheduler::SetSkipDepth(const int nSkipDepth)
 
 void FTaskScheduler::SetDecodePhase(const int Phase)
 {
-	DecodePhase = Phase;
+	TokenDecodePhase = Phase;
 }
 
-void FTaskScheduler::SetMaxFPS(const int FPS)
-{
-	MaxFPS = FPS;
-}
-
-void FTaskScheduler::SetSLOTime(const float Time)
+void FTaskScheduler::SetSLOTime(const int Time)
 {
 	SLOTime = Time;
 }
 
-void FTaskScheduler::SetTokenBeginTime(const float Time)
+void FTaskScheduler::SetIsRenderingEnd(const bool flag)
+{
+	IsRenderingEnd = flag;
+}
+
+void FTaskScheduler::SetTokenBeginTime(const double Time)
 {
 	TokenBeginTime = Time;
-	if (!FTaskDetector::GetInstance().GetIsInFrameRendering())
+}
+
+void FTaskScheduler::SetAllGraphNodes(const int Nodes)
+{
+	AllGraphNodes = Nodes;
+}
+
+void FTaskScheduler::SetExeGraphNodes(const int Nodes)
+{
+	ExeGraphNodes = Nodes;
+}
+
+void FTaskScheduler::SetFirstLayerNum(const int Num)
+{
+	FirstLayerNum = Num;
+}
+
+void FTaskScheduler::SetNowLayerNum(const int Num)
+{
+	NowLayerNum = Num;
+}
+
+void FTaskScheduler::SetUpdateInPhase2(const bool flag)
+{
+	UpdateInPhase2 = flag;
+}
+
+int FTaskScheduler::GetSkipPolicy()
+{
+	return SkipPolicy;
+}
+
+void FTaskScheduler::SetSkipPolicy(const int nPolicy)
+{
+	SkipPolicy = nPolicy;
+}
+
+int FTaskScheduler::GetOpPolicy()
+{
+	return OpPolicy;
+}
+
+void FTaskScheduler::SetOpPolicy(const int Policy)
+{
+	OpPolicy = Policy;
+}
+
+void FTaskScheduler::UpdateSkipDepth1()
+{
+	if (SkipPolicy == 0 && OpPolicy == 0)
 	{
-		TokenBeginInFrameEnd = 1;
+		double NowTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+		double TokenRemainTime = FMath::Max(SLOTime  - 3 - (NowTime - TokenBeginTime) / 1000.0, 0.0);
+		double AllDecodeTime = FPerformanceDetector::GetInstance().GetRemainTimeSlice();
+		double DeltaTime = TokenRemainTime - AllDecodeTime;
+		double AvgRenderingTime = FPerformanceDetector::GetInstance().GetAvgRenderingTime();
+		double DecodeTime = FMath::Max(FMath::Min(TokenRemainTime, AllDecodeTime), 0.0);
+		if (DeltaTime <= AvgRenderingTime)
+		{
+	        if (DecodeTime <= LastTwoLayersTime)
+			{
+				ExitLayerNum = FMath::Max(NowLayerNum - 1, MinExitLayerNum);
+        		//std::ofstream("debug.txt", std::ios::app) << "Phase: " << TokenDecodePhase << " case 1-1 TokenRemainTime: " << TokenRemainTime << " AllDecodeTime: " << AllDecodeTime << " DeltaTime: " << DeltaTime << " AvgRenderingTime: " << AvgRenderingTime << " ExitLayerNum: " << ExitLayerNum << "ExeNodes" << ExeGraphNodes << "AllNodes" << AllGraphNodes << "NowLayer: " << NowLayerNum << std::endl;
+			}
+			else
+			{
+				DecodeTime -= LastTwoLayersTime;
+				ExitLayerNum = FMath::Max(
+					int(DecodeTime/OneLayerTime + ExeGraphNodes*1.0f/OneLayerNodes + FirstLayerNum - 1), MinExitLayerNum);
+				ExitLayerNum = FMath::Min(ExitLayerNum.Load(), MaxExitLayerNum);
+				//std::ofstream("debug.txt", std::ios::app) << "Phase: " << TokenDecodePhase << " case 1-2 TokenRemainTime: " << TokenRemainTime << " AllDecodeTime: " << AllDecodeTime << " DeltaTime: " << DeltaTime << " AvgRenderingTime: " << AvgRenderingTime << " ExitLayerNum: " << ExitLayerNum << "ExeNodes" << ExeGraphNodes << "AllNodes" << AllGraphNodes << "NowLayer: " << NowLayerNum << std::endl;
+			}
+			UpdateInPhase2 = false;
+		}
+		//std::ofstream("debug.txt", std::ios::app) << "Phase: " << TokenDecodePhase << " case 1-3 TokenRemainTime: " << TokenRemainTime << " AllDecodeTime: " << AllDecodeTime << " DeltaTime: " << DeltaTime << " AvgRenderingTime: " << AvgRenderingTime << " ExitLayerNum: " << ExitLayerNum << "ExeNodes" << ExeGraphNodes << "AllNodes" << AllGraphNodes << "NowLayer: " << NowLayerNum << std::endl;
 	}
 }
 
-void FTaskScheduler::SetTokenEndTime(const float Time)
+void FTaskScheduler::UpdateSkipDepth2()
 {
-	TokenEndTime = Time;
-}
-
-void FTaskScheduler::SetBeginInFrameEnd()
-{
-	TokenBeginInFrameEnd = 0;
-}
-
-
-void FTaskScheduler::UpdateSkipDepth()
-{
-	double NowTime = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
-	const float TimeSlice = FPerformanceDetector::GetInstance().GetTimeSlice();
-	double TokenAllTime = NowTime + TimeSlice - TokenBeginTime;
-	double TokenRemainTime = 0;
-	if (TokenAllTime < SLOTime)
+	if (SkipPolicy == 0 && OpPolicy == 0)
 	{
-		if (TokenAllTime + 1000/MaxFPS.Load() > SLOTime)
+		double NowTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+		double TokenRemainTime = FMath::Max(SLOTime  - 3 - (NowTime - TokenBeginTime) / 1000.0, 0.0);
+		double AllDecodeTime = FPerformanceDetector::GetInstance().GetRemainTimeSlice();
+		//std::ofstream("debug.txt", std::ios::app) << "Phase: " << TokenDecodePhase << " case 2 TokenRemainTime: " << TokenRemainTime << " AllDecodeTime: " << AllDecodeTime << " ExitLayerNum: " << " ExeNodes: " << ExeGraphNodes << " AllNodes: " << AllGraphNodes << " NowLayer: " << NowLayerNum << std::endl;
+		if (TokenDecodePhase == 0 && UpdateInPhase2)
 		{
+			if (IsRenderingEnd)
+			{
+				double DecodeTime = FMath::Max(FMath::Min(TokenRemainTime, AllDecodeTime), 0.0);
+				ExitLayerNum = FMath::Min(NowLayerNum + int(DecodeTime / OneLayerTime), MaxExitLayerNum);
+			}
+			else
+			{
+				ExitLayerNum = MaxExitLayerNum;
+			}
+			//std::ofstream("debug.txt", std::ios::app) << "Phase: " << TokenDecodePhase << " case 2-1 TokenRemainTime: " << TokenRemainTime << " AllDecodeTime: " << AllDecodeTime << " ExitLayerNum: " << " ExeNodes: " << ExeGraphNodes << " AllNodes: " << AllGraphNodes << " NowLayer: " << NowLayerNum << std::endl;
+		}
+		else if (TokenDecodePhase == 2)
+		{
+			if (NowLayerNum <= MaxExitLayerNum)
+			{
+				UpdateSkipDepth1();
+			}
+			//std::ofstream("debug.txt", std::ios::app) << "Phase: " << TokenDecodePhase << " case 2-2 TokenRemainTime: " << TokenRemainTime << " AllDecodeTime: " << AllDecodeTime  << " ExitLayerNum: " << " ExeNodes: " << ExeGraphNodes << " AllNodes: " << AllGraphNodes << " NowLayer: " << NowLayerNum << std::endl;
+		}
+	}
+}
+
+void FTaskScheduler::UpdateSkipDepthAfterPrefilling(const double StallTimeForAction, const double DecodeTimePerLayer, const double DecodeTimePerToken, const double PrefillTimePerLayer, const double PrefillTimePerToken)
+{
+	double ActionTime = PrefillTimePerToken + 15*DecodeTimePerToken;
+	double LayerTime = PrefillTimePerLayer + 15*DecodeTimePerLayer;
+	if (StallTimeForAction >= ActionTime)
+	{
+		SkipDepth = 0;
+	}
+	else
+	{
+		SkipDepth = FMath::Max((int)std::ceil((ActionTime - StallTimeForAction - 20) / LayerTime),0);
+		SkipDepth = SkipDepth.Load();
+	}
+	std::ofstream("debug.txt", std::ios::app) << " Skip Layers: " << SkipDepth << std::endl;
+}
+
+
+void FTaskScheduler::WaitForRenderingTaskCompletion()
+{
+	// OpPolicy:
+	// = 0: 使用所有的空闲时间
+	// = 1: Pilotfish
+	// = 2: 自由竞争
+	/*if (OpPolicy == 1)
+	{
+		while (true)
+		{
+			bool IsInFrameRendering = FTaskDetector::GetInstance().GetIsInFrameRendering();
+			bool RenderingTaskIsRunning = FTaskDetector::GetInstance().GetRenderingTaskIsRunning();
+			bool RHITaskIsRunning = FTaskDetector::GetInstance().GetRHITaskIsRunning();
+			bool FirstDrawTask = FTaskDetector::GetInstance().GetFirstDrawTask();
+			if (IsInFrameRendering/* && FPerformanceDetector::GetInstance().GetTargetAPM() == 300#1#)
+			{
+				if (FirstDrawTask) return;
+			}
+			else 
+			{
+				if (!IsInFrameRendering && !RHITaskIsRunning && !RenderingTaskIsRunning)
+				{
+					/*if (OpPolicy.Load() == 2)
+					{
+						while (!FTaskDetector::GetInstance().GetRHITaskIsRunning()) {}
+						return;
+					}#1#
+					if (FPerformanceDetector::GetInstance().GetTimeSlice() != 0)
+					{
+						return;
+					}
+				}
+			}
+		}
+	}*/
+	
+	if (OpPolicy == 2) return;
+
+	else
+	{
+		while (true)
+		{
+			bool IsInFrameRendering = FTaskDetector::GetInstance().GetIsInFrameRendering();
+			bool RenderingTaskIsRunning = FTaskDetector::GetInstance().GetRenderingTaskIsRunning();
+			bool RHITaskIsRunning = FTaskDetector::GetInstance().GetRHITaskIsRunning();
+
+			if (IsInFrameRendering)
+			{
+				/*if (OpPolicy.Load() == 2)
+				{
+					return;
+				}*/
 			
-		}
-	} 
-	double TokenAllDecodeTime = TokenDecodeTime + TimeSlice;
+				if (/*!RHITaskIsRunning &&*/ !RenderingTaskIsRunning && OpPolicy == 0)
+				{
+					return;
+				}
+			}
+			else
+			{
+					if (!RHITaskIsRunning && !RenderingTaskIsRunning)
+					{
+						/*if (OpPolicy.Load() == 2)
+						{
+							while (!FTaskDetector::GetInstance().GetRHITaskIsRunning()) {}
+							return;
+						}*/
+						if (FPerformanceDetector::GetInstance().GetTimeSlice() != 0)
+						{
+							return;
+						}
+					}
+				
+				/*else
+				{
+					if (OpPolicy.Load() == 2)
+					{
+						return;
+					}
+				}*/
+			}
+		}	
+	}
+	
 }
 
-void FTaskScheduler::CanInfer()
-{
 
-	while (true)
-	{
-		bool bIsInFrameRendering = FTaskDetector::GetInstance().GetIsInFrameRendering(); //当前帧的所有渲染工作是否完成
-		const bool bRenderingTaskIsRunning = FTaskDetector::GetInstance().GetRenderingTaskIsRunning();
-		const bool bRHITaskIsRunning = FTaskDetector::GetInstance().GetRHITaskIsRunning();
-		if (bIsInFrameRendering)
-		{
-			if (!bRenderingTaskIsRunning && !bRHITaskIsRunning && DecodePhase)
-			{
-				return;
-			}
-		}
-		else
-		{
-			if (!bRenderingTaskIsRunning && !bRHITaskIsRunning)
-			{
-				return;
-			}
-		}
-	}	
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
